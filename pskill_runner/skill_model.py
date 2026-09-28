@@ -56,6 +56,23 @@ AnyBlock = TaskBlock | DecisionBlock | EndBlock
 AGENT_BLOCK_TYPES = (TaskBlock, DecisionBlock)
 
 
+def block_edges(block: AnyBlock) -> list[Edge]:
+    """The edges of a block, with a choice map turned into one edge per choice."""
+    if isinstance(block, EndBlock):
+        return []
+    if isinstance(block.next, dict):
+        return [Edge(to=target) for target in block.next.values()]
+    return list(block.next)
+
+
+def next_targets(block: AnyBlock) -> list[str]:
+    """Every block that this block can lead to, including its `on_max_visits` target."""
+    targets = [edge.to for edge in block_edges(block)]
+    if block.on_max_visits is not None:
+        targets.append(block.on_max_visits)
+    return targets
+
+
 @dataclass(frozen=True)
 class Skill:
     id: str
