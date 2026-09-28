@@ -1,6 +1,8 @@
 """Harness adapters: what differs between Claude Code, Codex, and other harnesses (SPEC.md section 9).
 
-M1 has only the `generic` adapter, which works in any harness that can run a shell command.
+An adapter holds wording and abilities only. Harness-specific files and hook formats live in their own
+module (for example `claude_code.py`). The `generic` adapter works in any harness that can run a shell
+command; every other adapter is optional.
 """
 
 from collections.abc import Mapping
@@ -16,6 +18,7 @@ class HarnessAdapter:
     name: str
     question_wording: str
     can_spawn_subagents: bool
+    subagent_wording: str = ""
 
 
 GENERIC = HarnessAdapter(
@@ -24,7 +27,19 @@ GENERIC = HarnessAdapter(
     can_spawn_subagents=False,
 )
 
-ADAPTERS: dict[str, HarnessAdapter] = {GENERIC.name: GENERIC}
+CLAUDE_CODE = HarnessAdapter(
+    name="claude-code",
+    question_wording=(
+        "Ask the user with the AskUserQuestion tool: use each choice id as an option label and its meaning as "
+        "the option description. With more than 4 choices, or with no choices, ask in the chat instead."
+    ),
+    can_spawn_subagents=True,
+    subagent_wording=(
+        "Use the Agent tool with `subagent_type: general-purpose`: one Agent call per task, all in one message."
+    ),
+)
+
+ADAPTERS: dict[str, HarnessAdapter] = {adapter.name: adapter for adapter in (GENERIC, CLAUDE_CODE)}
 
 
 def adapter_for(name: str) -> HarnessAdapter:
@@ -35,4 +50,6 @@ def adapter_for(name: str) -> HarnessAdapter:
 
 def detect_harness(environment: Mapping[str, str]) -> str:
     """Guess the harness from its environment variables. Unknown environments use `generic`."""
+    if environment.get("CLAUDECODE") == "1":
+        return CLAUDE_CODE.name
     return GENERIC.name
