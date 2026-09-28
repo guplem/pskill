@@ -1,0 +1,1274 @@
+# pskill: portable programmatic skills (implementation specification)
+
+> Audience: a coding agent that implements this system from zero.
+> Status: design approved, not implemented. Date: 2026-09-27.
+> Name: `pskill`. Repository: `github.com/guplem/pskill` (the user's personal account). Public, MIT license (`LICENSE` file at the repository root).
+
+## 0. Read this first
+
+**What pskill is.** A small runner that executes agent skills written as a graph of typed blocks instead of prose. The agent (Claude Code, Codex CLI, Gemini CLI, Cursor) stays in the user's live session. The agent asks the runner for the current block, does the work, and submits a typed result. The runner validates the result, stores it, picks the next block, and prints the next instruction. The agent never sees the full workflow.
+
+**What pskill is not.**
+- It is not an agent framework. It never calls an LLM.
+- It does not replace prose skills. Reference and rules skills (for example `write-commit`) stay normal `SKILL.md` files. Port only workflow skills.
+- It is not a harness. The harness provides the agent, its tools, its permissions, and its subagents.
+
+**Why it exists.** Evidence from the user's real skills:
+- **Order enforced by prose.** `implement-issue` (Galtea monorepo, 919 lines) has 52 "never" and 21 "MUST". `review-pr-bot` admits that one rule "depends on you honouring an instruction, not on a mechanism".
+- **Run-away helpers.** `generate-changelog` records helpers that "ran the whole skill and overwrote the output files".
+- **Lost state.** Skills tell the agent to write values to files because shell variables do not survive tool calls.
+- **Brittle links.** `review-pr-bot` cites `review-pr` by line number. `implement-issue` depends on the exact headings of `.reviews/<PR>-review.md`. Nothing checks these links.
+- **Mode explosion.** `--auto`, `--no-verdict`, `--preapproved`, each with prose like "never call AskUserQuestion in autonomous mode".
+- **Manual resume.** "Run `/implement-issue <ISSUE>` to continue".
+- **No way to observe, test, or compare a skill run.**
+
+## 1. Core principles
+
+These rules decide every open question. When a feature conflicts with them, drop the feature.
+
+1. **Simplicity first.** Few block types, few keywords, and one way to do each thing. A skill file must be readable by a person who has never seen pskill. A feature that adds much complexity for little user value stays out. Section 18 lists the features that were removed on purpose. Do not add them back.
+2. **The runner owns the order. The agent owns the judgment.** The agent cannot skip, reorder, or invent blocks. At a branch, the agent picks from a fixed list of choices.
+3. **Test first (red-green).** Write a failing test for every behavior before the code. See section 16.
+4. **Portable by default.** The runner works on Windows, macOS, and Linux, and with any harness that can run a shell command and write a file. Harness-specific features only make things stronger or nicer. They are never required.
+
+## 2. Vocabulary (one meaning per word)
+
+| Term | Meaning |
+|---|---|
+| **harness** | The host program that runs the agent: Claude Code, Codex CLI, Gemini CLI, Cursor. |
+| **agent** | The LLM inside the harness, in the user's live session. |
+| **runner** | `pskill.py`, the single-file Python program that executes skills. |
+| **skill** | A folder `.pskill/skills/<skill-id>/` with `skill.yaml`, instruction files, and optional scripts and tests. |
+| **block** | One node of a skill graph. It has one type from the list in section 6. |
+| **edge** | The link from a block to the next block, with an optional condition. |
+| **run** | One execution of a skill, stored in `.pskill/runs/<run-id>/`. Nested skill calls stay inside the same run. |
+| **packet** | The text that the runner prints for the agent: the instruction and how to submit the result. |
+| **submission** | The YAML result that the agent gives back for a block, in the same command that asks for the next block. |
+| **trace** | The append-only event file `events.jsonl` of a run. |
+| **adapter** | The harness-specific code in the runner: stub folder, hooks, packet wording. |
+| **stub** | A generated, read-only `SKILL.md` that makes a skill visible to a harness. |
+| **mode** | `interactive` or `autonomous`. A run parameter. |
+
+## 3. Decisions (do not re-open)
+
+| # | Decision | Reason |
+|---|---|---|
+| D1 | The agent pulls blocks from the runner inside the live session. The runner does not launch agents. | The user keeps the live chat. A headless `eval` command can come later, from the same files. |
+| D2 | The runner owns the graph. The agent picks choices from fixed lists. | Order becomes a mechanism. |
+| D3 | The skill format is new and is the only source of truth. | A clean format. D4 restores discovery. |
+| D4 | `pskill sync` writes one read-only stub per skill into each folder in `config.stub_folders` (default `.agents/skills/` and `.claude/skills/`). All stubs have the same content and pass `--harness auto`. | Harnesses pick skills by their description. Without stubs, auto-triggering stops. The folder list is configurable because projects already own these folders differently (see 9.3). |
+| D5 | One run can mix main-agent work, parallel subagents, scripts, and questions to the human. | The real skills use all four. |
+| D6 | Every skill can run in `autonomous` mode. A `decision` block has `decider: agent` or `decider: human`. In autonomous mode the agent takes human decisions itself, from the skill goal, the session, and the project. | User requirement. Replaces all mode-specific prose. |
+| D7 | A Stop hook blocks the agent from ending its turn while a block is open, on harnesses that have such a hook. Other harnesses get packet wording only. | Otherwise the agent can simply stop calling the runner. |
+| D8 | A packet contains the current instruction and the skill goal. It has no future blocks. | Fewer tokens, no running ahead, and enough context for autonomous answers. |
+| D9 | Every agent block declares a typed output. The runner rejects invalid submissions with the error text. | State lives in the runner, typed, and survives tool calls. |
+| D10 | A nested skill call works like a function: inputs in, outputs out, no access to the caller's state. | Replaces line-number citations and file-heading contracts. |
+| D11 | Visit caps are optional. The validator warns about a loop with no cap. | User choice. |
+| D12 | When a block fails, the runner retries it, then pauses the run with a report. | Recoverable by default. |
+| D13 | A run survives the session. Any session in any harness in the same checkout can resume it. | State is in files, not in the chat. |
+| D14 | "Replay" means visual step-through of past runs in the viewer. | User scope. |
+| D15 | No up-front checks for required tools. A missing tool fails its block, and D12 applies. | User choice. |
+| D16 | Transport is the CLI: `uv run .pskill/pskill.py <command>`. **One tool call per block:** the agent pipes its answer into `submit` through a literal block on stdin (a bash heredoc, or a PowerShell here-string), and the same call prints the next packet. The answer is YAML (JSON also works, because JSON is valid YAML). | Every harness can run a shell command. One call per block saves usage. A literal stdin block needs no escaping in any shell. YAML takes multi-line text (plans, comments) with no `\n` escapes. |
+| D17 | For a `parallel` block, the harness spawns the subagents. The runner only says what to spawn. Without subagent support, the agent runs the tasks one by one. | Same harness, same permissions. Works everywhere. |
+| D18 | The trace records the packet text given to the agent, the submission returned, and durations. | Enough for step-through, simple analytics, and later comparison. |
+| D19 | `skill.yaml` holds the graph. An `instruction` (or `report`) is either a path that ends in `.md` or the text itself. Long prose goes in `instructions/<block-id>.md`; one or two lines can stay inline. | Readable large skills, small diffs, and no tiny files for one-line steps. |
+| D20 | The runner is vendored into each project as one Python file plus the viewer folder. Nobody edits them. `pskill update` replaces them wholesale. | Version pinned per project, no install step for teammates. |
+| D21 | The runner file has a PEP 723 header. `uv run` installs Python and the three dependencies. | Python has no built-in YAML parser. `uv` is the only machine requirement. |
+| D22 | A run copies the skills and pskill agents that it uses into the run folder at start and always resumes from that copy. | The simplest correct behavior when a skill changes mid-run. |
+| D23 | Everything lives in `.pskill/`. Runs live in `.pskill/runs/`, which git ignores. | User choice. |
+| D24 | The MVP viewer is read-only. | The editor is the most expensive part. |
+| D25 | MVP adapters: `claude-code` (the reference), `codex`, and `generic`. `generic` makes every skill run in any other harness (Gemini CLI, Cursor, and others) with soft enforcement and one-by-one parallel tasks. Dedicated Gemini and Cursor adapters come after the MVP, and only when a gap hurts. | Each adapter adds harness facts that need checking and upkeep. `generic` already covers the rest. |
+| D26 | Proof skills: `implement-issue` (one pull request, no step splitting), `review-pr`, and `create-issue`, ported from the setup-guplem-standard templates. Together they must exercise every feature (section 13.4). | Full coverage at a manageable size. The template extras (stacked PRs, worktree subagents, thread replies) can come later as the first real skill change. |
+| D27 | `pskill test` runs skill tests with a scripted fake agent. | Test graph paths with no LLM, no cost, in CI. |
+| D28 | `pskill sync` adds one narrow allow rule to each harness's project settings: the runner command. | Without it, the user gets a permission prompt on every block. Every other agent action still asks as usual. |
+
+### 3.1 Known limitations (accepted)
+
+- **L1. Autonomous mode removes human gates.** In autonomous mode the agent takes every human decision, including "post publicly" or "close the issue". Then only the harness permission system protects outward actions. Say this clearly in the README.
+- **L2. The runner trusts the agent's claim that a human answered.**
+- **L3. Enforcement is soft without a Stop hook.** `pskill current` and the session-start message recover a run that the agent left.
+- **L4. The Stop hook binds by harness and checkout.** Two sessions of the same harness in the same folder share the hook. Separate checkouts (the user's `monorepo-clone-N` folders) do not conflict.
+- **L5. Instruction files are on disk.** The agent could read future blocks. This is not a security boundary.
+- **L6. No isolation without subagents.** With the `generic` adapter, parallel tasks run one by one in the main agent's context, so each task can see the earlier ones.
+
+### 3.2 Items to verify at implementation time
+
+Harness features change fast. Every statement tagged **VERIFY** comes from research on 2026-09-26. Check it against the current official docs before you code it. Record the doc URL in a code comment.
+
+---
+
+## 4. Architecture
+
+```text
+ user <-> harness (Claude Code | Codex | Gemini CLI | Cursor | any other)
+              |  agent reads a stub: .claude/skills/<id>/SKILL.md or .agents/skills/<id>/SKILL.md
+              |  agent runs:  uv run .pskill/pskill.py start | current | submit ...
+              |  hooks run:   uv run .pskill/pskill.py hook stop|session-start --harness <h>
+              v
+        pskill.py (the runner, one file)
+          ├─ loader + validator   .pskill/skills/<id>/skill.yaml
+          ├─ engine               executes blocks, keeps a call stack for nested skills
+          ├─ run store            .pskill/runs/<run-id>/
+          ├─ adapters             claude-code, codex, generic
+          ├─ sync                 stubs + hooks
+          ├─ test runner          scripted fake agent
+          └─ viewer server        127.0.0.1, serves .pskill/viewer/ + a JSON API
+```
+
+**The loop for one agent block:**
+1. The runner prints a packet.
+2. The agent does the work with its own tools.
+3. The agent runs `submit` once, with its answer on stdin.
+4. The runner validates the answer. If it is invalid, the runner prints the same packet with the errors.
+5. If it is valid, the runner stores it, records the duration, follows the edge, executes every following `script`, `call`, and `end` block by itself, and stops at the next agent block.
+6. The runner prints the next packet, as the output of the same command.
+
+---
+
+## 5. Skill format (`skill.yaml`, schema `pskill/v1`)
+
+### 5.1 Top level
+
+```yaml
+schema: pskill/v1               # required
+id: implement-issue             # required. Lowercase letters, digits, hyphens. Equals the folder name.
+description: >-                 # required, max 1024 chars. Goes into the stubs for discovery.
+  Implement a GitHub issue end to end. Use when the user asks to implement or fix an issue.
+goal: >-                        # required. Goes into every packet.
+  Resolve the issue with a reviewed pull request that follows the plan the user approved.
+invocation: auto                # auto (default) | manual | internal
+inputs: {}                      # field map (5.3)
+outputs: {}                     # field map
+entry: read_issue               # first block. Same forms as `next` (5.4), except the choice map.
+blocks: {}                      # map: block id -> block
+```
+
+- Block ids use lowercase letters, digits, and underscores.
+- Load `skill.yaml` with a PyYAML `SafeLoader` subclass in which only `true` and `false` are booleans (the YAML 1.2 rule). `yes`, `no`, `on`, and `off` stay text, so a choice named `no` works.
+- Top-level keys that start with `x-` are free. Use them for YAML anchors (reusable pieces, see 13.2).
+- `invocation`:
+  - `auto`: the agent may start the skill from its description.
+  - `manual`: only the user starts it by name. Claude gets `disable-model-invocation: true`; Codex gets an `agents/openai.yaml` sidecar (VERIFY).
+  - `internal`: no stub. Only a `call` block can start it.
+
+### 5.2 Instructions
+
+- Every agent block has an `instruction`. The same rule applies to `report` on `end` blocks:
+  - A value that ends in `.md` is a path, relative to the skill folder. Name the file `instructions/<block-id>.md`.
+  - Any other value is the instruction text itself.
+- Both forms are Markdown and may use `{{ }}` (section 7.1).
+- Use a file for anything longer than about two lines. Keep one-line steps inline:
+  ```yaml
+  ask_user:
+    type: decision
+    decider: human
+    instruction: "Ask the user this question: {{ steps.create_plan.question }}"
+    next: create_plan
+  ```
+- An instruction describes only that block's job. Do not repeat the return format; the packet adds it. Do not write rules about order; the graph handles order.
+- Inside one block the agent works from prose again. Split a block where agents deviated in real runs (skipped a check, ran ahead). Keep a block whole where the work has no fixed order.
+
+### 5.3 Field maps
+
+A small subset of JSON Schema, written in YAML:
+
+```yaml
+pr_number:
+  type: integer        # string | integer | number | boolean | array | object
+  description: Number of the pull request.   # required on top-level fields (see below)
+  optional: true       # default false: the field is required
+  default: 0           # inputs only
+  enum: [a, b]         # optional
+  items: {type: string}        # arrays: required
+  properties: {..}             # objects: required, a nested field map
+```
+
+The runner converts a field map to JSON Schema (with `additionalProperties: false`) and validates with the `jsonschema` package.
+
+- **`description` is required** on every top-level field of `inputs`, `outputs`, and each block `output`. It tells the agent what the data is. The packet shows it next to the field.
+- Fields nested inside `items` or `properties` may omit it, so small structures stay short.
+- The fields that the runner adds (`choice`, `rationale`, `answer`) have built-in descriptions.
+
+### 5.4 Edges (`next`)
+
+```yaml
+next: target                         # 1. always go to target
+
+next:                                # 2. conditions, first match wins; the last item has no `when`
+  - when: "{{ steps.create_plan.status == 'question' }}"
+    to: ask_user
+  - to: approve_plan
+
+next:                                # 3. decision blocks with choices only: one entry per choice
+  approve: publish_plan
+  change: create_plan
+```
+
+### 5.5 Visit caps
+
+```yaml
+max_visits: 3          # optional, on any block
+on_max_visits: done    # optional
+```
+
+A transition into a block that already has `max_visits` visits goes to `on_max_visits` instead. With no `on_max_visits`, the block fails (section 7.4).
+
+---
+
+## 6. Block types (six, closed list)
+
+| Type | Who acts | Purpose |
+|---|---|---|
+| `task` | agent | Do work and return typed output. |
+| `decision` | agent or human | Pick one choice from a list, or answer a question. |
+| `parallel` | subagents | One task per list item, run at the same time, joined into one list. |
+| `script` | runner | Run a command. No LLM. |
+| `call` | runner | Run another skill and get its outputs. |
+| `end` | runner | Finish the skill with a status and outputs. |
+
+Every block may have `description:` (a short label for the viewer).
+
+### 6.1 `task`
+
+```yaml
+implement:
+  type: task
+  instruction: instructions/implement.md
+  output:
+    pr_number: {type: integer, description: "Number of the pull request you opened."}
+    pr_url: {type: string, description: "URL of that pull request."}
+  next: review
+```
+
+### 6.2 `decision`
+
+```yaml
+approve_plan:
+  type: decision
+  decider: human                       # agent | human
+  instruction: instructions/approve_plan.md
+  choices:                             # optional. Choice id -> meaning. 2 or more.
+    approve: Publish the plan and start the implementation.
+    change: Revise the plan with the user's feedback.
+    stop: Stop without changes.
+  output:                              # optional extra fields
+    feedback: {type: string, optional: true, description: "What the user wants changed."}
+  next: {approve: publish_plan, change: create_plan, stop: stopped}
+
+ask_user:
+  type: decision                       # no choices: a free-text question
+  decider: human
+  instruction: "Ask the user this question: {{ steps.create_plan.question }}"
+  next: create_plan
+```
+
+- **With choices**, the output always has `choice` and `rationale`, and `next` uses the choice map.
+- **Without choices**, the output always has `answer`, and `next` uses form 1 or 2. `decider: agent` needs choices; otherwise use a `task`.
+- **Human decider, interactive mode.** The agent prepares what the instruction says, shows it to the user, asks exactly one question, and waits. It submits the user's answer with `"$answered_by": "human"`.
+- **A free-text reply to a decision with choices** (for example the "Other" field of Claude's question tool): the agent maps it to the closest choice and copies the user's words into `rationale`. When no choice fits, the agent asks again.
+- **Human decider, autonomous mode.** The agent decides as the user would, from the goal, the session, and the project, and explains it in `rationale`. The trace records `decided_by: agent_autonomous`.
+
+### 6.3 `parallel`
+
+```yaml
+research:
+  type: parallel
+  for_each:                            # a YAML list, or one {{ }} that gives a list
+    - {agent: pattern-scout, focus: "Find the closest existing code and its conventions."}
+    - {agent: adr-checker, focus: "Find the ADRs that limit this change."}
+  agent: "{{ item.agent }}"            # optional: a pskill agent from .pskill/agents/
+  instruction: instructions/research.md   # uses {{ item.focus }}
+  output:                              # the output of each task
+    report: {type: string, description: "What you found, with file paths."}
+  next: create_plan
+```
+
+**A dynamic number of subagents.** The list can come from any earlier block, so the count is decided during the run:
+- **One subagent per thing** (for example, fact-check every document): a `script` lists the things, and `parallel` runs one task per item.
+- **The main agent decides:** a `task` returns the list, with one brief per subagent. The count and each brief are the main agent's choice, within the output schema.
+
+```yaml
+list_docs:
+  type: script
+  run: [uv, run, "{{ skill.dir }}/scripts/list_docs.py", "{{ inputs.folder }}"]
+  parse: json                          # prints {"files": ["docs/a.md", "docs/b.md", ...]}
+  next: fact_check
+
+fact_check:
+  type: parallel
+  for_each: "{{ steps.list_docs.json.files }}"
+  agent: fact-checker
+  instruction: "Check every factual claim in {{ item }} against its cited sources."
+  output:
+    wrong_claims: {type: array, items: {type: string}, description: "Each wrong claim, with the correct fact."}
+  next: report
+```
+
+- Each item becomes one task. `item` is the current list element in the templates.
+- **`agent`** names a file `.pskill/agents/<name>.md`. The file is the subagent's role and rules, in Markdown. The runner puts its text at the top of the task prompt. The harness then spawns a plain subagent, so the same agent works on every harness. With no `agent`, the task gets a plain subagent with only its instruction.
+- pskill agents are only reusable prompt text. pskill never reads harness agent files (`.claude/agents/`, `.codex/agents/`), and `sync` never writes them. The main agent spawns a plain subagent (in Claude: `general-purpose`) and gives it the prompt that the runner built. This keeps agents versioned with the skills, so they cannot drift apart.
+- `steps.research.results` is the list of task outputs, in item order.
+- Each task has its own submission. The block completes when every task has a valid submission. An empty list completes at once.
+- A task is one agent job. It cannot contain other blocks.
+- **Isolated contexts.** Each subagent gets only its own prompt: the goal, its rendered instruction, and its return format. It never sees the other tasks or their outputs. The results meet only in the next block, which reads `steps.<id>.results`.
+- Without subagent support (the `generic` adapter), the main agent does the tasks one by one in its own context, so the isolation is lost (limitation L6).
+
+### 6.4 `script`
+
+```yaml
+read_issue:
+  type: script
+  run: [gh, issue, view, "{{ inputs.issue }}", --json, "number,title,body,labels"]
+  parse: json            # text (default) | json
+  next: check_applies
+```
+
+- **The runner executes the script, never the agent.** It costs no agent tool call and no tokens, and it gives the same result every time.
+- `run` is an argument list. The runner computes each element, converts it to text, and runs the list with no shell. This prevents shell injection and removes shell differences between operating systems.
+- Put real logic in `scripts/` as Python or Node, and call it: `[uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]`.
+- The working directory is the project root. The environment adds `PSKILL_RUN_DIR` and `PSKILL_STATE_FILE` (a JSON copy of the current state).
+- Output: `steps.<id>.stdout`, and `steps.<id>.json` with `parse: json`.
+- A non-zero exit code, a timeout (config `script_timeout_s`, default 300), or bad JSON is a block failure. A script that wants to report a normal "no" result exits 0 and prints JSON.
+
+### 6.5 `call`
+
+```yaml
+review:
+  type: call
+  skill: review-pr
+  inputs:                              # child input -> value
+    pr: "{{ steps.implement.pr_number }}"
+    post_verdict: false
+  next: after_review
+```
+
+- The runner pushes a new frame on the run's call stack. The frame has the child's own inputs and steps. The child cannot read the caller's state.
+- Packets inside the child use the child's goal. The packet header shows the chain (`implement-issue > review-pr`).
+- When the child reaches an `end` block, the call block completes with `steps.review.status` (`succeeded`, `failed`, or `cancelled`) and `steps.review.outputs`. The caller branches on `status` when it matters.
+- The validator rejects call cycles.
+
+### 6.6 `end`
+
+```yaml
+done:
+  type: end
+  status: succeeded                    # succeeded | failed | cancelled
+  outputs:                             # a `succeeded` end must cover every required skill output
+    pr_url: "{{ steps.implement.pr_url }}"
+    result: implemented                # plain text is just text
+  report: instructions/report_done.md  # optional: the final packet asks the agent to tell the user this
+```
+
+---
+
+## 7. Computed values, state, and execution
+
+### 7.1 Computed values: one syntax
+
+- One engine: Jinja2 `SandboxedEnvironment`. One syntax: **anything inside `{{ }}` is computed. Everything else is plain text.**
+- `{{ }}` works in every string value of `skill.yaml` and in instruction and `report` files.
+- **Types.** A YAML value that is exactly one `{{ ... }}` and nothing else keeps the type of its result: a number, a list, an object, or true or false. Any other string with `{{ }}` renders to text. Implement it with `env.compile_expression` for the first case and a normal template for the second.
+- A plain YAML value (`post_verdict: false`, `result: implemented`) is used as it is.
+- `when` must be exactly one `{{ ... }}`. Its result counts as true or false. The validator rejects any other `when`.
+- **Names:**
+
+| Name | Content |
+|---|---|
+| `inputs` | Skill inputs, with defaults applied. |
+| `steps.<block_id>` | The latest valid output of that block. |
+| `history.<block_id>` | A list of every valid output of that block, oldest first. |
+| `run` | `id`, `mode`, `harness`, `dir`. |
+| `skill` | `id`, `dir`. |
+| `item` | The current element, in a `parallel` block only. |
+
+- **Missing values.** A value from a block that has not run, or an optional field that was not given, is undefined.
+  - Chains over it do not crash, `| default(x)` replaces it, and `is defined` tests it. A comparison with it is false.
+  - Rendering it as text, using it as a whole value, or iterating over it is a block failure. This prevents silent empty text, such as an empty comment posted to GitHub.
+  - Implement this as a subclass of Jinja's `ChainableUndefined` that raises on `__str__` and `__iter__`.
+  - The validator still rejects references to blocks or inputs that do not exist (section 11).
+- Put parentheses around a filter inside a comparison: `(inputs.issue | int(0)) > 0`.
+- **One extra filter: `to_file`.** It writes a text to `runs/<id>/files/<n>.txt` and returns the path. Use it for long script arguments (`--body-file "{{ steps.plan.plan | to_file }}"`), because Windows limits a command line to about 32,000 characters.
+- There are no variables and no assignments. `steps` and `history` hold all the state. This is on purpose (section 18).
+
+### 7.2 Run statuses
+
+| Status | Meaning | Stop hook |
+|---|---|---|
+| `active` | The runner waits for the agent's submission. | Blocks the stop. |
+| `waiting_for_human` | A human decision in interactive mode is open. | Allows the stop. |
+| `paused` | A block failed, `pskill pause` ran, or the Stop hook gave up. `pause_reason` says why. | Allows the stop. |
+| `succeeded`, `failed`, `cancelled` | Final. | Allows the stop. |
+
+### 7.3 Submissions
+
+- **One command per block.** The packet prints the exact `submit` command, in the form for the agent's shell. The agent replaces the example answer and runs it.
+  - bash, zsh, Git Bash:
+    ```bash
+    uv run .pskill/pskill.py submit r-20260927-1432-ab12 <<'PSKILL'
+    status: question
+    plan: |
+      1. Add the column.
+      2. Backfill it.
+    question: Should old rows get a default value?
+    PSKILL
+    ```
+  - PowerShell (the first statement forces UTF-8 on Windows PowerShell 5.1):
+    ```powershell
+    $OutputEncoding = [System.Text.UTF8Encoding]::new($false); @'
+    status: question
+    plan: |
+      1. Add the column.
+    question: Should old rows get a default value?
+    '@ | uv run .pskill/pskill.py submit r-20260927-1432-ab12
+    ```
+  - Both forms are literal: the shell changes nothing inside them (no quote, `$`, or backtick handling).
+- **Shell detection.** On macOS and Linux, use the bash form. On Windows, use the bash form when the env var `MSYSTEM` is set (Git Bash), else the PowerShell form. The adapter may override this (VERIFY which shell Codex uses on Windows). When `submit` fails to parse, its error message shows the other form too.
+- **No answer.** When stdin is a terminal, or no data arrives within 10 s, `submit` fails at once with the correct command form. It never hangs.
+- **Parsing.** Read the answer with PyYAML's `BaseLoader`, so every value arrives as text. Then convert each field to its declared type from the block's output schema: `integer`, `number`, `boolean` (only `true` or `false`), arrays and objects field by field. So `choice: no` stays the text `no`, and `question: 1.10` stays `1.10`. A value that does not convert is a validation error that names the field.
+- **Parallel tasks:** each subagent runs `submit <run> --task <n>` with its own answer.
+- **Reserved keys**, removed before validation:
+  - `$answered_by`: `human` or `agent`. Required for human decisions in interactive mode.
+  - `$cannot_complete`: a reason text. The agent declares that it cannot do the block. This counts as a failed attempt. It is the agent's only escape.
+- An invalid submission is logged with its raw text. The packet comes back with an "Errors" section.
+- **Stats need no extra call.** The runner stamps the time when it prints a packet and when the answer arrives, and it computes `duration_ms` and `decided_by` itself.
+
+### 7.4 Failures
+
+A block fails when:
+- a submission stays invalid,
+- the agent submits `$cannot_complete`,
+- a script fails,
+- a computed value fails,
+- no edge matches,
+- a visit cap is hit with no `on_max_visits`.
+
+The runner retries up to `retries` times (config, default 2): it reprints the packet, or it runs the script again. After that it pauses the run. The pause packet shows the error and three commands: `resume` (retry the block with a fresh count), `cancel`, and `current`.
+
+As a guard, a run pauses when more than 1,000 runner-only blocks run without an agent block in between.
+
+### 7.5 Modes
+
+Set the mode with `start --mode interactive|autonomous` (default from config: `interactive`). The mode is fixed for the whole run, nested calls included. It changes only human decisions (6.2).
+
+### 7.6 Resume
+
+- `pskill current [<run-id>]` prints the current packet again. With no id, it uses the newest unfinished run.
+- `pskill resume <run-id>` moves a paused run back to `active` and prints the packet.
+- The session-start hook lists unfinished runs.
+- A run always uses its own copy of the skills in `runs/<id>/skills/` (D22).
+- `start`, `current`, `submit`, and `resume` detect the harness on every call. When it differs from `run.harness`, the runner updates `run.harness` and logs `harness_changed`. The Stop hook and the packet wording then follow the new harness.
+- `start` adds one line to its packet when other unfinished runs exist in this checkout. It still starts the new run.
+
+### 7.7 File safety
+
+- Write `run.json` and `state.json` to a temp file, then call `os.replace` (atomic on every OS).
+- Every command holds a lock on `runs/<run-id>/.lock`. Create it with `os.open(O_CREAT | O_EXCL)`. Wait up to 10 s. Break a lock older than 60 s. Parallel task submissions depend on this lock.
+
+---
+
+## 8. Packets (what the agent sees)
+
+Packets are short Markdown on stdout, and never contain future blocks.
+
+```text
+## pskill · implement-issue · create_plan (visit 2)
+Run r-20260927-1432-ab12 · interactive
+
+### Goal
+Resolve the issue with a reviewed pull request that follows the plan the user approved.
+
+### Instruction
+<rendered instructions/create_plan.md>
+
+### Return
+When the work is done, run this one command. Replace the example values.
+uv run .pskill/pskill.py submit r-20260927-1432-ab12 <<'PSKILL'
+status: finished        # required, finished | question: finished when no open question is left.
+plan: |                 # required, text: the full plan, or the draft so far when status is question.
+  ...
+question: ...           # optional, text: the single most important open question.
+PSKILL
+
+### Rules
+- Do only this block. The runner gives you the next one.
+- If you cannot do it, submit only the line `$cannot_complete: <reason>`.
+- If the user asks to stop, run: uv run .pskill/pskill.py pause r-20260927-1432-ab12
+```
+
+Additions by block type:
+- **Decision with choices:** the Return section lists each choice and its meaning.
+- **Human decision, interactive:** "Ask the user and wait. Submit the user's answer with `"$answered_by": "human"`. Do not decide for the user." The adapter adds the wording for its question tool (section 9).
+- **Human decision, autonomous:** "This run is autonomous. Decide as the user would, from the goal, this session, and the project. Explain why in `rationale`."
+- **Parallel with subagents:** the packet lists every task with its full prompt (goal, instruction, return format, its own submit command with `--task <n>`). It says: "Spawn one subagent per task, all at once. Give each one exactly its prompt. When all have finished, run `pskill current <run>`."
+- **Parallel without subagents:** the packet gives one task at a time, like a normal block.
+- **Final packet:** the status, the rendered `report`, the outputs, and "The run is finished."
+
+---
+
+## 9. Harness adapters
+
+```python
+class HarnessAdapter(Protocol):
+    name: str
+    def detect(self, env: Mapping[str, str]) -> bool: ...
+    def hook_files(self, runner_cmd: list[str]) -> list[HookFileChange]: ...
+    def can_spawn_subagents(self) -> bool: ...
+    def question_wording(self, prompt: HumanPrompt) -> str: ...
+    def subagent_wording(self, task: TaskPrompt) -> str: ...
+    def stop_response(self, block: bool, reason: str) -> tuple[str, int]: ...   # stdout, exit code
+```
+
+### 9.1 Capability matrix (VERIFY every cell)
+
+| | Claude Code | Codex CLI | generic (any other harness) |
+|---|---|---|---|
+| Detect | env `CLAUDECODE=1` | VERIFY the env var | fallback when nothing else matches |
+| Stub folder | `.claude/skills/` | `.agents/skills/` | `.agents/skills/` |
+| Stop hook | `Stop`, `{"decision":"block","reason":...}` | `Stop` in `.codex/hooks.json` (VERIFY) | none |
+| Session-start hook | `SessionStart` (also after compaction) | `SessionStart` (VERIFY) | none |
+| Subagents | Agent tool with `subagent_type: general-purpose` | VERIFY the spawn mechanism | no (one by one) |
+| Question tool | `AskUserQuestion` (2-4 options; above 4, use a plain question) | plain question | plain question |
+
+- An adapter that cannot VERIFY a capability uses the `generic` behavior for it.
+- Gemini CLI and Cursor use `generic` in the MVP. They read `.agents/skills/` (VERIFY), so they find the stubs.
+- Codex runs project hooks only after the user trusts the project (VERIFY). The README must say so.
+- `--harness` beats detection. Stubs always pass `--harness auto`, so one stub text works in every folder and every harness.
+- The "Stub folder" row only says which folder each harness reads. `config.stub_folders` decides where `sync` writes.
+- VERIFY whether Claude Code also reads `.agents/skills/`. If it does, the default `stub_folders` becomes `[.agents/skills]` only, because two stubs with the same name would show the skill twice.
+
+### 9.2 Hooks (two only)
+
+`sync` installs them for each target harness that supports them. The command is `uv run .pskill/pskill.py hook <event> --harness <name>`. `sync` finds its own entries by this command string, and never touches other hooks.
+
+- **Stop.**
+  - Look only at the newest `active` run for this harness in this checkout. If it exists, block with the reason: "pskill run <id> has an open block. Run `uv run .pskill/pskill.py current <id>`."
+  - Never block the stop of a subagent. Claude Code sends subagent stops as a separate `SubagentStop` event, which pskill does not hook. VERIFY how Codex marks a subagent stop.
+  - After 3 blocks in a row (config `stop_hook_max_blocks`) with no submission between them, allow the stop and pause the run with reason `agent_stopped`. This prevents an endless loop.
+  - For any other case, allow the stop.
+- **Session start.** Two jobs, in this order:
+  1. **Refresh the stubs.** Run the stub part of `sync` (not hooks, not permission rules). When it changed files, print one line: "pskill: updated <n> stubs (<skill ids>)." Skip a skill whose `skill.yaml` does not load, and print one warning line for it. This covers skill edits from any source: the agent, an IDE, `git pull`, or a teammate.
+  2. **List unfinished runs.** If any exist, print one line per run for the 3 newest ones: id, skill, block, status, and the `current` command. If more exist, add "Run `pskill runs --open` for the rest." Never resume automatically.
+- A stub goes stale only when a skill is added or removed, or when its `id`, `description`, `inputs`, or `invocation` changes. Other edits need no sync, because `start` reads `skill.yaml` fresh.
+
+### 9.2.1 Permission rules (D28)
+
+`sync` adds exactly one allow rule for each target harness, and nothing else:
+- **Claude Code** (`.claude/settings.json`, key `permissions.allow`): `Bash(uv run .pskill/pskill.py *)`. VERIFY the rule syntax, and VERIFY that a command with a heredoc still matches it.
+- **Codex:** the matching rule, if its project config supports one (VERIFY). The PowerShell form of `submit` starts with `$OutputEncoding = ...`, so a prefix rule may not match it. VERIFY this, and if needed move the encoding statement into a form that matches. If no rule is possible, the README shows the user what to allow.
+
+Rules:
+- `sync` finds its own rule by its exact text. It never removes or changes other rules.
+- `sync --check` reports a missing rule.
+- The README shows the exact rule that `sync` adds.
+
+### 9.3 Stubs
+
+```markdown
+---
+name: implement-issue
+description: "Implement a GitHub issue end to end. Use when the user asks to implement or fix an issue."
+---
+<!-- Generated by pskill from .pskill/skills/implement-issue. Do not edit. Run: uv run .pskill/pskill.py sync -->
+This is a programmatic skill. The pskill runner controls its steps.
+
+1. Map the request to the inputs:
+   - `issue` (string): issue number, or a text that describes new work.
+2. Run: `uv run .pskill/pskill.py start implement-issue --harness auto --input issue=<value>`
+   If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin, in the same literal form as `submit`.
+   Add `--mode autonomous` only when the user asked for no questions.
+3. Follow each packet that the runner prints until it says the run is finished.
+```
+
+- The frontmatter follows the Agent Skills spec.
+- `sync` overwrites and deletes only files that carry the generated marker. If a hand-written skill has the same name, `sync` stops with an error.
+- `sync` also writes one built-in stub, `pskill`: "Resume, inspect, pause, or cancel a pskill run. Use when the user mentions an unfinished skill run." Its body lists `runs`, `current`, `resume`, `pause`, `cancel`, and `view`.
+- Commit the stubs. `pskill validate` fails when a stub is out of date.
+- Set `stub_folders` to match how the project already owns these folders:
+  - In a project where another tool mirrors `.agents/skills/` into a gitignored `.claude/skills/` (the Galtea monorepo's `sync-skills-to-claude.js`), use `[.agents/skills]` only. The mirror then copies the stubs.
+  - In a project whose ADR forbids `.agents/skills/` (the setup-guplem-standard ADR 0001), use `[.claude/skills]`, or update that ADR first.
+
+---
+
+## 10. Storage and trace
+
+### 10.0 The `guplem/pskill` repository
+
+```text
+pskill/
+├── pskill.py              # the runner source (the file that init vendors into projects)
+├── viewer/                # the viewer source
+├── launchers/             # view.cmd, view.command, view.sh
+├── AUTHORING.md
+├── tests/                 # pytest suite; tests/fixtures/<harness>/ holds saved hook payloads
+├── .pskill/               # pskill installed into its own repository (the test bed)
+│   ├── pskill.py, viewer/, ...        # vendored copy, refreshed by: uv run pskill.py update --from .
+│   ├── skills/{implement-issue, review-pr, create-issue}/   # the proof skills (section 13)
+│   └── agents/{pattern-scout, adr-checker, reviewer}.md      # their pskill agents
+├── .claude/skills/, .agents/skills/   # stubs generated by sync
+├── .github/workflows/ci.yml           # section 16; release job builds pskill.zip on a tag
+├── README.md              # human-facing: install, use, limitations L1 to L6, the rules that sync adds
+├── AGENTS.md              # agent-facing map; CLAUDE.md is a one-line @AGENTS.md shim
+├── CHANGELOG.md
+└── LICENSE                # MIT
+```
+
+- The proof skills work on the issues and pull requests of `guplem/pskill` itself. Milestones M3 and M4 run them there.
+- A pytest test checks that the vendored copy in `.pskill/` equals the root sources. It fails when someone forgets `update --from .`.
+
+### 10.1 Project layout
+
+```text
+.pskill/
+├── pskill.py            # vendored runner. Never edit.
+├── viewer/              # vendored viewer: index.html, app.js, style.css
+├── VENDORED             # runner version, source, sha256 of each vendored file
+├── AUTHORING.md         # vendored guide for agents that write skills
+├── view.cmd / view.command / view.sh   # double-click launchers for Windows, macOS, Linux
+├── config.yaml
+├── .gitignore           # runs/
+├── skills/<skill-id>/{skill.yaml, instructions/, scripts/, tests/}
+├── agents/<name>.md     # pskill agents: subagent roles, shared by all skills (section 6.3)
+└── runs/<run-id>/       # gitignored
+```
+
+`init` adds `.pskill/** text eol=lf` to `.gitattributes`. The runner writes every file with LF line endings and UTF-8.
+
+`config.yaml`:
+
+```yaml
+harnesses: [claude-code, codex]                # adapters that get hooks
+stub_folders: [.agents/skills, .claude/skills]  # where sync writes stubs
+default_mode: interactive
+retries: 2
+script_timeout_s: 300
+stop_hook_max_blocks: 3
+viewer_port: 7777
+```
+
+### 10.2 Run folder
+
+```text
+runs/<run-id>/
+├── run.json       # metadata + status
+├── state.json     # the call stack: per frame, skill id, inputs, steps, history, visits
+├── events.jsonl   # the trace
+├── skills/        # copies of every skill that this run can reach through calls
+├── agents/        # copies of every pskill agent in `.pskill/agents/`
+└── files/         # files made by to_file
+```
+
+`run.json` fields:
+- `schema_version`, `run_id`, `skill_id`, `skill_hash` (sha256 of the copied skill files)
+- `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `mode`, `inputs`
+- `status`, `pause_reason`, `current` (`{frame, block, visit}`), `attempts`, `stop_blocks`
+- `created_at`, `updated_at`, `ended_at`, `outputs`
+
+### 10.3 Events
+
+Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a counter), `type`, and `frame` (for example `implement-issue>review-pr`).
+
+| type | Extra fields |
+|---|---|
+| `run_started` | `skill_id`, `skill_hash`, `inputs`, `mode`, `harness`, `runner_version` |
+| `block_started` | `block`, `block_type`, `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks) |
+| `submission_rejected` | `block`, `task?`, `errors`, `raw` |
+| `block_completed` | `block`, `task?`, `output`, `decided_by` (`agent`, `human`, `agent_autonomous`, `runner`), `duration_ms` |
+| `script_ran` | `block`, `argv`, `exit_code`, `stdout`, `stderr` (each cut to 64 KiB), `duration_ms` |
+| `run_paused` / `run_resumed` | `reason` |
+| `harness_changed` | `from`, `to` |
+| `run_ended` | `status`, `outputs`, `duration_ms` |
+
+- `duration_ms` of an agent block runs from its packet to its valid submission. For human decisions it is mostly human time. The viewer shows it apart.
+- This file is the contract for the viewer and for later evaluation work. A change needs a new `schema_version`.
+
+---
+
+## 11. Validation (`pskill validate`)
+
+**Errors:**
+1. The file fails the meta-schema.
+2. The id does not match the folder name.
+3. An unknown block type, or an unknown key.
+4. The entry or an edge target does not exist.
+5. A block is unreachable.
+6. A non-`end` block has no `next`.
+7. A choice map does not match `choices` one to one.
+8. A `{{ }}` does not compile, or a `when` is not exactly one `{{ ... }}`.
+9. A reference to an unknown input, `steps` block, or `history` block.
+10. An `instruction` or `report` value ends in `.md`, but the file is missing.
+11. A top-level field of `inputs`, `outputs`, or a block `output` has no `description`.
+12. An `agent` names a file that does not exist in `.pskill/agents/`. The validator checks plain names and the items of a fixed `for_each` list. An agent name computed from run data is checked at run time, and a missing file fails the block.
+13. A `call` to an unknown skill, with an unknown input, or with a missing required input.
+14. A call cycle.
+15. A `succeeded` end that misses a required skill output. (`failed` and `cancelled` ends may give any subset.)
+16. A skill description longer than 1024 chars.
+17. A stub out of date.
+
+**Warnings:**
+1. A loop with no `max_visits`.
+2. A condition list whose last item has a `when`.
+3. An instruction file that no block uses.
+
+---
+
+## 12. Skill tests (`pskill test`)
+
+A file `tests/<case>.yaml` is one case. A scripted fake agent answers. No harness and no LLM take part.
+
+```yaml
+name: obsolete issue closes after the user confirms
+inputs: {issue: "42"}
+mode: interactive
+answers:                      # per agent block: one submission per visit, in order
+  check_applies:
+    - {choice: obsolete, rationale: "Fixed in #40", evidence: "src/save.ts:12"}
+  confirm_close:
+    - {choice: close, rationale: "User agreed", comment: "Fixed by #40.", "$answered_by": human}
+scripts:                      # per script block: one result per visit
+  read_issue:
+    - {exit_code: 0, stdout: '{"number": 42, "title": "Crash on save", "body": "", "labels": []}'}
+  close_issue:
+    - {exit_code: 0, stdout: ""}
+calls: {}                     # per call block: one {status, outputs} per visit
+expect:
+  path: [read_issue, check_applies, confirm_close, close_issue, closed]   # or path_contains
+  status: succeeded
+  outputs: {result: closed}
+```
+
+Rules:
+- Scripts and calls are always mocked in tests. A called skill has its own tests.
+- For a `parallel` block, one answer entry is a list with one submission per item.
+- An answer that fails validation is rejected, as in a real run, and the next answer is used. This lets a test prove that the schema catches bad output.
+- When a case runs out of answers, it fails and names the block that asked for more.
+- The output has one PASS or FAIL line per case, and the first mismatch for each FAIL.
+
+---
+
+## 13. Proof skills
+
+Port these three from `C:\Users\guill\.claude\skills\setup-guplem-standard\templates\claude\skills\`. Port their subagents into pskill agents: `pattern-scout` from `C:\Users\guill\.claude\agents\pattern-scout.md`, `adr-checker` from the template's agent of the same name, and a new `reviewer` from the review angles in the `review-pr` template. Move the prose rules into instruction files. Replace every ordering rule, mode flag, and "never skip" line with graph structure.
+
+### 13.1 `implement-issue`
+
+This follows the user's own sketch: read the issue, check that it still applies, close it or plan, ask questions one by one and go back to the plan, then publish and continue.
+
+```yaml
+schema: pskill/v1
+id: implement-issue
+description: >-
+  Implement a GitHub issue end to end: check that it still applies, plan with the user, implement
+  it, open a pull request, and fix review findings. Use when the user asks to implement, fix, or
+  work on an issue, or describes new work to implement.
+goal: Resolve the issue with a reviewed pull request that follows the plan the user approved.
+inputs:
+  issue: {type: string, description: "Issue number, or a text that describes new work."}
+outputs:
+  result: {type: string, enum: [implemented, closed, stopped], description: "How the skill ended."}
+  pr_url: {type: string, optional: true, description: "URL of the pull request, when one exists."}
+entry:
+  - when: "{{ (inputs.issue | int(0)) > 0 }}"
+    to: read_issue
+  - to: create_new_issue
+
+blocks:
+  create_new_issue:
+    type: call
+    skill: create-issue
+    inputs: {description: "{{ inputs.issue }}"}
+    next:
+      - when: "{{ steps.create_new_issue.status == 'succeeded' }}"
+        to: read_issue
+      - to: stopped
+
+  read_issue:
+    type: script
+    run: [gh, issue, view, "{{ steps.create_new_issue.outputs.issue_number | default(inputs.issue) }}",
+          --json, "number,title,body,labels,comments"]
+    parse: json
+    next: check_applies
+
+  check_applies:
+    type: decision
+    decider: agent
+    instruction: instructions/check_applies.md
+    choices:
+      applies: The issue describes a real problem that the code does not solve yet.
+      obsolete: The code already solves it, or the issue no longer makes sense.
+    output:
+      evidence: {type: string, description: "Files and lines that support the choice."}
+    next: {applies: research, obsolete: confirm_close}
+
+  confirm_close:
+    type: decision
+    decider: human
+    instruction: instructions/confirm_close.md      # draft the closing comment, show it with the evidence
+    choices:
+      close: Close the issue with this comment.
+      keep: Keep the issue open and stop.
+    output:
+      comment: {type: string, description: "The closing comment, as the user approved it."}
+    next: {close: close_issue, keep: stopped}
+
+  close_issue:
+    type: script
+    run: [gh, issue, close, "{{ steps.read_issue.json.number }}", --comment, "{{ steps.confirm_close.comment }}"]
+    next: closed
+
+  research:
+    type: parallel
+    for_each:
+      - {agent: pattern-scout, focus: "Find the closest existing code for this change and its conventions."}
+      - {agent: adr-checker, focus: "Find the architecture decisions (ADRs) that limit this change."}
+    agent: "{{ item.agent }}"                       # .pskill/agents/pattern-scout.md, .pskill/agents/adr-checker.md
+    instruction: instructions/research.md
+    output:
+      report: {type: string, description: "What you found, with file paths and ADR numbers."}
+    next: create_plan
+
+  create_plan:
+    type: task
+    instruction: instructions/create_plan.md        # reads steps.research.results, history.ask_user, history.approve_plan
+    max_visits: 8
+    on_max_visits: stopped
+    output:
+      status: {type: string, enum: [finished, question], description: "finished when no open question is left."}
+      plan: {type: string, description: "The full plan, or the draft so far when status is question."}
+      question: {type: string, optional: true, description: "The single most important open question."}
+    next:
+      - when: "{{ steps.create_plan.status == 'question' }}"
+        to: ask_user
+      - to: approve_plan
+
+  ask_user:
+    type: decision
+    decider: human
+    instruction: "Ask the user this question, exactly as written: {{ steps.create_plan.question }}"
+    output:
+      question: {type: string, description: "The question, as asked."}
+    next: create_plan
+
+  approve_plan:
+    type: decision
+    decider: human
+    instruction: instructions/approve_plan.md
+    choices:
+      approve: Publish the plan in the issue and start the implementation.
+      change: Revise the plan with the user's feedback.
+      stop: Stop without changes.
+    output:
+      feedback: {type: string, optional: true, description: "What the user wants changed, for the change choice."}
+    next: {approve: publish_plan, change: create_plan, stop: stopped}
+
+  publish_plan:
+    type: script
+    run: [gh, issue, comment, "{{ steps.read_issue.json.number }}", --body-file, "{{ steps.create_plan.plan | to_file }}"]
+    next: implement
+
+  implement:
+    type: task
+    instruction: instructions/implement.md          # branch, implement, run the checks, open the PR
+    output:
+      pr_number: {type: integer, description: "Number of the pull request you opened."}
+      pr_url: {type: string, description: "URL of that pull request."}
+    next: review
+
+  review:
+    type: call
+    skill: review-pr
+    inputs: {pr: "{{ steps.implement.pr_number }}", post_verdict: false}
+    max_visits: 3
+    on_max_visits: done
+    next:
+      - when: "{{ (steps.review.outputs.findings | length) > 0 }}"
+        to: fix_findings
+      - to: done
+
+  fix_findings:
+    type: task
+    instruction: instructions/fix_findings.md       # uses steps.review.outputs.findings
+    output:
+      summary: {type: string, description: "What you changed for each finding, or why you left it."}
+    next: review
+
+  done:
+    type: end
+    status: succeeded
+    outputs: {result: implemented, pr_url: "{{ steps.implement.pr_url }}"}
+    report: instructions/report_done.md
+
+  closed:
+    type: end
+    status: succeeded
+    outputs: {result: closed}
+
+  stopped:
+    type: end
+    status: cancelled
+    outputs: {result: stopped}
+```
+
+`instructions/create_plan.md` shows the earlier answers with a template loop:
+
+```markdown
+{% for qa in history.ask_user %}- Q: {{ qa.question }} A: {{ qa.answer }}
+{% endfor %}
+```
+
+**Before and after:**
+- The `.reviews/<PR>-review.md` file and its "keep these headings exactly" rule disappear. `review-pr` returns typed `findings`.
+- "At most 3 review rounds" becomes `max_visits: 3`.
+
+### 13.2 `review-pr`
+
+```yaml
+schema: pskill/v1
+id: review-pr
+description: >-
+  Review a GitHub pull request in depth and report real defects backed by quotes from the diff.
+  Use when the user asks to review a PR.
+goal: Find the real defects in the pull request, each backed by an exact quote from the diff.
+x-finding: &finding
+  type: object
+  properties:
+    file: {type: string}
+    line: {type: integer}
+    severity: {type: string, enum: [blocker, major, minor]}
+    summary: {type: string}
+    quote: {type: string, description: "Exact lines from the diff. No quote, no finding."}
+inputs:
+  pr: {type: integer, description: "Number of the pull request to review."}
+  post_verdict: {type: boolean, default: true, optional: true, description: "false: only return the findings, never post."}
+outputs:
+  findings: {type: array, items: *finding, description: "The verified findings."}
+entry: read_pr
+
+blocks:
+  read_pr:
+    type: script
+    run: [gh, pr, view, "{{ inputs.pr }}", --json, "headRefOid,baseRefName,files,additions,deletions"]
+    parse: json
+    next: plan_review
+
+  plan_review:
+    type: task
+    instruction: instructions/plan_review.md        # the main agent picks the angles, and how many, for this PR
+    output:
+      angles:
+        type: array
+        description: "One entry per review subagent to run."
+        items:
+          type: object
+          properties:
+            focus: {type: string, enum: [correctness, security, tests, conventions, performance]}
+            brief: {type: string, description: "What this subagent must look at in this PR."}
+    next: analyze
+
+  analyze:
+    type: parallel
+    for_each: "{{ steps.plan_review.angles }}"      # the count is decided during the run
+    agent: reviewer                                 # .pskill/agents/reviewer.md
+    instruction: "Review the pull request for {{ item.focus }}. {{ item.brief }}"
+    output:
+      findings: {type: array, items: *finding, description: "Your findings for this focus only."}
+    next: triage
+
+  triage:
+    type: task
+    instruction: instructions/triage.md             # merge steps.analyze.results, dedupe, rate severity
+    output:
+      findings: {type: array, items: *finding, description: "The merged, deduplicated findings."}
+    next: verify_quotes
+
+  verify_quotes:
+    type: script                                    # "no quote, no finding", checked by code
+    run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py", "{{ inputs.pr }}"]
+    parse: json                                     # reads PSKILL_STATE_FILE; prints {"findings": [...kept]}
+    next:
+      - when: "{{ inputs.post_verdict }}"
+        to: confirm_post
+      - to: report
+
+  confirm_post:
+    type: decision
+    decider: human
+    instruction: instructions/confirm_post.md
+    choices:
+      post: Post the review on the pull request.
+      skip: Do not post. Only report here.
+    next: {post: post_review, skip: report}
+
+  post_review:
+    type: task
+    instruction: instructions/post_review.md
+    output:
+      review_url: {type: string, description: "URL of the posted review."}
+    next: report
+
+  report:
+    type: end
+    status: succeeded
+    outputs: {findings: "{{ steps.verify_quotes.json.findings }}"}
+    report: instructions/report.md
+```
+
+**Before and after:**
+- The `--no-verdict` mode and its "never ask" guard become the input `post_verdict: false`.
+- The quote rule becomes a script.
+- The template's size tiers and conditional subagents become `plan_review`, whose typed output decides which review angles run in parallel.
+
+### 13.3 `create-issue` (structure)
+
+Outputs: `issue_number` (integer, optional, because the `cancelled` end has none).
+
+1. The entry is `assess_clarity` (task: `clear` boolean, `question` optional, `max_visits: 6`).
+   - When the issue is not clear, go to `ask_clarify` (a human decision with no choices).
+   - Otherwise, go to `extract_terms`.
+2. `ask_clarify` goes back to `assess_clarity`. The instruction of `assess_clarity` reads `history.ask_clarify`.
+3. `extract_terms` (task: `terms`, a list of strings).
+4. `search_duplicates` (script):
+   `[gh, issue, list, --state, all, --search, "{{ steps.extract_terms.terms | join(' ') }}", --json, "number,title,state,url"]`, `parse: json`.
+5. `judge_duplicates` (agent decision: `none`, `duplicate`, or `related`, plus an optional `match_number` output).
+   - `duplicate` goes to `confirm_duplicate`.
+   - `none` and `related` go to `draft_issue`.
+6. `confirm_duplicate` (human decision: `use_existing` or `create_anyway`).
+   - `use_existing` goes to the end `existing`, with output `issue_number: "{{ steps.judge_duplicates.match_number }}"`.
+   - `create_anyway` goes to `draft_issue`.
+7. `draft_issue` (task: `title`, `body`, `labels`).
+8. `confirm_draft` (human decision: `create`, `edit`, or `cancel`).
+   - `edit` goes back to `draft_issue`, which has `max_visits: 5`.
+   - `cancel` goes to the end `cancelled`.
+9. `create` (script):
+   `[gh, issue, create, --title, "{{ steps.draft_issue.title }}", --body-file, "{{ steps.draft_issue.body | to_file }}"]`.
+10. The end `created`, with output `issue_number: "{{ steps.create.stdout.strip().split('/')[-1] | int }}"`.
+
+The template's `--autonomous` flag disappears. `implement-issue` calls `create-issue` in its own mode.
+
+### 13.4 Feature coverage
+
+The three proof skills together must exercise every runtime feature. pytest fixtures cover the features that no real skill needs.
+
+| Feature | Covered by |
+|---|---|
+| `task` | `implement-issue.implement`, `review-pr.triage` |
+| Agent `decision` | `implement-issue.check_applies`, `create-issue.judge_duplicates` |
+| Human `decision` with choices | `implement-issue.approve_plan`, `review-pr.confirm_post` |
+| Human `decision` without choices (a question) | `implement-issue.ask_user`, `create-issue.ask_clarify` |
+| One question at a time, then back to the plan | `implement-issue`: `create_plan` to `ask_user` to `create_plan` |
+| `parallel` over a fixed list | `implement-issue.research` |
+| `parallel` over a list computed during the run, with isolated subagents | `review-pr.analyze` (the main agent decides the count in `plan_review`) |
+| pskill agents (`.pskill/agents/`) | `implement-issue.research` (agent from the item), `review-pr.analyze` (a fixed agent) |
+| Inline instruction text | `implement-issue.ask_user`, `review-pr.analyze` |
+| `script` with `parse: json` and with text | `review-pr.read_pr`, `create-issue.create` |
+| A script that enforces a rule | `review-pr.verify_quotes` |
+| Nested `call`, with typed outputs | `implement-issue.review` calls `review-pr` |
+| Branch on a child's `status` | `implement-issue.create_new_issue` |
+| `max_visits` with and without `on_max_visits` | `implement-issue.review`; `create-issue.assess_clarity` |
+| `history` | `implement-issue.create_plan` reads `history.ask_user` |
+| Conditional `entry` | `implement-issue` |
+| `to_file` | `implement-issue.publish_plan`, `create-issue.create` |
+| `succeeded` and `cancelled` ends | all three |
+| `autonomous` mode | test cases below |
+| `$cannot_complete`, retries, then pause | test cases below |
+| `invocation: manual` and `internal`, a `failed` end | pytest fixtures only |
+| Parallel one by one, Stop hook, resume in a new session | the M3 and M4 acceptance runs |
+
+### 13.5 Tests to ship
+
+- **`implement-issue`:**
+  - obsolete issue closes
+  - two questions, one by one, then the plan finishes
+  - the review cap ends at `done`
+  - free text calls `create-issue`
+  - an invalid `choice` is rejected once
+- **`implement-issue`, more:**
+  - autonomous mode: every human decision is taken without `$answered_by`, and the trace shows `agent_autonomous`
+  - `$cannot_complete` on `implement`, 3 times in a row, pauses the run
+- **`review-pr`:**
+  - `post_verdict: false` never reaches `confirm_post`
+  - the post path
+  - `plan_review` returns 3 angles, and `analyze` waits for 3 task submissions
+- **`create-issue`:**
+  - two clarification rounds
+  - the user keeps the existing duplicate
+  - edit once, then create
+
+---
+
+## 14. Viewer (read-only)
+
+- `pskill view` starts a `ThreadingHTTPServer` on `127.0.0.1` only and opens the browser. The launchers `view.cmd`, `view.command`, and `view.sh` run the same command on a double-click.
+- **All logic lives in the Python server,** so pytest covers it. The server builds:
+  - the Mermaid source with marks for visited, current, and failed blocks,
+  - the timeline rows,
+  - the summary numbers.
+
+  The front end only draws them. It has no build step: plain HTML, CSS, and JavaScript.
+- **Mermaid comes from a CDN.** `index.html` loads one exact, pinned version from jsDelivr (`https://cdn.jsdelivr.net/npm/mermaid@<version>/dist/mermaid.esm.min.mjs`), with a Subresource Integrity hash. VERIFY the current version and file path when you pin it.
+- **Offline:** the graph area shows "Graph unavailable offline (Mermaid did not load)" and the Mermaid source text. The timeline, the state panel, and the Runs screen still work, because they do not need Mermaid.
+- While the open run is unfinished, the page polls every second.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/runs?skill=` | Run rows, plus one summary row per skill: runs, success rate, median duration. |
+| `GET /api/runs/<id>` | `run.json`, the marked Mermaid graph per frame, the timeline rows, and the current state. |
+
+**Two screens:**
+1. **Runs.**
+   - A table with the skill filter: id, skill, status, harness, mode, start, duration.
+   - Above the table, the per-skill summary row.
+2. **Run.**
+   - A header: status, harness, mode, duration, and a note when the skill changed after the run started.
+   - The graph, with visit counts in the nodes.
+   - A timeline with one row per block. Select a row, or use the left and right arrow keys, to see the exact packet, every submission (rejected ones with their errors), the output, who decided, and the duration. For scripts, the row shows the command, exit code, and output. Selecting a row also highlights the block in the graph. This is the step-through replay (D14).
+   - A state panel with a collapsible JSON tree.
+
+---
+
+## 15. CLI
+
+Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage error, 2 validation error, 3 internal error.
+
+| Command | Purpose |
+|---|---|
+| `init [--from <path or url>]` | Create `.pskill/`: runner, viewer, launchers, `AUTHORING.md`, `config.yaml`, `.gitignore`, `.gitattributes` line, `VENDORED`. The default source is the latest release archive, `https://github.com/guplem/pskill/releases/latest/download/pskill.zip`. `--from` takes a local clone or another archive URL. |
+| `update [--from <path or url>] [--force]` | Same source rules as `init`. Replace the vendored files. First check them against the sha256 values in `VENDORED`. Stop if one was edited by hand, unless `--force`. Never touch `skills/`, `runs/`, or `config.yaml`. Then run `sync`. |
+| `list` | Skills: id, invocation, description. |
+| `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h]` | Validate the skill (errors 1 to 16 only; a stale stub never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. |
+| `current [<run>]` | Print the current packet. No state change. |
+| `submit <run> [--task <n>]` | Read the answer (YAML) from stdin, validate it, advance, and print the next packet. One call per block. |
+| `pause <run>` / `resume <run>` / `cancel <run>` | Lifecycle control. |
+| `runs [--open]` | List runs. |
+| `validate [<skill>]` | Section 11. |
+| `test [<skill>]` | Section 12. |
+| `sync [--check]` | Write stubs and hooks. `--check` only reports differences. |
+| `view` | Start the viewer. |
+| `hook stop\|session-start --harness <h>` | Internal. The harness calls it. |
+
+Run ids look like `r-YYYYMMDD-HHMM-<4 hex>`.
+
+### 15.1 `AUTHORING.md` (vendored guide for agents that write skills)
+
+Keep it under 150 lines. It covers:
+1. **When to write a programmatic skill:** an ordered workflow with branches, loops, human decisions, or nested skills. Reference and rules content stays a normal prose skill.
+2. **The six block types,** with one short example each.
+3. **Edges, `max_visits`, and `{{ }}`,** including the "exactly one `{{ }}` keeps its type" rule.
+4. **Instructions:** only the block's own job, no return format, and no rules about order. Inline text for one or two lines; a `.md` file for anything longer.
+5. **How to port a prose skill:**
+   - Every "do X before Y" becomes an edge.
+   - Every mode flag becomes an input, or disappears (D6).
+   - Every "at most N rounds" becomes `max_visits`.
+   - Every mechanical check becomes a `script`.
+   - Every file-heading contract between skills becomes typed outputs.
+6. **The edit loop,** in this order:
+   1. Write or change a test case.
+   2. Run `pskill test` and see it fail.
+   3. Edit the skill.
+   4. Run `pskill test` and `pskill validate` until both pass.
+   5. Run `pskill sync`.
+
+---
+
+## 16. Development method: red-green, always
+
+Build every behavior test first:
+1. **Red.** Write one small test for the next behavior. Run it. See it fail, for the expected reason.
+2. **Green.** Write the least code that makes it pass. Run the full suite.
+3. **Refactor.** Clean up while every test stays green.
+
+Rules:
+- No production code without a failing test that asks for it. This covers the runner, the viewer server, adapters, sync, and the example skills.
+- Every bug fix starts with a test that reproduces the bug.
+- Skill authors follow the same loop. First write the `tests/<case>.yaml` with the expected path. See `pskill test` fail. Then change `skill.yaml` until it passes. `AUTHORING.md` teaches this.
+- Commit each test together with the code that makes it pass.
+- Adapter behavior that depends on a harness (hook JSON formats, stub folders) gets tests against saved sample payloads in `tests/fixtures/<harness>/`. Save each sample from the harness docs, or from a real run, during the VERIFY step.
+
+**Test layers:**
+
+| Layer | Tool | Covers |
+|---|---|---|
+| Unit | pytest | Loader, field maps, computed values, validator rules, engine rules, packet text, adapters, sync, the viewer's data building. |
+| CLI | pytest + `subprocess` | Commands, exit codes, and a full run through `start` and `submit` against fixture skills. |
+| Skill | `pskill test` | The example skills' paths. |
+| Manual acceptance | a checklist in the milestone | A real run in Claude Code and Codex, and one run through `generic`. It supplements the automated tests and never replaces them. |
+
+**CI:** GitHub Actions on `ubuntu-latest`, `macos-latest`, and `windows-latest`. Steps: install uv, then `ruff`, `mypy --strict`, `pytest`, and `pskill validate` plus `pskill test` on the proof skills in `.pskill/skills/`.
+
+---
+
+## 17. Milestones
+
+Each milestone starts with the listed failing tests and ends with green CI on the three operating systems.
+
+| # | Milestone | First red tests | Done when |
+|---|---|---|---|
+| M1 | Core engine | Load a skill; reject an unknown block type; `task` then `end`; a choice map picks the edge; a condition list picks the first match; an invalid submission is rejected with errors; a YAML answer with `choice: no` and a multi-line `plan` converts by schema; `submit` with no stdin fails in under 10 s; retries run out and the run pauses; `max_visits` redirects; `history` keeps every visit | A 5-block fixture skill runs to the end with `start` and `submit`. |
+| M2 | All blocks + tests | A `script` result lands in `steps`; a failing script pauses; `to_file` writes a file; a `call` runs the child and returns `status` and `outputs`; a child cannot read the caller's steps; `parallel` completes only after all tasks; one-by-one mode; the lock holds under concurrent submits; the `pskill test` answer queue and path check | The three proof skills validate, and all their test cases pass. |
+| M3 | Claude Code | The stub text; `sync` is idempotent; `sync` keeps foreign hooks, foreign permission rules, and hand-written skills; `sync` adds the one allow rule; the Stop hook blocks an `active` run and gives up after 3 blocks; the session-start hook rewrites a stale stub, skips a broken skill with a warning, and lists open runs; `init` and `update` with a hash check | In the `guplem/pskill` repository, `implement-issue` runs in real Claude Code from trigger to end on a real issue. An early stop gets blocked. A new session resumes the run. |
+| M4 | Codex + generic check | Codex: detection, `.codex/hooks.json` merge that keeps foreign hooks, Stop and session-start responses from fixtures, subagent wording, the `agents/openai.yaml` sidecar for `manual` skills. Generic: an unknown environment falls back to `generic`; its packets name no harness tool | In the same repository, `implement-issue` runs in real Codex from trigger to end, with an early stop blocked. A manual run in Gemini CLI or Cursor through `generic` also reaches the end. The trace shows the right harness each time. |
+| M5 | Viewer | Mermaid marks; the page still renders the timeline when Mermaid fails to load; timeline rows; summary numbers; the API returns 404 for an unknown run; the server binds only to 127.0.0.1 | A live run updates within 2 s. A finished run can be stepped through. |
+| M6 | Docs + release | A test that builds the release archive and runs `init --from <archive>` into a temp project | A tag on `guplem/pskill` makes CI publish `pskill.zip` as a release asset. A new project gets from zero to a first run with only the README. The backlog issues from section 18.1 exist on GitHub with the label `future`. The first install command is `uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init` (VERIFY that `uv run` accepts a script URL). |
+
+---
+
+## 18. Removed on purpose (do not add back)
+
+Each of these was in an earlier draft. Each one added complexity for little user value. Keep them out of the MVP. A few return as backlog issues (18.1), and only through their own design.
+
+| Removed | Use instead |
+|---|---|
+| Variables and `set` on edges | `steps` (latest output) and `history` (all outputs) |
+| A `route` block | Conditional `entry`, and conditional `next` on any block |
+| A separate `question` block | `decision` with no `choices` |
+| Named reusable types | YAML anchors under `x-` keys |
+| A static task list in a parallel block | `for_each` over a YAML list |
+| `for_each` on `call` | A loop through edges, with `history` |
+| `on_error` and retries per block | One global retry count, then pause, then `resume` |
+| `ok_exit_codes`, and a timeout per block | Exit 0 plus JSON output; one global timeout |
+| Child runs with their own ids and folders | One run with a call stack |
+| A UserPromptSubmit hook, and binding by session id | Two hooks, bound by harness and checkout (L4) |
+| A managed block inside `AGENTS.md` | `AUTHORING.md`, and one line in the README that tells users to point to it |
+| `--format json`, `show`, `graph`, `schema`, `retry` commands | The viewer, `current`, and `resume` |
+| Real scripts and real child calls in skill tests | Mocks; each skill has its own tests |
+| Static-flow warnings ("a step can run before its source") | The runtime error for missing values, plus skill tests |
+| Bare expressions without braces (`when: "a == b"`, `result: "'text'"`) | One syntax: `{{ }}` means computed, everything else is plain text |
+| Submissions through files (`outbox/`), JSON-only answers, `--file`, `--inputs-file` | One `submit` call with a literal YAML block on stdin |
+| Harness agent files (`.claude/agents/`, `.codex/agents/`) as subagents | pskill agents in `.pskill/agents/`, versioned with the skills |
+| Token counts per block | Durations only. Harness session files are private formats that change without notice. |
+| Mermaid copied into every project (about 3 MB) | A pinned CDN copy; the viewer works without the graph when offline |
+| A hook that runs `sync` after each file edit, and git hooks | The session-start hook refreshes stubs; `AUTHORING.md` tells the agent to run `sync` after an edit; CI fails on a stale stub |
+| An analytics screen and a static skills screen | A summary row on the Runs screen; any run shows its graph |
+
+### 18.1 Backlog: future issues
+
+When the coding agent creates `guplem/pskill`, it opens one GitHub issue per item below, with the label `future`. Each issue states the idea, why it was postponed, and a link to this section. None of them is promised. Each one needs its own design and must pass principle 1 (simplicity).
+
+| Issue title | Why it waits |
+|---|---|
+| Gemini CLI adapter (hooks, subagents) | `generic` already runs skills there. |
+| Cursor adapter (hooks, subagents) | Same. |
+| Visual skill editor that writes `skill.yaml` | The most expensive part; the viewer comes first. |
+| `pskill eval`: run one skill headless in several harnesses on the same inputs and compare the traces | Needs the runner to launch agents (the opposite direction of D1). |
+| Export traces to OpenTelemetry, and upload runs to Galtea | The trace format must settle first. |
+| MCP front door (the same commands as MCP tools) | The CLI works everywhere. |
+| `parallel` blocks that run whole skills per item | Tasks are single jobs in the MVP. |
+| Token counts per block | Harness session files are private formats. |
+| Replay from a chosen block (fork a run) | Step-through playback covers the MVP need. |
+| Up-front check of required tools and connectors | A missing tool fails its block, then the run pauses. |
+| Tool limits and model choice for a block or a pskill agent | Harness-specific; pskill agents are prompt-only in the MVP. |
+| `implement-issue`: split big issues into stacked PRs, worktree subagents, reply to review threads | The proof version makes one PR. |
+| Per-block retries and timeouts | One global value each in the MVP. |
+
+---
+
+## 19. Prior art (borrow ideas, do not rebuild)
+
+| Project | Borrow | Difference |
+|---|---|---|
+| Agent Skills standard (agentskills.io) | Stub frontmatter rules | It has no workflow model. |
+| WorkRail (an MCP server) | One block at a time, hidden future blocks | Tiny. No subagents, hooks, or typed outputs. |
+| Spec Kit workflows (GitHub) | Gates, loops, fan-out; a run folder with state and a JSONL log | Its runtime drives the agent. No nesting yet. |
+| Archon v2 | YAML node types | It replaces the live session. |
+| acpx flows | The run bundle and the timeline viewer | Flows defined in code. |
+| Claude Code workflows | An output schema per agent | Claude only. No human input mid-run. |
+| BMAD step files | One step file at a time | Prompts only. Nothing enforces it. |
