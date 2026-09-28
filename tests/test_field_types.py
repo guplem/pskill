@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pskill_runner.field_types import FieldSpec, check_answer, parse_field_map
+from pskill_runner.field_types import FieldSpec, check_answer, check_typed_values, parse_field_map
 
 PLAN_FIELDS = parse_field_map(
     {
@@ -93,3 +93,34 @@ def test_check_answer_rejects_an_answer_that_is_not_a_mapping() -> None:
     _, errors = check_answer("just text", PLAN_FIELDS)
 
     assert errors == ["The answer must be a list of 'field: value' lines, not plain text."]
+
+
+def test_check_typed_values_accepts_values_of_the_declared_types() -> None:
+    fields = parse_field_map(
+        {
+            "count": {"type": "integer", "description": "d"},
+            "tags": {"type": "array", "items": {"type": "string"}, "description": "d"},
+            "result": {"type": "string", "enum": ["ok", "stopped"], "description": "d"},
+        }
+    )
+
+    assert check_typed_values({"count": 3, "tags": ["a"], "result": "ok"}, fields) == []
+
+
+def test_check_typed_values_reports_wrong_types_unknown_names_and_enum_values() -> None:
+    fields = parse_field_map(
+        {
+            "count": {"type": "integer", "description": "d"},
+            "done": {"type": "boolean", "description": "d"},
+            "result": {"type": "string", "enum": ["ok"], "description": "d"},
+        }
+    )
+
+    errors = check_typed_values({"count": "3", "done": 1, "result": "bad", "extra": 1}, fields)
+
+    assert errors == [
+        "count: '3' is not an integer",
+        "done: 1 is not true or false",
+        "result: 'bad' is not one of: ok",
+        "extra: this output is not declared",
+    ]

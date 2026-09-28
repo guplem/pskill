@@ -121,3 +121,50 @@ def _convert_text(text: str, type_name: str, path: str, errors: list[str]) -> An
         errors.append(f"{path}: {text!r} is not true or false")
         return None
     raise ValueError(f"Unknown field type: {type_name}")
+
+
+PYTHON_TYPES: dict[str, tuple[type, ...]] = {
+    "string": (str,),
+    "integer": (int,),
+    "number": (int, float),
+    "boolean": (bool,),
+    "array": (list,),
+    "object": (dict,),
+}
+TYPE_PHRASES = {
+    "string": "text",
+    "integer": "an integer",
+    "number": "a number",
+    "boolean": "true or false",
+    "array": "a list",
+    "object": "a group of fields",
+}
+
+
+def check_typed_values(values: dict[str, Any], fields: FieldMap) -> list[str]:
+    """Check values that are already typed (computed outputs). Presence is checked by the validator."""
+    errors: list[str] = []
+    for name, value in values.items():
+        if name not in fields:
+            errors.append(f"{name}: this output is not declared")
+            continue
+        _check_typed_value(value, fields[name], name, errors)
+    return errors
+
+
+def _check_typed_value(value: Any, spec: FieldSpec, path: str, errors: list[str]) -> None:
+    # bool is a subclass of int in Python, so an integer field must reject true and false explicitly.
+    is_bool_in_number_field = isinstance(value, bool) and spec.type in ("integer", "number")
+    if not isinstance(value, PYTHON_TYPES[spec.type]) or is_bool_in_number_field:
+        errors.append(f"{path}: {value!r} is not {TYPE_PHRASES[spec.type]}")
+        return
+    if spec.enum is not None and value not in spec.enum:
+        errors.append(f"{path}: {value!r} is not one of: {', '.join(str(option) for option in spec.enum)}")
+    if isinstance(value, list):
+        item_spec = spec.items or FieldSpec(type="string")
+        for index, item in enumerate(value):
+            _check_typed_value(item, item_spec, f"{path}[{index}]", errors)
+    if isinstance(value, dict):
+        for name, item in value.items():
+            if name in spec.properties:
+                _check_typed_value(item, spec.properties[name], f"{path}.{name}", errors)
