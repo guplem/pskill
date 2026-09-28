@@ -737,7 +737,7 @@ expect:
 
 Rules:
 - Scripts and calls are always mocked in tests. A called skill has its own tests.
-- For a `parallel` block, one answer entry is a list with one submission per item.
+- For a `parallel` block, list the answers of its tasks in task order, as for any other block. The test runner uses the one-by-one mode, so each task takes the next answer in the queue.
 - An answer that fails validation is rejected, as in a real run, and the next answer is used. This lets a test prove that the schema catches bad output.
 - When a case runs out of answers, it fails and names the block that asked for more.
 - The output has one PASS or FAIL line per case, and the first mismatch for each FAIL.

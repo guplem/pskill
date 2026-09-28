@@ -1,7 +1,10 @@
 """Tests for pskill_runner.run_store."""
 
 import json
+import os
 import re
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,6 +15,7 @@ from pskill_runner.run_store import (
     new_run_id,
     read_events,
     read_json,
+    run_lock,
     write_json_atomic,
 )
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
@@ -63,3 +67,35 @@ def test_folder_hash_changes_only_when_the_content_changes(tmp_path: Path) -> No
     (folder / "instructions" / "approve_plan.md").write_text("Changed.", encoding="utf-8")
     assert folder_hash(folder) != first_hash
     assert first_hash.startswith("sha256:")
+
+
+def test_run_lock_lets_one_holder_in_at_a_time(tmp_path: Path) -> None:
+    order: list[str] = []
+
+    def hold(name: str) -> None:
+        with run_lock(tmp_path):
+            order.append(f"{name} in")
+            time.sleep(0.1)
+            order.append(f"{name} out")
+
+    threads = [threading.Thread(target=hold, args=(name,)) for name in ("a", "b", "c")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(order) == 6
+    assert all(order[index].endswith("in") and order[index + 1].endswith("out") for index in range(0, 6, 2))
+    assert not (tmp_path / ".lock").exists()
+
+
+def test_run_lock_breaks_a_stale_lock(tmp_path: Path) -> None:
+    stale_lock = tmp_path / ".lock"
+    stale_lock.write_text("", encoding="utf-8")
+    old_time = time.time() - 120
+    os.utime(stale_lock, (old_time, old_time))
+
+    with run_lock(tmp_path):
+        assert stale_lock.exists()
+
+    assert not stale_lock.exists()

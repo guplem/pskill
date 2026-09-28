@@ -6,9 +6,26 @@ cannot express: the graph, the references inside `{{ }}`, the files, and the des
 
 from dataclasses import dataclass
 
-from pskill_runner.computed_values import find_references, is_single_expression, syntax_errors
+from pskill_runner.computed_values import (
+    ComputedValueError,
+    compute,
+    find_references,
+    is_single_expression,
+    syntax_errors,
+)
 from pskill_runner.field_types import FieldMap
-from pskill_runner.skill_model import AnyBlock, DecisionBlock, EndBlock, Skill, block_edges, next_targets
+from pskill_runner.skill_model import (
+    AnyBlock,
+    CallBlock,
+    DecisionBlock,
+    EndBlock,
+    ParallelBlock,
+    ScriptBlock,
+    Skill,
+    SkillCatalog,
+    block_edges,
+    next_targets,
+)
 
 DESCRIPTION_LIMIT = 1024
 
@@ -20,7 +37,8 @@ class Problem:
     message: str
 
 
-def validate_skill(skill: Skill) -> list[Problem]:
+def validate_skill(skill: Skill, catalog: SkillCatalog | None = None) -> list[Problem]:
+    """Check one skill. With a catalog, also check its calls and its agents against the project."""
     problems: list[Problem] = []
     problems += description_problems(skill)
     problems += field_description_problems("inputs", "the field", skill.inputs)
@@ -29,6 +47,8 @@ def validate_skill(skill: Skill) -> list[Problem]:
     problems += reachability_problems(skill)
     for block in skill.blocks.values():
         problems += block_problems(skill, block)
+        if catalog is not None:
+            problems += catalog_problems(skill, block, catalog)
     problems += loop_warnings(skill)
     problems += unused_instruction_file_warnings(skill)
     return problems
@@ -99,8 +119,10 @@ def block_problems(skill: Skill, block: AnyBlock) -> list[Problem]:
     if isinstance(block, EndBlock):
         problems += end_problems(skill, location, block)
     else:
-        problems += field_description_problems(location, "the output field", block.output)
         problems += edge_problems(skill, location, block)
+    output = block_output(block)
+    if output is not None:
+        problems += field_description_problems(location, "the output field", output)
     for text in block_texts(skill, block, location, problems):
         problems += text_problems(skill, location, text)
     return problems
@@ -157,21 +179,43 @@ def edge_problems(skill: Skill, location: str, block: AnyBlock) -> list[Problem]
     return problems
 
 
+def block_output(block: AnyBlock) -> FieldMap | None:
+    """The output fields that the agent returns for this block, if any."""
+    if isinstance(block, EndBlock | ScriptBlock | CallBlock):
+        return None
+    return block.output
+
+
+def prose_value(block: AnyBlock) -> str | None:
+    """The `instruction` (or the `report` of an end block): a `.md` path or the text itself."""
+    if isinstance(block, EndBlock):
+        return block.report
+    if isinstance(block, ScriptBlock | CallBlock):
+        return None
+    return block.instruction
+
+
+def string_values(values: list[object]) -> list[str]:
+    return [value for value in values if isinstance(value, str)]
+
+
 def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Problem]) -> list[str]:
     """Every text of a block that may contain {{ }}. A missing instruction file is reported in problems."""
     texts = [edge.when for edge in block_edges(block) if edge.when is not None]
-    prose_values: list[str] = []
     if isinstance(block, EndBlock):
-        texts += [value for value in block.outputs.values() if isinstance(value, str)]
-        if block.report is not None:
-            prose_values.append(block.report)
-    else:
-        prose_values.append(block.instruction)
-    for value in prose_values:
-        if value.endswith(".md") and not (skill.folder / value).is_file():
-            problems.append(error(location, f"the file {value!r} does not exist"))
+        texts += string_values(list(block.outputs.values()))
+    if isinstance(block, ScriptBlock):
+        texts += string_values(block.run)
+    if isinstance(block, CallBlock):
+        texts += string_values(list(block.inputs.values()))
+    if isinstance(block, ParallelBlock):
+        texts += string_values([block.for_each, block.agent])
+    prose = prose_value(block)
+    if prose is not None:
+        if prose.endswith(".md") and not (skill.folder / prose).is_file():
+            problems.append(error(location, f"the file {prose!r} does not exist"))
         else:
-            texts.append(skill.instruction_text(value))
+            texts.append(skill.instruction_text(prose))
     return texts
 
 
@@ -207,9 +251,7 @@ def loop_warnings(skill: Skill) -> list[Problem]:
 
 
 def unused_instruction_file_warnings(skill: Skill) -> list[Problem]:
-    used = set()
-    for block in skill.blocks.values():
-        used.add(block.report if isinstance(block, EndBlock) else block.instruction)
+    used = {prose_value(block) for block in skill.blocks.values()}
     instruction_folder = skill.folder / "instructions"
     if not instruction_folder.is_dir():
         return []
@@ -219,3 +261,69 @@ def unused_instruction_file_warnings(skill: Skill) -> list[Problem]:
         if relative_path not in used:
             problems.append(warning(relative_path, "no block uses this instruction file"))
     return problems
+
+
+def catalog_problems(skill: Skill, block: AnyBlock, catalog: SkillCatalog) -> list[Problem]:
+    location = f"blocks.{block.id}"
+    if isinstance(block, CallBlock):
+        return call_problems(skill, block, catalog, location)
+    if isinstance(block, ParallelBlock):
+        return [
+            error(location, f"there is no agent file '{name}.md' in .pskill/agents/")
+            for name in agent_names_used(block)
+            if name not in catalog.agent_names
+        ]
+    return []
+
+
+def call_problems(skill: Skill, block: CallBlock, catalog: SkillCatalog, location: str) -> list[Problem]:
+    callee = catalog.skills.get(block.skill)
+    if callee is None:
+        return [error(location, f"there is no skill {block.skill!r}")]
+    problems = [
+        error(location, f"{name!r} is not an input of the skill {callee.id!r}")
+        for name in block.inputs
+        if name not in callee.inputs
+    ]
+    problems += [
+        error(location, f"the required input {name!r} of the skill {callee.id!r} is missing")
+        for name, spec in callee.inputs.items()
+        if not spec.optional and spec.default is None and name not in block.inputs
+    ]
+    cycle = call_path(catalog, start=callee.id, goal=skill.id, visited=set())
+    if cycle is not None:
+        chain = " > ".join([skill.id, *cycle])
+        problems.append(error(location, f"the call to {callee.id!r} makes a cycle ({chain})"))
+    return problems
+
+
+def call_path(catalog: SkillCatalog, start: str, goal: str, visited: set[str]) -> list[str] | None:
+    """A chain of calls from `start` to `goal` (both included), or None when there is none."""
+    if start == goal:
+        return [start]
+    if start in visited or start not in catalog.skills:
+        return None
+    visited.add(start)
+    for block in catalog.skills[start].blocks.values():
+        if isinstance(block, CallBlock):
+            rest = call_path(catalog, block.skill, goal, visited)
+            if rest is not None:
+                return [start, *rest]
+    return None
+
+
+def agent_names_used(block: ParallelBlock) -> list[str]:
+    """The agent names that the validator can know: a plain name, or one per item of a fixed list."""
+    if block.agent is None:
+        return []
+    if "{{" not in block.agent:
+        return [block.agent]
+    if not isinstance(block.for_each, list):
+        return []  # A list computed during the run: the agent names are checked at run time.
+    names = []
+    for item in block.for_each:
+        try:
+            names.append(str(compute(block.agent, {"item": item})))
+        except ComputedValueError:
+            continue
+    return names

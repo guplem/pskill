@@ -141,3 +141,54 @@ def test_commands_outside_a_project_explain_what_to_do(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "No .pskill folder" in result.stderr
+
+
+def test_validate_checks_calls_across_skills(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    caller = PLAN_SKILL.replace("id: plan-work", "id: caller").replace(
+        "  done:\n    type: end",
+        "  done:\n    type: call\n    skill: missing-skill\n    next: finished\n  finished:\n    type: end",
+    )
+    write_skill(root / ".pskill" / "skills", "caller", caller, PLAN_SKILL_FILES)
+
+    result = run_pskill(root, "validate")
+
+    assert result.returncode == 2
+    assert "caller  blocks.done: there is no skill 'missing-skill'" in result.stdout
+
+
+PASSING_CASE = """\
+name: stops at once
+inputs: {topic: nothing}
+answers:
+  create_plan:
+    - {status: finished, plan: Done.}
+  approve_plan:
+    - {choice: stop, rationale: No., $answered_by: human}
+expect:
+  status: cancelled
+"""
+
+
+def test_the_test_command_prints_one_line_per_case_and_passes(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    (root / ".pskill" / "skills" / "plan-work" / "tests").mkdir()
+    (root / ".pskill" / "skills" / "plan-work" / "tests" / "stop.yaml").write_text(PASSING_CASE, encoding="utf-8")
+
+    result = run_pskill(root, "test")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "PASS  plan-work  stops at once" in result.stdout
+    assert "1 case run: 1 passed, 0 failed." in result.stdout
+
+
+def test_the_test_command_fails_with_exit_code_2(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    (root / ".pskill" / "skills" / "plan-work" / "tests").mkdir()
+    failing = PASSING_CASE.replace("status: cancelled", "status: succeeded")
+    (root / ".pskill" / "skills" / "plan-work" / "tests" / "stop.yaml").write_text(failing, encoding="utf-8")
+
+    result = run_pskill(root, "test", "plan-work")
+
+    assert result.returncode == 2
+    assert "FAIL  plan-work  stops at once: status: expected succeeded, got cancelled" in result.stdout

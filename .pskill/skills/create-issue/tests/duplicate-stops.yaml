@@ -1,0 +1,18 @@
+name: the user keeps the existing duplicate
+inputs: {description: Add a dark theme to the viewer.}
+answers:
+  assess_clarity:
+    - {clear: true}
+  extract_terms:
+    - {terms: [viewer, dark, theme]}
+  judge_duplicates:
+    - {choice: duplicate, rationale: "Issue 12 asks for the same theme.", match_number: 12}
+  confirm_duplicate:
+    - {choice: use_existing, rationale: Same request., $answered_by: human}
+scripts:
+  search_duplicates:
+    - {exit_code: 0, stdout: '[{"number": 12, "title": "Dark theme for the viewer", "state": "OPEN", "url": "https://github.com/guplem/pskill/issues/12"}]'}
+expect:
+  path: [assess_clarity, extract_terms, search_duplicates, judge_duplicates, confirm_duplicate, existing]
+  status: succeeded
+  outputs: {issue_number: 12}

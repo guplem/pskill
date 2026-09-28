@@ -1,0 +1,1 @@
+Summarize the review of pull request #{{ inputs.pr }} for the user in 2 to 4 sentences: what the pull request does, whether the approach is sound, and the {{ steps.verify_quotes.json.findings | length }} verified findings (blockers first).

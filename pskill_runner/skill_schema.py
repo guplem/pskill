@@ -107,6 +107,32 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
             "next": {"oneOf": [{"$ref": "#/$defs/edges"}, {"$ref": "#/$defs/choice_map"}]},
         },
     ),
+    "parallel": block_schema(
+        ["for_each", "instruction", "output", "next"],
+        {
+            "for_each": {"oneOf": [{"type": "array"}, {"type": "string"}]},
+            "agent": {"type": "string"},
+            "instruction": {"type": "string"},
+            "output": {"$ref": "#/$defs/field_map"},
+            "next": {"$ref": "#/$defs/edges"},
+        },
+    ),
+    "script": block_schema(
+        ["run", "next"],
+        {
+            "run": {"type": "array", "minItems": 1, "items": {"type": ["string", "number", "boolean"]}},
+            "parse": {"enum": ["text", "json"]},
+            "next": {"$ref": "#/$defs/edges"},
+        },
+    ),
+    "call": block_schema(
+        ["skill", "next"],
+        {
+            "skill": {"type": "string"},
+            "inputs": {"type": "object"},
+            "next": {"$ref": "#/$defs/edges"},
+        },
+    ),
     "end": block_schema(
         ["status"],
         {

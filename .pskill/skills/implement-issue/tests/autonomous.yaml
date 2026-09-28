@@ -1,0 +1,16 @@
+name: in autonomous mode the agent takes the human decisions itself
+inputs: {issue: "42"}
+mode: autonomous
+scripts:
+  read_issue:
+    - {exit_code: 0, stdout: '{"number": 42, "title": "Crash on save", "body": "Saving crashes.", "labels": [], "comments": []}'}
+  close_issue:
+    - {exit_code: 0}
+answers:
+  check_applies:
+    - {choice: obsolete, rationale: Fixed in 40., evidence: "pskill_runner/cli.py:12"}
+  confirm_close:
+    - {choice: close, rationale: The fix in 40 covers it; the user would close it., comment: "Fixed by #40."}
+expect:
+  path: [read_issue, check_applies, confirm_close, close_issue, closed]
+  status: succeeded

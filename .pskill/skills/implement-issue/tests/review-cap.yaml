@@ -1,0 +1,32 @@
+name: three review rounds with findings end at done through the visit cap
+inputs: {issue: "42"}
+scripts:
+  read_issue:
+    - {exit_code: 0, stdout: '{"number": 42, "title": "Crash on save", "body": "Saving crashes.", "labels": [], "comments": []}'}
+  publish_plan:
+    - {exit_code: 0}
+calls:
+  review:
+    - {status: succeeded, outputs: {findings: [{file: a.py, line: 1, severity: minor, summary: A., quote: x}]}}
+    - {status: succeeded, outputs: {findings: [{file: a.py, line: 2, severity: minor, summary: B., quote: y}]}}
+    - {status: succeeded, outputs: {findings: [{file: a.py, line: 3, severity: minor, summary: C., quote: z}]}}
+answers:
+  check_applies:
+    - {choice: applies, rationale: The crash still happens., evidence: "pskill_runner/cli.py:40"}
+  research:
+    - {report: "Similar code: pskill_runner/engine.py."}
+    - {report: No recorded decision affects this work.}
+  create_plan:
+    - {status: finished, plan: Fix it.}
+  approve_plan:
+    - {choice: approve, rationale: Fine., $answered_by: human}
+  implement:
+    - {pr_number: 50, pr_url: "https://github.com/guplem/pskill/pull/50"}
+  fix_findings:
+    - {summary: Fixed A.}
+    - {summary: Fixed B.}
+    - {summary: Fixed C.}
+expect:
+  path_contains: [review, fix_findings, review, fix_findings, review, fix_findings, done]
+  status: succeeded
+  outputs: {result: implemented}

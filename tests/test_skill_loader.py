@@ -6,7 +6,7 @@ import pytest
 
 from pskill_runner.field_types import FieldSpec
 from pskill_runner.skill_loader import SkillLoadError, load_skill
-from pskill_runner.skill_model import DecisionBlock, Edge, EndBlock, TaskBlock
+from pskill_runner.skill_model import CallBlock, DecisionBlock, Edge, EndBlock, ParallelBlock, ScriptBlock, TaskBlock
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 
@@ -56,7 +56,9 @@ def test_an_unknown_block_type_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(SkillLoadError) as raised:
         load_skill(write_skill(tmp_path, "plan-work", skill_yaml, PLAN_SKILL_FILES))
 
-    assert raised.value.problems == ["blocks.done: unknown block type 'finish' (known types: decision, end, task)"]
+    assert raised.value.problems == [
+        "blocks.done: unknown block type 'finish' (known types: call, decision, end, parallel, script, task)"
+    ]
 
 
 def test_an_unknown_key_is_rejected(tmp_path: Path) -> None:
@@ -91,3 +93,60 @@ def test_a_broken_yaml_file_is_reported(tmp_path: Path) -> None:
         load_skill(write_skill(tmp_path, "plan-work", "schema: pskill/v1\nblocks: [unclosed\n"))
 
     assert raised.value.problems[0].startswith("skill.yaml is not valid YAML:")
+
+
+ALL_BLOCKS_SKILL = """\
+schema: pskill/v1
+id: all-blocks
+description: Every block type.
+goal: Exercise every block.
+entry: list_docs
+blocks:
+  list_docs:
+    type: script
+    run: [uv, run, "{{ skill.dir }}/scripts/list_docs.py"]
+    parse: json
+    next: check_docs
+  check_docs:
+    type: parallel
+    for_each: "{{ steps.list_docs.json.files }}"
+    agent: fact-checker
+    instruction: "Check {{ item }}."
+    output:
+      wrong: {type: array, items: {type: string}, description: "Wrong claims."}
+    next: review
+  review:
+    type: call
+    skill: review-pr
+    inputs: {pr: 1, post_verdict: false}
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_script_parallel_and_call_blocks_are_loaded(tmp_path: Path) -> None:
+    skill = load_skill(write_skill(tmp_path, "all-blocks", ALL_BLOCKS_SKILL))
+
+    script = skill.blocks["list_docs"]
+    assert isinstance(script, ScriptBlock)
+    assert script.run == ["uv", "run", "{{ skill.dir }}/scripts/list_docs.py"]
+    assert script.parse == "json"
+    parallel = skill.blocks["check_docs"]
+    assert isinstance(parallel, ParallelBlock)
+    assert parallel.for_each == "{{ steps.list_docs.json.files }}"
+    assert parallel.agent == "fact-checker"
+    assert parallel.next == [Edge(to="review")]
+    call = skill.blocks["review"]
+    assert isinstance(call, CallBlock)
+    assert call.skill == "review-pr"
+    assert call.inputs == {"pr": 1, "post_verdict": False}
+
+
+def test_a_script_parses_text_by_default(tmp_path: Path) -> None:
+    skill = load_skill(write_skill(tmp_path, "all-blocks", ALL_BLOCKS_SKILL.replace("    parse: json\n", "")))
+
+    script = skill.blocks["list_docs"]
+    assert isinstance(script, ScriptBlock)
+    assert script.parse == "text"

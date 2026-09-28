@@ -25,7 +25,9 @@ from pskill_runner.engine import (
 )
 from pskill_runner.project import Project, ProjectError, find_project
 from pskill_runner.run_records import UNFINISHED_STATUSES
-from pskill_runner.skill_loader import SkillLoadError, load_skill
+from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
+from pskill_runner.skill_model import SkillCatalog
+from pskill_runner.skill_tests import run_skill_tests
 from pskill_runner.validator import Problem, validate_skill
 from pskill_runner.yaml_loading import load_answer_yaml
 
@@ -69,6 +71,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate = commands.add_parser("validate", help="Check the skills for errors and warnings.")
     validate.add_argument("skill", nargs="?", help="Default: every skill.")
+
+    test = commands.add_parser("test", help="Run the skills' test cases with a scripted fake agent.")
+    test.add_argument("skill", nargs="?", help="Default: every skill.")
     return parser
 
 
@@ -118,6 +123,8 @@ def run_command(options: argparse.Namespace) -> int:
         return print_text(skills_table(project))
     if command == "validate":
         return validate_command(project, options.skill)
+    if command == "test":
+        return test_command(project, options.skill)
     raise RunError(f"Unknown command {command!r}.")
 
 
@@ -180,10 +187,11 @@ def skills_table(project: Project) -> str:
 
 def validate_command(project: Project, skill_id: str | None) -> int:
     folders = skill_folders(project, skill_id)
+    catalog = load_catalog(project.skills_folder, project.agents_folder)
     lines = []
     error_count = warning_count = 0
     for folder in folders:
-        for problem in skill_problems(folder):
+        for problem in skill_problems(folder, catalog):
             lines.append(f"{problem.level:<7}{folder.name}  {problem.location}: {problem.message}")
             error_count += problem.level == "error"
             warning_count += problem.level == "warning"
@@ -193,9 +201,28 @@ def validate_command(project: Project, skill_id: str | None) -> int:
     return EXIT_VALIDATION_ERROR if error_count else EXIT_OK
 
 
-def skill_problems(folder: Path) -> list[Problem]:
+def skill_problems(folder: Path, catalog: SkillCatalog) -> list[Problem]:
     try:
         skill = load_skill(folder)
     except SkillLoadError as error:
         return [Problem(level="error", location="skill.yaml", message=problem) for problem in error.problems]
-    return validate_skill(skill)
+    return validate_skill(skill, catalog)
+
+
+def test_command(project: Project, skill_id: str | None) -> int:
+    """Run the test cases, one line per case. Exit code 2 when any case fails."""
+    lines = []
+    passed = failed = 0
+    for folder in skill_folders(project, skill_id):
+        for result in run_skill_tests(project, folder.name):
+            if result.passed:
+                passed += 1
+                lines.append(f"PASS  {result.skill_id}  {result.case}")
+            else:
+                failed += 1
+                lines.append(f"FAIL  {result.skill_id}  {result.case}: {result.problem}")
+    total = passed + failed
+    noun = "case" if total == 1 else "cases"
+    lines.append(f"{total} {noun} run: {passed} passed, {failed} failed.")
+    print_text("\n".join(lines))
+    return EXIT_VALIDATION_ERROR if failed else EXIT_OK

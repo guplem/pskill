@@ -9,11 +9,21 @@ import json
 import os
 import secrets
 import shutil
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 EVENTS_FILE_NAME = "events.jsonl"
+LOCK_FILE_NAME = ".lock"
+LOCK_WAIT_S = 10.0
+STALE_LOCK_S = 60.0
+
+
+class RunLockTimeout(Exception):
+    """Another command held the run's lock for too long."""
 
 
 def utc_now() -> datetime:
@@ -74,3 +84,36 @@ def folder_hash(folder: Path) -> str:
         digest.update(path.read_bytes())
         digest.update(b"\0")
     return f"sha256:{digest.hexdigest()}"
+
+
+@contextmanager
+def run_lock(run_folder: Path) -> Iterator[None]:
+    """Let one command at a time change a run. Parallel subagents submit at the same time.
+
+    Creating a file with O_EXCL fails when the file exists, on every operating system.
+    A lock older than STALE_LOCK_S is left over from a crashed command, so it is removed.
+    """
+    lock_path = run_folder / LOCK_FILE_NAME
+    deadline = time.monotonic() + LOCK_WAIT_S
+    while True:
+        try:
+            os.close(os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            break
+        except FileExistsError:
+            if lock_age_s(lock_path) > STALE_LOCK_S:
+                lock_path.unlink(missing_ok=True)
+                continue
+            if time.monotonic() > deadline:
+                raise RunLockTimeout(f"The run {run_folder.name} is busy. Try the command again.") from None
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        lock_path.unlink(missing_ok=True)
+
+
+def lock_age_s(lock_path: Path) -> float:
+    try:
+        return time.time() - lock_path.stat().st_mtime
+    except FileNotFoundError:
+        return 0.0

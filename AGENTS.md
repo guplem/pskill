@@ -10,6 +10,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `pskill_runner/` | The runner package. One module per concern (table below). |
 | `tests/` | The pytest suite. One test file per module. |
 | `SPEC.md` | The implementation specification. |
+| `.pskill/skills/`, `.pskill/agents/` | The proof skills and their pskill agents. They run on this repository's own issues and pull requests (the test bed). |
 
 ## Runner modules
 
@@ -27,6 +28,8 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `yaml_loading.py` | YAML 1.2 booleans for skills; plain text for answers. |
 | `shells.py`, `answer_input.py` | The stdin forms of `submit`, and reading stdin with a timeout. |
 | `adapters.py` | Harness-specific wording and abilities. |
+| `inline_executor.py` | Runs `script` commands and child skills; `pskill test` swaps in recorded results. |
+| `skill_tests.py` | `pskill test`: replays a case file's answers against a skill. |
 | `project.py` | Finding `.pskill/` and reading `config.yaml`. |
 
 ## Commands
@@ -38,9 +41,9 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | Lint and format | `uv run ruff check .` and `uv run ruff format .` |
 | Type check | `uv run mypy` |
 | Run the runner | `uv run pskill.py <command>` |
-| Run every CI check, as CI does | `uv run ruff format --check . && uv run ruff check . && uv run mypy && uv run pytest` |
+| Run every CI check, as CI does | `uv run ruff format --check . && uv run ruff check . && uv run mypy && uv run pytest && uv run pskill.py validate && uv run pskill.py test` |
 
-CI (`.github/workflows/pull-request-checks.yml`) runs those four checks on Windows, macOS, and Linux with Python 3.11. The ruleset on `main` requires the jobs `checks (ubuntu-latest)`, `checks (windows-latest)`, and `checks (macos-latest)`.
+CI (`.github/workflows/pull-request-checks.yml`) runs those checks on Windows, macOS, and Linux with Python 3.11. The ruleset on `main` requires the jobs `checks (ubuntu-latest)`, `checks (windows-latest)`, and `checks (macos-latest)`.
 
 ## Rules
 

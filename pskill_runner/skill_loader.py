@@ -7,7 +7,19 @@ import yaml
 from jsonschema import Draft202012Validator
 
 from pskill_runner.field_types import parse_field_map
-from pskill_runner.skill_model import AnyBlock, ChoiceMap, DecisionBlock, Edge, EndBlock, Skill, TaskBlock
+from pskill_runner.skill_model import (
+    AnyBlock,
+    CallBlock,
+    ChoiceMap,
+    DecisionBlock,
+    Edge,
+    EndBlock,
+    ParallelBlock,
+    ScriptBlock,
+    Skill,
+    SkillCatalog,
+    TaskBlock,
+)
 from pskill_runner.skill_schema import BLOCK_SCHEMAS, TOP_LEVEL_SCHEMA
 from pskill_runner.yaml_loading import load_skill_yaml
 
@@ -114,6 +126,34 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
             output=parse_field_map(raw.get("output", {})),
             next=next_blocks,
         )
+    if block_type == "parallel":
+        return ParallelBlock(
+            **common,
+            for_each=raw["for_each"],
+            agent=raw.get("agent"),
+            instruction=raw["instruction"],
+            output=parse_field_map(raw["output"]),
+            next=parse_edges(raw["next"]),
+        )
+    if block_type == "script":
+        return ScriptBlock(**common, run=raw["run"], parse=raw.get("parse", "text"), next=parse_edges(raw["next"]))
+    if block_type == "call":
+        return CallBlock(**common, skill=raw["skill"], inputs=raw.get("inputs", {}), next=parse_edges(raw["next"]))
     if block_type == "end":
         return EndBlock(**common, status=raw["status"], outputs=raw.get("outputs", {}), report=raw.get("report"))
     raise ValueError(f"Unknown block type: {block_type}")
+
+
+def load_catalog(skills_folder: Path, agents_folder: Path) -> SkillCatalog:
+    """Load every valid skill and list every agent file. Invalid skills are left out."""
+    skills: dict[str, Skill] = {}
+    if skills_folder.is_dir():
+        for folder in sorted(skills_folder.iterdir()):
+            if not (folder / SKILL_FILE_NAME).is_file():
+                continue
+            try:
+                skills[folder.name] = load_skill(folder)
+            except SkillLoadError:
+                continue
+    agent_names = {path.stem for path in agents_folder.glob("*.md")} if agents_folder.is_dir() else set()
+    return SkillCatalog(skills=skills, agent_names=agent_names)

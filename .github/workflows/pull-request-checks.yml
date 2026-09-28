@@ -40,3 +40,7 @@ jobs:
         run: uv run mypy
       - name: Test
         run: uv run pytest
+      - name: Validate the proof skills
+        run: uv run pskill.py validate
+      - name: Run the skill tests
+        run: uv run pskill.py test

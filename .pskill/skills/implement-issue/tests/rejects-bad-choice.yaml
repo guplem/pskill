@@ -1,0 +1,14 @@
+name: an invalid choice is rejected once, then the next answer is used
+inputs: {issue: "42"}
+scripts:
+  read_issue:
+    - {exit_code: 0, stdout: '{"number": 42, "title": "Crash on save", "body": "Saving crashes.", "labels": [], "comments": []}'}
+answers:
+  check_applies:
+    - {choice: maybe, rationale: Not sure., evidence: "-"}
+    - {choice: obsolete, rationale: Fixed already., evidence: "pskill_runner/cli.py:12"}
+  confirm_close:
+    - {choice: keep, rationale: Keep it., comment: "-", $answered_by: human}
+expect:
+  path: [read_issue, check_applies, confirm_close, stopped]
+  status: cancelled
