@@ -7,6 +7,7 @@ import sys
 import time
 from pathlib import Path
 
+from pskill_runner.release import build_release_archive
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 ENTRY_SCRIPT = Path(__file__).resolve().parent.parent / "pskill.py"
@@ -283,15 +284,16 @@ def test_init_vendors_the_runner_into_a_new_project(tmp_path: Path) -> None:
     assert (project_root / ".claude" / "settings.json").is_file()
 
 
-def test_update_needs_a_source(tmp_path: Path) -> None:
+def test_update_takes_a_release_archive(tmp_path: Path) -> None:
     project_root = tmp_path / "new-project"
     project_root.mkdir()
     run_pskill(project_root, "init")
+    archive = build_release_archive(ENTRY_SCRIPT.parent, tmp_path / "pskill.zip")
 
-    result = run_pskill(project_root, "update")
+    result = run_pskill(project_root, "update", "--from", str(archive))
 
-    assert result.returncode == 1
-    assert "--from" in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert "Vendored pskill" in result.stdout
 
 
 def test_the_codex_stop_hook_answers_with_a_block_decision(tmp_path: Path) -> None:

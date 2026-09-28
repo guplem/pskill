@@ -28,6 +28,7 @@ from pskill_runner.engine import (
 from pskill_runner.hook_settings import SettingsError
 from pskill_runner.hooks import session_start_text, stop_hook_reason
 from pskill_runner.project import Project, ProjectError, find_project
+from pskill_runner.release import is_archive_source, release_url, unpack_archive
 from pskill_runner.run_records import UNFINISHED_STATUSES
 from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
 from pskill_runner.skill_model import SkillCatalog
@@ -88,10 +89,14 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--check", action="store_true", help="Only report what is out of date.")
 
     init = commands.add_parser("init", help="Create .pskill/ in the current folder and vendor the runner.")
-    init.add_argument("--from", dest="source", help="A pskill checkout. Default: the runner that runs this command.")
+    init.add_argument(
+        "--from", dest="source", help="A pskill checkout, a .pskill folder, or a release .zip (file or URL)."
+    )
 
     update = commands.add_parser("update", help="Replace the vendored runner with another version.")
-    update.add_argument("--from", dest="source", help="A pskill checkout, or another project's .pskill/ folder.")
+    update.add_argument(
+        "--from", dest="source", help="A pskill checkout, a .pskill folder, or a release .zip. Default: latest release."
+    )
     update.add_argument("--force", action="store_true", help="Overwrite vendored files that were edited by hand.")
 
     view = commands.add_parser("view", help="Open the read-only run viewer in the browser.")
@@ -297,18 +302,21 @@ def running_copy_root() -> Path:
     return Path(pskill_runner.__file__).resolve().parent.parent
 
 
+def source_folder(source: str) -> Path:
+    """A folder with the vendored files: the given folder, or an unpacked release archive."""
+    return unpack_archive(source) if is_archive_source(source) else Path(source).resolve()
+
+
 def init_command(source: str | None) -> int:
     project_root = Path.cwd()
-    lines = init_project(project_root, Path(source).resolve() if source else running_copy_root())
+    lines = init_project(project_root, source_folder(source) if source else running_copy_root())
     lines += sync_project(find_project(project_root), check_only=False)
     lines.append("Next: add a skill in .pskill/skills/<id>/, then run `uv run .pskill/pskill.py sync`.")
     return print_text("\n".join(lines))
 
 
 def update_command(project: Project, source: str | None, force: bool) -> int:
-    if source is None:
-        raise RunError("Name the source with --from <a pskill checkout, or another project's .pskill folder>.")
-    lines = update_project(project.root, Path(source).resolve(), force)
+    lines = update_project(project.root, source_folder(source or release_url()), force)
     lines += sync_project(project, check_only=False)
     return print_text("\n".join(lines))
 
