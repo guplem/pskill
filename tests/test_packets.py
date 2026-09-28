@@ -3,7 +3,14 @@
 from dataclasses import replace
 
 from pskill_runner.field_types import parse_field_map
-from pskill_runner.packets import AgentPacket, render_agent_packet, render_final_packet, render_pause_packet
+from pskill_runner.packets import (
+    AgentPacket,
+    TaskPrompt,
+    render_agent_packet,
+    render_final_packet,
+    render_parallel_packet,
+    render_pause_packet,
+)
 
 PLAN_PACKET = AgentPacket(
     run_id="r-20260927-1432-ab12",
@@ -144,3 +151,28 @@ def test_lists_of_groups_get_a_nested_example() -> None:
     text = render_agent_packet(replace(PLAN_PACKET, return_fields=fields))
 
     assert "angles:  # required, list: One entry per subagent.\n  - focus: security\n    brief: ...\n" in text
+
+
+def test_a_task_packet_submits_with_its_task_number() -> None:
+    text = render_agent_packet(replace(PLAN_PACKET, task_index=3))
+
+    assert "uv run .pskill/pskill.py submit r-20260927-1432-ab12 --task 3 <<'PSKILL'" in text
+
+
+def test_the_parallel_packet_lists_one_full_prompt_per_task() -> None:
+    fields = parse_field_map({"wrong": {"type": "array", "items": {"type": "string"}, "description": "Wrong claims."}})
+    tasks = [
+        TaskPrompt(index=0, agent_text="You check facts.", instruction="Check a.md.", return_fields=fields),
+        TaskPrompt(index=2, agent_text=None, instruction="Check c.md.", return_fields=fields),
+    ]
+
+    text = render_parallel_packet(PLAN_PACKET, tasks, total_tasks=3)
+
+    assert text.startswith("## pskill · plan-work · create_plan (visit 2)")
+    assert "Spawn one subagent per task below, all at once." in text
+    assert "2 of 3 tasks are still open." in text
+    assert "#### Task 0\n" in text and "#### Task 2\n" in text and "#### Task 1\n" not in text
+    assert "You check facts.\n" in text
+    assert "Goal: Produce a plan that the user approved." in text
+    assert "submit r-20260927-1432-ab12 --task 2 <<'PSKILL'" in text
+    assert "uv run .pskill/pskill.py current r-20260927-1432-ab12" in text

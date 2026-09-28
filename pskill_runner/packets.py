@@ -37,6 +37,7 @@ class AgentPacket:
     runner_command: str  # for example "uv run .pskill/pskill.py"
     shell: str
     question_wording: str
+    task_index: int | None = None  # set for one task of a parallel block
 
     @property
     def asks_the_human(self) -> bool:
@@ -85,16 +86,62 @@ def decision_section(packet: AgentPacket) -> str:
     return "\n".join(lines)
 
 
-def return_section(packet: AgentPacket) -> str:
-    body_lines = example_lines(packet.return_fields, indent="")
-    if packet.asks_the_human:
+RETURN_HELP = (
+    "When the work is done, run this one command. Replace the example values.\n"
+    "Write text with several lines as `field: |` followed by indented lines."
+)
+
+
+def submit_command(packet: AgentPacket, fields: FieldMap, task_index: int | None, asks_the_human: bool) -> str:
+    """The one command that sends the answer, with an annotated example answer on stdin."""
+    body_lines = example_lines(fields, indent="")
+    if asks_the_human:
         body_lines.append("$answered_by: human")
-    command = stdin_command(packet.shell, f"{packet.runner_command} submit {packet.run_id}", "\n".join(body_lines))
-    return (
-        "### Return\nWhen the work is done, run this one command. Replace the example values.\n"
-        "Write text with several lines as `field: |` followed by indented lines.\n"
-        f"{command}"
-    )
+    task_option = f" --task {task_index}" if task_index is not None else ""
+    command = f"{packet.runner_command} submit {packet.run_id}{task_option}"
+    return stdin_command(packet.shell, command, "\n".join(body_lines))
+
+
+def return_section(packet: AgentPacket) -> str:
+    command = submit_command(packet, packet.return_fields, packet.task_index, packet.asks_the_human)
+    return f"### Return\n{RETURN_HELP}\n{command}"
+
+
+@dataclass(frozen=True)
+class TaskPrompt:
+    """One task of a parallel block, as a full prompt for one subagent."""
+
+    index: int
+    agent_text: str | None  # the pskill agent's role, or None
+    instruction: str
+    return_fields: FieldMap
+
+
+def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], total_tasks: int) -> str:
+    """The packet of a parallel block when the harness can spawn subagents: one prompt per open task."""
+    lines = [
+        header(packet),
+        "",
+        "### Parallel tasks",
+        "Spawn one subagent per task below, all at once. Give each subagent exactly its prompt.",
+        f"{len(open_tasks)} of {total_tasks} tasks are still open.",
+        f"When every subagent has finished, run: {packet.runner_command} current {packet.run_id}",
+    ]
+    for task in open_tasks:
+        lines += ["", f"#### Task {task.index}", task_prompt_text(packet, task)]
+    return "\n".join(lines) + "\n"
+
+
+def task_prompt_text(packet: AgentPacket, task: TaskPrompt) -> str:
+    parts = ["You are a subagent of a pskill run. Do only this task, then submit its answer."]
+    if task.agent_text:
+        parts.append(task.agent_text.strip())
+    parts.append(f"Goal: {packet.goal.strip()}")
+    parts.append(f"Your task:\n{task.instruction.strip()}")
+    parts.append(RETURN_HELP)
+    parts.append(submit_command(packet, task.return_fields, task.index, asks_the_human=False))
+    parts.append("If you cannot do it, submit only the line `$cannot_complete: <reason>`.")
+    return "\n\n".join(parts)
 
 
 def rules_section(packet: AgentPacket) -> str:
