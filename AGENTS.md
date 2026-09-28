@@ -7,9 +7,27 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | Path | What it is |
 |---|---|
 | `pskill.py` | Entry script. Holds the PEP 723 dependency block, then calls `pskill_runner.cli.main`. |
-| `pskill_runner/` | The runner package. One module per concern (see `SPEC.md` section 4). |
+| `pskill_runner/` | The runner package. One module per concern (table below). |
 | `tests/` | The pytest suite. One test file per module. |
 | `SPEC.md` | The implementation specification. |
+
+## Runner modules
+
+| Module | Concern |
+|---|---|
+| `cli.py` | Commands, arguments, exit codes. No logic beyond calling the engine. |
+| `engine.py` | Runs a skill block by block: edges, answers, visit caps, retries, pause and resume. |
+| `run_records.py` | The typed shape of `run.json` and `state.json`. |
+| `run_store.py` | Run files on disk: atomic JSON, the event trace, skill copies. |
+| `packets.py` | The text that the agent sees for each block. |
+| `skill_loader.py`, `skill_schema.py`, `skill_model.py` | Read `skill.yaml`, check its structure, build typed objects. |
+| `validator.py` | Static checks of a loaded skill (`pskill validate`). |
+| `field_types.py` | Field maps, and checking answers and outputs against them. |
+| `computed_values.py` | Everything inside `{{ }}`. |
+| `yaml_loading.py` | YAML 1.2 booleans for skills; plain text for answers. |
+| `shells.py`, `answer_input.py` | The stdin forms of `submit`, and reading stdin with a timeout. |
+| `adapters.py` | Harness-specific wording and abilities. |
+| `project.py` | Finding `.pskill/` and reading `config.yaml`. |
 
 ## Commands
 

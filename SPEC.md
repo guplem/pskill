@@ -434,15 +434,11 @@ done:
 
 ### 7.4 Failures
 
-A block fails when:
-- a submission stays invalid,
-- the agent submits `$cannot_complete`,
-- a script fails,
-- a computed value fails,
-- no edge matches,
-- a visit cap is hit with no `on_max_visits`.
+Two kinds of failure exist:
+- **Retried failures** can succeed on a second try: an invalid submission, a `$cannot_complete`, and a failed script. The runner retries up to `retries` times (config, default 2): it reprints the packet with the errors, or it runs the script again. After that it pauses the run with the reason `block_failed`.
+- **Runner-side failures** fail the same way every time, because nothing changed: a computed value that fails, no matching edge, a visit cap with no `on_max_visits`, and invalid end outputs. The runner pauses the run at once with the reason `runner_error`.
 
-The runner retries up to `retries` times (config, default 2): it reprints the packet, or it runs the script again. After that it pauses the run. The pause packet shows the error and three commands: `resume` (retry the block with a fresh count), `cancel`, and `current`.
+The pause packet shows the error and three commands: `resume` (retry the block with a fresh count), `cancel`, and `current`.
 
 As a guard, a run pauses when more than 1,000 runner-only blocks run without an agent block in between.
 
