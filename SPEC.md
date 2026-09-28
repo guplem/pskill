@@ -1134,8 +1134,8 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 
 | Command | Purpose |
 |---|---|
-| `init [--from <path or url>]` | Create `.pskill/`: runner, viewer, launchers, `AUTHORING.md`, `config.yaml`, `.gitignore`, `.gitattributes` line, `VENDORED`. The default source is the latest release archive, `https://github.com/guplem/pskill/releases/latest/download/pskill.zip`. `--from` takes a local clone or another archive URL. |
-| `update [--from <path or url>] [--force]` | Same source rules as `init`. Replace the vendored files. First check them against the sha256 values in `VENDORED`. Stop if one was edited by hand, unless `--force`. Never touch `skills/`, `runs/`, or `config.yaml`. Then run `sync`. |
+| `init [--from <source>]` | Create `.pskill/`: vendor the runner (entry script, `pskill_runner/`, viewer, launchers, `AUTHORING.md`), write `config.yaml`, `.gitignore`, the `.gitattributes` line, and `VENDORED`, then run `sync`. A source is a pskill checkout, another project's `.pskill/` folder, or a release `.zip` (a file or a URL). Default: the runner that runs the command. When `pskill.py` runs alone from a URL, it first downloads the latest release archive (`PSKILL_RELEASE_URL` overrides the URL), so `uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init` installs in one command. |
+| `update [--from <source>] [--force]` | Replace the vendored files, then run `sync`. Default source: the latest release archive. Check the vendored files against the hashes in `VENDORED` first, and stop if one was edited by hand, unless `--force`. Never touch `skills/`, `agents/`, `runs/`, or `config.yaml`. |
 | `list` | Skills: id, invocation, description. |
 | `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h]` | Validate the skill (errors 1 to 16 only; a stale stub never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. |
 | `current [<run>]` | Print the current packet. No state change. |

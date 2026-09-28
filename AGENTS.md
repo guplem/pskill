@@ -12,6 +12,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `launchers/` | Double-click launchers for the viewer (Windows, macOS, Linux). |
 | `tests/` | The pytest suite. One test file per module. |
 | `SPEC.md` | The implementation specification. |
+| `README.md`, `AUTHORING.md`, `CHANGELOG.md` | For users; for agents that write skills (vendored); the release notes. |
 | `.pskill/skills/`, `.pskill/agents/` | The proof skills and their pskill agents. They run on this repository's own issues and pull requests (the test bed). |
 
 ## Runner modules
@@ -39,6 +40,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `codex.py` | Codex's `.codex/hooks.json` hooks, `.codex/rules/pskill.rules`, and hook output. |
 | `hooks.py` | The Stop and session-start hook logic, for every harness. |
 | `vendoring.py` | `pskill init` and `pskill update`: copy the runner into a project, with file hashes. |
+| `release.py` | The release archive `pskill.zip`, and unpacking an archive given to `init` or `update`. |
 | `viewer_data.py` | Everything the viewer shows: marked Mermaid graphs, timeline rows, summaries. |
 | `viewer_server.py` | `pskill view`: the local server on 127.0.0.1 (JSON API plus the static files). |
 
@@ -62,6 +64,14 @@ CI (`.github/workflows/pull-request-checks.yml`) runs those checks on Windows, m
 - **This repository vendors its own runner** into `.pskill/` (the test bed). After any change to `pskill.py` or `pskill_runner/`, run `uv run pskill.py update --from .`; a test fails until the copy matches. Never edit `.pskill/pskill.py` or `.pskill/pskill_runner/` by hand.
 - **Dependencies live in two places.** Keep the PEP 723 block in `pskill.py` equal to `[project].dependencies` in `pyproject.toml`. A test checks this.
 - **Branch and pull request.** Branch from `main`, open one pull request per issue, and close the issue from it. CI must be green on Windows, macOS, and Linux before a merge.
+
+## Releasing
+
+1. Raise `__version__` in `pskill_runner/__init__.py` and `version` in `pyproject.toml` (a test checks that they are equal).
+2. Add the version's section to `CHANGELOG.md`, and merge the pull request.
+3. Push the tag `v<version>` on `main`. `.github/workflows/release.yml` tests, builds `pskill.zip`, and publishes the GitHub release.
+
+The first-install command `uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init` downloads `releases/latest/download/pskill.zip`, so a release must exist before it works.
 
 ## Picking the next issue
 

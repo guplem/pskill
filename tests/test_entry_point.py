@@ -38,3 +38,11 @@ def test_script_dependencies_match_the_project_dependencies() -> None:
     pyproject = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert sorted(script_dependencies) == sorted(pyproject["project"]["dependencies"])
+
+
+def test_the_project_version_equals_the_runner_version() -> None:
+    from pskill_runner import __version__
+
+    pyproject = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert pyproject["project"]["version"] == __version__
