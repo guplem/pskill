@@ -31,6 +31,10 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `inline_executor.py` | Runs `script` commands and child skills; `pskill test` swaps in recorded results. |
 | `skill_tests.py` | `pskill test`: replays a case file's answers against a skill. |
 | `project.py` | Finding `.pskill/` and reading `config.yaml`. |
+| `stubs.py`, `sync.py` | The generated `SKILL.md` stubs, and `pskill sync` (stubs plus harness settings). |
+| `claude_code.py` | Claude Code's `.claude/settings.json` entries (hooks, permission rule) and hook output. |
+| `hooks.py` | The Stop and session-start hook logic, for every harness. |
+| `vendoring.py` | `pskill init` and `pskill update`: copy the runner into a project, with file hashes. |
 
 ## Commands
 
@@ -49,6 +53,7 @@ CI (`.github/workflows/pull-request-checks.yml`) runs those checks on Windows, m
 
 - **Red-green, always.** Write the failing test first, run it, and see it fail for the expected reason. Then write the least code that passes. Commit the test with its code.
 - **Simplicity first.** Code must be easy to read for a junior developer: small functions, descriptive names, explicit types, no clever tricks.
+- **This repository vendors its own runner** into `.pskill/` (the test bed). After any change to `pskill.py` or `pskill_runner/`, run `uv run pskill.py update --from .`; a test fails until the copy matches. Never edit `.pskill/pskill.py` or `.pskill/pskill_runner/` by hand.
 - **Dependencies live in two places.** Keep the PEP 723 block in `pskill.py` equal to `[project].dependencies` in `pyproject.toml`. A test checks this.
 - **Branch and pull request.** Branch from `main`, open one pull request per issue, and close the issue from it. CI must be green on Windows, macOS, and Linux before a merge.
 
