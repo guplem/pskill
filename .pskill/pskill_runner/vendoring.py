@@ -108,7 +108,7 @@ def copy_vendored_files(source_root: Path, pskill_folder: Path, old_files: list[
     for relative_path, source_path in files.items():
         target = pskill_folder / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source_path, target)
+        shutil.copy(source_path, target)  # copy keeps the executable bit of the launchers
     version = source_version(source_root)
     record = {
         "version": version,

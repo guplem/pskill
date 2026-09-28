@@ -1,0 +1,65 @@
+"""Contract tests for the static viewer files and the launchers (their logic lives in viewer_data.py)."""
+
+import re
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+
+from pskill_runner.vendoring import vendored_file_map
+
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+VIEWER = REPOSITORY_ROOT / "viewer"
+
+
+def test_the_page_loads_mermaid_from_a_pinned_cdn_version_with_an_integrity_hash() -> None:
+    index = (VIEWER / "index.html").read_text(encoding="utf-8")
+
+    assert re.search(r'src="https://cdn\.jsdelivr\.net/npm/mermaid@\d+\.\d+\.\d+/dist/mermaid\.min\.js"', index)
+    assert 'integrity="sha384-' in index
+    assert 'crossorigin="anonymous"' in index
+
+
+def test_the_script_draws_the_timeline_without_mermaid_and_never_inserts_run_text_as_html() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    assert "if (!window.mermaid)" in script
+    assert "Graph unavailable offline" in script
+    assert script.count("innerHTML") == 1  # only for Mermaid's own SVG output
+    assert 'securityLevel: "strict"' in script
+
+
+def test_the_launchers_start_the_viewer_from_the_folder_above_them() -> None:
+    for name in ("view.cmd", "view.command", "view.sh"):
+        launcher = (REPOSITORY_ROOT / "launchers" / name).read_text(encoding="utf-8")
+        assert "uv run pskill.py view" in launcher
+
+
+def test_the_viewer_and_the_launchers_are_vendored() -> None:
+    files = vendored_file_map(REPOSITORY_ROOT)
+
+    assert {"viewer/index.html", "viewer/app.js", "viewer/style.css", "launchers/view.cmd"} <= set(files)
+
+
+def test_the_view_command_serves_the_viewer_until_stopped(tmp_path: Path) -> None:
+    (tmp_path / ".pskill" / "skills").mkdir(parents=True)
+    process = subprocess.Popen(
+        [sys.executable, str(REPOSITORY_ROOT / "pskill.py"), "view", "--port", "0", "--no-open"],
+        cwd=tmp_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+    )
+    try:
+        assert process.stdout is not None
+        first_line = process.stdout.readline()
+        match = re.search(r"http://127\.0\.0\.1:(\d+)/", first_line)
+        assert match is not None, first_line + (process.stderr.read() if process.stderr else "")
+        with urllib.request.urlopen(f"{match[0]}api/runs", timeout=10) as response:
+            assert response.status == 200
+        with urllib.request.urlopen(match[0], timeout=10) as response:
+            assert b"pskill viewer" in response.read()
+    finally:
+        process.terminate()
+        process.wait(timeout=10)

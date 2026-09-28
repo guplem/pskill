@@ -1,6 +1,8 @@
 """Tests for pskill_runner.vendoring: `pskill init` and `pskill update`."""
 
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -135,3 +137,18 @@ def test_this_repository_vendors_an_up_to_date_copy_of_its_own_runner() -> None:
     vendored = json.loads((vendored_folder / "VENDORED").read_text(encoding="utf-8"))
     assert vendored["version"] == __version__
     assert vendored["source"] == "."
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Windows has no executable bit")
+def test_vendoring_keeps_the_executable_bit_of_the_launchers(tmp_path: Path) -> None:
+    source = make_source(tmp_path)
+    launcher = source / "launchers" / "view.sh"
+    launcher.parent.mkdir()
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    init_project(project_root, source)
+
+    assert os.access(project_root / ".pskill" / "launchers" / "view.sh", os.X_OK)
