@@ -32,7 +32,9 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `skill_tests.py` | `pskill test`: replays a case file's answers against a skill. |
 | `project.py` | Finding `.pskill/` and reading `config.yaml`. |
 | `stubs.py`, `sync.py` | The generated `SKILL.md` stubs, and `pskill sync` (stubs plus harness settings). |
+| `hook_settings.py` | The JSON hook merge that Claude Code and Codex share. |
 | `claude_code.py` | Claude Code's `.claude/settings.json` entries (hooks, permission rule) and hook output. |
+| `codex.py` | Codex's `.codex/hooks.json` hooks, `.codex/rules/pskill.rules`, and hook output. |
 | `hooks.py` | The Stop and session-start hook logic, for every harness. |
 | `vendoring.py` | `pskill init` and `pskill update`: copy the runner into a project, with file hashes. |
 
