@@ -1207,7 +1207,7 @@ Each milestone starts with the listed failing tests and ends with green CI on th
 | M3 | Claude Code | The stub text; `sync` is idempotent; `sync` keeps foreign hooks, foreign permission rules, and hand-written skills; `sync` adds the one allow rule; the Stop hook blocks an `active` run and gives up after 3 blocks; the session-start hook rewrites a stale stub, skips a broken skill with a warning, and lists open runs; `init` and `update` with a hash check | In the `guplem/pskill` repository, `implement-issue` runs in real Claude Code from trigger to end on a real issue. An early stop gets blocked. A new session resumes the run. |
 | M4 | Codex + generic check | Codex: detection, `.codex/hooks.json` merge that keeps foreign hooks, Stop and session-start responses from fixtures, subagent wording, the `agents/openai.yaml` sidecar for `manual` skills. Generic: an unknown environment falls back to `generic`; its packets name no harness tool | In the same repository, `implement-issue` runs in real Codex from trigger to end, with an early stop blocked. A manual run in Gemini CLI or Cursor through `generic` also reaches the end. The trace shows the right harness each time. |
 | M5 | Viewer | Mermaid marks; the page still renders the timeline when Mermaid fails to load; timeline rows; summary numbers; the API returns 404 for an unknown run; the server binds only to 127.0.0.1 | A live run updates within 2 s. A finished run can be stepped through. |
-| M6 | Docs + release | A test that builds the release archive and runs `init --from <archive>` into a temp project | A tag on `guplem/pskill` makes CI publish `pskill.zip` as a release asset. A new project gets from zero to a first run with only the README. The backlog issues from section 18.1 exist on GitHub with the label `future`. The first install command is `uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init` (VERIFY that `uv run` accepts a script URL). |
+| M6 | Docs + release | A test that builds the release archive and runs `init --from <archive>` into a temp project | A tag on `guplem/pskill` makes CI publish `pskill.zip` as a release asset. A new project gets from zero to a first run with only the README. The first install command is `uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init` (VERIFY that `uv run` accepts a script URL). |
 
 ---
 
@@ -1241,7 +1241,7 @@ Each of these was in an earlier draft. Each one added complexity for little user
 
 ### 18.1 Backlog: future issues
 
-When the coding agent creates `guplem/pskill`, it opens one GitHub issue per item below, with the label `future`. Each issue states the idea, why it was postponed, and a link to this section. None of them is promised. Each one needs its own design and must pass principle 1 (simplicity).
+Each item below exists as a GitHub issue with the label `future` (guplem/pskill issues #1 to #13). Each issue states the idea, why it waits, and a link to this section. Open a new `future` issue for any new postponed idea. None of them is promised. Each one needs its own design and must pass principle 1 (simplicity).
 
 | Issue title | Why it waits |
 |---|---|
