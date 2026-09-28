@@ -39,7 +39,18 @@ CLAUDE_CODE = HarnessAdapter(
     ),
 )
 
-ADAPTERS: dict[str, HarnessAdapter] = {adapter.name: adapter for adapter in (GENERIC, CLAUDE_CODE)}
+CODEX = HarnessAdapter(
+    name="codex",
+    # Codex offers its question tool only in Plan mode, so the agent asks in the chat.
+    question_wording=GENERIC.question_wording,
+    can_spawn_subagents=True,
+    subagent_wording=(
+        "Use the spawn_agent tool: one spawn_agent call per task, all at once, then wait_agent until every "
+        "subagent has finished."
+    ),
+)
+
+ADAPTERS: dict[str, HarnessAdapter] = {adapter.name: adapter for adapter in (GENERIC, CLAUDE_CODE, CODEX)}
 
 
 def adapter_for(name: str) -> HarnessAdapter:
@@ -52,4 +63,6 @@ def detect_harness(environment: Mapping[str, str]) -> str:
     """Guess the harness from its environment variables. Unknown environments use `generic`."""
     if environment.get("CLAUDECODE") == "1":
         return CLAUDE_CODE.name
+    if environment.get("CODEX_THREAD_ID"):
+        return CODEX.name
     return GENERIC.name

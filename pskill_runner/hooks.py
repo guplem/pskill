@@ -47,7 +47,7 @@ def stub_refresh_lines(project: Project) -> list[str]:
     except StubError as error:
         return [*lines, f"pskill: {error}"]
     if changes:
-        names = ", ".join(sorted({change.path.parent.name for change in changes}))
+        names = ", ".join(sorted({change.skill for change in changes}))
         lines.append(f"pskill: updated {len(changes)} stubs ({names}).")
     return lines
 

@@ -152,3 +152,37 @@ def test_the_stub_of_a_protected_skill_is_kept(tmp_path: Path) -> None:
 
     assert changes == []
     assert (tmp_path / ".claude/skills/plan-work/SKILL.md").is_file()
+
+
+MANUAL_SKILL = PLAN_SKILL.replace("goal:", "invocation: manual\ngoal:")
+
+
+def test_a_manual_skill_gets_the_codex_sidecar_that_forbids_implicit_use(tmp_path: Path) -> None:
+    project = make_project(tmp_path, MANUAL_SKILL)
+
+    sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
+
+    sidecar = tmp_path / ".agents/skills/plan-work/agents/openai.yaml"
+    assert "allow_implicit_invocation: false" in sidecar.read_text(encoding="utf-8")
+    assert not (tmp_path / ".agents/skills/pskill/agents/openai.yaml").exists()
+
+
+def test_the_sidecar_goes_away_when_the_skill_is_no_longer_manual(tmp_path: Path) -> None:
+    project = make_project(tmp_path, MANUAL_SKILL)
+    sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
+    make_project(tmp_path)
+
+    sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
+
+    assert not (tmp_path / ".agents/skills/plan-work/agents/openai.yaml").exists()
+    assert (tmp_path / ".agents/skills/plan-work/SKILL.md").is_file()
+
+
+def test_deleting_a_manual_skill_removes_its_whole_stub_folder(tmp_path: Path) -> None:
+    project = make_project(tmp_path, MANUAL_SKILL)
+    sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
+    (project.skills_folder / "plan-work" / "skill.yaml").unlink()
+
+    sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
+
+    assert not (tmp_path / ".agents/skills/plan-work").exists()
