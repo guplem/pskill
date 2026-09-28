@@ -1,0 +1,177 @@
+"""Tests for pskill_runner.skill_tests (the `pskill test` command)."""
+
+import textwrap
+from pathlib import Path
+
+from pskill_runner.project import Project, find_project
+from pskill_runner.skill_tests import run_skill_tests
+from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.test_engine_blocks import CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
+
+APPROVED_CASE = """\
+name: two questions, then approval
+inputs: {topic: the login page}
+answers:
+  create_plan:
+    - {status: question, plan: Draft., question: "Which database?"}
+    - {status: finished, plan: "1. Build it."}
+  ask_user:
+    - {answer: Postgres., $answered_by: human}
+  approve_plan:
+    - {choice: approve, rationale: Good., $answered_by: human}
+expect:
+  path: [create_plan, ask_user, create_plan, approve_plan, done]
+  status: succeeded
+  outputs: {result: approved}
+"""
+
+
+def project_with(tmp_path: Path, skill_id: str, skill_yaml: str, cases: dict[str, str], **extra: str) -> Project:
+    files = {f"tests/{name}.yaml": text for name, text in cases.items()}
+    if skill_id == "plan-work":
+        files.update(PLAN_SKILL_FILES)
+    write_skill(tmp_path / ".pskill" / "skills", skill_id, skill_yaml, files)
+    for other_id, other_yaml in extra.items():
+        write_skill(tmp_path / ".pskill" / "skills", other_id, other_yaml)
+    (tmp_path / ".pskill" / "agents").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".pskill" / "agents" / "checker.md").write_text("You check facts.", encoding="utf-8")
+    return find_project(tmp_path)
+
+
+def test_a_case_whose_path_status_and_outputs_match_passes(tmp_path: Path) -> None:
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": APPROVED_CASE})
+
+    results = run_skill_tests(project, "plan-work")
+
+    assert [(result.case, result.passed, result.problem) for result in results] == [
+        ("two questions, then approval", True, None)
+    ]
+
+
+def test_a_wrong_path_fails_with_the_difference(tmp_path: Path) -> None:
+    case = APPROVED_CASE.replace(
+        "path: [create_plan, ask_user, create_plan, approve_plan, done]", "path: [create_plan, done]"
+    )
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": case})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert not result.passed
+    assert result.problem == (
+        "path: expected [create_plan, done], got [create_plan, ask_user, create_plan, approve_plan, done]"
+    )
+
+
+def test_path_contains_checks_an_ordered_subsequence(tmp_path: Path) -> None:
+    case = APPROVED_CASE.replace(
+        "path: [create_plan, ask_user, create_plan, approve_plan, done]", "path_contains: [ask_user, done]"
+    )
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": case})
+
+    assert run_skill_tests(project, "plan-work")[0].passed
+
+
+def test_running_out_of_answers_names_the_block(tmp_path: Path) -> None:
+    case = APPROVED_CASE.replace(
+        "  approve_plan:\n    - {choice: approve, rationale: Good., $answered_by: human}\n", ""
+    )
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": case})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert result.problem == "the block 'approve_plan' asked for an answer, but the case has no more answers for it"
+
+
+def test_a_rejected_answer_is_followed_by_the_next_answer(tmp_path: Path) -> None:
+    case = APPROVED_CASE.replace(
+        "  create_plan:\n    - {status: question",
+        "  create_plan:\n    - {status: maybe}\n    - {status: question",
+    )
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": case})
+
+    assert run_skill_tests(project, "plan-work")[0].passed
+
+
+def test_scripts_use_the_recorded_results(tmp_path: Path) -> None:
+    case = """\
+    name: recorded script
+    scripts:
+      list_files:
+        - {exit_code: 0, stdout: '{"files": ["a", "b", "c"]}'}
+    expect:
+      path: [list_files, done]
+      outputs: {count: 3}
+    """
+    project = project_with(tmp_path, "scripted", SCRIPT_SKILL, {"recorded": textwrap.dedent(case)})
+
+    assert run_skill_tests(project, "scripted")[0].passed
+
+
+def test_a_script_without_a_recorded_result_fails_the_case(tmp_path: Path) -> None:
+    case = "name: no script result\nexpect:\n  status: succeeded\n"
+    project = project_with(tmp_path, "scripted", SCRIPT_SKILL, {"missing": case})
+
+    [result] = run_skill_tests(project, "scripted")
+
+    assert result.problem == "the script block 'list_files' ran, but the case has no recorded result for it"
+
+
+def test_calls_use_the_recorded_child_results(tmp_path: Path) -> None:
+    case = """\
+    name: recorded call
+    answers:
+      greet:
+        - {text: Hi.}
+    calls:
+      child:
+        - {status: succeeded, outputs: {greeting: Hello from the mock.}}
+    expect:
+      path: [greet, child, done]
+      outputs: {greeting: Hello from the mock.}
+    """
+    project = project_with(tmp_path, "parent", PARENT_SKILL, {"recorded": textwrap.dedent(case)}, child=CHILD_SKILL)
+
+    assert run_skill_tests(project, "parent")[0].passed
+
+
+def test_parallel_answers_are_listed_task_by_task(tmp_path: Path) -> None:
+    case = """\
+    name: two documents
+    inputs: {files: [a.md, b.md]}
+    answers:
+      check:
+        - {wrong: [x]}
+        - {wrong: [y, z]}
+    expect:
+      path: [check, done]
+      outputs: {wrong_count: 3}
+    """
+    project = project_with(tmp_path, "fanout", PARALLEL_SKILL, {"two": textwrap.dedent(case)})
+
+    assert run_skill_tests(project, "fanout")[0].passed
+
+
+def test_an_unknown_key_in_a_case_is_reported(tmp_path: Path) -> None:
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"bad": "name: bad\nexpected: {}\n"})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    known_keys = "answers, calls, expect, inputs, mode, name, scripts"
+    assert result.problem == f"the case file has an unknown key 'expected' (known keys: {known_keys})"
+
+
+def test_test_runs_leave_no_run_folders_in_the_project(tmp_path: Path) -> None:
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": APPROVED_CASE})
+
+    run_skill_tests(project, "plan-work")
+
+    assert not project.runs_folder.exists() or not any(project.runs_folder.iterdir())
+
+
+def test_a_case_file_with_broken_yaml_is_reported(tmp_path: Path) -> None:
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"broken": "name: [unclosed\n"})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert result.case == "broken"
+    assert result.problem is not None and result.problem.startswith("the case file is not valid YAML:")
