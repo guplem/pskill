@@ -1,0 +1,1 @@
+Tell the user that issue #{{ steps.read_issue.json.number }} is implemented in {{ steps.implement.pr_url }}, and summarize the review rounds. Do not merge the pull request: the user reviews and merges it.

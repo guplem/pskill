@@ -1,0 +1,117 @@
+schema: pskill/v1
+id: create-issue
+description: >-
+  Create a well-structured GitHub issue: clarify it with the user, check for duplicates, draft it, and
+  file it after the user approves. Use whenever the user asks to create, file, open, log, or raise an issue.
+goal: >-
+  File one clear GitHub issue that the user approved, or reuse an existing issue that already covers it.
+inputs:
+  description: {type: string, description: "What the issue is about, in the user's words."}
+outputs:
+  issue_number: {type: integer, optional: true, description: "The new or reused issue. None when cancelled."}
+entry: assess_clarity
+
+blocks:
+  assess_clarity:
+    type: task
+    instruction: instructions/assess_clarity.md
+    max_visits: 6
+    output:
+      clear: {type: boolean, description: "true when you understand exactly what the issue is about."}
+      question: {type: string, optional: true, description: "The single most important open question."}
+    next:
+      - when: "{{ not steps.assess_clarity.clear }}"
+        to: ask_clarify
+      - to: extract_terms
+
+  ask_clarify:
+    type: decision
+    decider: human
+    instruction: "Ask the user this question, exactly as written: {{ steps.assess_clarity.question }}"
+    output:
+      question: {type: string, description: "The question, as asked."}
+    next: assess_clarity
+
+  extract_terms:
+    type: task
+    instruction: instructions/extract_terms.md
+    output:
+      terms: {type: array, items: {type: string}, description: "Search words for duplicates."}
+    next: search_duplicates
+
+  search_duplicates:
+    type: script
+    run: [gh, issue, list, --state, all, --limit, "30", --search, "{{ steps.extract_terms.terms | join(' ') }}",
+          --json, "number,title,state,url"]
+    parse: json
+    next: judge_duplicates
+
+  judge_duplicates:
+    type: decision
+    decider: agent
+    instruction: instructions/judge_duplicates.md
+    choices:
+      none: No existing issue covers this.
+      duplicate: An existing issue already asks for the same thing.
+      related: An existing issue is related but asks for something different.
+    output:
+      match_number: {type: integer, optional: true, description: "The matching issue, for duplicate or related."}
+    next: {none: draft_issue, duplicate: confirm_duplicate, related: draft_issue}
+
+  confirm_duplicate:
+    type: decision
+    decider: human
+    instruction: "Show the user issue #{{ steps.judge_duplicates.match_number }} and why it looks like the same request. Ask whether to reuse it."
+    choices:
+      use_existing: Reuse the existing issue.
+      create_anyway: Create a new issue anyway.
+    next: {use_existing: existing, create_anyway: draft_issue}
+
+  draft_issue:
+    type: task
+    instruction: instructions/draft_issue.md
+    max_visits: 5
+    output:
+      title: {type: string, description: "The issue title, under 80 characters, with no fix:/feat: prefix."}
+      body: {type: string, description: "The full issue body in Markdown, starting with the TL;DR line."}
+    next: confirm_draft
+
+  confirm_draft:
+    type: decision
+    decider: human
+    instruction: "Show the user the draft: the title \"{{ steps.draft_issue.title }}\", then the full body. Ask whether to create it."
+    choices:
+      create: Create the issue as drafted.
+      edit: Change the draft first.
+      cancel: Do not create an issue.
+    output:
+      feedback: {type: string, optional: true, description: "What the user wants changed, for the edit choice."}
+    next: {create: ensure_label, edit: draft_issue, cancel: cancelled}
+
+  ensure_label:
+    type: script
+    run: [gh, label, create, waiting-for-human-check, --color, D93F0B, --force,
+          --description, "No human has verified this yet: direct AI output"]
+    next: create
+
+  create:
+    type: script
+    run: [gh, issue, create, --title, "{{ steps.draft_issue.title }}", --body-file, "{{ steps.draft_issue.body | to_file }}",
+          --label, waiting-for-human-check]
+    next: created
+
+  created:
+    type: end
+    status: succeeded
+    outputs: {issue_number: "{{ steps.create.stdout.strip().split('/')[-1] | int }}"}
+    report: "Tell the user the URL of the new issue: {{ steps.create.stdout.strip() }}"
+
+  existing:
+    type: end
+    status: succeeded
+    outputs: {issue_number: "{{ steps.judge_duplicates.match_number }}"}
+    report: "Tell the user that issue #{{ steps.judge_duplicates.match_number }} already covers this request."
+
+  cancelled:
+    type: end
+    status: cancelled

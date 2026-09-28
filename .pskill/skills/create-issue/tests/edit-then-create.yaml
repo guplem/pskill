@@ -1,0 +1,25 @@
+name: the user asks for one edit, then creates the issue
+inputs: {description: Show token counts in the viewer.}
+answers:
+  assess_clarity:
+    - {clear: true}
+  extract_terms:
+    - {terms: [viewer, tokens]}
+  judge_duplicates:
+    - {choice: none, rationale: Nothing similar.}
+  draft_issue:
+    - {title: Show token counts, body: First draft.}
+    - {title: Show token counts per block in the viewer, body: Second draft.}
+  confirm_draft:
+    - {choice: edit, rationale: The title is vague., feedback: Name the viewer in the title., $answered_by: human}
+    - {choice: create, rationale: Good now., $answered_by: human}
+scripts:
+  search_duplicates:
+    - {exit_code: 0, stdout: "[]"}
+  ensure_label:
+    - {exit_code: 0}
+  create:
+    - {exit_code: 0, stdout: "https://github.com/guplem/pskill/issues/40\n"}
+expect:
+  path_contains: [draft_issue, confirm_draft, draft_issue, confirm_draft, create, created]
+  outputs: {issue_number: 40}

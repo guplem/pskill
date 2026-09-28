@@ -1,0 +1,88 @@
+schema: pskill/v1
+id: review-pr
+description: >-
+  Review a GitHub pull request in depth and report real defects, each backed by a quote from the diff.
+  Use when the user asks to review a PR.
+goal: Find the real defects in the pull request, each backed by an exact quote from the diff.
+x-finding: &finding
+  type: object
+  properties:
+    file: {type: string}
+    line: {type: integer}
+    severity: {type: string, enum: [blocker, major, minor]}
+    summary: {type: string}
+    quote: {type: string, description: "Exact lines from the diff. No quote, no finding."}
+inputs:
+  pr: {type: integer, description: "Number of the pull request to review."}
+  post_verdict: {type: boolean, default: true, optional: true, description: "false: only return the findings, never post."}
+outputs:
+  findings: {type: array, items: *finding, description: "The verified findings."}
+entry: read_pr
+
+blocks:
+  read_pr:
+    type: script
+    run: [gh, pr, view, "{{ inputs.pr }}", --json, "headRefOid,baseRefName,files,additions,deletions"]
+    parse: json
+    next: plan_review
+
+  plan_review:
+    type: task
+    instruction: instructions/plan_review.md
+    output:
+      angles:
+        type: array
+        description: "One entry per review subagent to run."
+        items:
+          type: object
+          properties:
+            focus: {type: string, enum: [correctness, security, tests, conventions, performance]}
+            brief: {type: string, description: "What this subagent must look at in this PR."}
+    next: analyze
+
+  analyze:
+    type: parallel
+    for_each: "{{ steps.plan_review.angles }}"
+    agent: reviewer
+    instruction: instructions/analyze.md
+    output:
+      findings: {type: array, items: *finding, description: "Your findings for this focus only."}
+    next: triage
+
+  triage:
+    type: task
+    instruction: instructions/triage.md
+    output:
+      findings: {type: array, items: *finding, description: "The merged, deduplicated findings."}
+    next: verify_quotes
+
+  verify_quotes:
+    type: script
+    run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py", "{{ inputs.pr }}"]
+    parse: json
+    next:
+      - when: "{{ inputs.post_verdict }}"
+        to: confirm_post
+      - to: report
+
+  confirm_post:
+    type: decision
+    decider: human
+    instruction: instructions/confirm_post.md
+    choices:
+      post: Post the review on the pull request.
+      skip: Do not post. Only report here.
+    next: {post: post_review, skip: report}
+
+  post_review:
+    type: task
+    instruction: instructions/post_review.md
+    output:
+      review_url: {type: string, description: "URL of the posted review."}
+    next: report
+
+  report:
+    type: end
+    status: succeeded
+    outputs: {findings: "{{ steps.verify_quotes.json.findings }}"}
+    report: instructions/report.md

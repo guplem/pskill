@@ -1,0 +1,153 @@
+schema: pskill/v1
+id: implement-issue
+description: >-
+  Implement a GitHub issue end to end: check that it still applies, plan with the user, implement it,
+  open a pull request, and fix review findings. Use when the user asks to implement, fix, or work on an
+  issue, or describes new work to implement.
+goal: Resolve the issue with a reviewed pull request that follows the plan the user approved.
+inputs:
+  issue: {type: string, description: "Issue number, or a text that describes new work."}
+outputs:
+  result: {type: string, enum: [implemented, closed, stopped], description: "How the skill ended."}
+  pr_url: {type: string, optional: true, description: "URL of the pull request, when one exists."}
+entry:
+  - when: "{{ (inputs.issue | int(0)) > 0 }}"
+    to: read_issue
+  - to: create_new_issue
+
+blocks:
+  create_new_issue:
+    type: call
+    skill: create-issue
+    inputs: {description: "{{ inputs.issue }}"}
+    next:
+      - when: "{{ steps.create_new_issue.status == 'succeeded' }}"
+        to: read_issue
+      - to: stopped
+
+  read_issue:
+    type: script
+    run: [gh, issue, view, "{{ steps.create_new_issue.outputs.issue_number | default(inputs.issue) }}",
+          --json, "number,title,body,labels,comments"]
+    parse: json
+    next: check_applies
+
+  check_applies:
+    type: decision
+    decider: agent
+    instruction: instructions/check_applies.md
+    choices:
+      applies: The issue describes a real problem that the code does not solve yet.
+      obsolete: The code already solves it, or the issue no longer makes sense.
+    output:
+      evidence: {type: string, description: "Files and lines that support the choice."}
+    next: {applies: research, obsolete: confirm_close}
+
+  confirm_close:
+    type: decision
+    decider: human
+    instruction: instructions/confirm_close.md
+    choices:
+      close: Close the issue with this comment.
+      keep: Keep the issue open and stop.
+    output:
+      comment: {type: string, optional: true, description: "The closing comment, as the user approved it (for close)."}
+    next: {close: close_issue, keep: stopped}
+
+  close_issue:
+    type: script
+    run: [gh, issue, close, "{{ steps.read_issue.json.number }}", --comment, "{{ steps.confirm_close.comment }}"]
+    next: closed
+
+  research:
+    type: parallel
+    for_each:
+      - {agent: pattern-scout, focus: "Find the closest existing code for this change and its conventions."}
+      - {agent: adr-checker, focus: "Find the recorded decisions that limit this change."}
+    agent: "{{ item.agent }}"
+    instruction: instructions/research.md
+    output:
+      report: {type: string, description: "What you found, with file paths and decision references."}
+    next: create_plan
+
+  create_plan:
+    type: task
+    instruction: instructions/create_plan.md
+    max_visits: 8
+    on_max_visits: stopped
+    output:
+      status: {type: string, enum: [finished, question], description: "finished when no open question is left."}
+      plan: {type: string, description: "The full plan, or the draft so far when status is question."}
+      question: {type: string, optional: true, description: "The single most important open question."}
+    next:
+      - when: "{{ steps.create_plan.status == 'question' }}"
+        to: ask_user
+      - to: approve_plan
+
+  ask_user:
+    type: decision
+    decider: human
+    instruction: "Ask the user this question, exactly as written: {{ steps.create_plan.question }}"
+    output:
+      question: {type: string, description: "The question, as asked."}
+    next: create_plan
+
+  approve_plan:
+    type: decision
+    decider: human
+    instruction: instructions/approve_plan.md
+    choices:
+      approve: Publish the plan in the issue and start the implementation.
+      change: Revise the plan with the user's feedback.
+      stop: Stop without changes.
+    output:
+      feedback: {type: string, optional: true, description: "What the user wants changed, for the change choice."}
+    next: {approve: publish_plan, change: create_plan, stop: stopped}
+
+  publish_plan:
+    type: script
+    run: [gh, issue, comment, "{{ steps.read_issue.json.number }}", --body-file, "{{ steps.create_plan.plan | to_file }}"]
+    next: implement
+
+  implement:
+    type: task
+    instruction: instructions/implement.md
+    output:
+      pr_number: {type: integer, description: "Number of the pull request you opened."}
+      pr_url: {type: string, description: "URL of that pull request."}
+    next: review
+
+  review:
+    type: call
+    skill: review-pr
+    inputs: {pr: "{{ steps.implement.pr_number }}", post_verdict: false}
+    max_visits: 3
+    on_max_visits: done
+    next:
+      - when: "{{ (steps.review.outputs.findings | length) > 0 }}"
+        to: fix_findings
+      - to: done
+
+  fix_findings:
+    type: task
+    instruction: instructions/fix_findings.md
+    output:
+      summary: {type: string, description: "What you changed for each finding, or why you left it."}
+    next: review
+
+  done:
+    type: end
+    status: succeeded
+    outputs: {result: implemented, pr_url: "{{ steps.implement.pr_url }}"}
+    report: instructions/report_done.md
+
+  closed:
+    type: end
+    status: succeeded
+    outputs: {result: closed}
+    report: "Tell the user that issue #{{ steps.read_issue.json.number }} is closed, and why."
+
+  stopped:
+    type: end
+    status: cancelled
+    outputs: {result: stopped}

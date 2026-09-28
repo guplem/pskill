@@ -1,0 +1,29 @@
+name: two clarification rounds, then a new issue
+inputs: {description: The runner is slow.}
+answers:
+  assess_clarity:
+    - {clear: false, question: "Which command is slow?"}
+    - {clear: false, question: "How slow, in seconds?"}
+    - {clear: true}
+  ask_clarify:
+    - {answer: pskill start., question: "Which command is slow?", $answered_by: human}
+    - {answer: About 4 seconds., question: "How slow, in seconds?", $answered_by: human}
+  extract_terms:
+    - {terms: [start, slow]}
+  judge_duplicates:
+    - {choice: none, rationale: No issue talks about start time.}
+  draft_issue:
+    - {title: pskill start takes 4 seconds, body: "**TL;DR:** ..."}
+  confirm_draft:
+    - {choice: create, rationale: Looks good., $answered_by: human}
+scripts:
+  search_duplicates:
+    - {exit_code: 0, stdout: "[]"}
+  ensure_label:
+    - {exit_code: 0}
+  create:
+    - {exit_code: 0, stdout: "https://github.com/guplem/pskill/issues/31\n"}
+expect:
+  path_contains: [assess_clarity, ask_clarify, assess_clarity, ask_clarify, assess_clarity, extract_terms, create, created]
+  status: succeeded
+  outputs: {issue_number: 31}
