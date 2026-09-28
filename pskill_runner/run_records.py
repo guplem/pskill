@@ -35,8 +35,17 @@ class RunInfo(TypedDict):
     final_report: str | None
 
 
+class ParallelTask(TypedDict):
+    """One task of the current parallel block."""
+
+    item: Any
+    agent: str | None
+    output: dict[str, Any] | None  # None until a valid answer arrives
+    attempts: int
+
+
 class Frame(TypedDict):
-    """One skill on the call stack. A nested `call` pushes a new frame (M2)."""
+    """One skill on the call stack. A `call` block pushes a frame; the child's end block pops it."""
 
     skill_id: str
     inputs: dict[str, Any]
@@ -46,6 +55,8 @@ class Frame(TypedDict):
     current_block: str | None
     arrived_from: str | None
     arrival_reason: str | None
+    tasks: list[ParallelTask] | None  # the tasks of the current parallel block, if any
+    started_at: str
 
 
 class RunState(TypedDict):
@@ -54,7 +65,7 @@ class RunState(TypedDict):
     frames: list[Frame]
 
 
-def new_frame(skill_id: str, inputs: dict[str, Any]) -> Frame:
+def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str) -> Frame:
     return Frame(
         skill_id=skill_id,
         inputs=inputs,
@@ -64,4 +75,6 @@ def new_frame(skill_id: str, inputs: dict[str, Any]) -> Frame:
         current_block=None,
         arrived_from=None,
         arrival_reason=None,
+        tasks=None,
+        started_at=started_at,
     )
