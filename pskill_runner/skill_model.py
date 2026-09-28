@@ -52,8 +52,37 @@ class EndBlock(Block):
     report: str | None = None
 
 
-AnyBlock = TaskBlock | DecisionBlock | EndBlock
-AGENT_BLOCK_TYPES = (TaskBlock, DecisionBlock)
+@dataclass(frozen=True, kw_only=True)
+class ParallelBlock(Block):
+    """One subagent task per item of `for_each`, joined into one list of results."""
+
+    for_each: list[Any] | str
+    agent: str | None = None
+    instruction: str
+    output: FieldMap
+    next: list[Edge]
+
+
+@dataclass(frozen=True, kw_only=True)
+class ScriptBlock(Block):
+    """A command that the runner executes itself, with no shell and no LLM."""
+
+    run: list[Any]
+    parse: str = "text"
+    next: list[Edge]
+
+
+@dataclass(frozen=True, kw_only=True)
+class CallBlock(Block):
+    """Run another skill as a function: inputs in, outputs out."""
+
+    skill: str
+    inputs: dict[str, Any] = field(default_factory=dict)
+    next: list[Edge]
+
+
+AnyBlock = TaskBlock | DecisionBlock | ParallelBlock | ScriptBlock | CallBlock | EndBlock
+AgentBlock = TaskBlock | DecisionBlock | ParallelBlock
 
 
 def block_edges(block: AnyBlock) -> list[Edge]:
@@ -90,3 +119,11 @@ class Skill:
         if value.endswith(".md"):
             return (self.folder / value).read_text(encoding="utf-8")
         return value
+
+
+@dataclass(frozen=True)
+class SkillCatalog:
+    """Every skill and pskill agent of a project, for the checks that look across skills."""
+
+    skills: dict[str, Skill]
+    agent_names: set[str]

@@ -141,3 +141,17 @@ def test_commands_outside_a_project_explain_what_to_do(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "No .pskill folder" in result.stderr
+
+
+def test_validate_checks_calls_across_skills(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    caller = PLAN_SKILL.replace("id: plan-work", "id: caller").replace(
+        "  done:\n    type: end",
+        "  done:\n    type: call\n    skill: missing-skill\n    next: finished\n  finished:\n    type: end",
+    )
+    write_skill(root / ".pskill" / "skills", "caller", caller, PLAN_SKILL_FILES)
+
+    result = run_pskill(root, "validate")
+
+    assert result.returncode == 2
+    assert "caller  blocks.done: there is no skill 'missing-skill'" in result.stdout

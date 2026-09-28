@@ -36,7 +36,7 @@ from pskill_runner.run_store import (
     write_json_atomic,
 )
 from pskill_runner.shells import detect_shell
-from pskill_runner.skill_loader import SkillLoadError, load_skill
+from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
 from pskill_runner.skill_model import AnyBlock, DecisionBlock, Edge, EndBlock, Skill, TaskBlock
 from pskill_runner.validator import validate_skill
 from pskill_runner.yaml_loading import load_answer_yaml
@@ -59,7 +59,7 @@ class RunnerStop(Exception):
 
 def start_run(project: Project, skill_id: str, raw_inputs: dict[str, Any], mode: str, harness: str) -> tuple[str, str]:
     """Create a run and return its id and its first packet."""
-    skill = load_valid_skill(project.skills_folder / skill_id)
+    skill = load_valid_skill(project, skill_id)
     inputs = checked_inputs(skill, raw_inputs)
     now = utc_now()
     run_id = new_run_id(now)
@@ -189,14 +189,18 @@ def run_folder(project: Project, run_id: str) -> Path:
     return folder
 
 
-def load_valid_skill(folder: Path) -> Skill:
+def load_valid_skill(project: Project, skill_id: str) -> Skill:
+    """Load a skill and refuse it when it has validation errors (a stale stub never blocks a run)."""
+    folder = project.skills_folder / skill_id
     if not (folder / "skill.yaml").is_file():
         raise RunError(f"There is no skill {folder.name!r}. List the skills with `pskill list`.")
     try:
         skill = load_skill(folder)
     except SkillLoadError as error:
         raise RunError(f"The skill {folder.name!r} is invalid:\n- " + "\n- ".join(error.problems)) from error
-    errors = [f"{problem.location}: {problem.message}" for problem in validate_skill(skill) if problem.level == "error"]
+    catalog = load_catalog(project.skills_folder, project.agents_folder)
+    problems = validate_skill(skill, catalog)
+    errors = [f"{problem.location}: {problem.message}" for problem in problems if problem.level == "error"]
     if errors:
         raise RunError(f"The skill {folder.name!r} is invalid:\n- " + "\n- ".join(errors))
     return skill

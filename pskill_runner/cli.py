@@ -25,7 +25,8 @@ from pskill_runner.engine import (
 )
 from pskill_runner.project import Project, ProjectError, find_project
 from pskill_runner.run_records import UNFINISHED_STATUSES
-from pskill_runner.skill_loader import SkillLoadError, load_skill
+from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
+from pskill_runner.skill_model import SkillCatalog
 from pskill_runner.validator import Problem, validate_skill
 from pskill_runner.yaml_loading import load_answer_yaml
 
@@ -180,10 +181,11 @@ def skills_table(project: Project) -> str:
 
 def validate_command(project: Project, skill_id: str | None) -> int:
     folders = skill_folders(project, skill_id)
+    catalog = load_catalog(project.skills_folder, project.agents_folder)
     lines = []
     error_count = warning_count = 0
     for folder in folders:
-        for problem in skill_problems(folder):
+        for problem in skill_problems(folder, catalog):
             lines.append(f"{problem.level:<7}{folder.name}  {problem.location}: {problem.message}")
             error_count += problem.level == "error"
             warning_count += problem.level == "warning"
@@ -193,9 +195,9 @@ def validate_command(project: Project, skill_id: str | None) -> int:
     return EXIT_VALIDATION_ERROR if error_count else EXIT_OK
 
 
-def skill_problems(folder: Path) -> list[Problem]:
+def skill_problems(folder: Path, catalog: SkillCatalog) -> list[Problem]:
     try:
         skill = load_skill(folder)
     except SkillLoadError as error:
         return [Problem(level="error", location="skill.yaml", message=problem) for problem in error.problems]
-    return validate_skill(skill)
+    return validate_skill(skill, catalog)
