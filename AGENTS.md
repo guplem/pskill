@@ -8,6 +8,8 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 |---|---|
 | `pskill.py` | Entry script. Holds the PEP 723 dependency block, then calls `pskill_runner.cli.main`. |
 | `pskill_runner/` | The runner package. One module per concern (table below). |
+| `viewer/` | The viewer page: plain HTML, CSS, and JavaScript, no build step. It only draws what `viewer_data.py` returns. |
+| `launchers/` | Double-click launchers for the viewer (Windows, macOS, Linux). |
 | `tests/` | The pytest suite. One test file per module. |
 | `SPEC.md` | The implementation specification. |
 | `.pskill/skills/`, `.pskill/agents/` | The proof skills and their pskill agents. They run on this repository's own issues and pull requests (the test bed). |
@@ -37,6 +39,8 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `codex.py` | Codex's `.codex/hooks.json` hooks, `.codex/rules/pskill.rules`, and hook output. |
 | `hooks.py` | The Stop and session-start hook logic, for every harness. |
 | `vendoring.py` | `pskill init` and `pskill update`: copy the runner into a project, with file hashes. |
+| `viewer_data.py` | Everything the viewer shows: marked Mermaid graphs, timeline rows, summaries. |
+| `viewer_server.py` | `pskill view`: the local server on 127.0.0.1 (JSON API plus the static files). |
 
 ## Commands
 

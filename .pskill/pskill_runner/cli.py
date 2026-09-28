@@ -36,6 +36,7 @@ from pskill_runner.stubs import StubError, sync_stubs
 from pskill_runner.sync import sync_project
 from pskill_runner.validator import Problem, validate_skill
 from pskill_runner.vendoring import VendoringError, init_project, update_project
+from pskill_runner.viewer_server import serve_viewer
 from pskill_runner.yaml_loading import load_answer_yaml
 
 EXIT_OK = 0
@@ -92,6 +93,10 @@ def build_parser() -> argparse.ArgumentParser:
     update = commands.add_parser("update", help="Replace the vendored runner with another version.")
     update.add_argument("--from", dest="source", help="A pskill checkout, or another project's .pskill/ folder.")
     update.add_argument("--force", action="store_true", help="Overwrite vendored files that were edited by hand.")
+
+    view = commands.add_parser("view", help="Open the read-only run viewer in the browser.")
+    view.add_argument("--port", type=int, help="Default: viewer_port from config.yaml. 0 picks a free port.")
+    view.add_argument("--no-open", action="store_true", help="Do not open the browser.")
 
     hook = commands.add_parser("hook", help="Internal: the harness calls this from its hooks.")
     hook.add_argument("event", choices=["stop", "session-start"])
@@ -156,6 +161,10 @@ def run_command(options: argparse.Namespace) -> int:
         return sync_command(project, options.check)
     if command == "update":
         return update_command(project, options.source, options.force)
+    if command == "view":
+        port = project.config.viewer_port if options.port is None else options.port
+        serve_viewer(project, running_copy_root() / "viewer", port, open_browser=not options.no_open)
+        return EXIT_OK
     raise RunError(f"Unknown command {command!r}.")
 
 
