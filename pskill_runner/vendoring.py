@@ -112,11 +112,19 @@ def copy_vendored_files(source_root: Path, pskill_folder: Path, old_files: list[
     version = source_version(source_root)
     record = {
         "version": version,
-        "source": str(source_root),
+        "source": source_label(source_root, project_root=pskill_folder.parent),
         "files": {relative_path: file_hash(pskill_folder / relative_path) for relative_path in files},
     }
     (pskill_folder / VENDORED_FILE_NAME).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")
-    return [f"Vendored pskill {version} from {source_root} ({len(files)} files)."]
+    return [f"Vendored pskill {version} from {record['source']} ({len(files)} files)."]
+
+
+def source_label(source_root: Path, project_root: Path) -> str:
+    """The source as VENDORED records it: relative when it is inside the project, so no local path leaks."""
+    try:
+        return source_root.resolve().relative_to(project_root.resolve()).as_posix() or "."
+    except ValueError:
+        return source_root.resolve().as_posix()
 
 
 def write_if_missing(path: Path, text: str) -> None:

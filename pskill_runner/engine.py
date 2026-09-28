@@ -143,9 +143,12 @@ def start_run(
     return run_id, text
 
 
-def current_packet(project: Project, run_id: str | None) -> str:
-    """Print the current packet again. This changes nothing."""
-    return Run.load(project, resolve_run_id(project, run_id)).current_text()
+def current_packet(project: Project, run_id: str | None, harness: str | None = None) -> str:
+    """Print the current packet again, worded for the calling harness. This changes nothing."""
+    run = Run.load(project, resolve_run_id(project, run_id))
+    if harness is not None:
+        run.adapter = adapter_for(harness)
+    return run.current_text()
 
 
 def submit_answer(
@@ -155,10 +158,12 @@ def submit_answer(
     task: int | None = None,
     executor: InlineExecutor | None = None,
     runs_folder: Path | None = None,
+    harness: str | None = None,
 ) -> str:
     folder = run_folder(project, run_id, runs_folder)
     with run_lock(folder):
         run = Run.load(project, run_id, executor, runs_folder)
+        run.use_harness(harness)
         text = run.submit(answer_text, task)
         run.save()
     return text
@@ -173,9 +178,10 @@ def pause_run(project: Project, run_id: str) -> str:
     return text
 
 
-def resume_run(project: Project, run_id: str) -> str:
+def resume_run(project: Project, run_id: str, harness: str | None = None) -> str:
     with run_lock(run_folder(project, run_id)):
         run = Run.load(project, run_id)
+        run.use_harness(harness)
         run.require_status(("paused",), "resume")
         text = run.resume()
         run.save()
@@ -189,6 +195,22 @@ def cancel_run(project: Project, run_id: str) -> str:
         run.end_run("cancelled", outputs={}, report=None)
         run.save()
     return f"Run {run_id} is cancelled. No more pskill commands are needed.\n"
+
+
+def register_stop_attempt(project: Project, run_id: str) -> bool:
+    """Count one try of the agent to end its turn with an open block. Return True to keep it working.
+
+    After `stop_hook_max_blocks` tries in a row with no submission between them, pause the run and
+    return False, so the agent can stop and a stuck run never loops forever.
+    """
+    with run_lock(run_folder(project, run_id)):
+        run = Run.load(project, run_id)
+        run.info["stop_blocks"] += 1
+        keep_working = run.info["stop_blocks"] <= project.config.stop_hook_max_blocks
+        if not keep_working:
+            run.pause("agent_stopped", "The agent ended its turn with an open block, several times in a row.")
+        run.save()
+    return keep_working
 
 
 def read_run_info(project: Project, run_id: str, runs_folder: Path | None = None) -> RunInfo:
@@ -391,6 +413,14 @@ class Run:
         self.info["current_block"] = self.frame["current_block"]
         write_json_atomic(self.folder / "run.json", self.info)
         write_json_atomic(self.folder / "state.json", self.state)
+
+    def use_harness(self, harness: str | None) -> None:
+        """A run can continue in another harness (D13). Record the change and word packets for it."""
+        if harness is None or harness == self.info["harness"]:
+            return
+        self.adapter = adapter_for(harness)
+        self.log("harness_changed", **{"from": self.info["harness"], "to": harness})
+        self.info["harness"] = harness
 
     def log(self, event_type: str, **fields: Any) -> None:
         append_event(self.folder, event_type, frame=">".join(self.chain()), **fields)
@@ -739,6 +769,7 @@ class Run:
             shell=detect_shell(),
             question_wording=self.adapter.question_wording,
             task_index=task_index,
+            subagent_wording=self.adapter.subagent_wording,
         )
 
     def return_fields(self, block: AgentBlock) -> FieldMap:

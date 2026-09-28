@@ -136,3 +136,19 @@ def test_stubs_are_written_with_lf_line_endings(tmp_path: Path) -> None:
     sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
 
     assert b"\r\n" not in (tmp_path / ".claude/skills/plan-work/SKILL.md").read_bytes()
+
+
+def test_the_stub_of_a_protected_skill_is_kept(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
+    (project.skills_folder / "plan-work" / "skill.yaml").write_text("schema: pskill/v1\nblocks: [\n", encoding="utf-8")
+
+    changes = sync_stubs(
+        project,
+        load_catalog(project.skills_folder, project.agents_folder),
+        check_only=False,
+        protected_names={"plan-work"},
+    )
+
+    assert changes == []
+    assert (tmp_path / ".claude/skills/plan-work/SKILL.md").is_file()

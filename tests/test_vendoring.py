@@ -47,6 +47,7 @@ def test_init_copies_the_runner_and_records_its_hashes(tmp_path: Path) -> None:
     assert ".pskill/** text eol=lf" in (project_root / ".gitattributes").read_text(encoding="utf-8")
     vendored = json.loads((pskill_folder / "VENDORED").read_text(encoding="utf-8"))
     assert vendored["version"] == "9.9.9"
+    assert vendored["source"] == source.resolve().as_posix()
     assert vendored["files"]["pskill.py"].startswith("sha256:")
 
 
@@ -133,3 +134,4 @@ def test_this_repository_vendors_an_up_to_date_copy_of_its_own_runner() -> None:
         )
     vendored = json.loads((vendored_folder / "VENDORED").read_text(encoding="utf-8"))
     assert vendored["version"] == __version__
+    assert vendored["source"] == "."

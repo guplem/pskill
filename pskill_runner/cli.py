@@ -4,15 +4,18 @@ Exit codes: 0 ok, 1 usage error, 2 validation error, 3 internal error.
 """
 
 import argparse
+import json
 import os
 import sys
 import traceback
 from pathlib import Path
 from typing import Any
 
+import pskill_runner
 from pskill_runner import __version__
-from pskill_runner.adapters import AdapterError, detect_harness
+from pskill_runner.adapters import GENERIC, AdapterError, detect_harness
 from pskill_runner.answer_input import AnswerInputError, read_answer
+from pskill_runner.claude_code import SettingsError, stop_response
 from pskill_runner.engine import (
     RunError,
     cancel_run,
@@ -23,12 +26,16 @@ from pskill_runner.engine import (
     start_run,
     submit_answer,
 )
+from pskill_runner.hooks import session_start_text, stop_hook_reason
 from pskill_runner.project import Project, ProjectError, find_project
 from pskill_runner.run_records import UNFINISHED_STATUSES
 from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
 from pskill_runner.skill_model import SkillCatalog
 from pskill_runner.skill_tests import run_skill_tests
+from pskill_runner.stubs import StubError, sync_stubs
+from pskill_runner.sync import sync_project
 from pskill_runner.validator import Problem, validate_skill
+from pskill_runner.vendoring import VendoringError, init_project, update_project
 from pskill_runner.yaml_loading import load_answer_yaml
 
 EXIT_OK = 0
@@ -36,7 +43,8 @@ EXIT_USAGE_ERROR = 1
 EXIT_VALIDATION_ERROR = 2
 EXIT_INTERNAL_ERROR = 3
 
-USER_ERRORS = (RunError, ProjectError, AnswerInputError, AdapterError)
+USER_ERRORS = (RunError, ProjectError, AnswerInputError, AdapterError, VendoringError, SettingsError, StubError)
+HOOK_INPUT_TIMEOUT_S = 2.0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,6 +82,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     test = commands.add_parser("test", help="Run the skills' test cases with a scripted fake agent.")
     test.add_argument("skill", nargs="?", help="Default: every skill.")
+
+    sync = commands.add_parser("sync", help="Write the skill stubs and the harness hooks and permission rule.")
+    sync.add_argument("--check", action="store_true", help="Only report what is out of date.")
+
+    init = commands.add_parser("init", help="Create .pskill/ in the current folder and vendor the runner.")
+    init.add_argument("--from", dest="source", help="A pskill checkout. Default: the runner that runs this command.")
+
+    update = commands.add_parser("update", help="Replace the vendored runner with another version.")
+    update.add_argument("--from", dest="source", help="A pskill checkout, or another project's .pskill/ folder.")
+    update.add_argument("--force", action="store_true", help="Overwrite vendored files that were edited by hand.")
+
+    hook = commands.add_parser("hook", help="Internal: the harness calls this from its hooks.")
+    hook.add_argument("event", choices=["stop", "session-start"])
+    hook.add_argument("--harness", required=True)
     return parser
 
 
@@ -103,18 +125,23 @@ def use_utf8_streams() -> None:
 
 
 def run_command(options: argparse.Namespace) -> int:
-    project = find_project(Path.cwd())
     command = options.command
+    if command == "hook":
+        return hook_command(options.event, options.harness)
+    if command == "init":
+        return init_command(options.source)
+    project = find_project(Path.cwd())
+    harness = specific_harness()
     if command == "start":
         return print_text(start_command(project, options))
     if command == "current":
-        return print_text(current_packet(project, options.run_id))
+        return print_text(current_packet(project, options.run_id, harness))
     if command == "submit":
-        return print_text(submit_answer(project, options.run_id, read_answer(sys.stdin)))
+        return print_text(submit_answer(project, options.run_id, read_answer(sys.stdin), harness=harness))
     if command == "pause":
         return print_text(pause_run(project, options.run_id))
     if command == "resume":
-        return print_text(resume_run(project, options.run_id))
+        return print_text(resume_run(project, options.run_id, harness))
     if command == "cancel":
         return print_text(cancel_run(project, options.run_id))
     if command == "runs":
@@ -125,7 +152,21 @@ def run_command(options: argparse.Namespace) -> int:
         return validate_command(project, options.skill)
     if command == "test":
         return test_command(project, options.skill)
+    if command == "sync":
+        return sync_command(project, options.check)
+    if command == "update":
+        return update_command(project, options.source, options.force)
     raise RunError(f"Unknown command {command!r}.")
+
+
+def specific_harness() -> str | None:
+    """The detected harness, or None when detection finds only `generic`.
+
+    None keeps the harness that the run already records, so a command from an unknown shell never
+    turns a Claude Code run into a generic one.
+    """
+    harness = detect_harness(os.environ)
+    return None if harness == GENERIC.name else harness
 
 
 def print_text(text: str) -> int:
@@ -195,6 +236,12 @@ def validate_command(project: Project, skill_id: str | None) -> int:
             lines.append(f"{problem.level:<7}{folder.name}  {problem.location}: {problem.message}")
             error_count += problem.level == "error"
             warning_count += problem.level == "warning"
+    if skill_id is None:
+        for change in sync_stubs(project, catalog, check_only=True):
+            lines.append(
+                f"error  (stubs)  {change.path.relative_to(project.root).as_posix()} is out of date: run `pskill sync`"
+            )
+            error_count += 1
     noun = "skill" if len(folders) == 1 else "skills"
     lines.append(f"{len(folders)} {noun} checked: {error_count} errors, {warning_count} warnings.")
     print_text("\n".join(lines))
@@ -226,3 +273,63 @@ def test_command(project: Project, skill_id: str | None) -> int:
     lines.append(f"{total} {noun} run: {passed} passed, {failed} failed.")
     print_text("\n".join(lines))
     return EXIT_VALIDATION_ERROR if failed else EXIT_OK
+
+
+def sync_command(project: Project, check_only: bool) -> int:
+    lines = sync_project(project, check_only)
+    if not lines:
+        return print_text("Everything is up to date.")
+    print_text("\n".join(lines))
+    return EXIT_VALIDATION_ERROR if check_only else EXIT_OK
+
+
+def running_copy_root() -> Path:
+    """The folder of the runner that runs this command: a pskill checkout or a project's .pskill/."""
+    return Path(pskill_runner.__file__).resolve().parent.parent
+
+
+def init_command(source: str | None) -> int:
+    project_root = Path.cwd()
+    lines = init_project(project_root, Path(source).resolve() if source else running_copy_root())
+    lines += sync_project(find_project(project_root), check_only=False)
+    lines.append("Next: add a skill in .pskill/skills/<id>/, then run `uv run .pskill/pskill.py sync`.")
+    return print_text("\n".join(lines))
+
+
+def update_command(project: Project, source: str | None, force: bool) -> int:
+    if source is None:
+        raise RunError("Name the source with --from <a pskill checkout, or another project's .pskill folder>.")
+    lines = update_project(project.root, Path(source).resolve(), force)
+    lines += sync_project(project, check_only=False)
+    return print_text("\n".join(lines))
+
+
+def hook_command(event: str, harness: str) -> int:
+    """Answer a harness hook. A hook must never break the harness, so every failure ends quietly."""
+    try:
+        hook_input = read_hook_input()
+        project = find_project(Path(str(hook_input.get("cwd") or Path.cwd())))
+        if event == "stop":
+            stdout, exit_code = stop_hook_output(project, harness)
+            sys.stdout.write(stdout)
+            return exit_code
+        sys.stdout.write(session_start_text(project))
+    except Exception as error:  # a hook must never fail the harness
+        print(f"pskill hook {event}: {error}", file=sys.stderr)
+    return EXIT_OK
+
+
+def read_hook_input() -> dict[str, Any]:
+    try:
+        text = read_answer(sys.stdin, timeout_s=HOOK_INPUT_TIMEOUT_S)
+    except AnswerInputError:
+        return {}
+    parsed = json.loads(text)
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def stop_hook_output(project: Project, harness: str) -> tuple[str, int]:
+    reason = stop_hook_reason(project, harness)
+    if harness == "claude-code":
+        return stop_response(reason)
+    return ("" if reason is None else reason + "\n"), EXIT_OK

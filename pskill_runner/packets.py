@@ -38,6 +38,7 @@ class AgentPacket:
     shell: str
     question_wording: str
     task_index: int | None = None  # set for one task of a parallel block
+    subagent_wording: str = ""  # how this harness spawns subagents, for parallel packets
 
     @property
     def asks_the_human(self) -> bool:
@@ -124,6 +125,7 @@ def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], to
         "",
         "### Parallel tasks",
         "Spawn one subagent per task below, all at once. Give each subagent exactly its prompt.",
+        *([packet.subagent_wording] if packet.subagent_wording else []),
         f"{len(open_tasks)} of {total_tasks} tasks are still open.",
         f"When every subagent has finished, run: {packet.runner_command} current {packet.run_id}",
     ]

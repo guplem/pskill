@@ -86,19 +86,25 @@ def is_generated(path: Path) -> bool:
     return path.is_file() and GENERATED_MARKER in path.read_text(encoding="utf-8")
 
 
-def sync_stubs(project: Project, catalog: SkillCatalog, check_only: bool) -> list[StubChange]:
-    """Bring every stub folder in line with the skills. With check_only, report the changes only."""
+def sync_stubs(
+    project: Project, catalog: SkillCatalog, check_only: bool, protected_names: set[str] | None = None
+) -> list[StubChange]:
+    """Bring every stub folder in line with the skills. With check_only, report the changes only.
+
+    `protected_names` are skills that exist but do not load right now (for example a half-edited
+    skill.yaml): their stubs are neither updated nor deleted.
+    """
     stubs = wanted_stubs(catalog)
     changes: list[StubChange] = []
     for folder_name in project.config.stub_folders:
         folder = project.root / folder_name
-        changes += stub_folder_changes(folder, stubs)
+        changes += stub_folder_changes(folder, stubs, protected_names or set())
     if not check_only:
         apply_stub_changes(changes, stubs)
     return changes
 
 
-def stub_folder_changes(folder: Path, stubs: dict[str, str]) -> list[StubChange]:
+def stub_folder_changes(folder: Path, stubs: dict[str, str], protected_names: set[str]) -> list[StubChange]:
     changes = []
     for name, text in stubs.items():
         path = folder / name / STUB_FILE_NAME
@@ -110,7 +116,7 @@ def stub_folder_changes(folder: Path, stubs: dict[str, str]) -> list[StubChange]
             changes.append(StubChange(path, "updated"))
     if folder.is_dir():
         for path in sorted(folder.glob(f"*/{STUB_FILE_NAME}")):
-            if path.parent.name not in stubs and is_generated(path):
+            if path.parent.name not in stubs and path.parent.name not in protected_names and is_generated(path):
                 changes.append(StubChange(path, "deleted"))
     return changes
 

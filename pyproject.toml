@@ -32,7 +32,8 @@ addopts = "-ra"
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-extend-exclude = ["*.md"]
+# The vendored copy in .pskill/ equals the sources byte for byte (tests/test_vendoring.py checks it).
+extend-exclude = ["*.md", ".pskill/pskill.py", ".pskill/pskill_runner"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]

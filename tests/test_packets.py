@@ -176,3 +176,11 @@ def test_the_parallel_packet_lists_one_full_prompt_per_task() -> None:
     assert "Goal: Produce a plan that the user approved." in text
     assert "submit r-20260927-1432-ab12 --task 2 <<'PSKILL'" in text
     assert "uv run .pskill/pskill.py current r-20260927-1432-ab12" in text
+
+
+def test_the_parallel_packet_names_the_harness_spawn_tool() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
+    packet = replace(PLAN_PACKET, subagent_wording="Use the Agent tool, one call per task.")
+
+    assert "Use the Agent tool, one call per task." in render_parallel_packet(packet, [task], total_tasks=1)

@@ -287,3 +287,14 @@ def test_start_rejects_invalid_inputs(tmp_path: Path) -> None:
 
     with pytest.raises(RunError, match="'topic' is a required field"):
         start_run(project, "plan-work", {}, mode="interactive", harness="generic")
+
+
+def test_a_run_that_continues_in_another_harness_records_the_change(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    submit_answer(project, run_id, QUESTION_PLAN, harness="claude-code")
+
+    assert read_run_info(project, run_id)["harness"] == "claude-code"
+    changed = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "harness_changed"]
+    assert [(event["from"], event["to"]) for event in changed] == [("generic", "claude-code")]
