@@ -12,10 +12,9 @@ from pathlib import Path
 from typing import Any
 
 import pskill_runner
-from pskill_runner import __version__
+from pskill_runner import __version__, claude_code, codex
 from pskill_runner.adapters import GENERIC, AdapterError, detect_harness
 from pskill_runner.answer_input import AnswerInputError, read_answer
-from pskill_runner.claude_code import SettingsError, stop_response
 from pskill_runner.engine import (
     RunError,
     cancel_run,
@@ -26,6 +25,7 @@ from pskill_runner.engine import (
     start_run,
     submit_answer,
 )
+from pskill_runner.hook_settings import SettingsError
 from pskill_runner.hooks import session_start_text, stop_hook_reason
 from pskill_runner.project import Project, ProjectError, find_project
 from pskill_runner.run_records import UNFINISHED_STATUSES
@@ -331,5 +331,7 @@ def read_hook_input() -> dict[str, Any]:
 def stop_hook_output(project: Project, harness: str) -> tuple[str, int]:
     reason = stop_hook_reason(project, harness)
     if harness == "claude-code":
-        return stop_response(reason)
+        return claude_code.stop_response(reason)
+    if harness == "codex":
+        return codex.stop_response(reason)
     return ("" if reason is None else reason + "\n"), EXIT_OK

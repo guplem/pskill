@@ -89,6 +89,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 - **L3. Enforcement is soft without a Stop hook.** `pskill current` and the session-start message recover a run that the agent left.
 - **L4. The Stop hook binds by harness and checkout.** Two sessions of the same harness in the same folder share the hook. Separate checkouts (the user's `monorepo-clone-N` folders) do not conflict.
 - **L5. Instruction files are on disk.** The agent could read future blocks. This is not a security boundary.
+- **L7. Codex runs allowed commands outside its sandbox.** The Codex rule that lets the agent call the runner without a prompt also runs the runner outside the sandbox, so the runner's `script` blocks do too. Remove `.codex/rules/pskill.rules` to keep the sandbox and accept a prompt per block.
 - **L6. No isolation without subagents.** With the `generic` adapter, parallel tasks run one by one in the main agent's context, so each task can see the earlier ones.
 
 ### 3.2 Items to verify at implementation time
@@ -518,16 +519,18 @@ class HarnessAdapter(Protocol):
 
 | | Claude Code | Codex CLI | generic (any other harness) |
 |---|---|---|---|
-| Detect | env `CLAUDECODE=1` | VERIFY the env var | fallback when nothing else matches |
+| Detect | env `CLAUDECODE=1` | env `CODEX_THREAD_ID` (set for every command) | fallback when nothing else matches |
 | Stub folder | `.claude/skills/` | `.agents/skills/` | `.agents/skills/` |
-| Stop hook | `Stop`; pskill answers with `hookSpecificOutput.additionalContext` (non-error feedback that keeps Claude working; Claude Code also caps continuations at 8) | `Stop` in `.codex/hooks.json` (VERIFY) | none |
-| Session-start hook | `SessionStart` with matcher `startup\|resume\|clear\|compact`; its plain stdout becomes context | `SessionStart` (VERIFY) | none |
-| Subagents | Agent tool with `subagent_type: general-purpose` | VERIFY the spawn mechanism | no (one by one) |
+| Stop hook | `Stop`; pskill answers with `hookSpecificOutput.additionalContext` (non-error feedback that keeps Claude working; Claude Code also caps continuations at 8) | `Stop` in `.codex/hooks.json`; pskill answers with `{"decision": "block", "reason": ...}` (Codex needs JSON on stdout) | none |
+| Session-start hook | `SessionStart` with matcher `startup\|resume\|clear\|compact`; its plain stdout becomes context | `SessionStart`; its plain stdout becomes context | none |
+| Subagents | Agent tool with `subagent_type: general-purpose` | `spawn_agent`, then `wait_agent` | no (one by one) |
 | Question tool | `AskUserQuestion` (2-4 options; above 4, use a plain question) | plain question | plain question |
 
 - An adapter that cannot VERIFY a capability uses the `generic` behavior for it.
 - Gemini CLI and Cursor use `generic` in the MVP. They read `.agents/skills/` (VERIFY), so they find the stubs.
-- Codex runs project hooks only after the user trusts the project (VERIFY). The README must say so.
+- Codex runs project hooks and rules only after the user trusts the project, and asks the user to trust each hook definition once (`/hooks`). The README must say so.
+- Codex runs hooks from the session's folder, with no project-root placeholder. pskill's Codex hooks resolve the runner from the git root: `"$(git rev-parse --show-toplevel)/.pskill/pskill.py"` works in bash and PowerShell.
+- Codex verified facts, with sources, live in `pskill_runner/codex.py`.
 - `--harness` beats detection. Stubs always pass `--harness auto`, so one stub text works in every folder and every harness.
 - The "Stub folder" row only says which folder each harness reads. `config.stub_folders` decides where `sync` writes.
 - Claude Code reads project skills only from `.claude/skills/`, not from `.agents/skills/` (verified on 2026-09-28), so the default `stub_folders` shows no duplicates.
@@ -551,7 +554,7 @@ class HarnessAdapter(Protocol):
 
 `sync` adds exactly one allow rule for each target harness, and nothing else:
 - **Claude Code** (`.claude/settings.json`, key `permissions.allow`): `Bash(uv run .pskill/pskill.py *)` (verified: the `*` form matches the whole command, including a heredoc).
-- **Codex:** the matching rule, if its project config supports one (VERIFY). The PowerShell form of `submit` starts with `$OutputEncoding = ...`, so a prefix rule may not match it. VERIFY this, and if needed move the encoding statement into a form that matches. If no rule is possible, the README shows the user what to allow.
+- **Codex** (`.codex/rules/pskill.rules`): `prefix_rule(pattern = ["uv", "run", ".pskill/pskill.py"], decision = "allow")`. Codex runs an allowed command **outside its sandbox** (limitation L7). Codex splits a PowerShell command at `;` and `|` before it checks rules; whether the `$OutputEncoding` part of the PowerShell `submit` form still prompts is checked in the acceptance run (#24).
 
 Rules:
 - `sync` finds its own rule by its exact text. It never removes or changes other rules.

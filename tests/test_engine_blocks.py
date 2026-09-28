@@ -261,3 +261,21 @@ def test_the_lock_keeps_every_concurrent_task_submission(tmp_path: Path) -> None
     assert read_run_info(project, run_id)["outputs"] == {"wrong_count": 8}
     results = read_run_state(project, run_id)["frames"][0]["steps"]["check"]["results"]
     assert [result["wrong"] for result in results] == [[f"claim {index}"] for index in range(8)]
+
+
+HARNESS_TOOL_NAMES = ("AskUserQuestion", "Agent tool", "subagent_type", "spawn_agent")
+
+
+def test_generic_packets_name_no_harness_tool(tmp_path: Path) -> None:
+    project = make_project(
+        tmp_path,
+        {"parent": PARENT_SKILL, "child": CHILD_SKILL, "fanout": PARALLEL_SKILL},
+        {"checker": "You check facts."},
+    )
+    _, parallel_packet = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic"
+    )
+    _, task_packet = start_run(project, "parent", {}, mode="interactive", harness="generic")
+
+    for packet in (parallel_packet, task_packet):
+        assert not any(tool_name in packet for tool_name in HARNESS_TOOL_NAMES), packet

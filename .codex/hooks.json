@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run \"$(git rev-parse --show-toplevel)/.pskill/pskill.py\" hook stop --harness codex"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run \"$(git rev-parse --show-toplevel)/.pskill/pskill.py\" hook session-start --harness codex"
+          }
+        ]
+      }
+    ]
+  }
+}

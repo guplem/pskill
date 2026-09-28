@@ -292,3 +292,13 @@ def test_update_needs_a_source(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "--from" in result.stderr
+
+
+def test_the_codex_stop_hook_answers_with_a_block_decision(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    run_pskill(root, "start", "plan-work", "--harness", "codex", "--input", "topic=x")
+
+    result = run_pskill(root, "hook", "stop", "--harness", "codex", stdin='{"hook_event_name": "Stop"}')
+
+    assert result.returncode == 0, result.stderr
+    assert '"decision": "block"' in result.stdout
