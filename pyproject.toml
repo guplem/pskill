@@ -1,0 +1,43 @@
+[project]
+name = "pskill"
+version = "0.1.0"
+description = "Portable programmatic skills: run agent skills as typed YAML graphs, one block at a time."
+readme = "SPEC.md"
+license = "MIT"
+requires-python = ">=3.11"
+# Keep this list equal to the PEP 723 block in pskill.py (a test checks it).
+dependencies = [
+    "jinja2>=3.1",
+    "jsonschema>=4.21",
+    "pyyaml>=6",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "pytest>=8",
+    "ruff>=0.6",
+    "types-jsonschema",
+    "types-pyyaml",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["pskill.py", "pskill_runner", "tests"]
