@@ -183,7 +183,7 @@ pr_number:
   properties: {..}             # objects: required, a nested field map
 ```
 
-The runner converts a field map to JSON Schema (with `additionalProperties: false`) and validates with the `jsonschema` package.
+The runner checks each answer against the field map directly: the types, `enum`, required fields, and no unknown fields. It does not go through JSON Schema, so every error message can name the field in plain words. (The `jsonschema` package validates only the structure of `skill.yaml` itself.)
 
 - **`description` is required** on every top-level field of `inputs`, `outputs`, and each block `output`. It tells the agent what the data is. The packet shows it next to the field.
 - Fields nested inside `items` or `properties` may omit it, so small structures stay short.
