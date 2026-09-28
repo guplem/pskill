@@ -1,0 +1,31 @@
+{
+  "version": "0.1.0",
+  "source": ".",
+  "files": {
+    "pskill.py": "sha256:f77149af363fa2e631f865e8bea15acee9230c7971ce52511e9b20c337436cc9",
+    "pskill_runner/__init__.py": "sha256:2c1d47d40a4bcf2efdd17dec592414e93ec02cfd78b1001dbc6f92b54e1d4e8c",
+    "pskill_runner/adapters.py": "sha256:4d62749768d41a7ed8f7e16a8cdc3130e88526bce8d34a454be26d07d7f33eb4",
+    "pskill_runner/answer_input.py": "sha256:2127461987aaba501b657379d5c1dacb1bfb87f1b596af27e7f32d6208ae4999",
+    "pskill_runner/claude_code.py": "sha256:1f1e00d66b5557cbb710c2ba5793398ef2b0a5f7fbfd395a163efa4ea49ab88b",
+    "pskill_runner/cli.py": "sha256:2216567c33a122805a591e6daa15ef5776c352c686829a8fc460b5691c88f1f4",
+    "pskill_runner/computed_values.py": "sha256:9a04b6a6d049d68e3713cb976da1ec3820918e0c496fc840b115a5248c89ff81",
+    "pskill_runner/engine.py": "sha256:219d7ed0907d9c44929f758fa8afc27766d4ecfc5005eab80b628720ed8dc881",
+    "pskill_runner/field_types.py": "sha256:9d4e191f190597a2e6a9e96835ad6fbb1f15ac3551d8fcfd6be76a1ee0f3911a",
+    "pskill_runner/hooks.py": "sha256:e898a7dcf9e8ad9c7352b82a92a13454f88241d31630fade5cbc3a69e9bacbaa",
+    "pskill_runner/inline_executor.py": "sha256:a76464c162882686e3a5bb79039e79e51bb49cff907ca658baee5c451e016b38",
+    "pskill_runner/packets.py": "sha256:61a68f1f1e2bfe4d01736596139e4d28888f790e795b53e79b12d936bebb1fd1",
+    "pskill_runner/project.py": "sha256:78ac4056ddd6bf4dc5f96f5426df301ee02ddf74d15fc9c019072d50a660a0aa",
+    "pskill_runner/run_records.py": "sha256:79ad20934248309044713ef5fe4584c1d477bd14ead2dda1814070190920c13c",
+    "pskill_runner/run_store.py": "sha256:03130a2bc894f44089a473ff9eea6a5ecf813d69ae590d8224a705842fdaf911",
+    "pskill_runner/shells.py": "sha256:766b7aa02664204da9b6cc06f3686e687c6364cb97a26ccaffddf355d27259d2",
+    "pskill_runner/skill_loader.py": "sha256:d78cfe9f2a1213373cb6f6039a6ae1558e88cf39815bb7e89f720f8bbc9c5e70",
+    "pskill_runner/skill_model.py": "sha256:ec91735aa957746a8a5a510253a81a1641f3438fad9b724e89f1debcfef18158",
+    "pskill_runner/skill_schema.py": "sha256:c699548c7a28eb99de990d1f20783643923eacf0ca62fa718997d4513445f976",
+    "pskill_runner/skill_tests.py": "sha256:66585580151212fce0c6730ca6286ab80dadf0a03cb497f97887fbf8709d29f5",
+    "pskill_runner/stubs.py": "sha256:66e034c494c007c9f1541e0f346776025fa981da95c7954035a80b32c8c522eb",
+    "pskill_runner/sync.py": "sha256:ecda3bbd240c5cb139e29bd0e7974c7feebb7a5396ec8b25cf36ef1712fc707a",
+    "pskill_runner/validator.py": "sha256:e01265388333f0c2eafaf270c799fa45cdeb2c8a7eb64019029d0c96704dded9",
+    "pskill_runner/vendoring.py": "sha256:38075bc122ba5f498d53a8f3ace03b23aa02621101dda844f3ab2f96f41da3ca",
+    "pskill_runner/yaml_loading.py": "sha256:22c2c28eb5f2311edd8f53ab42dc1464ab7b01b5a672b8b57887ad2d4aaa3457"
+  }
+}

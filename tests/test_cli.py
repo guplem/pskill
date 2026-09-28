@@ -1,5 +1,6 @@
 """Tests for the command line, run through the real entry script."""
 
+import os
 import re
 import subprocess
 import sys
@@ -11,10 +12,16 @@ from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 ENTRY_SCRIPT = Path(__file__).resolve().parent.parent / "pskill.py"
 
 
+HARNESS_VARIABLES = ("CLAUDECODE", "MSYSTEM")
+
+
 def run_pskill(project_root: Path, *arguments: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Run the entry script like an agent would, with no harness detected from the test's own shell."""
+    environment = {name: value for name, value in os.environ.items() if name not in HARNESS_VARIABLES}
     return subprocess.run(
         [sys.executable, str(ENTRY_SCRIPT), *arguments],
         cwd=project_root,
+        env=environment,
         input=stdin,
         stdin=subprocess.DEVNULL if stdin is None else None,
         capture_output=True,
@@ -116,7 +123,10 @@ def test_list_shows_the_skills(tmp_path: Path) -> None:
 
 
 def test_validate_passes_a_valid_skill(tmp_path: Path) -> None:
-    result = run_pskill(make_project(tmp_path), "validate")
+    root = make_project(tmp_path)
+    run_pskill(root, "sync")
+
+    result = run_pskill(root, "validate")
 
     assert result.returncode == 0, result.stdout
     assert "1 skill checked: 0 errors, 0 warnings." in result.stdout
@@ -192,3 +202,93 @@ def test_the_test_command_fails_with_exit_code_2(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "FAIL  plan-work  stops at once: status: expected succeeded, got cancelled" in result.stdout
+
+
+def test_sync_writes_the_stubs_and_the_claude_settings(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+
+    result = run_pskill(root, "sync")
+
+    assert result.returncode == 0, result.stderr
+    assert (root / ".claude" / "skills" / "plan-work" / "SKILL.md").is_file()
+    assert (root / ".agents" / "skills" / "plan-work" / "SKILL.md").is_file()
+    assert "hook stop --harness claude-code" in (root / ".claude" / "settings.json").read_text(encoding="utf-8")
+    assert run_pskill(root, "sync", "--check").returncode == 0
+
+
+def test_sync_check_fails_when_something_is_out_of_date(tmp_path: Path) -> None:
+    result = run_pskill(make_project(tmp_path), "sync", "--check")
+
+    assert result.returncode == 2
+    assert "out of date" in result.stdout
+
+
+def test_validate_reports_a_stale_stub(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    run_pskill(root, "sync")
+    stub = root / ".claude" / "skills" / "plan-work" / "SKILL.md"
+    stub.write_text(stub.read_text(encoding="utf-8").replace("Plan a piece", "Plan one piece"), encoding="utf-8")
+
+    result = run_pskill(root, "validate")
+
+    assert result.returncode == 2
+    assert "is out of date: run `pskill sync`" in result.stdout
+
+
+def test_the_stop_hook_blocks_an_open_run_with_claude_feedback(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    started = run_pskill(root, "start", "plan-work", "--harness", "claude-code", "--input", "topic=x")
+    run_id = run_id_of(started.stdout)
+
+    result = run_pskill(root, "hook", "stop", "--harness", "claude-code", stdin='{"hook_event_name": "Stop"}')
+
+    assert result.returncode == 0, result.stderr
+    assert f"pskill run {run_id} has an open block" in result.stdout
+    assert '"hookEventName": "Stop"' in result.stdout
+
+
+def test_the_stop_hook_allows_the_stop_when_nothing_is_open(tmp_path: Path) -> None:
+    result = run_pskill(make_project(tmp_path), "hook", "stop", "--harness", "claude-code", stdin="{}")
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+
+
+def test_the_session_start_hook_prints_context(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+
+    result = run_pskill(root, "hook", "session-start", "--harness", "claude-code", stdin="{}")
+
+    assert result.returncode == 0
+    assert "pskill: updated" in result.stdout
+
+
+def test_a_hook_never_fails_the_harness(tmp_path: Path) -> None:
+    result = run_pskill(tmp_path, "hook", "stop", "--harness", "claude-code", stdin="{}")
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+
+
+def test_init_vendors_the_runner_into_a_new_project(tmp_path: Path) -> None:
+    project_root = tmp_path / "new-project"
+    project_root.mkdir()
+
+    result = run_pskill(project_root, "init")
+
+    assert result.returncode == 0, result.stderr
+    assert (project_root / ".pskill" / "pskill.py").is_file()
+    assert (project_root / ".pskill" / "pskill_runner" / "engine.py").is_file()
+    assert (project_root / ".claude" / "skills" / "pskill" / "SKILL.md").is_file()
+    assert (project_root / ".claude" / "settings.json").is_file()
+
+
+def test_update_needs_a_source(tmp_path: Path) -> None:
+    project_root = tmp_path / "new-project"
+    project_root.mkdir()
+    run_pskill(project_root, "init")
+
+    result = run_pskill(project_root, "update")
+
+    assert result.returncode == 1
+    assert "--from" in result.stderr

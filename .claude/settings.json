@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run \"${CLAUDE_PROJECT_DIR}/.pskill/pskill.py\" hook stop --harness claude-code"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run \"${CLAUDE_PROJECT_DIR}/.pskill/pskill.py\" hook session-start --harness claude-code"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(uv run .pskill/pskill.py *)"
+    ]
+  }
+}

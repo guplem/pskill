@@ -520,8 +520,8 @@ class HarnessAdapter(Protocol):
 |---|---|---|---|
 | Detect | env `CLAUDECODE=1` | VERIFY the env var | fallback when nothing else matches |
 | Stub folder | `.claude/skills/` | `.agents/skills/` | `.agents/skills/` |
-| Stop hook | `Stop`, `{"decision":"block","reason":...}` | `Stop` in `.codex/hooks.json` (VERIFY) | none |
-| Session-start hook | `SessionStart` (also after compaction) | `SessionStart` (VERIFY) | none |
+| Stop hook | `Stop`; pskill answers with `hookSpecificOutput.additionalContext` (non-error feedback that keeps Claude working; Claude Code also caps continuations at 8) | `Stop` in `.codex/hooks.json` (VERIFY) | none |
+| Session-start hook | `SessionStart` with matcher `startup\|resume\|clear\|compact`; its plain stdout becomes context | `SessionStart` (VERIFY) | none |
 | Subagents | Agent tool with `subagent_type: general-purpose` | VERIFY the spawn mechanism | no (one by one) |
 | Question tool | `AskUserQuestion` (2-4 options; above 4, use a plain question) | plain question | plain question |
 
@@ -530,7 +530,8 @@ class HarnessAdapter(Protocol):
 - Codex runs project hooks only after the user trusts the project (VERIFY). The README must say so.
 - `--harness` beats detection. Stubs always pass `--harness auto`, so one stub text works in every folder and every harness.
 - The "Stub folder" row only says which folder each harness reads. `config.stub_folders` decides where `sync` writes.
-- VERIFY whether Claude Code also reads `.agents/skills/`. If it does, the default `stub_folders` becomes `[.agents/skills]` only, because two stubs with the same name would show the skill twice.
+- Claude Code reads project skills only from `.claude/skills/`, not from `.agents/skills/` (verified on 2026-09-28), so the default `stub_folders` shows no duplicates.
+- Claude Code verified facts, with the doc URLs, live in `pskill_runner/claude_code.py`. Hook commands use the `${CLAUDE_PROJECT_DIR}` placeholder, which Claude Code fills in, so they work from any folder.
 
 ### 9.2 Hooks (two only)
 
@@ -549,7 +550,7 @@ class HarnessAdapter(Protocol):
 ### 9.2.1 Permission rules (D28)
 
 `sync` adds exactly one allow rule for each target harness, and nothing else:
-- **Claude Code** (`.claude/settings.json`, key `permissions.allow`): `Bash(uv run .pskill/pskill.py *)`. VERIFY the rule syntax, and VERIFY that a command with a heredoc still matches it.
+- **Claude Code** (`.claude/settings.json`, key `permissions.allow`): `Bash(uv run .pskill/pskill.py *)` (verified: the `*` form matches the whole command, including a heredoc).
 - **Codex:** the matching rule, if its project config supports one (VERIFY). The PowerShell form of `submit` starts with `$OutputEncoding = ...`, so a prefix rule may not match it. VERIFY this, and if needed move the encoding statement into a form that matches. If no rule is possible, the README shows the user what to allow.
 
 Rules:
@@ -622,7 +623,7 @@ pskill/
 ├── viewer/              # vendored viewer: index.html, app.js, style.css
 ├── VENDORED             # runner version, source, sha256 of each vendored file
 ├── AUTHORING.md         # vendored guide for agents that write skills
-├── view.cmd / view.command / view.sh   # double-click launchers for Windows, macOS, Linux
+├── launchers/          # view.cmd, view.command, view.sh: double-click launchers for Windows, macOS, Linux
 ├── config.yaml
 ├── .gitignore           # runs/
 ├── skills/<skill-id>/{skill.yaml, instructions/, scripts/, tests/}

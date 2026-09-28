@@ -1,0 +1,3 @@
+# pskill settings (SPEC.md section 10.1). Every setting is optional; these are the defaults.
+harnesses: [claude-code, codex]                # harnesses that get hooks and the permission rule
+stub_folders: [.agents/skills, .claude/skills]  # where `pskill sync` writes the skill stubs
