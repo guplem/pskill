@@ -5,6 +5,8 @@ whole run, child skills included), the timeline rows with their node, arrival ed
 per-skill summaries. The page only adds up the rows up to the replay step.
 """
 
+import json
+import re
 import statistics
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,7 +14,7 @@ from typing import Any
 
 from pskill_runner.engine import list_runs, read_run_info, read_run_state
 from pskill_runner.project import Project
-from pskill_runner.run_records import RunInfo
+from pskill_runner.run_records import RunInfo, RunState
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, utc_now
 from pskill_runner.skill_loader import SkillLoadError, load_skill
 from pskill_runner.skill_model import AnyBlock, CallBlock, DecisionBlock, EndBlock, Skill
@@ -31,6 +33,25 @@ BLOCK_TYPE_MEANINGS = {
     "call": "the runner runs another skill and gets its outputs.",
     "end": "the skill finishes here with a status and outputs.",
 }
+INPUT_TITLES = {
+    "task": "Input: the instruction the agent got",
+    "decision": "Input: the question to decide",
+    "parallel": "Input: the tasks that the subagents got",
+    "script": "Input: the command the runner ran",
+    "call": "Input: what the child skill got",
+    "end": "Input: the report the agent got",
+}
+OUTPUT_TITLES = {
+    "task": "Output: the agent's answer",
+    "decision": "Output: the decision",
+    "parallel": "Output: the results of every task, joined",
+    "script": "Output: the command's result",
+    "call": "Output: the child skill's outputs",
+    "end": "Output: the skill's outputs",
+}
+TASK_HEADING = re.compile(r"^#### Task (\d+)$", re.MULTILINE)
+TASK_NODE_HINT = "One task of this parallel block. One subagent (or the agent) does it and answers on its own."
+TASKS_EDGE_HINT = "The tasks of this parallel block, one node per task."
 
 
 # --- the canvas: frames, nodes, and edges --------------------------------------------------------
@@ -71,6 +92,10 @@ class CanvasEdge:
 
 def node_id(frame_index: int, block_id: str) -> str:
     return f"f{frame_index}_{block_id}"
+
+
+def task_node_id(parent: str, task: int) -> str:
+    return f"{parent}_t{task}"
 
 
 def label_token(node: str) -> str:
@@ -248,7 +273,16 @@ def number_edges(edges: list[CanvasEdge]) -> list[CanvasEdge]:
     return edges
 
 
-def canvas_template(frames: list[CanvasFrame], edges: list[CanvasEdge]) -> str:
+def task_frame_lines(parent: str, block_id: str, count: int, indent: str) -> list[str]:
+    """The frame of a parallel block's tasks: one small node per task, side by side."""
+    lines = [f'{indent}subgraph {parent}_tasks ["{block_id} · {count} task{"" if count == 1 else "s"}"]']
+    lines.append(f"{indent}  direction LR")
+    for task in range(count):
+        lines.append(f'{indent}  {task_node_id(parent, task)}["{label_token(task_node_id(parent, task))}"]')
+    return [*lines, f"{indent}end"]
+
+
+def canvas_template(frames: list[CanvasFrame], edges: list[CanvasEdge], task_counts: dict[tuple[int, str], int]) -> str:
     lines = ["flowchart TD", f'  {START_NODE}(("start"))']
     for index, frame in enumerate(frames):
         indent = "  " if index == 0 else "    "
@@ -256,10 +290,13 @@ def canvas_template(frames: list[CanvasFrame], edges: list[CanvasEdge]) -> str:
             lines.append(f'  subgraph f{index} ["{frame.skill.id} · called by {frame.called_by}"]')
         for block_id in frame.skill.blocks:
             lines.append(f'{indent}{node_id(index, block_id)}["{label_token(node_id(index, block_id))}"]')
+        for (frame_index, block_id), count in task_counts.items():
+            if frame_index == index:
+                lines += task_frame_lines(node_id(index, block_id), block_id, count, indent)
         if index > 0:
             lines.append("  end")
     for edge in edges:
-        arrow = "-.->" if edge.kind in DOTTED_EDGE_KINDS else "-->"
+        arrow = "-.-" if edge.kind == "tasks" else "-.->" if edge.kind in DOTTED_EDGE_KINDS else "-->"
         label = f'|"{edge.label}"|' if edge.label is not None else ""
         lines.append(f"  {edge.source} {arrow}{label} {edge.target}")
     return "\n".join(lines) + "\n"
@@ -399,10 +436,16 @@ def annotate_rows(
         block = frames[frame].skill.blocks.get(row["block"]) if frame is not None else None
         edge = arrival_edge(row, frame, edges) if frame is not None else None
         called_by = frames[frame].called_by if frame is not None else None
+        node = node_id(frame, row["block"]) if frame is not None else None
         annotated.append(
             {
                 **row,
-                "node": node_id(frame, row["block"]) if frame is not None else None,
+                "node": node,
+                "tasks": [
+                    {**task, "node": task_node_id(node, task["task"]) if node else None} for task in row["tasks"]
+                ],
+                "input_title": INPUT_TITLES[str(row["block_type"])],
+                "output_title": OUTPUT_TITLES[str(row["block_type"])],
                 "edge": edge.id if edge is not None else None,
                 "label": node_label(row["block"], details, badges),
                 "summary": " · ".join(details + badges),
@@ -440,6 +483,25 @@ def load_run_skills(folder: Path) -> dict[str, Skill]:
     return skills
 
 
+def parallel_task_counts(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[int, str], int]:
+    """The most tasks that each parallel block had in one visit, per canvas frame and block."""
+    counts: dict[tuple[int, str], int] = {}
+    for row, frame in zip(rows, row_frames, strict=True):
+        if frame is not None and row["tasks"]:
+            key = (frame, str(row["block"]))
+            counts[key] = max(counts.get(key, 0), len(row["tasks"]))
+    return counts
+
+
+def task_frame_edges(task_counts: dict[tuple[int, str], int]) -> list[CanvasEdge]:
+    """One dotted edge from each parallel block to the frame of its tasks."""
+    edges = []
+    for index, block_id in task_counts:
+        parent = node_id(index, block_id)
+        edges.append(CanvasEdge(parent, f"{parent}_tasks", None, "tasks", index, block_id, "", TASKS_EDGE_HINT))
+    return edges
+
+
 def run_canvas(
     folder: Path, info: RunInfo, rows: list[dict[str, Any]]
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
@@ -449,7 +511,9 @@ def run_canvas(
     if root is None:
         return None, annotate_rows(rows, [None] * len(rows), [], [], info["mode"])
     frames, row_frames = assign_frames(rows, skills, root)
-    edges = number_edges([edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame)])
+    task_counts = parallel_task_counts(rows, row_frames)
+    edges = [edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame)]
+    edges = number_edges(edges + task_frame_edges(task_counts))
     annotated = annotate_rows(rows, row_frames, frames, edges, info["mode"])
     nodes: list[dict[str, Any]] = [
         {
@@ -460,14 +524,35 @@ def run_canvas(
             "block": block.id,
             "type": block_type_name(block),
             "hint": node_hint(block),
+            "kind": "block",
         }
         for index, frame in enumerate(frames)
         for block in frame.skill.blocks.values()
     ]
+    labels = {node["id"]: node_label(node["block"], [node["type"]], []) for node in nodes}
+    for (index, block_id), count in task_counts.items():
+        parent = node_id(index, block_id)
+        for task in range(count):
+            task_node = task_node_id(parent, task)
+            labels[task_node] = f"task {task}"
+            nodes.append(
+                {
+                    "id": task_node,
+                    "token": label_token(task_node),
+                    "frame": index,
+                    "skill_id": frames[index].skill.id,
+                    "block": block_id,
+                    "type": "parallel",
+                    "hint": TASK_NODE_HINT,
+                    "kind": "task",
+                    "parent": parent,
+                    "task": task,
+                }
+            )
     canvas = {
-        "template": canvas_template(frames, edges),
+        "template": canvas_template(frames, edges, task_counts),
         "start": START_NODE,
-        "labels": {node["id"]: node_label(node["block"], [node["type"]], []) for node in nodes},
+        "labels": labels,
         "nodes": nodes,
         "edges": [
             {
@@ -533,6 +618,73 @@ def skill_summaries(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return summaries
 
 
+# --- the tasks of parallel blocks ---------------------------------------------------------------
+
+
+def task_packets(packet: str | None) -> dict[int, str]:
+    """The prompt of each task in a packet for subagents: the text after each `#### Task <n>` heading."""
+    parts = TASK_HEADING.split(packet or "")
+    return {int(parts[index]): parts[index + 1].strip() for index in range(1, len(parts) - 1, 2)}
+
+
+def live_tasks(state: RunState) -> tuple[str, str, int] | None:
+    """The frame chain, the block, and the task count of the parallel block that the run is in, if any."""
+    frames = state["frames"]
+    top = frames[-1] if frames else None
+    if top is None or top["tasks"] is None or top["current_block"] is None:
+        return None
+    return ">".join(frame["skill_id"] for frame in frames), top["current_block"], len(top["tasks"])
+
+
+def result_count(row: dict[str, Any]) -> int:
+    output = row["output"]
+    results = output.get("results") if isinstance(output, dict) else None
+    return len(results) if isinstance(results, list) else 0
+
+
+def task_view(entry: dict[str, Any] | None, task: int, packet: str | None) -> dict[str, Any]:
+    """One task as the page shows it: done (an accepted answer), rejected (only rejected answers), or open."""
+    submissions = entry["submissions"] if entry is not None else []
+    output = entry["output"] if entry is not None else None
+    rejected = sum(1 for submission in submissions if not submission["accepted"])
+    state = "done" if output is not None else "rejected" if rejected else "open"
+    return {
+        "task": task,
+        "state": state,
+        "label": f"task {task}" + (f" · {rejected} rejected" if rejected else ""),
+        "submissions": submissions,
+        "output": output,
+        "duration_ms": entry["duration_ms"] if entry is not None else None,
+        "packet": packet,
+    }
+
+
+def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
+    """Give each row of a parallel block every task of its visit, as known up to that row.
+
+    With subagents, one row holds every task. One by one (the generic adapter), each task has its own row.
+    """
+    groups: dict[tuple[str, str, int], list[dict[str, Any]]] = {}
+    for row in rows:
+        if row["block_type"] == "parallel":
+            groups.setdefault((str(row["frame"]), str(row["block"]), int(row["visit"])), []).append(row)
+    live = live_tasks(state)
+    last_key = list(groups)[-1] if groups else None
+    for key, group in groups.items():
+        packets: dict[int, str] = {}
+        for row in group:
+            packets.update(task_packets(row["packet"]))
+            if row["task"] is not None and row["packet"]:
+                packets[row["task"]] = row["packet"]
+        live_count = live[2] if live is not None and key == last_key and live[:2] == key[:2] else 0
+        seen = [entry["task"] + 1 for row in group for entry in row["tasks"]]
+        count = max([live_count, *seen, *(task + 1 for task in packets), *map(result_count, group)], default=0)
+        known: dict[int, dict[str, Any]] = {}
+        for row in group:
+            known.update({entry["task"]: entry for entry in row["tasks"]})
+            row["tasks"] = [task_view(known.get(task), task, packets.get(task)) for task in range(count)]
+
+
 # --- one run ------------------------------------------------------------------------------------
 
 
@@ -542,10 +694,13 @@ def run_detail(project: Project, run_id: str) -> dict[str, Any] | None:
     if not (folder / "run.json").is_file():
         return None
     info = read_run_info(project, run_id)
-    canvas, rows = run_canvas(folder, info, timeline_rows(read_events(folder)))
+    state = read_run_state(project, run_id)
+    rows = timeline_rows(read_events(folder))
+    add_task_lists(rows, state)
+    canvas, rows = run_canvas(folder, info, rows)
     return {
         "info": info,
-        "state": read_run_state(project, run_id),
+        "state": state,
         "canvas": canvas,
         "timeline": rows,
         "skill_changed": skill_changed(project, info),
@@ -572,12 +727,38 @@ def timeline_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if row_for_event is None:
             continue
         if event["type"] == "submission_rejected":
-            row_for_event["submissions"].append({"accepted": False, "errors": event["errors"], "raw": event["raw"]})
+            task = event.get("task")
+            rejected = {"accepted": False, "errors": event["errors"], "raw": event["raw"], "task": task}
+            row_for_event["submissions"].append(rejected)
+            if task is not None:
+                task_entry(row_for_event, task)["submissions"].append(rejected)
         elif event["type"] == "script_ran":
-            row_for_event["script_runs"].append({key: event.get(key) for key in SCRIPT_FIELDS})
+            script_run = {key: event.get(key) for key in SCRIPT_FIELDS}
+            script_run["parsed"] = parsed_json(event.get("stdout"))
+            row_for_event["script_runs"].append(script_run)
         elif event["type"] == "block_completed":
             record_completion(row_for_event, event)
     return rows
+
+
+def parsed_json(text: str | None) -> Any:
+    """The text as a JSON object or array, or None when it is not one."""
+    try:
+        value = json.loads(text or "")
+    except ValueError:
+        return None
+    return value if isinstance(value, dict | list) else None
+
+
+def task_entry(row: dict[str, Any], task: int) -> dict[str, Any]:
+    """The entry of one task of a parallel row, created on first use."""
+    entries: list[dict[str, Any]] = row["tasks"]
+    for entry in entries:
+        if entry["task"] == task:
+            return entry
+    entry = {"task": task, "submissions": [], "output": None, "duration_ms": None, "packet": None}
+    entries.append(entry)
+    return entry
 
 
 def new_timeline_row(event: dict[str, Any]) -> dict[str, Any]:
@@ -597,6 +778,7 @@ def new_timeline_row(event: dict[str, Any]) -> dict[str, Any]:
         "output": None,
         "decided_by": None,
         "duration_ms": None,
+        "tasks": [],
     }
 
 
@@ -614,9 +796,19 @@ def find_open_row(
 
 
 def record_completion(row: dict[str, Any], event: dict[str, Any]) -> None:
-    joins_tasks = row["task"] is not None and event.get("task") is None
-    if event["decided_by"] != "runner" and not joins_tasks:
-        row["submissions"].append({"accepted": True, "errors": [], "raw": None})
+    """A task's answer, or the end of the block. The join of a parallel block's tasks is not an answer."""
+    task: int | None = event.get("task")
+    if task is not None:
+        accepted = {"accepted": True, "errors": [], "raw": None, "task": task}
+        row["submissions"].append(accepted)
+        entry = task_entry(row, task)
+        entry["submissions"].append(accepted)
+        entry["output"] = event["output"]
+        entry["duration_ms"] = event["duration_ms"]
+        if row["task"] is None:
+            return  # With subagents, every task shares the block's row: only the join sets the row's output.
+    elif event["decided_by"] != "runner" and row["block_type"] != "parallel":
+        row["submissions"].append({"accepted": True, "errors": [], "raw": None, "task": None})
     row["output"] = event["output"]
     row["decided_by"] = event["decided_by"]
     row["duration_ms"] = event["duration_ms"]

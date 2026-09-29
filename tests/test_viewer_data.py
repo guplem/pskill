@@ -8,7 +8,13 @@ from pskill_runner.engine import start_run, submit_answer
 from pskill_runner.project import Project, find_project
 from pskill_runner.viewer_data import run_detail, runs_overview, timeline_rows
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_engine_blocks import CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
+from tests.test_engine_blocks import (
+    CHILD_SKILL,
+    PARALLEL_SKILL,
+    PARENT_SKILL,
+    SCRIPT_SKILL,
+    adapter_with_subagents,  # noqa: F401 (an autouse fixture: the harness "subagents-for-tests")
+)
 
 QUESTION = "status: question\nplan: Draft.\nquestion: Which database?\n"
 FINISHED = "status: finished\nplan: Use Postgres.\n"
@@ -521,3 +527,121 @@ def test_the_run_detail_notes_a_skill_that_changed_after_the_run_started(tmp_pat
 
 def test_an_unknown_run_has_no_detail(tmp_path: Path) -> None:
     assert run_detail(make_project(tmp_path), "r-00000000-0000-0000") is None
+
+
+# --- the tasks of a parallel block, script results, and input and output titles ---------------------
+
+
+def check_row_of(project: Project, run_id: str) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+    (row,) = rows
+    return row
+
+
+def test_a_parallel_row_with_subagents_keeps_each_task_answer_and_output(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: 3\n", task=1)
+    submit_answer(project, run_id, "wrong: [x]\n", task=1)
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    row = check_row_of(project, run_id)
+
+    assert [submission["task"] for submission in row["submissions"]] == [1, 1, 0]
+    tasks = row["tasks"]
+    assert [(task["task"], task["state"], task["output"]) for task in tasks] == [
+        (0, "done", {"wrong": []}),
+        (1, "done", {"wrong": ["x"]}),
+    ]
+    assert [len(task["submissions"]) for task in tasks] == [1, 2]
+    assert [task["label"] for task in tasks] == ["task 0", "task 1 · 1 rejected"]
+    assert tasks[0]["packet"].startswith("You are a subagent of a pskill run.")
+    assert "Check every claim in a.md." in tasks[0]["packet"]
+    assert "Check every claim in b.md." in tasks[1]["packet"]
+    assert row["output"] == {"results": [{"wrong": []}, {"wrong": ["x"]}]}
+
+
+def test_a_one_by_one_parallel_block_lists_the_tasks_of_its_visit(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+    submit_answer(project, run_id, "wrong: [x]\n", task=1)
+
+    first, second = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+
+    assert [(task["task"], task["state"]) for task in first["tasks"]] == [(0, "done"), (1, "open")]
+    assert [(task["task"], task["state"]) for task in second["tasks"]] == [(0, "done"), (1, "done")]
+    assert second["tasks"][1]["output"] == {"wrong": ["x"]}
+    assert "Check every claim in b.md." in second["tasks"][1]["packet"]
+
+
+def test_each_task_is_done_rejected_or_open(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md", "c.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: 3\n", task=0)
+    submit_answer(project, run_id, "wrong: []\n", task=1)
+
+    row = check_row_of(project, run_id)
+
+    assert [task["state"] for task in row["tasks"]] == ["rejected", "done", "open"]
+    assert row["output"] is None
+    assert [len(task["submissions"]) for task in row["tasks"]] == [1, 1, 0]
+
+
+def test_the_canvas_draws_a_frame_of_task_nodes_next_to_a_parallel_block(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    detail = detail_of(project, run_id)
+
+    template = detail["canvas"]["template"]
+    assert '  subgraph f0_check_tasks ["check · 2 tasks"]\n    direction LR\n' in template
+    assert '    f0_check_t0["@@f0_check_t0@@"]\n' in template
+    assert '    f0_check_t1["@@f0_check_t1@@"]\n' in template
+    assert "  f0_check -.- f0_check_tasks\n" in template
+    nodes = {node["id"]: node for node in detail["canvas"]["nodes"]}
+    assert nodes["f0_check_t1"]["kind"] == "task"
+    assert nodes["f0_check_t1"]["parent"] == "f0_check"
+    assert nodes["f0_check_t1"]["task"] == 1
+    assert nodes["f0_check"]["kind"] == "block"
+    edges = {edge["id"]: edge for edge in detail["canvas"]["edges"]}
+    assert edges["L_f0_check_f0_check_tasks_0"]["kind"] == "tasks"
+    row = check_row_of(project, run_id)
+    assert [task["node"] for task in row["tasks"]] == ["f0_check_t0", "f0_check_t1"]
+
+
+def test_a_script_run_keeps_its_stdout_parsed_as_json(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    json_run, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    failed_run, _ = start_run(project, "failing", {}, mode="interactive", harness="generic")
+
+    json_script = detail_of(project, json_run)["timeline"][0]["script_runs"][0]
+    failed_script = detail_of(project, failed_run)["timeline"][0]["script_runs"][0]
+
+    assert json_script["parsed"] == {"files": ["a.md", "b.md"]}
+    assert failed_script["parsed"] is None
+
+
+def test_each_row_names_its_input_and_output(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    plan_run = run_to_the_end(project)
+    script_run, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+
+    plan_rows = detail_of(project, plan_run)["timeline"]
+    script_row = detail_of(project, script_run)["timeline"][0]
+
+    titles = {row["block"]: (row["input_title"], row["output_title"]) for row in plan_rows}
+    assert titles["create_plan"] == ("Input: the instruction the agent got", "Output: the agent's answer")
+    assert titles["ask_user"] == ("Input: the question to decide", "Output: the decision")
+    assert titles["done"] == ("Input: the report the agent got", "Output: the skill's outputs")
+    assert (script_row["input_title"], script_row["output_title"]) == (
+        "Input: the command the runner ran",
+        "Output: the command's result",
+    )
