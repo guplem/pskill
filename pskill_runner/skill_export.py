@@ -27,12 +27,13 @@ from pskill_runner.skill_model import (
     TaskBlock,
     next_targets,
 )
+from pskill_runner.skill_schema import is_skill_id
 
 EXPORTED_FILE_NAME = "SKILL.md"
 SKILL_FOLDER_TEXT = "<this skill's folder>"
 SCRIPTS_FOLDER = "scripts"
 SUBAGENTS_FOLDER = "subagents"  # not `agents/`: Codex reads `agents/openai.yaml` in a skill folder
-VALUE = re.compile(r"\{\{(.*?)\}\}", re.S)
+VALUE = re.compile(r"\{\{-?(.*?)-?\}\}", re.S)
 STATEMENT = re.compile(r"\{%-?(.*?)-?%\}", re.S)
 COMMENT = re.compile(r"\{#.*?#\}", re.S)
 FIELD_TYPE_WORDS = {
@@ -99,12 +100,19 @@ def add_skill(project: Project, skill_id: str, files: dict[str, bytes]) -> None:
 
 def load_exported_skill(project: Project, skill_id: str) -> Skill:
     folder = project.skills_folder / skill_id
-    if not (folder / SKILL_FILE_NAME).is_file():
+    if not is_skill_id(skill_id) or not (folder / SKILL_FILE_NAME).is_file():
         raise ExportError(f"There is no skill {skill_id!r} in {project.skills_folder}.")
     try:
         return load_skill(folder)
     except SkillLoadError as error:
         raise ExportError(f"The skill {skill_id!r} does not load: {'; '.join(error.problems)}") from error
+
+
+def prose(skill: Skill, value: str) -> str:
+    """An instruction or report text. A missing `.md` file stops the export (the loader accepts it)."""
+    if value.endswith(".md") and not (skill.folder / value).is_file():
+        raise ExportError(f"The skill {skill.id!r} names the file {value}, which is missing.")
+    return skill.instruction_text(value)
 
 
 def agent_names(skill: Skill) -> set[str]:
@@ -173,7 +181,7 @@ def step_markdown(skill: Skill, block: AnyBlock, numbers: dict[str, int], defaul
 
 def block_body(skill: Skill, block: AnyBlock, default_retries: int) -> list[str]:
     if isinstance(block, TaskBlock):
-        return ["Do this:", plain_text(skill.instruction_text(block.instruction)), write_down(block.id, block.output)]
+        return ["Do this:", plain_text(prose(skill, block.instruction)), write_down(block.id, block.output)]
     if isinstance(block, DecisionBlock):
         return decision_body(skill, block)
     if isinstance(block, ParallelBlock):
@@ -190,7 +198,7 @@ def decision_body(skill: Skill, block: DecisionBlock) -> list[str]:
         opening = "Ask the user one question, and wait for the answer. Prepare the question like this:"
     else:
         opening = "Decide this yourself:"
-    lines = [opening, plain_text(skill.instruction_text(block.instruction))]
+    lines = [opening, plain_text(prose(skill, block.instruction))]
     if block.choices:
         lines.append(
             "The choices:\n\n" + "\n".join(f"- `{choice}`: {meaning}" for choice, meaning in block.choices.items())
@@ -222,7 +230,7 @@ def parallel_body(skill: Skill, block: ParallelBlock) -> list[str]:
             f"Give each subagent a role first: the file `{SUBAGENTS_FOLDER}/<name>.md`, where the name is "
             f"`{condition_text(block.agent)}`."
         )
-    lines += ["The task:", plain_text(skill.instruction_text(block.instruction))]
+    lines += ["The task:", plain_text(prose(skill, block.instruction))]
     lines.append(
         f"**Write down:** `{block.id}.results`, the list of the answers of every item, in item order. "
         "Each answer holds:\n\n" + field_lines(block.output)
@@ -270,7 +278,7 @@ def end_body(skill: Skill, block: EndBlock) -> list[str]:
         outputs = "\n".join(f"- `{name}`: {plain_value(value)}" for name, value in block.outputs.items())
         lines.append("Its outputs:\n\n" + outputs)
     if block.report is not None:
-        lines.append(f"Tell the user: {plain_text(skill.instruction_text(block.report))}")
+        lines.append(f"Tell the user: {plain_text(prose(skill, block.report))}")
     return lines
 
 

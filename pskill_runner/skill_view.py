@@ -23,6 +23,7 @@ from pskill_runner.skill_model import (
     Skill,
     TaskBlock,
 )
+from pskill_runner.skill_schema import is_skill_id
 from pskill_runner.validator import validate_skill
 from pskill_runner.viewer_data import (
     START_NODE,
@@ -74,7 +75,7 @@ def skill_row(folder: Path, runs: int) -> dict[str, Any]:
 def skill_detail(project: Project, skill_id: str) -> dict[str, Any] | None:
     """Everything the skill screen shows, or None for an unknown skill."""
     folder = project.skills_folder / skill_id
-    if not (folder / SKILL_FILE_NAME).is_file():
+    if not is_skill_id(skill_id) or not (folder / SKILL_FILE_NAME).is_file():
         return None
     try:
         skill = load_skill(folder)

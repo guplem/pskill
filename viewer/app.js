@@ -400,7 +400,7 @@ function drawSkillTopbar() {
   const warnings = view.detail.problems.length - errors;
   if (errors) parts.push(element("span", `${errors} error${errors === 1 ? "" : "s"}`, "pill state-failed"));
   if (warnings) parts.push(element("span", `${warnings} warning${warnings === 1 ? "" : "s"}`, "pill state-now"));
-  if (!view.detail.error) {
+  if (!view.detail.error && !errors) {
     // The server builds the export (skill_export.py); the page only offers the download.
     const exportLink = element("a", "Export as Markdown", "tool");
     exportLink.href = `/api/skills/${encodeURIComponent(skillId)}/export`;

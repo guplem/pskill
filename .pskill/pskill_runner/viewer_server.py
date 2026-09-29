@@ -5,6 +5,7 @@ It listens on 127.0.0.1 only, and reads the files on every request, so it never 
 """
 
 import json
+import re
 import webbrowser
 from functools import partial
 from http import HTTPStatus
@@ -19,7 +20,7 @@ from pskill_runner.skill_view import skill_detail, skills_overview
 from pskill_runner.viewer_data import run_detail, runs_overview
 
 LOCAL_HOST = "127.0.0.1"
-EXPORT_SUFFIX = "/export"
+EXPORT_PATH = re.compile(r"/api/skills/([^/]+)/export")
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
@@ -44,8 +45,8 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": "There is no run with this id."})
             else:
                 self.send_json(HTTPStatus.OK, detail)
-        elif path.startswith("/api/skills/") and path.endswith(EXPORT_SUFFIX):
-            self.send_export(path.removeprefix("/api/skills/").removesuffix(EXPORT_SUFFIX))
+        elif export_match := EXPORT_PATH.fullmatch(path):
+            self.send_export(export_match[1])
         elif path == "/api/skills":
             self.send_json(HTTPStatus.OK, skills_overview(self.project))
         elif path.startswith("/api/skills/"):

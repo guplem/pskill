@@ -200,3 +200,24 @@ def test_each_proof_skill_exports_to_a_plain_skill_that_an_agent_can_follow(skil
             exported_id = path.split("/")[0]
             skill = load_skill(project.skills_folder / exported_id)
             check_plain_skill(content.decode("utf-8"), exported_id, list(skill.blocks))
+
+
+def test_an_id_that_is_not_a_skill_id_cannot_be_exported(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    outside = tmp_path / "outside" / "evil"
+    write_skill(outside.parent, "evil", PLAN_SKILL.replace("id: plan-work", "id: evil"), PLAN_SKILL_FILES)
+
+    with pytest.raises(ExportError):
+        export_skill(project, "../../outside/evil")
+
+
+def test_a_missing_instruction_file_stops_the_export_with_its_name(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    (project.skills_folder / "plan-work" / "instructions" / "approve_plan.md").unlink()
+
+    with pytest.raises(ExportError, match=r"approve_plan\.md"):
+        export_skill(project, "plan-work")
+
+
+def test_whitespace_control_in_a_value_leaves_no_dash() -> None:
+    assert plain_text("x {{- steps.a.b -}} z") == "x `a.b` z"

@@ -133,3 +133,22 @@ def test_the_export_of_an_unknown_skill_is_not_found(server: ThreadingHTTPServer
 
     assert status == 404
     assert "missing" in json.loads(body)["error"]
+
+
+def test_a_skill_named_export_gets_its_detail_not_a_download(tmp_path: Path) -> None:
+    write_skill(
+        tmp_path / ".pskill" / "skills", "export", PLAN_SKILL.replace("id: plan-work", "id: export"), PLAN_SKILL_FILES
+    )
+    viewer_folder = tmp_path / "viewer"
+    viewer_folder.mkdir()
+    running_server = make_server(find_project(tmp_path), viewer_folder, port=0)
+    thread = threading.Thread(target=running_server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, content_type, body = get(running_server, "/api/skills/export")
+    finally:
+        running_server.shutdown()
+        running_server.server_close()
+
+    assert (status, content_type) == (200, "application/json; charset=utf-8")
+    assert json.loads(body)["skill"]["id"] == "export"
