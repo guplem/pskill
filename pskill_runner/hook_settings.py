@@ -26,9 +26,29 @@ def read_json_settings(path: Path) -> dict[str, Any]:
     return settings
 
 
+def hook_command(root_code: str, subcommand: str, harness: str) -> str:
+    """A hook command that runs `pskill.py hook <subcommand>` only when the runner file exists.
+
+    Without the file, the command exits 0 with no output. A failed `uv run` exits 2, and exit code 2
+    tells Claude Code and Codex to block the stop. `root_code` is the Python expression for the project
+    root. The command is one `python -c` call through uv, so bash, PowerShell, and cmd read it the same:
+    its double quotes hold no `$`, backslash, or percent sign, only single quotes.
+    """
+    code = "; ".join(
+        [
+            "import os, subprocess, sys",
+            f"root = {root_code}",
+            "runner = root + '/.pskill/pskill.py'",
+            f"arguments = ['uv', 'run', runner, 'hook', '{subcommand}', '--harness', '{harness}']",
+            "sys.exit(subprocess.call(arguments) if os.path.isfile(runner) else 0)",
+        ]
+    )
+    return f'uv run --no-project python -c "{code}"'
+
+
 def is_pskill_hook(command: str) -> bool:
     """A hook command that runs pskill's `hook` subcommand, however its path is written or quoted."""
-    return ".pskill/pskill.py" in command and " hook " in command
+    return ".pskill/pskill.py" in command and (" hook " in command or "'hook'" in command)
 
 
 def with_pskill_hooks(settings: dict[str, Any], pskill_hooks: dict[str, dict[str, Any]]) -> dict[str, Any]:

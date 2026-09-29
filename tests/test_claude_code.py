@@ -8,12 +8,16 @@ import pytest
 from pskill_runner.adapters import adapter_for, detect_harness
 from pskill_runner.claude_code import (
     PERMISSION_RULE,
+    PROJECT_ROOT_CODE,
     SettingsError,
     stop_response,
     sync_claude_settings,
 )
+from pskill_runner.hook_settings import hook_command
 
 SETTINGS_PATH = Path(".claude") / "settings.json"
+STOP_COMMAND = hook_command(PROJECT_ROOT_CODE, "stop", "claude-code")
+SESSION_START_COMMAND = hook_command(PROJECT_ROOT_CODE, "session-start", "claude-code")
 
 
 def read_settings(root: Path) -> dict[str, object]:
@@ -44,12 +48,8 @@ def test_sync_adds_the_two_hooks_and_the_permission_rule(tmp_path: Path) -> None
 
     settings = read_settings(tmp_path)
     assert changed is True
-    assert hook_commands(settings, "Stop") == [
-        'uv run "${CLAUDE_PROJECT_DIR}/.pskill/pskill.py" hook stop --harness claude-code'
-    ]
-    assert hook_commands(settings, "SessionStart") == [
-        'uv run "${CLAUDE_PROJECT_DIR}/.pskill/pskill.py" hook session-start --harness claude-code'
-    ]
+    assert hook_commands(settings, "Stop") == [STOP_COMMAND]
+    assert hook_commands(settings, "SessionStart") == [SESSION_START_COMMAND]
     permissions = settings["permissions"]
     assert isinstance(permissions, dict)
     assert permissions["allow"] == [PERMISSION_RULE]
@@ -83,14 +83,13 @@ def test_sync_keeps_foreign_hooks_rules_and_keys(tmp_path: Path) -> None:
 
 def test_sync_replaces_an_old_pskill_hook_instead_of_adding_a_second_one(tmp_path: Path) -> None:
     (tmp_path / ".claude").mkdir()
-    old = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "uv run .pskill/pskill.py hook stop"}]}]}}
+    old_command = 'uv run "${CLAUDE_PROJECT_DIR}/.pskill/pskill.py" hook stop --harness claude-code'
+    old = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": old_command}]}]}}
     (tmp_path / SETTINGS_PATH).write_text(json.dumps(old), encoding="utf-8")
 
     sync_claude_settings(tmp_path, check_only=False)
 
-    assert hook_commands(read_settings(tmp_path), "Stop") == [
-        'uv run "${CLAUDE_PROJECT_DIR}/.pskill/pskill.py" hook stop --harness claude-code'
-    ]
+    assert hook_commands(read_settings(tmp_path), "Stop") == [STOP_COMMAND]
 
 
 def test_check_only_reports_without_writing(tmp_path: Path) -> None:

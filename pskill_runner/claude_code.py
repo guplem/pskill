@@ -12,21 +12,27 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pskill_runner.hook_settings import SettingsError, read_json_settings, with_pskill_hooks, write_if_changed
+from pskill_runner.hook_settings import (
+    SettingsError,
+    hook_command,
+    read_json_settings,
+    with_pskill_hooks,
+    write_if_changed,
+)
 
 __all__ = ["PERMISSION_RULE", "SETTINGS_RELATIVE_PATH", "SettingsError", "stop_response", "sync_claude_settings"]
 
 SETTINGS_RELATIVE_PATH = Path(".claude") / "settings.json"
 PERMISSION_RULE = "Bash(uv run .pskill/pskill.py *)"
-# ${CLAUDE_PROJECT_DIR} is a placeholder that Claude Code fills in, so the hook works from any folder.
-RUNNER_FOR_HOOKS = 'uv run "${CLAUDE_PROJECT_DIR}/.pskill/pskill.py"'
+# Claude Code sets CLAUDE_PROJECT_DIR for its hooks, so a hook works from any folder of the project.
+PROJECT_ROOT_CODE = "os.environ.get('CLAUDE_PROJECT_DIR', '')"
 PSKILL_HOOKS: dict[str, dict[str, Any]] = {
     "Stop": {
-        "hooks": [{"type": "command", "command": f"{RUNNER_FOR_HOOKS} hook stop --harness claude-code"}],
+        "hooks": [{"type": "command", "command": hook_command(PROJECT_ROOT_CODE, "stop", "claude-code")}],
     },
     "SessionStart": {
         "matcher": "startup|resume|clear|compact",
-        "hooks": [{"type": "command", "command": f"{RUNNER_FOR_HOOKS} hook session-start --harness claude-code"}],
+        "hooks": [{"type": "command", "command": hook_command(PROJECT_ROOT_CODE, "session-start", "claude-code")}],
     },
 }
 

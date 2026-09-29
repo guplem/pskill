@@ -6,8 +6,14 @@ from pathlib import Path
 import pytest
 
 from pskill_runner.adapters import adapter_for, detect_harness
-from pskill_runner.codex import HOOKS_RELATIVE_PATH, RULES_RELATIVE_PATH, stop_response, sync_codex_settings
-from pskill_runner.hook_settings import SettingsError
+from pskill_runner.codex import (
+    HOOKS_RELATIVE_PATH,
+    PROJECT_ROOT_CODE,
+    RULES_RELATIVE_PATH,
+    stop_response,
+    sync_codex_settings,
+)
+from pskill_runner.hook_settings import SettingsError, hook_command
 
 
 def read_hooks(root: Path) -> dict[str, object]:
@@ -38,12 +44,8 @@ def test_sync_adds_the_two_hooks_resolved_from_the_git_root(tmp_path: Path) -> N
 
     settings = read_hooks(tmp_path)
     assert changed is True
-    assert hook_commands(settings, "Stop") == [
-        'uv run "$(git rev-parse --show-toplevel)/.pskill/pskill.py" hook stop --harness codex'
-    ]
-    assert hook_commands(settings, "SessionStart") == [
-        'uv run "$(git rev-parse --show-toplevel)/.pskill/pskill.py" hook session-start --harness codex'
-    ]
+    assert hook_commands(settings, "Stop") == [hook_command(PROJECT_ROOT_CODE, "stop", "codex")]
+    assert hook_commands(settings, "SessionStart") == [hook_command(PROJECT_ROOT_CODE, "session-start", "codex")]
 
 
 def test_sync_writes_the_command_rule(tmp_path: Path) -> None:

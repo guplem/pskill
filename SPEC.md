@@ -529,12 +529,13 @@ class HarnessAdapter(Protocol):
 - An adapter that cannot VERIFY a capability uses the `generic` behavior for it.
 - Gemini CLI and Cursor use `generic` in the MVP. They read `.agents/skills/` (VERIFY), so they find the stubs.
 - Codex runs project hooks and rules only after the user trusts the project, and asks the user to trust each hook definition once (`/hooks`). The README must say so.
-- Codex runs hooks from the session's folder, with no project-root placeholder. pskill's Codex hooks resolve the runner from the git root: `"$(git rev-parse --show-toplevel)/.pskill/pskill.py"` works in bash and PowerShell.
+- Codex runs hooks from the session's folder, with no project-root placeholder. pskill's Codex hooks find the runner from the git root (`git rev-parse --show-toplevel`).
 - Codex verified facts, with sources, live in `pskill_runner/codex.py`.
 - `--harness` beats detection. Stubs always pass `--harness auto`, so one stub text works in every folder and every harness.
 - The "Stub folder" row only says which folder each harness reads. `config.stub_folders` decides where `sync` writes.
 - Claude Code reads project skills only from `.claude/skills/`, not from `.agents/skills/` (verified on 2026-09-28), so the default `stub_folders` shows no duplicates.
-- Claude Code verified facts, with the doc URLs, live in `pskill_runner/claude_code.py`. Hook commands use the `${CLAUDE_PROJECT_DIR}` placeholder, which Claude Code fills in, so they work from any folder.
+- Claude Code verified facts, with the doc URLs, live in `pskill_runner/claude_code.py`. Hook commands read the `CLAUDE_PROJECT_DIR` environment variable, which Claude Code sets, so they work from any folder.
+- **Every hook command is one `uv run --no-project python -c "..."` call** (`hook_command` in `pskill_runner/hook_settings.py`). It runs the runner's `hook` subcommand only when `.pskill/pskill.py` exists, and otherwise exits 0 with no output. A failed `uv run` exits 2, and Claude Code and Codex read exit code 2 from a Stop hook as "block the stop". The command text holds no `$`, backslash, or percent sign inside its double quotes, so bash, PowerShell, and cmd read it the same.
 
 ### 9.2 Hooks (two only)
 
