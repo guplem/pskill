@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 (2026-09-29)
+
+A help button for every field on the skill screen.
 
 - **Help for every field:** on the skill screen, each field of a block has a "?" button, in the side panel and in the editor. Hover it to see what the field is. Click it to open a dialog with the details and YAML examples. The goal, the inputs, and the outputs of the skill have one too.
 
