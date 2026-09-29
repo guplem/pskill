@@ -36,9 +36,10 @@
     "pskill_runner/viewer_data.py": "sha256:9e4c9404ecacf5ec00748821fb609cc151b398e2a0d494ab312f3136c483a974",
     "pskill_runner/viewer_server.py": "sha256:bcf14c87bc549aa87b03d0b3c94553a23ab39077958867199a17737cbd6feabf",
     "pskill_runner/yaml_loading.py": "sha256:22c2c28eb5f2311edd8f53ab42dc1464ab7b01b5a672b8b57887ad2d4aaa3457",
-    "viewer/app.js": "sha256:25442b7c6680a3931dd3a998bb9c3e88e1a7454607d89657dc975ae523618b0f",
+    "viewer/app.js": "sha256:b2d8a501591b4b4253f7cade8aac609cd0a0239a09ddc4864930fedb41f19394",
+    "viewer/field_help.js": "sha256:f2c12008303ca39d78dfb7acf55e51ea862dd843169e4a82de824844bc18e361",
     "viewer/index.html": "sha256:e2dd950516dbae6b043c18a68584ca14e5c198c62b20145a1af788c4c7735421",
-    "viewer/style.css": "sha256:1db5e34f377ddcc5249eefa7ab823e7959ce73d7e7fd346cad0a158acf79f2f1",
+    "viewer/style.css": "sha256:c1302dd6d48b0d3beb1b0a9e67a525518144ce8766851d2a82a702e271cb0862",
     "launchers/view.cmd": "sha256:57916157302cc8026731ef8b51a34cf637059a98285875ba3787177d43691848",
     "launchers/view.command": "sha256:21364e319172774a95c2f8461e9bf46ad5912eae96b31c44020d24de01ce1ead",
     "launchers/view.sh": "sha256:ad6ebf8e4cca8419ef877f5b1bcd0898ec75e8d099e76206a076919c37d03120"

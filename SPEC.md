@@ -1164,6 +1164,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
    - The same canvas as the run screen, with every block and every edge, and no run parts: no status, no current step, no timeline, and no replay bar. Every node has the same plain style.
    - The side panel with nothing selected: the goal, the inputs and outputs, and the `pskill validate` problems.
    - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A call block links to its child skill's screen.
+   - **Field help:** each field of a block (in the panel and in the editor), and the goal, inputs, and outputs of the skill, has a "?" button. Its tooltip says what the field is. A click opens a dialog with the details and YAML examples. `viewer/field_help.js` holds the texts; a test checks that every block field of the schema has one.
    - A skill that does not load shows its load error instead of a graph.
    - An "Export as Markdown" button downloads the export (section 14.1).
    - An "Edit" button turns on the skill editor (section 14.2).
