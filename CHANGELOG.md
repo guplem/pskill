@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-09-29)
+
+A new run viewer.
 
 - **New run viewer:** each run is a flow canvas. The skill graph fills the screen, with the path the run took, and child skills in a frame next to their call block. Click a step to see its packet, answers, and output, and drag the replay bar to see the run as it was at any step. The viewer now loads two fonts from Google Fonts; offline it uses the system fonts.
+- **Parallel blocks in the viewer:** a block that runs its tasks one by one now shows its final result on its last task, once, also when the block runs again.
 
 ## 0.1.2 (2026-09-29)
 
