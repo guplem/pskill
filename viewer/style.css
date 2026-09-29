@@ -413,6 +413,15 @@ pre {
   stroke-dasharray: 5 4 !important;
 }
 
+/* The arrow tips: Mermaid paints them its own dark default, which the dark theme cannot show. All edges
+   share one marker, so it takes the muted color; context-stroke then gives each tip its line's color. */
+.layer .arrowMarkerPath {
+  fill: var(--muted) !important;
+  stroke: var(--muted) !important;
+  fill: context-stroke !important;
+  stroke: context-stroke !important;
+}
+
 .layer path.flowchart-link.is-taken {
   stroke: var(--done) !important;
   stroke-width: 2.2px !important;
