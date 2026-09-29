@@ -1052,3 +1052,133 @@ a.tool {
   fill: var(--done) !important;
   stroke: var(--done) !important;
 }
+
+/* --- the skill editor ------------------------------------------------------------------------------ */
+
+.add-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.add-bar[hidden] {
+  display: none;
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.edit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.edit-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.edit-input,
+.edit-text {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  min-width: 0;
+}
+
+.edit-input.narrow {
+  flex: 0 0 110px;
+}
+
+.edit-text {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.edit-text.mono,
+.edit-input.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edit-list-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.edit-list-row .edit-input {
+  flex: 1 1 auto;
+}
+
+.edit-choice-next {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.edit-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+
+.edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool.small {
+  min-height: 28px;
+  padding: 3px 9px;
+  width: fit-content;
+}
+
+.tool.primary {
+  background: var(--done);
+  border-color: var(--done);
+  color: #fff;
+}
+
+.tool.danger {
+  color: var(--bad);
+}
+
+.edit-row > .edit-input,
+.edit-row > .edit-text,
+.edit-row > .run-picker {
+  width: 100%;
+  box-sizing: border-box;
+  max-width: none;
+}
+
+.skill-screen .topbar {
+  flex-wrap: wrap;
+}

@@ -100,7 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     update.add_argument("--force", action="store_true", help="Overwrite vendored files that were edited by hand.")
 
-    view = commands.add_parser("view", help="Open the read-only run viewer in the browser.")
+    view = commands.add_parser("view", help="Open the viewer (runs and skills) in the browser.")
     view.add_argument("--port", type=int, help="Default: viewer_port from config.yaml. 0 picks a free port.")
     view.add_argument("--no-open", action="store_true", help="Do not open the browser.")
 

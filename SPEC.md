@@ -73,10 +73,10 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D18 | The trace records the packet text given to the agent, the submission returned, and durations. | Enough for step-through, simple analytics, and later comparison. |
 | D19 | `skill.yaml` holds the graph. An `instruction` (or `report`) is either a path that ends in `.md` or the text itself. Long prose goes in `instructions/<block-id>.md`; one or two lines can stay inline. | Readable large skills, small diffs, and no tiny files for one-line steps. |
 | D20 | The runner is vendored into each project as the entry script `pskill.py`, the package folder `pskill_runner/`, and the viewer folder. Nobody edits them. `pskill update` replaces them wholesale. | Version pinned per project, no install step for teammates. A package with one module per concern stays readable; one file of several thousand lines would not. |
-| D21 | The entry script has a PEP 723 header. `uv run` installs Python and the three dependencies. Python puts the script's folder on the import path, so `pskill_runner/` needs no install step. | Python has no built-in YAML parser. `uv` is the only machine requirement. |
+| D21 | The entry script has a PEP 723 header. `uv run` installs Python and the four dependencies. Python puts the script's folder on the import path, so `pskill_runner/` needs no install step. | Python has no built-in YAML parser. `uv` is the only machine requirement. |
 | D22 | A run copies the skills and pskill agents that it uses into the run folder at start and always resumes from that copy. | The simplest correct behavior when a skill changes mid-run. |
 | D23 | Everything lives in `.pskill/`. Runs live in `.pskill/runs/`, which git ignores. | User choice. |
-| D24 | The MVP viewer is read-only. | The editor is the most expensive part. |
+| D24 | The MVP viewer is read-only. The skill editor came after the MVP (issue #3, section 14.2). | The editor is the most expensive part. |
 | D25 | MVP adapters: `claude-code` (the reference), `codex`, and `generic`. `generic` makes every skill run in any other harness (Gemini CLI, Cursor, and others) with soft enforcement and one-by-one parallel tasks. Dedicated Gemini and Cursor adapters come after the MVP, and only when a gap hurts. | Each adapter adds harness facts that need checking and upkeep. `generic` already covers the rest. |
 | D26 | Proof skills: `implement-issue` (one pull request, no step splitting), `review-pr`, and `create-issue`, ported from the setup-guplem-standard templates. Together they must exercise every feature (section 13.4). | Full coverage at a manageable size. The template extras (stacked PRs, worktree subagents, thread replies) can come later as the first real skill change. |
 | D27 | `pskill test` runs skill tests with a scripted fake agent. | Test graph paths with no LLM, no cost, in CI. |
@@ -1114,7 +1114,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 
 ---
 
-## 14. Viewer (read-only)
+## 14. Viewer
 
 - `pskill view` starts a `ThreadingHTTPServer` on `127.0.0.1` only and opens the browser. The launchers `view.cmd`, `view.command`, and `view.sh` run the same command on a double-click.
 - **All logic lives in the Python server,** so pytest covers it. The server builds:
@@ -1137,6 +1137,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 | `GET /api/skills` | One row per skill in `.pskill/skills/`: description, invocation, block count, run count, and the load error of a skill that does not load. |
 | `GET /api/skills/<id>` | The skill's facts, its canvas (one frame, no run parts), the details of each block, and the `pskill validate` problems, or the load error. |
 | `GET /api/skills/<id>/export` | The skill as plain Markdown skills, in a zip file (section 14.1). |
+| `POST /api/skills/<id>/edit` | The skill editor's one write: update, add, or delete a block (section 14.2). Returns the new skill detail, or the problems. |
 
 **Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, and dashed grey for not visited. Taken edges are solid blue. Each block type has its own icon, drawn for pskill as inline SVG: on its node above the block name, and next to the type in the side panel. The page follows the system's dark mode.
 
@@ -1165,6 +1166,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
    - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A call block links to its child skill's screen.
    - A skill that does not load shows its load error instead of a graph.
    - An "Export as Markdown" button downloads the export (section 14.1).
+   - An "Edit" button turns on the skill editor (section 14.2).
 
 ### 14.1 Export as Markdown
 
@@ -1178,6 +1180,18 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 - **Files:** the zip holds `<skill>/SKILL.md`, the skill's `scripts/`, and each pskill agent that it uses as `<skill>/subagents/<name>.md`. (Not `agents/`: Codex reads `agents/openai.yaml` there.)
 - **Child skills:** each child skill of a call block is exported as its own folder in the same zip. The call step tells the agent to follow it, then to come back.
 - **The run state file:** a script that reads `PSKILL_STATE_FILE` gets a note: write a JSON file with `inputs` and `steps`, and set the variable to its path.
+
+### 14.2 The skill editor
+
+The skill screen can change a skill. `skill_editor.py` writes the change to `skill.yaml`.
+
+- **What it edits:** a block's description, visit cap, retries, instruction or report (inline, or the text of its `.md` file), `next` edges (with conditions, and per choice), choices, decider, command, parse, timeout, child skill, agent, `for_each`, and end status. It also adds a block of any type (the smallest valid block) and deletes a block that no edge leads to. It does not edit field maps, `inputs`, `outputs`, or the skill's top level: edit those in the file.
+- **Only the changed block changes.** `ruamel.yaml` (a YAML library that keeps comments) reads the file. The editor replaces only the lines of the changed block, so every other line stays byte for byte the same. Inside the block, the comments, the quotes, and the anchors stay. A new key goes where the skill files put it (for example `description` after `type`). A list that the author wrapped over two lines becomes one line, but only in the changed block.
+- **Only keys that changed:** the page sends only the keys that the user changed, so an untouched key keeps its exact form.
+- **A structure error is refused:** a change after which the skill does not load is not saved, and the file stays as it was. A validation problem (for example an end that misses a required output) is saved, and the checks show it, because many edits need several steps.
+- **No node positions:** Mermaid lays out the canvas automatically, so there are no positions to keep in a sidecar file.
+- **Only the viewer page may write.** The server is on 127.0.0.1, but any web page in the user's browser can send requests to it. So the edit endpoint takes only JSON (a browser asks first before it sends JSON to another site, and this server never allows it), a `Host` of this server (against DNS rebinding), and no `Origin` other than this server.
+- After an edit, run `pskill validate`, `pskill test`, and `pskill sync` as after any skill change.
 
 ---
 
@@ -1303,7 +1317,6 @@ Each item below exists as a GitHub issue with the label `future` (guplem/pskill 
 |---|---|
 | Gemini CLI adapter (hooks, subagents) | `generic` already runs skills there. |
 | Cursor adapter (hooks, subagents) | Same. |
-| Visual skill editor that writes `skill.yaml` | The most expensive part; the viewer comes first. |
 | `pskill eval`: run one skill headless in several harnesses on the same inputs and compare the traces | Needs the runner to launch agents (the opposite direction of D1). |
 | Export traces to OpenTelemetry, and upload runs to Galtea | The trace format must settle first. |
 | MCP front door (the same commands as MCP tools) | The CLI works everywhere. |

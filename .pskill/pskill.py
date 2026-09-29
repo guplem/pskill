@@ -4,6 +4,7 @@
 #     "jinja2>=3.1",
 #     "jsonschema>=4.21",
 #     "pyyaml>=6",
+#     "ruamel-yaml>=0.18",
 # ]
 # ///
 """Entry point of the pskill runner. Run it with: uv run pskill.py <command>

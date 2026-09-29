@@ -1,6 +1,7 @@
-"""`pskill view`: a small local web server for the read-only viewer (SPEC.md section 14).
+"""`pskill view`: a small local web server for the viewer and its skill editor (SPEC.md section 14).
 
-It serves the static files of `viewer/`, four JSON endpoints (runs and skills), and a skill export.
+It serves the static files of `viewer/`, four JSON endpoints (runs and skills), a skill export, and
+one write endpoint for the skill editor.
 It listens on 127.0.0.1 only, and reads the files on every request, so it never shows stale state.
 """
 
@@ -11,16 +12,19 @@ from functools import partial
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
 from pskill_runner.project import Project
+from pskill_runner.skill_editor import EditError, add_block, delete_block, update_block
 from pskill_runner.skill_export import ExportError, export_zip
 from pskill_runner.skill_view import skill_detail, skills_overview
 from pskill_runner.viewer_data import run_detail, runs_overview
 
 LOCAL_HOST = "127.0.0.1"
 EXPORT_PATH = re.compile(r"/api/skills/([^/]+)/export")
+EDIT_PATH = re.compile(r"/api/skills/([^/]+)/edit")
+MAX_EDIT_BYTES = 1_000_000
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
@@ -58,6 +62,48 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
         else:
             self.send_viewer_file(path)
 
+    def do_POST(self) -> None:
+        """The skill editor's one write endpoint: update, add, or delete a block (issue #3)."""
+        path = unquote(urlparse(self.path).path)
+        edit_match = EDIT_PATH.fullmatch(path)
+        if edit_match is None:
+            self.send_json(HTTPStatus.NOT_FOUND, {"error": "There is no such endpoint."})
+            return
+        refusal = self.write_refusal()
+        if refusal is not None:
+            self.send_json(HTTPStatus.FORBIDDEN, {"error": refusal})
+            return
+        try:
+            request = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
+            apply_edit(self.project, edit_match[1], request)
+        except (ValueError, TypeError, KeyError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"error": [f"The request is not a valid edit: {error}"]})
+            return
+        except EditError as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"error": error.problems})
+            return
+        self.send_json(HTTPStatus.OK, skill_detail(self.project, edit_match[1]))
+
+    def write_refusal(self) -> str | None:
+        """Why a write must not happen, or None. Only the viewer page itself may write.
+
+        A JSON body makes the browser ask first (a CORS preflight), which this server never allows, so
+        another web site cannot send it. The Host check stops a web site whose name points to 127.0.0.1
+        (DNS rebinding), and the Origin check stops any other page.
+        """
+        host = self.headers.get("Host", "")
+        port = cast(ThreadingHTTPServer, self.server).server_port
+        if host not in (f"{LOCAL_HOST}:{port}", f"localhost:{port}"):
+            return "Only the viewer on this machine may change skills."
+        origin = self.headers.get("Origin")
+        if origin is not None and origin != f"http://{host}":
+            return "Only the viewer page may change skills."
+        if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+            return "A change must be sent as JSON."
+        if int(self.headers.get("Content-Length") or 0) > MAX_EDIT_BYTES:
+            return "The change is too large."
+        return None
+
     def send_export(self, skill_id: str) -> None:
         """The skill as plain Markdown skills in a zip file, as a download (issue #55)."""
         try:
@@ -94,6 +140,18 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *arguments: Any) -> None:
         """Keep the terminal quiet: one line per request would drown the useful output."""
+
+
+def apply_edit(project: Project, skill_id: str, request: dict[str, Any]) -> None:
+    action = request["action"]
+    if action == "update":
+        update_block(project, skill_id, str(request["block"]), dict(request["values"]))
+    elif action == "add":
+        add_block(project, skill_id, str(request["block"]), str(request["type"]))
+    elif action == "delete":
+        delete_block(project, skill_id, str(request["block"]))
+    else:
+        raise EditError([f"Unknown action {action!r}: use update, add, or delete."])
 
 
 def make_server(project: Project, viewer_folder: Path, port: int) -> ThreadingHTTPServer:
