@@ -329,7 +329,7 @@ read_issue:
 - Put real logic in `scripts/` as Python or Node, and call it: `[uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]`.
 - The working directory is the project root. The environment adds `PSKILL_RUN_DIR` and `PSKILL_STATE_FILE` (a JSON copy of the current state).
 - Output: `steps.<id>.stdout`, and `steps.<id>.json` with `parse: json`.
-- A non-zero exit code, a timeout (config `script_timeout_s`, default 300), or bad JSON is a block failure. A script that wants to report a normal "no" result exits 0 and prints JSON.
+- A non-zero exit code, a timeout (config `script_timeout_s`, default 300, or the block's own `timeout_s: <seconds>`), or bad JSON is a block failure. A script that wants to report a normal "no" result exits 0 and prints JSON.
 
 ### 6.5 `call`
 
@@ -436,7 +436,7 @@ done:
 ### 7.4 Failures
 
 Two kinds of failure exist:
-- **Retried failures** can succeed on a second try: an invalid submission, a `$cannot_complete`, and a failed script. The runner retries up to `retries` times (config, default 2): it reprints the packet with the errors, or it runs the script again. After that it pauses the run with the reason `block_failed`.
+- **Retried failures** can succeed on a second try: an invalid submission, a `$cannot_complete`, and a failed script. The runner retries up to `retries` times (config, default 2): it reprints the packet with the errors, or it runs the script again. After that it pauses the run with the reason `block_failed`. A `task`, `decision`, `parallel`, or `script` block can set its own `retries: <n>` (0 means no second try), which overrides the config value for that block.
 - **Runner-side failures** fail the same way every time, because nothing changed: a computed value that fails, no matching edge, a visit cap with no `on_max_visits`, and invalid end outputs. The runner pauses the run at once with the reason `runner_error`.
 
 The pause packet shows the error and three commands: `resume` (retry the block with a fresh count), `cancel`, and `current`.
@@ -1246,8 +1246,8 @@ Each of these was in an earlier draft. Each one added complexity for little user
 | Named reusable types | YAML anchors under `x-` keys |
 | A static task list in a parallel block | `for_each` over a YAML list |
 | `for_each` on `call` | A loop through edges, with `history` |
-| `on_error` and retries per block | One global retry count, then pause, then `resume` |
-| `ok_exit_codes`, and a timeout per block | Exit 0 plus JSON output; one global timeout |
+| `on_error` per block | Retries (global, or the block's own `retries`), then pause, then `resume` |
+| `ok_exit_codes` | Exit 0 plus JSON output |
 | Child runs with their own ids and folders | One run with a call stack |
 | A UserPromptSubmit hook, and binding by session id | Two hooks, bound by harness and checkout (L4) |
 | A managed block inside `AGENTS.md` | `AUTHORING.md`, and one line in the README that tells users to point to it |
@@ -1280,7 +1280,6 @@ Each item below exists as a GitHub issue with the label `future` (guplem/pskill 
 | Up-front check of required tools and connectors | A missing tool fails its block, then the run pauses. |
 | Tool limits and model choice for a block or a pskill agent | Harness-specific; pskill agents are prompt-only in the MVP. |
 | `implement-issue`: split big issues into stacked PRs, worktree subagents, reply to review threads | The proof version makes one PR. |
-| Per-block retries and timeouts | One global value each in the MVP. |
 
 ---
 

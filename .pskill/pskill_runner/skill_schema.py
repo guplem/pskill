@@ -78,6 +78,9 @@ COMMON_BLOCK_PROPERTIES: dict[str, Any] = {
 }
 
 
+RETRIES_PROPERTY: dict[str, Any] = {"retries": {"type": "integer", "minimum": 0}}
+
+
 def block_schema(required: list[str], properties: dict[str, Any]) -> dict[str, Any]:
     return {
         **FIELD_SPEC_SCHEMA,
@@ -95,6 +98,7 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
             "instruction": {"type": "string"},
             "output": {"$ref": "#/$defs/field_map"},
             "next": {"$ref": "#/$defs/edges"},
+            **RETRIES_PROPERTY,
         },
     ),
     "decision": block_schema(
@@ -105,6 +109,7 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
             "choices": {"type": "object", "minProperties": 2, "additionalProperties": {"type": "string"}},
             "output": {"$ref": "#/$defs/field_map"},
             "next": {"oneOf": [{"$ref": "#/$defs/edges"}, {"$ref": "#/$defs/choice_map"}]},
+            **RETRIES_PROPERTY,
         },
     ),
     "parallel": block_schema(
@@ -115,6 +120,7 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
             "instruction": {"type": "string"},
             "output": {"$ref": "#/$defs/field_map"},
             "next": {"$ref": "#/$defs/edges"},
+            **RETRIES_PROPERTY,
         },
     ),
     "script": block_schema(
@@ -123,6 +129,8 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
             "run": {"type": "array", "minItems": 1, "items": {"type": ["string", "number", "boolean"]}},
             "parse": {"enum": ["text", "json"]},
             "next": {"$ref": "#/$defs/edges"},
+            "timeout_s": {"type": "integer", "minimum": 1},
+            **RETRIES_PROPERTY,
         },
     ),
     "call": block_schema(

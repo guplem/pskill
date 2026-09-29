@@ -59,6 +59,7 @@ from pskill_runner.skill_model import (
     Edge,
     EndBlock,
     ParallelBlock,
+    RetryableBlock,
     ScriptBlock,
     Skill,
     SkillCatalog,
@@ -452,6 +453,12 @@ class Run:
             raise RunError("The run has no current block.")
         return self.skill_of(self.frame).blocks[block_id]
 
+    def retries_of(self, block: AnyBlock) -> int:
+        """The block's own `retries`, or the global value from `config.yaml`."""
+        if isinstance(block, RetryableBlock) and block.retries is not None:
+            return block.retries
+        return self.project.config.retries
+
     def context(self, item: Any = None) -> dict[str, Any]:
         """The names that `{{ }}` values can read (SPEC.md section 7.1)."""
         frame = self.frame
@@ -644,10 +651,9 @@ class Run:
         write_json_atomic(state_file, self.frame)
         env = {**os.environ, "PSKILL_RUN_DIR": str(self.folder), "PSKILL_STATE_FILE": str(state_file)}
         problem = None
-        for _ in range(self.project.config.retries + 1):
-            result = self.executor.run_script(
-                block.id, argv, self.project.root, env, self.project.config.script_timeout_s
-            )
+        timeout_s = block.timeout_s if block.timeout_s is not None else self.project.config.script_timeout_s
+        for _ in range(self.retries_of(block) + 1):
+            result = self.executor.run_script(block.id, argv, self.project.root, env, timeout_s)
             self.log(
                 "script_ran",
                 block=block.id,
@@ -878,7 +884,7 @@ class Run:
             self.info["attempts"] += 1
             attempts = self.info["attempts"]
         self.log("submission_rejected", block=self.frame["current_block"], task=task, errors=errors, raw=answer_text)
-        if attempts > self.project.config.retries:
+        if attempts > self.retries_of(self.current_block()):
             return self.pause("block_failed", "\n".join(errors))
         return self.guarded(lambda: self.agent_packet(errors=errors))
 

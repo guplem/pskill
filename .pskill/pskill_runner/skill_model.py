@@ -30,14 +30,21 @@ class Block:
 
 
 @dataclass(frozen=True, kw_only=True)
-class TaskBlock(Block):
+class RetryableBlock(Block):
+    """A block that can fail and try again. `retries` overrides the global value in `config.yaml`."""
+
+    retries: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class TaskBlock(RetryableBlock):
     instruction: str
     output: FieldMap
     next: list[Edge]
 
 
 @dataclass(frozen=True, kw_only=True)
-class DecisionBlock(Block):
+class DecisionBlock(RetryableBlock):
     decider: str
     instruction: str
     choices: dict[str, str] | None = None
@@ -53,7 +60,7 @@ class EndBlock(Block):
 
 
 @dataclass(frozen=True, kw_only=True)
-class ParallelBlock(Block):
+class ParallelBlock(RetryableBlock):
     """One subagent task per item of `for_each`, joined into one list of results."""
 
     for_each: list[Any] | str
@@ -64,11 +71,15 @@ class ParallelBlock(Block):
 
 
 @dataclass(frozen=True, kw_only=True)
-class ScriptBlock(Block):
-    """A command that the runner executes itself, with no shell and no LLM."""
+class ScriptBlock(RetryableBlock):
+    """A command that the runner executes itself, with no shell and no LLM.
+
+    `timeout_s` overrides the global `script_timeout_s` in `config.yaml`.
+    """
 
     run: list[Any]
     parse: str = "text"
+    timeout_s: int | None = None
     next: list[Edge]
 
 
