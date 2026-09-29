@@ -6,7 +6,7 @@ from typing import Any
 
 from pskill_runner.engine import start_run, submit_answer
 from pskill_runner.project import Project, find_project
-from pskill_runner.viewer_data import run_detail, runs_overview, timeline_rows
+from pskill_runner.viewer_data import run_detail, runs_overview, task_row_sizes, timeline_rows
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 from tests.test_engine_blocks import (
     CHILD_SKILL,
@@ -606,6 +606,7 @@ def test_the_canvas_draws_a_frame_of_task_nodes_next_to_a_parallel_block(tmp_pat
     assert '    f0_check_t0["@@f0_check_t0@@"]\n' in template
     assert '    f0_check_t1["@@f0_check_t1@@"]\n' in template
     assert "  f0_check -.- f0_check_tasks\n" in template
+    assert "    f0_check_t0 ~~~ f0_check_t1\n" in template  # invisible links put the tasks in rows
     nodes = {node["id"]: node for node in detail["canvas"]["nodes"]}
     assert nodes["f0_check_t1"]["kind"] == "task"
     assert nodes["f0_check_t1"]["parent"] == "f0_check"
@@ -615,6 +616,14 @@ def test_the_canvas_draws_a_frame_of_task_nodes_next_to_a_parallel_block(tmp_pat
     assert edges["L_f0_check_f0_check_tasks_0"]["kind"] == "tasks"
     row = check_row_of(project, run_id)
     assert [task["node"] for task in row["tasks"]] == ["f0_check_t0", "f0_check_t1"]
+
+
+def test_the_task_rows_are_balanced_so_that_no_task_stands_alone() -> None:
+    assert task_row_sizes(1) == [1]
+    assert task_row_sizes(4) == [4]
+    assert task_row_sizes(5) == [3, 2]
+    assert task_row_sizes(9) == [3, 3, 3]
+    assert task_row_sizes(13) == [4, 3, 3, 3]
 
 
 def test_a_script_run_keeps_its_stdout_parsed_as_json(tmp_path: Path) -> None:

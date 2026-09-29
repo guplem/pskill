@@ -6,6 +6,7 @@ per-skill summaries. The page only adds up the rows up to the replay step.
 """
 
 import json
+import math
 import re
 import statistics
 from dataclasses import dataclass
@@ -50,6 +51,7 @@ OUTPUT_TITLES = {
     "end": "Output: the skill's outputs",
 }
 TASK_HEADING = re.compile(r"^#### Task (\d+)$", re.MULTILINE)
+TASKS_PER_ROW = 4
 TASK_NODE_HINT = "One task of this parallel block. One subagent (or the agent) does it and answers on its own."
 TASKS_EDGE_HINT = "The tasks of this parallel block, one node per task."
 
@@ -274,12 +276,27 @@ def number_edges(edges: list[CanvasEdge]) -> list[CanvasEdge]:
 
 
 def task_frame_lines(parent: str, block_id: str, count: int, indent: str) -> list[str]:
-    """The frame of a parallel block's tasks: one small node per task, side by side."""
+    """The frame of a parallel block's tasks: one small node per task, in rows of TASKS_PER_ROW.
+
+    Mermaid ignores `direction LR` in a frame that an edge links, so invisible links (`~~~`) make the rows.
+    """
     lines = [f'{indent}subgraph {parent}_tasks ["{block_id} · {count} task{"" if count == 1 else "s"}"]']
     lines.append(f"{indent}  direction LR")
     for task in range(count):
         lines.append(f'{indent}  {task_node_id(parent, task)}["{label_token(task_node_id(parent, task))}"]')
+    first = 0
+    for size in task_row_sizes(count):
+        if size > 1:
+            lines.append(f"{indent}  {' ~~~ '.join(task_node_id(parent, task) for task in range(first, first + size))}")
+        first += size
     return [*lines, f"{indent}end"]
+
+
+def task_row_sizes(count: int) -> list[int]:
+    """Rows of at most TASKS_PER_ROW tasks, balanced. Mermaid puts a task without links first, not last."""
+    rows = max(1, math.ceil(count / TASKS_PER_ROW))
+    base, extra = divmod(count, rows)
+    return [base + 1] * extra + [base] * (rows - extra)
 
 
 def canvas_template(frames: list[CanvasFrame], edges: list[CanvasEdge], task_counts: dict[tuple[int, str], int]) -> str:
