@@ -31,11 +31,12 @@ const view = {
   detailText: null,
   runs: [],
   step: 0,
-  following: true,
+  stepAtEnd: true,
   followLive: true,
   selectedNode: null,
   selectedRow: null,
   transform: { x: 0, y: 0, scale: 1 },
+  appliedScale: 1,
   fitted: false,
   renderCount: 0,
   rendering: false,
@@ -165,7 +166,7 @@ function buildRunScreen() {
   picker.addEventListener("change", () => {
     location.hash = `#/run/${picker.value}`;
   });
-  const status = element("span");
+  const status = element("span", null, "run-status");
   const follow = button("Follow live", () => {
     view.followLive = !view.followLive;
     follow.setAttribute("aria-pressed", String(view.followLive));
@@ -234,9 +235,6 @@ function drawTopbar() {
   if (info.pause_reason) parts.push(element("span", `paused: ${info.pause_reason}`, "note"));
   if (view.detail.skill_changed) parts.push(element("span", "The skill changed after this run started.", "note"));
   status.replaceChildren(...parts);
-  status.style.display = "flex";
-  status.style.gap = "10px";
-  status.style.alignItems = "center";
 }
 
 // --- the run screen: which state each node has at the replay step ------------------------------
@@ -247,10 +245,10 @@ function rows() {
 
 function stepState() {
   const upToStep = rows().slice(0, view.step + 1);
-  const visited = new Set(upToStep.map((row) => row.node));
+  const visited = new Set(upToStep.map((row) => row.node).filter(Boolean));
   const taken = new Set(upToStep.map((row) => row.edge).filter(Boolean));
   const labels = {};
-  for (const row of upToStep) labels[row.node] = row.label;
+  for (const row of upToStep) if (row.node) labels[row.node] = row.label;
   const atEnd = view.step === rows().length - 1;
   const current = view.detail.canvas && view.detail.canvas.current;
   const stepNode = upToStep.length ? upToStep[upToStep.length - 1].node : null;
@@ -260,7 +258,7 @@ function stepState() {
 
 function nodeState(node, state) {
   if (node === state.stepNode) return state.stepNodeState;
-  return state.visited.has(node) || node === "start" ? "done" : "unvisited";
+  return state.visited.has(node) || node === view.detail.canvas?.start ? "done" : "unvisited";
 }
 
 // --- the run screen: the canvas ---------------------------------------------------------------
@@ -292,7 +290,7 @@ async function drawGraph() {
   const { canvas: data } = view.detail;
   const state = stepState();
   let source = data.template;
-  for (const node of data.nodes) source = source.replace(`@@${node.id}@@`, () => state.labels[node.id] || data.labels[node.id]);
+  for (const node of data.nodes) source = source.replace(node.token, () => state.labels[node.id] || data.labels[node.id]);
   await document.fonts.ready; // Mermaid measures the labels, so the fonts must be there first
   const renderId = `canvas-${++view.renderCount}`;
   window.mermaid.initialize({
@@ -321,7 +319,7 @@ async function drawGraph() {
     group.dataset.node = node;
     group.classList.add(`is-${nodeState(node, state)}`);
     if (node === view.selectedNode) group.classList.add("is-selected");
-    if (node !== "start") group.addEventListener("click", () => view.dragEnded || selectNode(node));
+    if (node !== data.start) group.addEventListener("click", () => view.dragEnded || selectNode(node));
   }
   for (const edge of data.edges) {
     const path = svgNode.querySelector(`[id="${renderId}-${edge.id}"]`);
@@ -350,7 +348,7 @@ function drawStepList() {
       const card = button(null, () => selectNode(row.node, index), "step-card");
       const stateName = index === view.step ? state.stepNodeState : "done";
       card.classList.add(`is-${stateName}`);
-      card.append(element("strong", row.block), element("small", row.label.replace(/<[^>]+>/g, " · ").replace(/^ · /, "")));
+      card.append(element("strong", row.block), element("small", row.summary));
       list.append(card);
     });
   view.parts.layer.replaceChildren();
@@ -466,7 +464,7 @@ function drawPanel() {
   const panel = view.parts.panel;
   const state = stepState();
   const node = view.selectedNode || state.stepNode;
-  const nodeInfo = view.detail.canvas ? view.detail.canvas.nodes.find((item) => item.id === node) : null;
+  const nodeInfo = view.detail.canvas && node ? view.detail.canvas.nodes.find((item) => item.id === node) : null;
   const visits = rows()
     .map((row, index) => ({ row, index }))
     .filter((item) => item.row.node === node && item.index <= view.step);
@@ -523,21 +521,14 @@ function exitsOf(node) {
   return list;
 }
 
-function arrivalText(row) {
-  const reason = row.reason || "";
-  if (!row.from) return `the start (${reason || "entry"})`;
-  if (reason === "always") return row.from;
-  return `${row.from} (${reason.replace(/^\{\{\s*|\s*\}\}$/g, "")})`;
-}
-
 function rowSections(row) {
   const facts = element("dl", null, "facts");
   const addFact = (name, value) => facts.append(element("dt", name), element("dd", value));
-  addFact("Arrived from", arrivalText(row));
+  addFact("Arrived from", row.arrival);
   addFact("Started", formatTime(row.ts));
   addFact("Duration", row.duration_ms === null ? "not finished" : formatDuration(row.duration_ms));
   if (row.decided_by) addFact("Decided by", row.decided_by);
-  if (row.left_by) addFact("Went next to", `${row.left_by.to}${row.left_by.label ? ` (${row.left_by.label.replace(/#39;/g, "'").replace(/#quot;/g, '"')})` : ""}`);
+  if (row.left_by) addFact("Went next to", `${row.left_by.to}${row.left_by.label ? ` (${row.left_by.label})` : ""}`);
   const parts = [facts];
   if (row.packet) {
     const lines = row.packet.split("\n");
@@ -607,7 +598,7 @@ function drawReplay() {
 function setStep(step) {
   const last = Math.max(rows().length - 1, 0);
   view.step = Math.min(Math.max(step, 0), last);
-  view.following = view.step === last;
+  view.stepAtEnd = view.step === last;
   view.selectedNode = null;
   view.selectedRow = null;
   drawReplay();
@@ -643,7 +634,7 @@ async function showRun(runId) {
     view.detail = null;
     view.detailText = null;
     view.fitted = false;
-    view.following = true;
+    view.stepAtEnd = true;
     view.selectedNode = null;
     buildRunScreen();
   }
@@ -656,7 +647,7 @@ async function showRun(runId) {
     view.detailText = text;
     view.detail = detail;
     view.runs = overview.runs;
-    if (view.following) view.step = Math.max(detail.timeline.length - 1, 0);
+    if (view.stepAtEnd) view.step = Math.max(detail.timeline.length - 1, 0);
     drawTopbar();
     drawReplay();
     drawPanel();

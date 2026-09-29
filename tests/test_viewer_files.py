@@ -36,6 +36,7 @@ def test_the_script_draws_the_steps_without_mermaid_and_never_inserts_run_text_a
 
     assert "if (!window.mermaid)" in script
     assert "Graph unavailable offline" in script
+    assert '"step-card"' in script  # offline, the steps are drawn as node-style cards
     assert script.count("innerHTML") == 1  # only for Mermaid's own SVG output
     assert 'securityLevel: "strict"' in script
 
