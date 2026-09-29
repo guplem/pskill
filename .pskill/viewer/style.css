@@ -472,8 +472,10 @@ pre {
 .step-card.is-waiting { border: 3px solid var(--human); background: var(--human-bg); }
 .step-card.is-failed { border: 3px solid var(--bad); background: var(--bad-bg); }
 
-.step-card small {
+.step-card small,
+.step-card .block-type {
   color: var(--muted);
+  font-size: 12px;
 }
 
 /* --- the side panel ---------------------------------------------------------------------------- */
@@ -689,6 +691,73 @@ details[open] summary {
   gap: 12px;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Block icons: on the canvas above each block name, and next to the type in the panel. */
+
+.block-icon-svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.layer .block-icon .block-icon-svg {
+  display: inline-block; /* the canvas SVG rule makes every svg a block */
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+  stroke: var(--ghost-ink);
+}
+
+/* Mermaid styles every path in a node (fill and stroke); the icon's paths keep the icon's own stroke. */
+.layer .block-icon-svg path {
+  fill: none !important;
+  stroke: inherit !important;
+  stroke-width: 1.6px !important;
+}
+
+.layer g.node.is-done .block-icon-svg {
+  stroke: var(--done);
+}
+
+.layer g.node.is-now .block-icon-svg {
+  stroke: var(--now);
+}
+
+.layer g.node.is-waiting .block-icon-svg {
+  stroke: var(--human);
+}
+
+.layer g.node.is-failed .block-icon-svg {
+  stroke: var(--bad);
+}
+
+.block-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+/* A selected chip in the panel: the blue of the viewer, not a block of black. */
+.visits .tool[aria-pressed="true"] {
+  background: var(--done-bg);
+  border-color: var(--done);
+  box-shadow: inset 0 0 0 1px var(--done);
+  color: var(--done);
+  font-weight: 700;
+}
+
+.visits .task-chip.is-rejected[aria-pressed="true"] {
+  background: var(--bad-bg);
+  border-color: var(--bad);
+  box-shadow: inset 0 0 0 1px var(--bad);
+  color: var(--bad);
 }
 
 /* The side panel: folded blocks, JSON trees, Markdown, and the tasks of a parallel block. */
