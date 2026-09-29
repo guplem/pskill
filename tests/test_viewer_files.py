@@ -103,3 +103,11 @@ def test_the_view_command_serves_the_viewer_until_stopped(tmp_path: Path) -> Non
     finally:
         process.terminate()
         process.wait(timeout=10)
+
+
+def test_the_skill_screen_offers_the_markdown_export_as_a_download() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    assert "Export as Markdown" in script
+    assert "/export`" in script
+    assert "exportLink.download" in script

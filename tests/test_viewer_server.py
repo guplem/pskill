@@ -1,9 +1,11 @@
 """Tests for pskill_runner.viewer_server: the local JSON API and the static viewer files."""
 
+import io
 import json
 import threading
 import urllib.error
 import urllib.request
+import zipfile
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -113,3 +115,21 @@ def test_an_unknown_skill_is_not_found(server: ThreadingHTTPServer) -> None:
 
     assert status == 404
     assert json.loads(body) == {"error": "There is no skill with this id."}
+
+
+def test_the_export_endpoint_downloads_the_skill_as_a_zip(server: ThreadingHTTPServer) -> None:
+    url = f"http://127.0.0.1:{server.server_address[1]}/api/skills/plan-work/export"
+    with urllib.request.urlopen(url, timeout=10) as response:
+        headers = response.headers
+        body = response.read()
+
+    assert headers["Content-Type"] == "application/zip"
+    assert headers["Content-Disposition"] == 'attachment; filename="plan-work.zip"'
+    assert zipfile.ZipFile(io.BytesIO(body)).namelist() == ["plan-work/SKILL.md"]
+
+
+def test_the_export_of_an_unknown_skill_is_not_found(server: ThreadingHTTPServer) -> None:
+    status, _, body = get(server, "/api/skills/missing/export")
+
+    assert status == 404
+    assert "missing" in json.loads(body)["error"]
