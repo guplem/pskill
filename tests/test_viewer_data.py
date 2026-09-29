@@ -148,6 +148,32 @@ blocks:
 """
 
 
+HEADING_TASK_SKILL = """\
+schema: pskill/v1
+id: heading-task
+description: A parallel block whose instruction has a task heading of its own.
+goal: Check the documents.
+inputs:
+  files: {type: array, items: {type: string}, description: "The documents."}
+entry: check
+blocks:
+  check:
+    type: parallel
+    for_each: "{{ inputs.files }}"
+    instruction: |
+      Check {{ item }}.
+
+      #### Task 5
+      This heading is part of the instruction, not a task.
+    output:
+      wrong: {type: array, items: {type: string}, description: "The wrong claims."}
+    next: check_tasks
+  check_tasks:
+    type: end
+    status: succeeded
+"""
+
+
 def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "plan-work", PLAN_SKILL, PLAN_SKILL_FILES)
     write_skill(tmp_path / ".pskill" / "skills", "scripted", SCRIPT_SKILL)
@@ -160,6 +186,7 @@ def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "long-condition", LONG_CONDITION_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "fanout-twice", FANOUT_TWICE_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "fanout-caller", FANOUT_CALLER_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "heading-task", HEADING_TASK_SKILL)
     (tmp_path / ".pskill" / "agents").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".pskill" / "agents" / "checker.md").write_text("You check facts.", encoding="utf-8")
     return find_project(tmp_path)
@@ -786,3 +813,45 @@ def test_a_task_frame_with_many_tasks_has_several_rows(tmp_path: Path) -> None:
 
     assert "    f0_check_T0 ~~~ f0_check_T1 ~~~ f0_check_T2\n" in template
     assert "    f0_check_T3 ~~~ f0_check_T4\n" in template
+
+
+def test_a_one_by_one_answer_out_of_order_keeps_one_visit(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md", "c.md"]}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "wrong: [b]\n", task=1)  # the packet shows task 0
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    rows = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+
+    assert [len(row["tasks"]) for row in rows] == [3] * len(rows)
+    assert [task["state"] for task in rows[-1]["tasks"]] == ["done", "done", "open"]
+    assert rows[-1]["tasks"][1]["output"] == {"wrong": ["b"]}
+
+
+def test_a_task_heading_inside_an_instruction_adds_no_task(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    subagent_run, _ = start_run(
+        project, "heading-task", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    one_by_one_run, _ = start_run(
+        project, "heading-task", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic"
+    )
+
+    for run_id in (subagent_run, one_by_one_run):
+        detail = detail_of(project, run_id)
+        rows = [row for row in detail["timeline"] if row["block"] == "check"]
+        assert len(rows[-1]["tasks"]) == 2
+        assert "This heading is part of the instruction" in rows[-1]["tasks"][0]["packet"]
+        assert "f0_check_T5" not in detail["canvas"]["template"]
+
+
+def test_the_task_frame_id_never_equals_a_block_node_id(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "heading-task", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+
+    template = detail_of(project, run_id)["canvas"]["template"]
+
+    assert '  subgraph f0_check_TASKS ["check · 2 tasks"]\n' in template
+    assert '  f0_check_tasks["@@f0_check_tasks@@"]\n' in template
