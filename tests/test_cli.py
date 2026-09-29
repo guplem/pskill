@@ -92,6 +92,45 @@ def test_submit_without_an_answer_fails_quickly(tmp_path: Path) -> None:
     assert time.monotonic() - started < 10
 
 
+SPELL_SKILL = """\
+schema: pskill/v1
+id: spell
+description: Gives letters in parallel.
+goal: Two letters.
+outputs:
+  letters: {type: array, items: {type: string}, description: "The letters."}
+entry: spell
+blocks:
+  spell:
+    type: parallel
+    for_each: [first, last]
+    instruction: "Give the {{ item }} letter of tide."
+    output:
+      letter: {type: string, description: "One letter."}
+    next: done
+  done:
+    type: end
+    status: succeeded
+    outputs: {letters: "{{ steps.spell.results | map(attribute='letter') | list }}"}
+"""
+
+
+def test_submit_takes_the_task_number_of_a_parallel_block(tmp_path: Path) -> None:
+    root = tmp_path
+    write_skill(root / ".pskill" / "skills", "spell", SPELL_SKILL)
+    first_task = run_pskill(root, "start", "spell").stdout
+    run_id = run_id_of(first_task)
+    assert f"submit {run_id} --task 0" in first_task
+
+    second_task = run_pskill(root, "submit", run_id, "--task", "0", stdin="letter: t\n")
+    assert second_task.returncode == 0, second_task.stderr
+    assert f"submit {run_id} --task 1" in second_task.stdout
+
+    final = run_pskill(root, "submit", run_id, "--task", "1", stdin="letter: e\n")
+    assert final.returncode == 0, final.stderr
+    assert "finished with status succeeded" in final.stdout
+
+
 def test_current_and_pause_resume_cancel(tmp_path: Path) -> None:
     root = make_project(tmp_path)
     run_id = run_id_of(run_pskill(root, "start", "plan-work", "--input", "topic=x").stdout)

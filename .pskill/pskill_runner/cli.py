@@ -66,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     submit = commands.add_parser("submit", help="Send the answer (YAML on stdin) and print the next block.")
     submit.add_argument("run_id")
+    submit.add_argument("--task", type=int, help="The task number, for a block with several tasks.")
 
     for name, help_text in (
         ("pause", "Pause a run."),
@@ -147,7 +148,7 @@ def run_command(options: argparse.Namespace) -> int:
     if command == "current":
         return print_text(current_packet(project, options.run_id, harness))
     if command == "submit":
-        return print_text(submit_answer(project, options.run_id, read_answer(sys.stdin), harness=harness))
+        return print_text(submit_answer(project, options.run_id, read_answer(sys.stdin), options.task, harness=harness))
     if command == "pause":
         return print_text(pause_run(project, options.run_id))
     if command == "resume":

@@ -44,7 +44,7 @@ def test_init_copies_the_runner_and_records_its_hashes(tmp_path: Path) -> None:
     assert (pskill_folder / "pskill_runner" / "engine.py").is_file()
     assert not (pskill_folder / "pskill_runner" / "__pycache__").exists()
     assert (pskill_folder / "skills").is_dir()
-    assert (pskill_folder / ".gitignore").read_text(encoding="utf-8") == "runs/\n"
+    assert (pskill_folder / ".gitignore").read_text(encoding="utf-8") == "runs/\n__pycache__/\n"
     assert "stub_folders:" in (pskill_folder / "config.yaml").read_text(encoding="utf-8")
     assert ".pskill/** text eol=lf" in (project_root / ".gitattributes").read_text(encoding="utf-8")
     vendored = json.loads((pskill_folder / "VENDORED").read_text(encoding="utf-8"))
