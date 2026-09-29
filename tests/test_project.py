@@ -46,3 +46,20 @@ def test_config_values_override_the_defaults(tmp_path: Path) -> None:
 def test_an_unknown_config_key_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(ProjectError, match="unknown setting 'retry'"):
         find_project(make_project(tmp_path, "retry: 5\n"))
+
+
+def test_by_default_both_apps_get_the_hooks_in_their_own_files_and_the_permission_rules(tmp_path: Path) -> None:
+    config = find_project(make_project(tmp_path)).config
+
+    assert config.permissions == ["claude-code", "codex"]
+    assert config.hook_files == [".claude/settings.json", ".codex/hooks.json"]
+
+
+def test_the_old_harnesses_setting_names_its_replacements(tmp_path: Path) -> None:
+    with pytest.raises(ProjectError, match=r"'harnesses' is now 'permissions'.*'hook_files'"):
+        find_project(make_project(tmp_path, "harnesses: [codex]\n"))
+
+
+def test_an_unknown_app_in_permissions_is_an_error(tmp_path: Path) -> None:
+    with pytest.raises(ProjectError, match="unknown app 'vim' in permissions"):
+        find_project(make_project(tmp_path, "permissions: [vim]\n"))

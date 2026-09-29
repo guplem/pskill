@@ -639,9 +639,14 @@ pskill/
 
 `config.yaml`:
 
+- **`hook_files`** are paths, because every hooks file has the same shape (`{"hooks": {...}}`). An app's own file (`.claude/settings.json`, `.codex/hooks.json`) gets that app's hook commands. Any other file, such as a project's own source of hooks that generates the app files, gets shared commands that pass `--harness auto`. The runner then detects the app from the hook input (`turn_id` means Codex) or the environment (`CLAUDE_PROJECT_DIR` means Claude Code). `sync` removes pskill's hooks from the app files that are not listed.
+- **`permissions`** are app names, because each app keeps its rules in its own format, in a fixed place: Claude Code in `permissions.allow` of `.claude/settings.json`, Codex in `.codex/rules/pskill.rules`.
+- The old setting `harnesses` stops with an error that names these two settings.
+
 ```yaml
-harnesses: [claude-code, codex]                # adapters that get hooks
-stub_folders: [.agents/skills, .claude/skills]  # where sync writes stubs
+stub_folders: [.agents/skills, .claude/skills]          # where sync writes stubs
+hook_files: [.claude/settings.json, .codex/hooks.json]  # where sync writes the two hooks
+permissions: [claude-code, codex]                       # the apps that get the rule to run pskill without asking
 default_mode: interactive
 retries: 2
 script_timeout_s: 300

@@ -46,6 +46,25 @@ def hook_command(root_code: str, subcommand: str, harness: str) -> str:
     return f'uv run --no-project python -c "{code}"'
 
 
+# The project root for a hook in a file that several apps read: the git root of the session's folder.
+GIT_ROOT_CODE = "subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()"
+
+
+def pskill_hooks(root_code: str, harness: str) -> dict[str, dict[str, Any]]:
+    """pskill's two hook groups, as they appear in a hooks file."""
+    return {
+        "Stop": {"hooks": [{"type": "command", "command": hook_command(root_code, "stop", harness)}]},
+        "SessionStart": {
+            "matcher": "startup|resume|clear|compact",
+            "hooks": [{"type": "command", "command": hook_command(root_code, "session-start", harness)}],
+        },
+    }
+
+
+# For a file that no single app owns, such as a project's own source of hooks: the runner detects the app.
+SHARED_HOOKS = pskill_hooks(GIT_ROOT_CODE, "auto")
+
+
 def is_pskill_hook(command: str) -> bool:
     """A hook command that runs pskill's `hook` subcommand, however its path is written or quoted."""
     return ".pskill/pskill.py" in command and (" hook " in command or "'hook'" in command)
@@ -59,6 +78,31 @@ def with_pskill_hooks(settings: dict[str, Any], pskill_hooks: dict[str, dict[str
         groups = [without_pskill_handlers(group) for group in hooks.get(event, [])]
         hooks[event] = [group for group in groups if group["hooks"]] + [pskill_group]
     return updated
+
+
+def without_pskill_hooks(settings: dict[str, Any]) -> dict[str, Any]:
+    """A copy of the settings with every pskill handler removed, and the groups that it leaves empty."""
+    updated: dict[str, Any] = json.loads(json.dumps(settings))
+    hooks = updated.get("hooks", {})
+    for event in list(hooks):
+        hooks[event] = [group for group in map(without_pskill_handlers, hooks[event]) if group["hooks"]]
+        if not hooks[event]:
+            del hooks[event]
+    return updated
+
+
+def sync_hook_file(path: Path, pskill_hooks: dict[str, dict[str, Any]], check_only: bool) -> bool:
+    """Put pskill's hooks into one hooks file. Return whether it changed."""
+    settings = read_json_settings(path)
+    return write_if_changed(path, settings, with_pskill_hooks(settings, pskill_hooks), check_only)
+
+
+def remove_pskill_hooks(path: Path, check_only: bool) -> bool:
+    """Take pskill's hooks out of a hooks file that is no longer in `hook_files`. Return whether it changed."""
+    if not path.is_file():
+        return False
+    settings = read_json_settings(path)
+    return write_if_changed(path, settings, without_pskill_hooks(settings), check_only)
 
 
 def without_pskill_handlers(group: dict[str, Any]) -> dict[str, Any]:

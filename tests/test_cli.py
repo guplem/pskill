@@ -366,3 +366,13 @@ def test_the_codex_stop_hook_answers_with_a_block_decision(tmp_path: Path) -> No
 
     assert result.returncode == 0, result.stderr
     assert '"decision": "block"' in result.stdout
+
+
+def test_a_shared_hook_detects_codex_from_the_turn_id_in_its_input(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    run_pskill(root, "start", "plan-work", "--harness", "codex", "--input", "topic=x")
+
+    result = run_pskill(root, "hook", "stop", "--harness", "auto", stdin='{"hook_event_name": "Stop", "turn_id": "t1"}')
+
+    assert result.returncode == 0, result.stderr
+    assert '"decision": "block"' in result.stdout

@@ -6,6 +6,8 @@ from pathlib import Path
 from pskill_runner.yaml_loading import load_skill_yaml
 
 PSKILL_FOLDER_NAME = ".pskill"
+# The apps whose permission rules pskill knows how to write (claude_code.py and codex.py).
+PERMISSION_APPS = ("claude-code", "codex")
 
 
 class ProjectError(Exception):
@@ -16,8 +18,9 @@ class ProjectError(Exception):
 class Config:
     """Settings from `.pskill/config.yaml` (SPEC.md section 10.1). Every setting has a default."""
 
-    harnesses: list[str] = field(default_factory=lambda: ["claude-code", "codex"])
     stub_folders: list[str] = field(default_factory=lambda: [".agents/skills", ".claude/skills"])
+    hook_files: list[str] = field(default_factory=lambda: [".claude/settings.json", ".codex/hooks.json"])
+    permissions: list[str] = field(default_factory=lambda: list(PERMISSION_APPS))
     default_mode: str = "interactive"
     retries: int = 2
     script_timeout_s: int = 300
@@ -61,8 +64,16 @@ def load_config(path: Path) -> Config:
     raw = load_skill_yaml(path.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict):
         raise ProjectError(f"{path} must be a mapping of settings, such as 'retries: 2'")
+    if "harnesses" in raw:
+        raise ProjectError(
+            f"{path}: 'harnesses' is now 'permissions' (the apps that get the permission rule), and the hooks go "
+            "to the files in 'hook_files'. Rename the setting."
+        )
     known_names = {setting.name for setting in fields(Config)}
     for name in raw:
         if name not in known_names:
             raise ProjectError(f"{path}: unknown setting {name!r} (known settings: {', '.join(sorted(known_names))})")
+    for app in raw.get("permissions") or []:
+        if app not in PERMISSION_APPS:
+            raise ProjectError(f"{path}: unknown app {app!r} in permissions (known apps: {', '.join(PERMISSION_APPS)})")
     return Config(**raw)
