@@ -105,7 +105,7 @@ blocks:
 FANOUT_TWICE_SKILL = """\
 schema: pskill/v1
 id: fanout-twice
-description: Checks the documents, then the first one again.
+description: Checks the documents, then the first two again.
 goal: Check twice.
 inputs:
   files: {type: array, items: {type: string}, description: "The documents."}
@@ -113,7 +113,7 @@ entry: check
 blocks:
   check:
     type: parallel
-    for_each: "{{ inputs.files if (history.check | default([]) | length) == 0 else inputs.files[:1] }}"
+    for_each: "{{ inputs.files if (history.check | default([]) | length) == 0 else inputs.files[:2] }}"
     instruction: "Check {{ item }}."
     output:
       wrong: {type: array, items: {type: string}, description: "The wrong claims."}
@@ -163,6 +163,7 @@ blocks:
     instruction: |
       Check {{ item }}.
 
+      #### Task 1
       #### Task 5
       This heading is part of the instruction, not a task.
     output:
@@ -752,18 +753,18 @@ def test_a_parallel_block_in_a_child_skill_keeps_the_tasks_of_each_call(tmp_path
 def test_a_parallel_block_that_runs_twice_keeps_the_tasks_of_each_visit(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id, _ = start_run(
-        project, "fanout-twice", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+        project, "fanout-twice", {"files": ["a.md", "b.md", "c.md"]}, mode="interactive", harness="subagents-for-tests"
     )
-    submit_answer(project, run_id, "wrong: []\n", task=0)
-    submit_answer(project, run_id, "wrong: []\n", task=1)
+    for task in range(3):
+        submit_answer(project, run_id, "wrong: []\n", task=task)
     submit_answer(project, run_id, "wrong: [again]\n", task=0)
 
     detail = detail_of(project, run_id)
 
     first, second = [row for row in detail["timeline"] if row["block"] == "check"]
-    assert len(first["tasks"]) == 2
-    assert [(task["task"], task["output"]) for task in second["tasks"]] == [(0, {"wrong": ["again"]})]
-    assert '  subgraph f0_check_TASKS ["check · 2 tasks"]\n' in detail["canvas"]["template"]
+    assert [task["output"] for task in first["tasks"]] == [{"wrong": []}, {"wrong": []}, {"wrong": []}]
+    assert [(task["task"], task["output"]) for task in second["tasks"]] == [(0, {"wrong": ["again"]}), (1, None)]
+    assert '  subgraph f0_check_TASKS ["check · 3 tasks"]\n' in detail["canvas"]["template"]
 
 
 def test_a_live_one_by_one_block_counts_its_tasks_from_the_run_state(tmp_path: Path) -> None:
@@ -855,3 +856,21 @@ def test_the_task_frame_id_never_equals_a_block_node_id(tmp_path: Path) -> None:
 
     assert '  subgraph f0_check_TASKS ["check · 2 tasks"]\n' in template
     assert '  f0_check_tasks["@@f0_check_tasks@@"]\n' in template
+
+
+def test_an_answer_out_of_order_in_a_later_visit_stays_in_that_visit(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout-twice", {"files": ["a.md", "b.md", "c.md"]}, mode="interactive", harness="generic"
+    )
+    for task in range(3):
+        submit_answer(project, run_id, "wrong: [v1]\n", task=task)
+    submit_answer(project, run_id, "wrong: [v2]\n", task=1)  # visit 2 shows task 0
+
+    rows = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+    first_visit = [row for row in rows if row["visit"] == 1]
+    second_visit = [row for row in rows if row["visit"] == 2]
+
+    assert [task["output"] for task in first_visit[-1]["tasks"]] == [{"wrong": ["v1"]}] * 3
+    assert [task["state"] for task in second_visit[-1]["tasks"]] == ["open", "done"]
+    assert second_visit[-1]["tasks"][1]["output"] == {"wrong": ["v2"]}

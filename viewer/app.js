@@ -1020,7 +1020,8 @@ async function render() {
 window.addEventListener("resize", () => {
   const workspace = view.parts?.workspace;
   // Fit the width that the user chose (not the current one) to the new window: it comes back when it grows.
-  const chosen = savedPanelWidth();
+  // Without site data (blocked storage), fit the current width instead.
+  const chosen = savedPanelWidth() || parseFloat(workspace?.style.getPropertyValue("--panel-width") || "");
   if (workspace && chosen) setPanelWidth(workspace, chosen);
 });
 window.addEventListener("hashchange", () => {
