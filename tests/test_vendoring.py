@@ -73,6 +73,25 @@ def test_init_keeps_an_existing_gitattributes_file(tmp_path: Path) -> None:
     assert (project_root / ".gitattributes").read_text(encoding="utf-8") == "*.png binary\n.pskill/** text eol=lf\n"
 
 
+def test_init_reports_the_line_that_it_adds_to_gitattributes(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    lines = init_project(project_root, make_source(tmp_path))
+
+    assert any("added a line to .gitattributes" in line for line in lines)
+
+
+def test_init_does_not_report_a_gitattributes_line_that_was_already_there(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / ".gitattributes").write_text(".pskill/** text eol=lf\n", encoding="utf-8")
+
+    lines = init_project(project_root, make_source(tmp_path))
+
+    assert not any(".gitattributes" in line for line in lines)
+
+
 def test_update_replaces_the_vendored_files_and_keeps_the_project_files(tmp_path: Path) -> None:
     source = make_source(tmp_path)
     project_root = tmp_path / "project"

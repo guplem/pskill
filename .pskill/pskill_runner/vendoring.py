@@ -68,8 +68,10 @@ def init_project(project_root: Path, source_root: Path) -> list[str]:
     (pskill_folder / "skills").mkdir(parents=True, exist_ok=True)
     write_if_missing(pskill_folder / ".gitignore", "runs/\n__pycache__/\n")
     write_if_missing(pskill_folder / "config.yaml", DEFAULT_CONFIG)
-    add_gitattributes_line(project_root / ".gitattributes")
-    return [*lines, "Created .pskill/skills/, .pskill/config.yaml, and .pskill/.gitignore."]
+    created = "Created .pskill/skills/, .pskill/config.yaml, and .pskill/.gitignore"
+    if add_gitattributes_line(project_root / ".gitattributes"):
+        return [*lines, f"{created}, and added a line to .gitattributes."]
+    return [*lines, f"{created}."]
 
 
 def update_project(project_root: Path, source_root: Path, force: bool) -> list[str]:
@@ -133,10 +135,14 @@ def write_if_missing(path: Path, text: str) -> None:
         path.write_text(text, encoding="utf-8", newline="\n")
 
 
-def add_gitattributes_line(path: Path) -> None:
-    """Keep the vendored files and the skills in LF line endings, also on Windows checkouts."""
+def add_gitattributes_line(path: Path) -> bool:
+    """Keep the vendored files and the skills in LF line endings, also on Windows checkouts.
+
+    Return True when the line was missing and this call added it.
+    """
     existing = path.read_text(encoding="utf-8") if path.is_file() else ""
     if GITATTRIBUTES_LINE in existing.splitlines():
-        return
+        return False
     separator = "" if not existing or existing.endswith("\n") else "\n"
     path.write_text(existing + separator + GITATTRIBUTES_LINE + "\n", encoding="utf-8", newline="\n")
+    return True

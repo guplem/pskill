@@ -29,7 +29,7 @@
     "pskill_runner/stubs.py": "sha256:fb84b75e7e3ffdf821a966c12997f98ef1576e44ec7722985f4b395e9ec58022",
     "pskill_runner/sync.py": "sha256:b5c660b6039dad23bc9b8c8f4cc4c0331c1d85992cf4a0bda4d9f82a0a9bc57f",
     "pskill_runner/validator.py": "sha256:e01265388333f0c2eafaf270c799fa45cdeb2c8a7eb64019029d0c96704dded9",
-    "pskill_runner/vendoring.py": "sha256:064b804cd18aa2924b2d7a64842b2779fb303ef9d4a85d1e8aabcdaeeec3a848",
+    "pskill_runner/vendoring.py": "sha256:7307b02df52976733b70806bb3c30fb4e9ba874ec990da9ac599709c4b6edc5e",
     "pskill_runner/viewer_data.py": "sha256:33385500a839709eb5378a3454e614f9d9657b4b146a5659c6b734096182a984",
     "pskill_runner/viewer_server.py": "sha256:694702b75b3e164821df4a1561f8b2566aaf3683f256d342e48896a9be4b2a2f",
     "pskill_runner/yaml_loading.py": "sha256:22c2c28eb5f2311edd8f53ab42dc1464ab7b01b5a672b8b57887ad2d4aaa3457",
