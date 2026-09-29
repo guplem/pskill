@@ -87,9 +87,25 @@ def read_case_file(path: Path) -> dict[str, Any]:
     try:
         case = load_skill_yaml(path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as error:
-        raise SkillTestError(f"the case file is not valid YAML: {error}") from error
+        raise SkillTestError(f"the case file is not valid YAML: {error}{quoting_hint(path, error)}") from error
     check_case_keys(case)
     return dict(case)
+
+
+def quoting_hint(path: Path, error: yaml.YAMLError) -> str:
+    """A hint for the common trap: a plain value with '?' inside { } (a YAML flow mapping)."""
+    mark = getattr(error, "problem_mark", None)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if mark is None or mark.line >= len(lines):
+        return ""
+    line = lines[mark.line]
+    if line[mark.column : mark.column + 1] != "?" or "{" not in line[: mark.column]:
+        return ""
+    start = max(line.rfind(",", 0, mark.column), line.rfind("{", 0, mark.column)) + 1
+    end_candidates = [index for index in (line.find(",", mark.column), line.find("}", mark.column)) if index >= 0]
+    pair = line[start : min(end_candidates, default=len(line))].strip()
+    key, _, value = pair.partition(": ")
+    return f"\nHint: put a value with '?' or ': ' inside {{ }} in quotes, such as {key}: \"{value}\"."
 
 
 def check_case_keys(case: Any) -> None:

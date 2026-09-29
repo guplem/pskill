@@ -750,6 +750,7 @@ Rules:
 - For a `parallel` block, list the answers of its tasks in task order, as for any other block. The test runner uses the one-by-one mode, so each task takes the next answer in the queue.
 - An answer that fails validation is rejected, as in a real run, and the next answer is used. This lets a test prove that the schema catches bad output.
 - When a case runs out of answers, it fails and names the block that asked for more.
+- When a case file is not valid YAML and the error points at a `?` inside `{ }`, the problem adds a hint: put the value in quotes.
 - The output has one PASS or FAIL line per case, and the first mismatch for each FAIL.
 
 ---

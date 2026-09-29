@@ -175,3 +175,25 @@ def test_a_case_file_with_broken_yaml_is_reported(tmp_path: Path) -> None:
 
     assert result.case == "broken"
     assert result.problem is not None and result.problem.startswith("the case file is not valid YAML:")
+
+
+QUESTION_MARK_HINT = "Hint: put a value with '?' or ': ' inside { } in quotes"
+
+
+def test_a_question_mark_inside_braces_adds_a_hint_to_quote_the_value(tmp_path: Path) -> None:
+    case = APPROVED_CASE.replace('question: "Which database?"', "question: Which database?")
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": case})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert result.problem is not None
+    assert result.problem.startswith("the case file is not valid YAML:")
+    assert result.problem.endswith(f'{QUESTION_MARK_HINT}, such as question: "Which database?".')
+
+
+def test_other_broken_yaml_gets_no_hint(tmp_path: Path) -> None:
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"broken": "name: [unclosed\n"})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert result.problem is not None and "Hint" not in result.problem

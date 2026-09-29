@@ -3,7 +3,7 @@
   "source": ".",
   "files": {
     "pskill.py": "sha256:eee9aa359641fbcdc14fb2edc3663231e1cae72c5deecad6f824ae620532f4c0",
-    "AUTHORING.md": "sha256:cb0e9b15e70db3c69056fb00b8028de83bf70569faa2899ca51e693bb8823442",
+    "AUTHORING.md": "sha256:ccf0551899afe1827e7357321d906ca2ffd4b339b8e4a2eb556dd18f51ae28d6",
     "pskill_runner/__init__.py": "sha256:03fb8f21c8d32be6dce50eb0e271c5504b62cd1213128b33523017a279b7cefb",
     "pskill_runner/adapters.py": "sha256:beba972c47c7abc195027a89561fb25b3743e6cd32f567cf60cdb9c68bc7bac7",
     "pskill_runner/answer_input.py": "sha256:2127461987aaba501b657379d5c1dacb1bfb87f1b596af27e7f32d6208ae4999",
@@ -25,7 +25,7 @@
     "pskill_runner/skill_loader.py": "sha256:d78cfe9f2a1213373cb6f6039a6ae1558e88cf39815bb7e89f720f8bbc9c5e70",
     "pskill_runner/skill_model.py": "sha256:ec91735aa957746a8a5a510253a81a1641f3438fad9b724e89f1debcfef18158",
     "pskill_runner/skill_schema.py": "sha256:c699548c7a28eb99de990d1f20783643923eacf0ca62fa718997d4513445f976",
-    "pskill_runner/skill_tests.py": "sha256:66585580151212fce0c6730ca6286ab80dadf0a03cb497f97887fbf8709d29f5",
+    "pskill_runner/skill_tests.py": "sha256:11373749a5ab2a22a905bf397902fc1df904c70877e71a5a7de65cd6aeb2b3a4",
     "pskill_runner/stubs.py": "sha256:fb84b75e7e3ffdf821a966c12997f98ef1576e44ec7722985f4b395e9ec58022",
     "pskill_runner/sync.py": "sha256:8a5a4ab4afc517f680d367a0ae0ea90ce4a7a8e6c7553e81347a807740202139",
     "pskill_runner/validator.py": "sha256:e01265388333f0c2eafaf270c799fa45cdeb2c8a7eb64019029d0c96704dded9",
