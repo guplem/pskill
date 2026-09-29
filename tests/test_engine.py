@@ -298,3 +298,14 @@ def test_a_run_that_continues_in_another_harness_records_the_change(tmp_path: Pa
     assert read_run_info(project, run_id)["harness"] == "claude-code"
     changed = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "harness_changed"]
     assert [(event["from"], event["to"]) for event in changed] == [("generic", "claude-code")]
+
+
+def test_current_in_another_harness_records_the_change(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    current_packet(project, run_id, harness="codex")
+
+    assert read_run_info(project, run_id)["harness"] == "codex"
+    changed = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "harness_changed"]
+    assert [(event["from"], event["to"]) for event in changed] == [("generic", "codex")]
