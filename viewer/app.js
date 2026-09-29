@@ -463,7 +463,17 @@ function selectNode(node, rowIndex = null) {
 function drawPanel() {
   const panel = view.parts.panel;
   const state = stepState();
-  const node = view.selectedNode || state.stepNode;
+  const node = view.selectedNode || (view.selectedRow === null ? state.stepNode : null);
+  if (!node) {
+    // A step with no node on the canvas (no canvas, or a child without its skill copy): show the row itself.
+    const row = rows()[view.selectedRow ?? view.step];
+    if (row) {
+      const title = element("div", null, "panel-title");
+      title.append(element("h2", row.block), element("span", row.block_type, "pill state-idle"));
+      panel.replaceChildren(title, ...rowSections(row));
+      return;
+    }
+  }
   const nodeInfo = view.detail.canvas && node ? view.detail.canvas.nodes.find((item) => item.id === node) : null;
   const visits = rows()
     .map((row, index) => ({ row, index }))

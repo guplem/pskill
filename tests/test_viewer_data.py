@@ -6,7 +6,7 @@ from typing import Any
 
 from pskill_runner.engine import start_run, submit_answer
 from pskill_runner.project import Project, find_project
-from pskill_runner.viewer_data import run_detail, runs_overview
+from pskill_runner.viewer_data import run_detail, runs_overview, timeline_rows
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 from tests.test_engine_blocks import CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
 
@@ -29,7 +29,28 @@ blocks:
     choices:
       left: Go left.
       right: Go right.
-    next: {left: done, right: done}
+      back: Go back.
+    next: {left: done, right: done, back: done}
+  done:
+    type: end
+    status: succeeded
+"""
+
+LOOP_PARENT_SKILL = """\
+schema: pskill/v1
+id: loop-parent
+description: Calls a child twice.
+goal: Get two greetings.
+entry: child
+blocks:
+  child:
+    type: call
+    skill: child
+    inputs: {name: Ada}
+    next:
+      - when: "{{ (history.child | length) < 2 }}"
+        to: child
+      - to: done
   done:
     type: end
     status: succeeded
@@ -59,6 +80,7 @@ def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "child", CHILD_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "two-roads", TWO_ROADS_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "failing", FAILING_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "loop-parent", LOOP_PARENT_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "fanout", PARALLEL_SKILL)
     (tmp_path / ".pskill" / "agents").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".pskill" / "agents" / "checker.md").write_text("You check facts.", encoding="utf-8")
@@ -160,6 +182,7 @@ def test_a_step_after_a_visit_cap_arrives_by_the_visit_cap_edge(tmp_path: Path) 
     assert rows[-1]["node"] == "f0_stopped"
     assert rows[-1]["edge"] == "L_f0_create_plan_f0_stopped_0"
     assert rows[-2]["left_by"] == {"to": "stopped", "label": "visit cap of create_plan"}
+    assert rows[-1]["arrival"] == "create_plan (visit cap of create_plan (3))"
 
 
 def test_each_step_has_the_label_of_its_node_after_the_step(tmp_path: Path) -> None:
@@ -209,7 +232,9 @@ def test_repeated_edges_between_two_nodes_are_numbered_like_mermaid(tmp_path: Pa
     edge_ids = [edge["id"] for edge in detail["canvas"]["edges"]]
     assert "L_f0_pick_f0_done_0" in edge_ids
     assert "L_f0_pick_f0_done_2" in edge_ids
+    assert "L_f0_pick_f0_done_3" in edge_ids
     assert detail["timeline"][-1]["edge"] == "L_f0_pick_f0_done_2"
+    assert detail["timeline"][-1]["arrival"] == "pick (choice right)"
 
 
 def test_a_call_block_leaves_by_the_edge_after_its_child_returned(tmp_path: Path) -> None:
@@ -223,6 +248,27 @@ def test_a_call_block_leaves_by_the_edge_after_its_child_returned(tmp_path: Path
     assert call_row["left_by"] == {"to": "done", "label": "steps.child.status == 'succeeded'"}
     assert call_row["label"].endswith(" · succeeded")
     assert rows[-1]["edge"] == "L_f0_child_f0_done_0"
+    assert rows[2]["arrival"] == "child (call)"
+
+
+def test_a_child_end_block_leaves_by_nothing_when_its_call_block_runs_again(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "loop-parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hi.\n")
+    submit_answer(project, run_id, "text: Hi again.\n")
+
+    rows = detail_of(project, run_id)["timeline"]
+
+    assert [row["node"] for row in rows] == [
+        "f0_child",
+        "f1_greet",
+        "f1_done",
+        "f0_child",
+        "f1_greet",
+        "f1_done",
+        "f0_done",
+    ]
+    assert rows[2]["left_by"] is None
 
 
 def test_a_child_without_its_skill_copy_gets_no_node(tmp_path: Path) -> None:
@@ -236,7 +282,9 @@ def test_a_child_without_its_skill_copy_gets_no_node(tmp_path: Path) -> None:
     child_row = detail["timeline"][-1]
     assert child_row["node"] is None
     assert child_row["edge"] is None
+    assert child_row["arrival"] == "parent (call)"
     assert "f1_greet" not in detail["canvas"]["template"]
+    assert detail["canvas"]["current"] is None
 
 
 def test_rows_get_their_texts_even_without_a_canvas(tmp_path: Path) -> None:
@@ -289,6 +337,48 @@ def test_a_one_by_one_parallel_block_keeps_its_final_output(tmp_path: Path) -> N
     assert [row["task"] for row in check_rows] == [0, 1]
     assert check_rows[-1]["output"] == {"results": [{"wrong": []}, {"wrong": ["x"]}]}
     assert check_rows[-1]["label"].endswith(" · 2 tasks")
+    assert [len(row["submissions"]) for row in check_rows] == [1, 1]
+    assert check_rows[0]["left_by"] == {"to": "done", "label": None}
+
+
+def parallel_events(visit: int, tasks: int, first_seq: int) -> list[dict[str, Any]]:
+    """The events of one one-by-one parallel visit: one start and one answer per task, then the final result."""
+    base = {"frame": "fanout", "block": "check", "block_type": "parallel", "visit": visit, "ts": "2026-01-01T00:00:00Z"}
+    events: list[dict[str, Any]] = []
+    for task in range(tasks):
+        events.append({**base, "type": "block_started", "seq": first_seq + 2 * task, "task": task})
+        events.append(
+            {
+                **base,
+                "type": "block_completed",
+                "seq": first_seq + 2 * task + 1,
+                "task": task,
+                "output": {"wrong": []},
+                "decided_by": "agent",
+                "duration_ms": 1,
+            }
+        )
+    final: dict[str, Any] = {"results": [{"wrong": []}] * tasks}
+    events.append(
+        {
+            **base,
+            "type": "block_completed",
+            "seq": first_seq + 2 * tasks,
+            "output": final,
+            "decided_by": "runner",
+            "duration_ms": 2,
+        }
+    )
+    return events
+
+
+def test_the_final_result_of_a_repeated_parallel_block_lands_on_its_own_visit() -> None:
+    rows = timeline_rows(
+        parallel_events(visit=1, tasks=3, first_seq=1) + parallel_events(visit=2, tasks=2, first_seq=10)
+    )
+
+    assert [row["output"] for row in rows[:3]] == [{"wrong": []}, {"wrong": []}, {"results": [{"wrong": []}] * 3}]
+    assert rows[-1]["output"] == {"results": [{"wrong": []}] * 2}
 
 
 # --- the runs overview and the run detail ------------------------------------------------------

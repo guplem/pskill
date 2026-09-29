@@ -271,7 +271,10 @@ def arrival_text(row: dict[str, Any], called_by: str | None) -> str:
     """Where a row came from and why, in plain words."""
     reason = str(row["reason"] or "")
     if row["from"] is None:
-        return f"{called_by} (call)" if called_by else "the start"
+        chain = str(row["frame"]).split(">")
+        if len(chain) == 1:
+            return "the start"
+        return f"{called_by or chain[-2]} (call)"
     if reason == "always":
         return str(row["from"])
     if reason.startswith(("choice ", "visit cap of ")):
@@ -287,9 +290,15 @@ def asks_human(block: AnyBlock | None, mode: str) -> bool:
 def next_step_in_frame(rows: list[dict[str, Any]], index: int, row_frames: list[int | None]) -> dict[str, Any] | None:
     """The next row of the same frame, skipping the other tasks of the same parallel block."""
     row = rows[index]
+    if row["block_type"] == "end":
+        return None
     for later, frame in zip(rows[index + 1 :], row_frames[index + 1 :], strict=True):
-        if frame == row_frames[index] and not (later["block"] == row["block"] and later["task"] is not None):
-            return later
+        if frame != row_frames[index]:
+            continue
+        other_task = later["block"] == row["block"] and later["visit"] == row["visit"] and later["task"] is not None
+        if other_task:
+            continue
+        return None if later["from"] is None else later
     return None
 
 
@@ -523,16 +532,16 @@ def find_open_row(
     """The row that an event belongs to. In subagent mode, task answers belong to the block's one row."""
     frame, block = str(event["frame"]), str(event.get("block", ""))
     task: int | None = event.get("task")
-    exact = open_rows.get((frame, block, task)) or open_rows.get((frame, block, None))
-    if exact is not None or task is not None:
-        return exact
-    # The final completion of a one-by-one parallel block has no task: it belongs to the last task's row.
+    if task is not None:
+        return open_rows.get((frame, block, task)) or open_rows.get((frame, block, None))
+    # Without a task: the newest row of the block. For a one-by-one parallel block, that is the last task.
     same_block = [row for key, row in open_rows.items() if key[:2] == (frame, block)]
-    return same_block[-1] if same_block else None
+    return max(same_block, key=lambda row: int(row["seq"])) if same_block else None
 
 
 def record_completion(row: dict[str, Any], event: dict[str, Any]) -> None:
-    if event["decided_by"] != "runner":
+    joins_tasks = row["task"] is not None and event.get("task") is None
+    if event["decided_by"] != "runner" and not joins_tasks:
         row["submissions"].append({"accepted": True, "errors": [], "raw": None})
     row["output"] = event["output"]
     row["decided_by"] = event["decided_by"]
