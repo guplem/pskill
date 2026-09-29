@@ -8,6 +8,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from pskill_runner.run_store import (
     append_event,
     copy_skill_snapshot,
@@ -99,3 +101,23 @@ def test_run_lock_breaks_a_stale_lock(tmp_path: Path) -> None:
         assert stale_lock.exists()
 
     assert not stale_lock.exists()
+
+
+def test_run_lock_waits_while_windows_still_removes_the_old_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_open = os.open
+    calls: list[str] = []
+
+    def open_once_denied(path: str, flags: int, *arguments: int) -> int:
+        calls.append(path)
+        if len(calls) == 1:
+            raise PermissionError(13, "Permission denied")  # Windows, while a deleted file is still pending
+        return real_open(path, flags, *arguments)
+
+    monkeypatch.setattr(os, "open", open_once_denied)
+
+    with run_lock(tmp_path):
+        assert (tmp_path / ".lock").exists()
+
+    assert len(calls) == 2

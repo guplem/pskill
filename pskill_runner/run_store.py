@@ -99,7 +99,8 @@ def run_lock(run_folder: Path) -> Iterator[None]:
         try:
             os.close(os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
             break
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
+            # Windows raises PermissionError while another command still removes its lock file.
             if lock_age_s(lock_path) > STALE_LOCK_S:
                 lock_path.unlink(missing_ok=True)
                 continue
