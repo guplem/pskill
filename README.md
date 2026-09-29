@@ -53,6 +53,8 @@ uv run .pskill/pskill.py update
 
 Where these go: `.claude/settings.json` for Claude Code; `.codex/hooks.json` and `.codex/rules/pskill.rules` for Codex. Both apps use them only after you trust the project folder. Claude Code asks you the first time that you open the folder. Codex also asks you once to approve each hook (type `/hooks` in Codex).
 
+`init` also adds one line to `.gitattributes` (the git file that sets rules per path): `.pskill/** text eol=lf`. This line keeps the files in `.pskill/` at LF line endings (the Unix style) on every OS. So the file hashes that pskill records stay the same, and `update` does not think that you edited the runner. The line matters only when you commit `.pskill/`. If you do not commit `.pskill/`, you can remove the line.
+
 ## Use
 
 Usually, you just ask your agent for the task, and the skill starts by itself. You answer the questions that the skill asks.
