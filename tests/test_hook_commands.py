@@ -7,11 +7,13 @@ from pathlib import Path
 import pytest
 
 from pskill_runner import claude_code, codex
+from pskill_runner.hook_settings import SHARED_HOOKS
 
 FAKE_RUNNER = "import sys\nprint('ran:', ' '.join(sys.argv[1:]))\n"
 HOOKS = [
     pytest.param(claude_code.PSKILL_HOOKS, "claude-code", id="claude-code"),
     pytest.param(codex.PSKILL_HOOKS, "codex", id="codex"),
+    pytest.param(SHARED_HOOKS, "auto", id="shared"),
 ]
 
 

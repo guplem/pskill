@@ -23,8 +23,9 @@ GITATTRIBUTES_LINE = ".pskill/** text eol=lf"
 VERSION_PATTERN = re.compile(r'^__version__ = "(?P<version>[^"]+)"$', re.MULTILINE)
 DEFAULT_CONFIG = """\
 # pskill settings (SPEC.md section 10.1). Every setting is optional; these are the defaults.
-harnesses: [claude-code, codex]                # harnesses that get hooks and the permission rule
-stub_folders: [.agents/skills, .claude/skills]  # where `pskill sync` writes the skill stubs
+stub_folders: [.agents/skills, .claude/skills]          # where `pskill sync` writes the skill stubs
+hook_files: [.claude/settings.json, .codex/hooks.json]  # where it writes the two hooks (or your own hooks source)
+permissions: [claude-code, codex]                       # the apps that get the rule to run pskill without asking
 """
 
 

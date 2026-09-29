@@ -9,15 +9,22 @@ from pskill_runner.adapters import adapter_for, detect_harness
 from pskill_runner.claude_code import (
     PERMISSION_RULE,
     PROJECT_ROOT_CODE,
+    PSKILL_HOOKS,
     SettingsError,
     stop_response,
-    sync_claude_settings,
+    sync_claude_permission,
 )
-from pskill_runner.hook_settings import hook_command
+from pskill_runner.hook_settings import hook_command, sync_hook_file
 
 SETTINGS_PATH = Path(".claude") / "settings.json"
 STOP_COMMAND = hook_command(PROJECT_ROOT_CODE, "stop", "claude-code")
 SESSION_START_COMMAND = hook_command(PROJECT_ROOT_CODE, "session-start", "claude-code")
+
+
+def sync_claude_settings(root: Path, check_only: bool) -> bool:
+    """What the default sync does for Claude Code: its hooks and its permission rule, in one file."""
+    hooks_changed = sync_hook_file(root / SETTINGS_PATH, PSKILL_HOOKS, check_only)
+    return sync_claude_permission(root, check_only) or hooks_changed
 
 
 def read_settings(root: Path) -> dict[str, object]:

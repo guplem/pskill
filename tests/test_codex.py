@@ -9,11 +9,18 @@ from pskill_runner.adapters import adapter_for, detect_harness
 from pskill_runner.codex import (
     HOOKS_RELATIVE_PATH,
     PROJECT_ROOT_CODE,
+    PSKILL_HOOKS,
     RULES_RELATIVE_PATH,
     stop_response,
-    sync_codex_settings,
+    sync_codex_rules,
 )
-from pskill_runner.hook_settings import SettingsError, hook_command
+from pskill_runner.hook_settings import SettingsError, hook_command, sync_hook_file
+
+
+def sync_codex_settings(root: Path, check_only: bool) -> bool:
+    """What the default sync does for Codex: its hooks, and its command rule."""
+    hooks_changed = sync_hook_file(root / HOOKS_RELATIVE_PATH, PSKILL_HOOKS, check_only)
+    return sync_codex_rules(root, check_only) or hooks_changed
 
 
 def read_hooks(root: Path) -> dict[str, object]:

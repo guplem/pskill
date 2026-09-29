@@ -13,7 +13,7 @@ from typing import Any
 
 import pskill_runner
 from pskill_runner import __version__, claude_code, codex
-from pskill_runner.adapters import GENERIC, AdapterError, detect_harness
+from pskill_runner.adapters import GENERIC, AdapterError, detect_harness, detect_hook_harness
 from pskill_runner.answer_input import AnswerInputError, read_answer
 from pskill_runner.engine import (
     RunError,
@@ -106,7 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     hook = commands.add_parser("hook", help="Internal: the harness calls this from its hooks.")
     hook.add_argument("event", choices=["stop", "session-start"])
-    hook.add_argument("--harness", required=True)
+    hook.add_argument("--harness", required=True, help="The app that runs the hook, or auto to detect it.")
     return parser
 
 
@@ -329,6 +329,8 @@ def hook_command(event: str, harness: str) -> int:
         hook_input = read_hook_input()
         project = find_project(Path(str(hook_input.get("cwd") or Path.cwd())))
         if event == "stop":
+            if harness == "auto":
+                harness = detect_hook_harness(os.environ, hook_input)
             stdout, exit_code = stop_hook_output(project, harness)
             sys.stdout.write(stdout)
             return exit_code
