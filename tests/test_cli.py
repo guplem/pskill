@@ -2,12 +2,14 @@
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 from pskill_runner.release import build_release_archive
+from pskill_runner.vendoring import vendored_file_map
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 ENTRY_SCRIPT = Path(__file__).resolve().parent.parent / "pskill.py"
@@ -333,6 +335,27 @@ def test_update_takes_a_release_archive(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert "Vendored pskill" in result.stdout
+
+
+def test_update_syncs_with_the_runner_that_it_just_installed(tmp_path: Path) -> None:
+    project_root = tmp_path / "new-project"
+    project_root.mkdir()
+    run_pskill(project_root, "init")
+    new_version = tmp_path / "new-version"
+    for relative_path, source in vendored_file_map(ENTRY_SCRIPT.parent).items():
+        (new_version / relative_path).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, new_version / relative_path)
+    rules_file = new_version / "pskill_runner" / "claude_code.py"
+    new_rule = "Bash(uv run .pskill/pskill.py * )"
+    rules_file.write_text(
+        rules_file.read_text(encoding="utf-8").replace('"Bash(uv run .pskill/pskill.py *)"', f'"{new_rule}"'),
+        encoding="utf-8",
+    )
+
+    result = run_pskill(project_root, "update", "--from", str(new_version))
+
+    assert result.returncode == 0, result.stderr
+    assert new_rule in (project_root / ".claude" / "settings.json").read_text(encoding="utf-8")
 
 
 def test_the_codex_stop_hook_answers_with_a_block_decision(tmp_path: Path) -> None:

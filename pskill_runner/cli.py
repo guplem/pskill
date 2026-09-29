@@ -34,7 +34,7 @@ from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
 from pskill_runner.skill_model import SkillCatalog
 from pskill_runner.skill_tests import run_skill_tests
 from pskill_runner.stubs import StubError, sync_stubs
-from pskill_runner.sync import sync_project
+from pskill_runner.sync import sync_project, sync_with_the_vendored_runner
 from pskill_runner.validator import Problem, validate_skill
 from pskill_runner.vendoring import VendoringError, init_project, update_project
 from pskill_runner.viewer_server import serve_viewer
@@ -318,8 +318,9 @@ def init_command(source: str | None) -> int:
 
 def update_command(project: Project, source: str | None, force: bool) -> int:
     lines = update_project(project.root, source_folder(source or release_url()), force)
-    lines += sync_project(project, check_only=False)
-    return print_text("\n".join(lines))
+    sync_lines, synced = sync_with_the_vendored_runner(project)
+    print_text("\n".join(lines + sync_lines))
+    return EXIT_OK if synced else EXIT_INTERNAL_ERROR
 
 
 def hook_command(event: str, harness: str) -> int:
