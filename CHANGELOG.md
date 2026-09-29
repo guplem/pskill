@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 (2026-09-29)
+
+Fixes from the first runs in a real Claude Code session.
+
+- **Parallel blocks:** `submit` now takes `--task <n>`. Before, the command rejected the option that the packets tell the agent to use, so no parallel block could finish.
+- **Git ignore:** `init` now also ignores `.pskill/__pycache__/` folders. In a project from 0.1.0, add `__pycache__/` to `.pskill/.gitignore` by hand.
+
 ## 0.1.0 (2026-09-28)
 
 The first release.

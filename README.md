@@ -51,7 +51,7 @@ uv run .pskill/pskill.py update
   - **When you open a new session:** the hook lists your unfinished runs, so the agent can continue them.
 - **A permission rule**, so your agent app does not ask your permission every time the agent talks to the runner. It allows only the runner command (`uv run .pskill/pskill.py ...`), nothing else.
 
-Where these go: `.claude/settings.json` for Claude Code; `.codex/hooks.json` and `.codex/rules/pskill.rules` for Codex. Codex runs them only after you mark the project as trusted, and it asks you once to approve each hook (type `/hooks` in Codex).
+Where these go: `.claude/settings.json` for Claude Code; `.codex/hooks.json` and `.codex/rules/pskill.rules` for Codex. Both apps use them only after you trust the project folder. Claude Code asks you the first time that you open the folder. Codex also asks you once to approve each hook (type `/hooks` in Codex).
 
 ## Use
 

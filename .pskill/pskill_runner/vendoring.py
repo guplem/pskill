@@ -66,7 +66,7 @@ def init_project(project_root: Path, source_root: Path) -> list[str]:
         raise VendoringError(f"{pskill_folder} already has the runner. Use `pskill update` instead.")
     lines = copy_vendored_files(source_root, pskill_folder, old_files=[])
     (pskill_folder / "skills").mkdir(parents=True, exist_ok=True)
-    write_if_missing(pskill_folder / ".gitignore", "runs/\n")
+    write_if_missing(pskill_folder / ".gitignore", "runs/\n__pycache__/\n")
     write_if_missing(pskill_folder / "config.yaml", DEFAULT_CONFIG)
     add_gitattributes_line(project_root / ".gitattributes")
     return [*lines, "Created .pskill/skills/, .pskill/config.yaml, and .pskill/.gitignore."]
