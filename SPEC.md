@@ -1125,7 +1125,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 | `GET /api/runs?skill=` | Run rows, plus one summary row per skill: runs, success rate, median duration. |
 | `GET /api/runs/<id>` | `run.json`, the canvas, the timeline rows, and the current state. |
 
-**Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, and dashed grey for not visited. Taken edges are solid blue. The page follows the system's dark mode.
+**Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, and dashed grey for not visited. Taken edges are solid blue. Each block type has its own icon, drawn for pskill as inline SVG: on its node above the block name, and next to the type in the side panel. The page follows the system's dark mode.
 
 **Two screens:**
 1. **Runs.**

@@ -27,13 +27,16 @@ SCRIPT_FIELDS = ("argv", "exit_code", "stdout", "stderr", "duration_ms", "proble
 START_NODE = "start"
 DOTTED_EDGE_KINDS = ("visit_cap", "call")
 BLOCK_TYPE_MEANINGS = {
-    "task": "the agent does a piece of work and returns a typed answer.",
-    "decision": "one choice is picked from a list, or a question gets an answer.",
-    "parallel": "subagents do one task per list item at the same time, and the results join into one list.",
-    "script": "the runner runs a command. No AI model takes part.",
-    "call": "the runner runs another skill and gets its outputs.",
-    "end": "the skill finishes here with a status and outputs.",
+    "task": "The agent does a piece of work and returns a typed answer.",
+    "decision": "One choice is picked from a list, or a question gets an answer.",
+    "parallel": "Subagents do one task per list item at the same time, and the results join into one list.",
+    "script": "The runner runs a command. No AI model takes part.",
+    "call": "The runner runs another skill and gets its outputs.",
+    "end": "The skill finishes here with a status and outputs.",
 }
+# The first line of a block node label: the page draws the block type's icon in it. A line of its own,
+# because Mermaid sizes a node by its lines of text.
+ICON_LINE = "<span class='block-icon'>\u00a0</span><br/>"
 INPUT_TITLES = {
     "task": "Input: the instruction the agent got",
     "decision": "Input: the question to decide",
@@ -136,7 +139,7 @@ def node_hint(block: AnyBlock) -> str:
     """The block in plain words: its description, what its type does, and who decides or what it runs."""
     type_name = block_type_name(block)
     lines = [block.description] if block.description else []
-    lines.append(f"{type_name} block: {BLOCK_TYPE_MEANINGS[type_name]}")
+    lines.append(BLOCK_TYPE_MEANINGS[type_name])
     if isinstance(block, DecisionBlock):
         human = block.decider == "human"
         lines.append(
@@ -388,7 +391,7 @@ def row_details(row: dict[str, Any], rejected: int) -> tuple[list[str], list[str
 
 
 def node_label(block_id: str, details: list[str], badges: list[str]) -> str:
-    label = f"<b>{block_id}</b><br/>{mermaid_text(' · '.join(details))}"
+    label = f"{ICON_LINE}<b>{block_id}</b><br/>{mermaid_text(' · '.join(details))}"
     return label + (f"<br/>{' · '.join(badges)}" if badges else "")
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Block icons, and a tidier side panel.
+
+- **An icon per block type:** task, decision, parallel, script, call, and end each have their own icon, on the canvas and in the side panel, in the color of the step's state.
+- **A tidier side panel:** the block's explanation sits right under its type and no longer repeats the type. A selected chip is blue, not black.
+
 ## 0.4.0 (2026-09-29)
 
 A run viewer that a person who did not write the skill can follow.
