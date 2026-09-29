@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **New run viewer:** each run is a flow canvas. The skill graph fills the screen, with the path the run took, and child skills in a frame next to their call block. Click a step to see its packet, answers, and output, and drag the replay bar to see the run as it was at any step. The viewer now loads two fonts from Google Fonts; offline it uses the system fonts.
+
 ## 0.1.2 (2026-09-29)
 
 Fixes from the real Codex runs.

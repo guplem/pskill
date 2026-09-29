@@ -67,7 +67,7 @@ You can also run the runner yourself. Every command starts with `uv run .pskill/
 | `runs --open` | List the unfinished runs. |
 | `current <run>` | Show the current step of a run again. |
 | `pause <run>`, `resume <run>`, `cancel <run>` | Pause a run, continue it, or stop it for good. A run survives when you close your session: you can continue it tomorrow, even in another agent app. |
-| `view` | Open the run viewer in your browser: every step of every run, what the agent got, and what it answered. You can also double-click `.pskill/launchers/view.cmd` (Windows), `view.command` (macOS), or `view.sh` (Linux). |
+| `view` | Open the run viewer in your browser. Each run is a graph of its skill with the path it took. Click a step to see what the agent got and what it answered, and drag the replay bar to see the run as it was at any step. You can also double-click `.pskill/launchers/view.cmd` (Windows), `view.command` (macOS), or `view.sh` (Linux). |
 | `validate` | Check every skill for mistakes. |
 | `test` | Run every skill's test cases. A fake agent gives recorded answers, so no AI model runs and it costs nothing. |
 | `sync` | Update the signpost files, the hooks, and the permission rule. `sync --check` only reports what is out of date. |
