@@ -201,6 +201,7 @@ const RUN_FILTERS = {
 
 async function showRuns() {
   const overview = await fetchJson("/api/runs");
+  if (view.screen !== "runs") return; // the user moved on while it loaded
   const text = JSON.stringify(overview) + view.runsFilter;
   if (text !== view.detailText) {
     view.detailText = text;
@@ -257,6 +258,7 @@ function drawRuns(overview) {
 
 async function showSkills() {
   const overview = await fetchJson("/api/skills");
+  if (view.screen !== "skills") return; // the user moved on while it loaded
   const text = JSON.stringify(overview);
   if (text === view.detailText) return;
   view.detailText = text;
@@ -875,6 +877,8 @@ function blockSections(details) {
         folded(markdown(details.instruction), `${block}:instruction`),
       ),
     );
+  } else if (details.instruction_file) {
+    parts.push(section("Instruction", element("p", `The file ${details.instruction_file} is missing.`, "errors")));
   }
   if (details.choices.length) {
     const list = element("dl", null, "facts");
@@ -1278,6 +1282,7 @@ async function showRun(runId) {
     fetchJson(`/api/runs/${encodeURIComponent(runId)}`),
     fetchJson("/api/runs").catch(() => ({ runs: [] })),
   ]);
+  if (view.screen !== "run" || view.runId !== runId) return; // the user moved on while it loaded
   const text = JSON.stringify(detail);
   if (text !== view.detailText) {
     view.detailText = text;
@@ -1308,6 +1313,7 @@ async function showSkill(skillId) {
     fetchJson(`/api/skills/${encodeURIComponent(skillId)}`),
     fetchJson("/api/skills").catch(() => ({ skills: [] })),
   ]);
+  if (view.screen !== "skill" || view.skillId !== skillId) return; // the user moved on while it loaded
   const text = JSON.stringify(detail);
   if (text === view.detailText) return;
   view.detailText = text;

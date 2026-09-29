@@ -131,7 +131,7 @@ def block_details(skill: Skill, block: AnyBlock) -> dict[str, Any]:
         "description": block.description,
         "hint": node_hint(block),
         "facts": block_facts(block),
-        "instruction": skill.instruction_text(instruction_value) if instruction_value is not None else None,
+        "instruction": prose_text(skill, instruction_value),
         "instruction_file": instruction_value if instruction_value and instruction_value.endswith(".md") else None,
         "fields": field_rows(block.output) if isinstance(block, TaskBlock | DecisionBlock | ParallelBlock) else [],
         "choices": [],
@@ -151,6 +151,16 @@ def block_details(skill: Skill, block: AnyBlock) -> dict[str, Any]:
     if isinstance(block, EndBlock):
         details["outputs"] = value_rows(block.outputs)
     return details
+
+
+def prose_text(skill: Skill, value: str | None) -> str | None:
+    """The instruction or report text, or None when there is none or its `.md` file is missing.
+
+    The loader accepts a missing file; `pskill validate` reports it, and the panel shows that problem.
+    """
+    if value is None or (value.endswith(".md") and not (skill.folder / value).is_file()):
+        return None
+    return skill.instruction_text(value)
 
 
 def block_facts(block: AnyBlock) -> list[list[str]]:

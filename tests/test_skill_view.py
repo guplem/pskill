@@ -181,3 +181,15 @@ def test_the_skill_screen_lists_the_validation_problems(tmp_path: Path) -> None:
 
 def test_an_unknown_skill_has_no_detail(tmp_path: Path) -> None:
     assert skill_detail(make_project(tmp_path), "missing") is None
+
+
+def test_a_missing_instruction_file_is_named_instead_of_failing(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    (project.skills_folder / "plan-work" / "instructions" / "approve_plan.md").unlink()
+
+    detail = detail_of(project, "plan-work")
+
+    approve_plan = detail["blocks"]["approve_plan"]
+    assert approve_plan["instruction"] is None
+    assert approve_plan["instruction_file"] == "instructions/approve_plan.md"
+    assert any("approve_plan.md" in problem["message"] for problem in detail["problems"])
