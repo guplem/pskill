@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-09-29)
+
+Choose where the hooks go, and `harnesses` becomes `permissions` (rename it in `.pskill/config.yaml`).
 
 - **Choose where the hooks go:** the new `hook_files` setting in `.pskill/config.yaml` lists the files that get the two hooks. The default is each app's own file, as before. A project that generates its app settings from its own source lists that source instead.
 - **`harnesses` is now `permissions`:** it only decides which apps get the rule to run pskill without asking. Rename the setting in `.pskill/config.yaml`; the old name stops with an error that says so.
