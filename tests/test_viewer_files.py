@@ -111,3 +111,9 @@ def test_the_skill_screen_offers_the_markdown_export_as_a_download() -> None:
     assert "Export as Markdown" in script
     assert "/export`" in script
     assert "exportLink.download" in script
+
+
+def test_the_arrow_tips_use_a_theme_color() -> None:
+    style = (VIEWER / "style.css").read_text(encoding="utf-8")
+
+    assert ".layer .arrowMarkerPath {\n  fill: var(--muted) !important;" in style

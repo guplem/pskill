@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Arrow tips in dark mode:** the arrow tips on the canvas were black, so the dark theme hid them. They now take the color of their line: blue on a taken edge, grey on the others.
+
 ## 0.6.0 (2026-09-29)
 
 A Skills screen that shows, exports, and edits each skill, and more ways to route and retry.

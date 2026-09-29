@@ -38,7 +38,7 @@
     "pskill_runner/yaml_loading.py": "sha256:22c2c28eb5f2311edd8f53ab42dc1464ab7b01b5a672b8b57887ad2d4aaa3457",
     "viewer/app.js": "sha256:25442b7c6680a3931dd3a998bb9c3e88e1a7454607d89657dc975ae523618b0f",
     "viewer/index.html": "sha256:e2dd950516dbae6b043c18a68584ca14e5c198c62b20145a1af788c4c7735421",
-    "viewer/style.css": "sha256:f40f39457e250ad1afe66734c0aea0ec0006c5e3e3400d9b45ec0e504f1402e6",
+    "viewer/style.css": "sha256:1db5e34f377ddcc5249eefa7ab823e7959ce73d7e7fd346cad0a158acf79f2f1",
     "launchers/view.cmd": "sha256:57916157302cc8026731ef8b51a34cf637059a98285875ba3787177d43691848",
     "launchers/view.command": "sha256:21364e319172774a95c2f8461e9bf46ad5912eae96b31c44020d24de01ce1ead",
     "launchers/view.sh": "sha256:ad6ebf8e4cca8419ef877f5b1bcd0898ec75e8d099e76206a076919c37d03120"
