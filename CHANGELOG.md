@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 (2026-09-29)
 
 Block icons, and a tidier side panel.
 
