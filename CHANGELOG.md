@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-09-29)
 
 A run viewer that a person who did not write the skill can follow.
 
