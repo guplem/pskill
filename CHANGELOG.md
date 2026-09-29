@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A hint for `?` in test cases:** when a case file fails to parse at a `?` inside `{ }`, `pskill test` now says to put the value in quotes, with the fixed line as an example.
+
 ## 0.5.0 (2026-09-29)
 
 Block icons, and a tidier side panel.
