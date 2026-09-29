@@ -51,6 +51,7 @@ OUTPUT_TITLES = {
     "end": "Output: the skill's outputs",
 }
 TASK_HEADING = re.compile(r"^#### Task (\d+)$", re.MULTILINE)
+TASK_TOTAL = re.compile(r"^\d+ of (\d+) tasks are still open\.$", re.MULTILINE)
 TASKS_PER_ROW = 4
 TASK_NODE_HINT = "One task of this parallel block. One subagent (or the agent) does it and answers on its own."
 TASKS_EDGE_HINT = "The tasks of this parallel block, one node per task."
@@ -643,9 +644,18 @@ def skill_summaries(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def task_packets(packet: str | None) -> dict[int, str]:
-    """The prompt of each task in a packet for subagents: the text after each `#### Task <n>` heading."""
-    parts = TASK_HEADING.split(packet or "")
-    return {int(parts[index]): parts[index + 1].strip() for index in range(1, len(parts) - 1, 2)}
+    """The prompt of each task in a packet for subagents: the text after each `#### Task <n>` heading.
+
+    The packet's line "<open> of <total> tasks are still open." bounds the task numbers, so a heading
+    inside an instruction adds no task.
+    """
+    text = packet or ""
+    total = TASK_TOTAL.search(text)
+    if total is None:
+        return {}
+    headings = [match for match in TASK_HEADING.finditer(text) if int(match[1]) < int(total[1])]
+    ends = [match.start() for match in headings[1:]] + [len(text)]
+    return {int(match[1]): text[match.end() : end].strip() for match, end in zip(headings, ends, strict=True)}
 
 
 def live_tasks(state: RunState) -> tuple[str, str, int] | None:
@@ -681,10 +691,12 @@ def parallel_visits(rows: list[dict[str, Any]]) -> dict[tuple[str, int, str, int
     """
     calls: dict[str, int] = {}
     groups: dict[tuple[str, int, str, int], list[dict[str, Any]]] = {}
+    previous_chain = None
     for row in rows:
         chain = str(row["frame"])
-        if row["from"] is None and row["task"] in (None, 0):
-            calls[chain] = calls.get(chain, 0) + 1  # the first block of a new call of this frame
+        if row["from"] is None and chain != previous_chain:
+            calls[chain] = calls.get(chain, 0) + 1  # the run enters this frame: a new call
+        previous_chain = chain
         if row["block_type"] == "parallel":
             key = (chain, calls.get(chain, 1), str(row["block"]), int(row["visit"]))
             groups.setdefault(key, []).append(row)
@@ -702,9 +714,10 @@ def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
     for key, group in groups.items():
         packets: dict[int, str] = {}
         for row in group:
-            packets.update(task_packets(row["packet"]))
-            if row["task"] is not None and row["packet"]:
-                packets[row["task"]] = row["packet"]
+            if row["task"] is None:
+                packets.update(task_packets(row["packet"]))  # with subagents: one packet lists every open task
+            elif row["packet"]:
+                packets[row["task"]] = row["packet"]  # one by one: the row's packet is its task's prompt
         live_count = live[2] if live is not None and key == last_key and live[:2] == (key[0], key[2]) else 0
         # A rejected answer can name a task that does not exist, so only accepted answers and task rows count.
         accepted = [entry["task"] + 1 for row in group for entry in row["tasks"] if entry["output"] is not None]
@@ -819,9 +832,11 @@ def find_open_row(
     """The row that an event belongs to. In subagent mode, task answers belong to the block's one row."""
     frame, block = str(event["frame"]), str(event.get("block", ""))
     task: int | None = event.get("task")
-    if task is not None:
-        return open_rows.get((frame, block, task)) or open_rows.get((frame, block, None))
-    # Without a task: the newest row of the block. For a one-by-one parallel block, that is the last task.
+    if task is not None and (frame, block, task) in open_rows:
+        return open_rows[(frame, block, task)]
+    if task is not None and (frame, block, None) in open_rows:
+        return open_rows[(frame, block, None)]
+    # Else the newest row of the block: for a one-by-one parallel block, the task that the packet shows.
     same_block = [row for key, row in open_rows.items() if key[:2] == (frame, block)]
     return max(same_block, key=lambda row: int(row["seq"])) if same_block else None
 

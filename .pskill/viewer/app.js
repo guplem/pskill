@@ -1019,8 +1019,9 @@ async function render() {
 
 window.addEventListener("resize", () => {
   const workspace = view.parts?.workspace;
-  const width = workspace ? parseFloat(workspace.style.getPropertyValue("--panel-width")) : NaN;
-  if (width) setPanelWidth(workspace, width); // keep room for the canvas in a smaller window
+  // Fit the width that the user chose (not the current one) to the new window: it comes back when it grows.
+  const chosen = savedPanelWidth();
+  if (workspace && chosen) setPanelWidth(workspace, chosen);
 });
 window.addEventListener("hashchange", () => {
   view.detailText = null;
