@@ -263,7 +263,7 @@ function buildRunScreen() {
   screen.append(bar, workspace, replay);
   app.className = "";
   app.replaceChildren(screen);
-  view.parts = { picker, status, follow, zoomLabel, canvas, layer, note, panel, progress, marks, slider, labels, play };
+  view.parts = { picker, status, follow, zoomLabel, canvas, layer, note, panel, progress, marks, slider, labels, play, workspace };
 }
 
 function drawTopbar() {
@@ -318,7 +318,7 @@ function taskNodeState(nodeInfo, state) {
   const taskState = state.taskStates[nodeInfo.id] || "open";
   if (taskState === "done") return "done";
   if (taskState === "rejected") return "failed";
-  return nodeInfo.parent === state.stepNode && state.stepNodeState !== "done" ? "now" : "unvisited";
+  return nodeInfo.parent === state.stepNode && state.stepNodeState === "now" ? "now" : "unvisited";
 }
 
 function nodeState(node, state) {
@@ -409,7 +409,7 @@ async function drawGraph() {
     if (path) addHint(path, hint);
   }
   for (const cluster of svgNode.querySelectorAll("g.cluster")) {
-    addHint(cluster, cluster.id.endsWith("_tasks") ? TASK_FRAME_HINT : CHILD_SKILL_HINT);
+    addHint(cluster, cluster.id.endsWith("_TASKS") ? TASK_FRAME_HINT : CHILD_SKILL_HINT);
   }
   view.parts.note.textContent = "Drag to move · wheel to zoom · click a step to see it";
   if (!view.fitted) {
@@ -576,10 +576,11 @@ function attachPanelResize(workspace, handle) {
     setPanelWidth(workspace, workspace.getBoundingClientRect().right - event.clientX);
   });
   handle.addEventListener("pointerup", (event) => {
+    if (!handle.hasPointerCapture(event.pointerId)) return;
     handle.releasePointerCapture(event.pointerId);
-    handle.classList.remove("dragging");
     savePanelWidth(setPanelWidth(workspace, workspace.getBoundingClientRect().right - event.clientX));
   });
+  handle.addEventListener("lostpointercapture", () => handle.classList.remove("dragging")); // also a cancelled drag
 }
 
 function selectNode(node, rowIndex = null, task = null) {
@@ -638,7 +639,7 @@ function drawPanel() {
     parts.push(...rowSections(chosen.row));
   }
   const stateDetails = element("details");
-  stateDetails.append(element("summary", "Run state now (inputs, steps, history)"), jsonTree(view.detail.state));
+  stateDetails.append(element("summary", "Run state now (inputs, steps, history)"), jsonTree(view.detail.state, "state"));
   parts.push(stateDetails);
   panel.replaceChildren(...parts);
 }
@@ -686,9 +687,10 @@ function rowSections(row) {
   if (row.packet) parts.push(section(row.input_title, folded(markdown(row.packet), `${row.seq}:input`)));
   if (row.tasks.length) parts.push(tasksSection(row));
   // The answers of a parallel block's tasks show with their task; the rest shows here.
-  const answers = row.tasks.length ? row.submissions.filter((submission) => submission.task === null) : row.submissions;
+  const listed = new Set(row.tasks.map((task) => task.task));
+  const answers = row.submissions.filter((submission) => submission.task === null || !listed.has(submission.task));
   if (answers.length) parts.push(section(`Answers · ${answers.length}`, ...answers.map((item, index) => answerCard(item, index, row.seq))));
-  if (row.output !== null) parts.push(section(row.output_title, folded(jsonTree(row.output), `${row.seq}:output`)));
+  if (row.output !== null) parts.push(section(row.output_title, folded(jsonTree(row.output, `${row.seq}:output`), `${row.seq}:output`)));
   return parts;
 }
 
@@ -699,7 +701,7 @@ function scriptSections(row) {
     parts.push(section(row.input_title, element("pre", `$ ${script.argv.join(" ")}`, "command")));
     const result = [element("p", `Exit code ${script.exit_code ?? "-"} · ${formatDuration(script.duration_ms)}`, "note")];
     if (script.parsed !== null) {
-      result.push(folded(jsonTree(script.parsed), `${key}:parsed`));
+      result.push(folded(jsonTree(script.parsed, `${key}:parsed`), `${key}:parsed`));
       const raw = element("details");
       raw.append(element("summary", "The raw stdout"), element("pre", script.stdout));
       result.push(raw);
@@ -741,7 +743,8 @@ function taskDetail(task, seq) {
     box.append(element("h4", `Answers · ${task.submissions.length}`), ...task.submissions.map((item, index) => answerCard(item, index, `${seq}:task${task.task}`)));
   }
   if (task.output !== null) {
-    box.append(element("h4", `Output: the answer of task ${task.task}`), folded(jsonTree(task.output), `${seq}:task${task.task}:output`));
+    const key = `${seq}:task${task.task}:output`;
+    box.append(element("h4", `Output: the answer of task ${task.task}`), folded(jsonTree(task.output, key), key));
   }
   return box;
 }
@@ -762,6 +765,7 @@ function answerCard(submission, index, keyPrefix) {
 // --- the run screen: JSON trees, Markdown, and folded blocks ---------------------------------------
 
 // Long content shows its first lines, with a button to show all of it. The open ones stay open on redraws.
+// A fold that fits needs no button, and no height limit, so a JSON node that opens later still shows whole.
 function folded(content, key) {
   const box = element("div", null, "fold");
   box.style.setProperty("--fold-lines", String(FOLD_LINE_LIMIT));
@@ -780,19 +784,23 @@ function folded(content, key) {
   return box;
 }
 
-// A JSON value as a tree: objects and arrays fold, the first level is open.
-function jsonTree(value, depth = 0) {
+// A JSON value as a tree: objects and arrays fold, the first level is open. `key` names the node, so an
+// opened node stays open on redraws.
+function jsonTree(value, key, depth = 0) {
   if (value === null || typeof value !== "object") return jsonLeaf(value);
   const isList = Array.isArray(value);
   const entries = isList ? value.map((item, index) => [index, item]) : Object.entries(value);
   const count = `${entries.length} ${isList ? "item" : "key"}${entries.length === 1 ? "" : "s"}`;
   const tree = element("details", null, depth === 0 ? "json json-root" : "json");
-  tree.open = depth === 0;
+  tree.open = depth === 0 || view.openFolds.has(key);
+  if (depth > 0) {
+    tree.addEventListener("toggle", () => (tree.open ? view.openFolds.add(key) : view.openFolds.delete(key)));
+  }
   tree.append(element("summary", isList ? `[ ${count} ]` : `{ ${count} }`, "json-summary"));
   const children = element("div", null, "json-children");
-  for (const [key, item] of entries) {
+  for (const [name, item] of entries) {
     const line = element("div", null, "json-row");
-    line.append(element("span", `${key}:`, "json-key"), jsonTree(item, depth + 1));
+    line.append(element("span", `${name}:`, "json-key"), jsonTree(item, `${key}/${name}`, depth + 1));
     children.append(line);
   }
   tree.append(children);
@@ -818,6 +826,7 @@ function markdown(text) {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const fence = line.match(/^\s*(```|~~~)/);
+    const isHeredocEnd = heredocEnd(line);
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     const item = line.match(/^\s*(?:[-*]|(\d+)\.)\s+(.*)$/);
     if (fence) {
@@ -826,6 +835,16 @@ function markdown(text) {
       const code = [];
       for (index += 1; index < lines.length && !lines[index].trim().startsWith(fence[1]); index += 1) code.push(lines[index]);
       box.append(element("pre", code.join("\n")));
+    } else if (isHeredocEnd) {
+      flushParagraph();
+      list = null;
+      const code = [line];
+      while (index + 1 < lines.length) {
+        index += 1;
+        code.push(lines[index]);
+        if (isHeredocEnd(lines[index])) break;
+      }
+      box.append(element("pre", code.join("\n")));
     } else if (heading) {
       flushParagraph();
       list = null;
@@ -833,7 +852,10 @@ function markdown(text) {
     } else if (item) {
       flushParagraph();
       const tag = item[1] ? "OL" : "UL";
-      if (!list || list.tagName !== tag) box.append((list = element(tag.toLowerCase())));
+      if (!list || list.tagName !== tag) {
+        box.append((list = element(tag.toLowerCase())));
+        if (item[1]) list.start = Number(item[1]); // a list that a blank line cut goes on with its own number
+      }
       list.append(inlineMarkdown(element("li"), item[2]));
     } else if (!line.trim()) {
       flushParagraph();
@@ -847,6 +869,15 @@ function markdown(text) {
   }
   flushParagraph();
   return box;
+}
+
+// The test for the last line of a heredoc (`<<'PSKILL'`) or a PowerShell here-string (`@'`) that this line
+// opens, or null.
+function heredocEnd(line) {
+  const shell = line.match(/<<-?\s*['"]?(\w+)['"]?\s*$/);
+  if (shell) return (next) => next.trim() === shell[1];
+  if (/@['"]\s*$/.test(line)) return (next) => /^['"]@/.test(next.trim());
+  return null;
 }
 
 function inlineMarkdown(parent, text) {
@@ -986,6 +1017,11 @@ async function render() {
   }
 }
 
+window.addEventListener("resize", () => {
+  const workspace = view.parts?.workspace;
+  const width = workspace ? parseFloat(workspace.style.getPropertyValue("--panel-width")) : NaN;
+  if (width) setPanelWidth(workspace, width); // keep room for the canvas in a smaller window
+});
 window.addEventListener("hashchange", () => {
   view.detailText = null;
   if (view.playTimer) clearInterval(view.playTimer);
