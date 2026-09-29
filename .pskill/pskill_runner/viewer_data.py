@@ -50,7 +50,7 @@ OUTPUT_TITLES = {
     "call": "Output: the child skill's outputs",
     "end": "Output: the skill's outputs",
 }
-TASK_HEADING = re.compile(r"^#### Task (\d+)$", re.MULTILINE)
+TASK_HEADING = re.compile(r"^#### Task (\d+)\n(?=You are a subagent of a pskill run\.)", re.MULTILINE)
 TASK_TOTAL = re.compile(r"^\d+ of (\d+) tasks are still open\.$", re.MULTILINE)
 TASKS_PER_ROW = 4
 TASK_NODE_HINT = "One task of this parallel block. One subagent (or the agent) does it and answers on its own."
@@ -764,6 +764,7 @@ def timeline_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for event in events:
         if event["type"] == "block_started":
             row = new_timeline_row(event)
+            close_old_rows(open_rows, row, rows[-1] if rows else None)
             rows.append(row)
             open_rows[(event["frame"], event["block"], event.get("task"))] = row
             continue
@@ -783,6 +784,18 @@ def timeline_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         elif event["type"] == "block_completed":
             record_completion(row_for_event, event)
     return rows
+
+
+def close_old_rows(
+    open_rows: dict[tuple[str, str, int | None], dict[str, Any]], row: dict[str, Any], previous: dict[str, Any] | None
+) -> None:
+    """Forget the rows that a new row ends: a new call of its frame ends every row of that frame, and a new
+    visit of its block ends the rows of the block's earlier visits."""
+    new_call = row["from"] is None and (previous is None or previous["frame"] != row["frame"])
+    for key, old in list(open_rows.items()):
+        same_frame = key[0] == row["frame"]
+        if same_frame and (new_call or (key[1] == row["block"] and old["visit"] != row["visit"])):
+            del open_rows[key]
 
 
 def parsed_json(text: str | None) -> Any:
