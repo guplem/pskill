@@ -1,19 +1,28 @@
 # pskill
 
-**Run agent skills as programs, not prose.** A pskill skill is a small graph of typed blocks in YAML. The pskill runner executes it one block at a time inside your normal agent session (Claude Code, Codex, and others): it gives the agent one instruction, checks the typed answer, and picks the next block. The agent cannot skip, reorder, or invent steps, and every run leaves a trace that you can step through.
+**Run agent skills as programs, not as long prose.** A normal skill is a text file that asks the agent (Claude Code, Codex, and others) to follow steps. A pskill skill is a small map of steps in YAML, and a program (the pskill runner) walks the agent through it: one step at a time, in a fixed order. The agent cannot skip or reorder steps, and every run leaves a record that you can replay step by step.
 
 ```text
-you <-> agent (Claude Code, Codex, ...) <-> pskill runner <-> .pskill/skills/<skill>/skill.yaml
+you  <->  your agent (Claude Code, Codex, ...)  <->  pskill runner  <->  the skill (.pskill/skills/<skill>/skill.yaml)
 ```
 
 ## Why
 
-Long prose skills break in the same ways again and again: the agent skips a step, loses state between tool calls, or runs ahead. pskill moves the order into a graph that a program enforces, and leaves only each step's judgment to the agent.
+Long prose skills break in the same ways again and again: the agent skips a step, forgets a value between steps, or jumps ahead. With pskill, the runner keeps the order and the values. The agent only does the work of the current step.
+
+## How a run works
+
+1. You ask your agent for a task in plain words, for example "implement issue 42".
+2. The agent recognizes the skill and starts a **run** (one use of a skill).
+3. The runner gives the agent **one step**: what to do, and what to answer.
+4. The agent does the work, then sends its answer back to the runner.
+5. The runner checks the answer. If it is incomplete, the agent must fix it. If it is good, the runner gives the next step.
+6. This repeats until the skill ends. When a step needs your decision, the agent asks you.
 
 ## Requirements
 
-- [uv](https://docs.astral.sh/uv/) on your machine. It installs Python and the runner's three dependencies by itself.
-- git and, for the example skills, the [GitHub CLI](https://cli.github.com/) (`gh`).
+- [uv](https://docs.astral.sh/uv/), a small Python tool. It installs everything else that pskill needs, Python included.
+- git. The example skills also need the [GitHub CLI](https://cli.github.com/) (`gh`).
 - Windows, macOS, or Linux.
 
 ## Install
@@ -24,78 +33,77 @@ In the root folder of your project, run:
 uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init
 ```
 
-`init` copies the runner into `.pskill/` (commit that folder; git ignores `.pskill/runs/`), then runs `sync`. The runner is vendored: every teammate uses the same version, with no install step. Never edit the vendored files by hand; `update` replaces them.
+This creates a `.pskill/` folder with a copy of the runner inside. Commit that folder to git, so everyone on your team uses the same version with no extra install. (git already ignores `.pskill/runs/`, where your run records go.) Do not edit the runner files in `.pskill/` by hand.
 
-To update later:
+To get a newer version of the runner later:
 
 ```bash
 uv run .pskill/pskill.py update
 ```
 
-## What `sync` writes
+## What pskill adds to your project
 
-`sync` makes your skills visible to each harness. It changes only its own entries, and never overwrites a hand-written file:
+`init` runs `pskill sync`, and you run it again after you add a skill or change its description. `sync` only adds or updates its own files and entries. It never overwrites a file that you wrote.
 
-| File | What pskill adds |
-|---|---|
-| `.claude/skills/<skill>/SKILL.md`, `.agents/skills/<skill>/SKILL.md` | One short generated stub per skill, so the agent can start it. Set the folders with `stub_folders` in `.pskill/config.yaml`. |
-| `.claude/settings.json` | A Stop hook, a SessionStart hook, and the permission rule `Bash(uv run .pskill/pskill.py *)`. |
-| `.codex/hooks.json`, `.codex/rules/pskill.rules` | The same two hooks for Codex, and a rule that allows `uv run .pskill/pskill.py` without a prompt. |
+- **A small "signpost" file per skill** (`.claude/skills/<skill>/SKILL.md` and `.agents/skills/<skill>/SKILL.md`). Agents discover skills through these files. Each one tells the agent to start the runner. The real skill stays in `.pskill/skills/`.
+- **Two hooks** (small commands that your agent app runs by itself at certain moments):
+  - **When the agent tries to finish its reply:** if a step of a run is still open, the hook sends the agent a message: "a pskill step is still open, continue it". So the agent keeps working instead of stopping halfway. If the agent still tries to stop 3 times in a row without sending an answer, pskill lets it stop and pauses the run. You can continue that run later.
+  - **When you open a new session:** the hook lists your unfinished runs, so the agent can continue them.
+- **A permission rule**, so your agent app does not ask your permission every time the agent talks to the runner. It allows only the runner command (`uv run .pskill/pskill.py ...`), nothing else.
 
-- **Stop hook:** while a run has an open block, it keeps the agent working (at most 3 times in a row, then the run pauses).
-- **SessionStart hook:** it refreshes the stubs and lists your unfinished runs.
-- **Codex:** it loads project hooks and rules only after you trust the project, and it asks you once to trust each hook (`/hooks`).
-
-Run `sync` again after you add a skill or change a skill's description or inputs.
+Where these go: `.claude/settings.json` for Claude Code; `.codex/hooks.json` and `.codex/rules/pskill.rules` for Codex. Codex runs them only after you mark the project as trusted, and it asks you once to approve each hook (type `/hooks` in Codex).
 
 ## Use
 
-Ask your agent for the task in plain words ("implement issue 42"). The stub triggers the skill, and the agent follows the runner's packets until the run ends. You answer the questions the skill asks.
+Usually, you just ask your agent for the task, and the skill starts by itself. You answer the questions that the skill asks.
 
-| Command (`uv run .pskill/pskill.py ...`) | What it does |
+You can also run the runner yourself. Every command starts with `uv run .pskill/pskill.py`:
+
+| Command | What it does |
 |---|---|
 | `list` | List the skills. |
-| `start <skill> --input name=value` | Start a run. Add `--mode autonomous` to let the agent answer the skill's questions itself. |
-| `current [<run>]` | Show the current block of a run again. |
 | `runs --open` | List the unfinished runs. |
-| `pause`, `resume`, `cancel <run>` | Control a run. A run survives the session: resume it tomorrow, in any harness. |
-| `view` | Open the read-only run viewer in your browser (or double-click `.pskill/launchers/view.cmd`, `view.command`, or `view.sh`). |
-| `validate` | Check every skill for errors and warnings. |
-| `test` | Run every skill's test cases with a scripted fake agent. No LLM, no cost. |
-| `sync` | Write the stubs, hooks, and rules (`--check` only reports). |
+| `current <run>` | Show the current step of a run again. |
+| `pause <run>`, `resume <run>`, `cancel <run>` | Pause a run, continue it, or stop it for good. A run survives when you close your session: you can continue it tomorrow, even in another agent app. |
+| `view` | Open the run viewer in your browser: every step of every run, what the agent got, and what it answered. You can also double-click `.pskill/launchers/view.cmd` (Windows), `view.command` (macOS), or `view.sh` (Linux). |
+| `validate` | Check every skill for mistakes. |
+| `test` | Run every skill's test cases. A fake agent gives recorded answers, so no AI model runs and it costs nothing. |
+| `sync` | Update the signpost files, the hooks, and the permission rule. `sync --check` only reports what is out of date. |
+
+To start a skill yourself: `uv run .pskill/pskill.py start <skill> --input name=value`. Add `--mode autonomous` to let the agent answer the skill's questions itself, without you.
 
 ## Write a skill
 
-Read [`AUTHORING.md`](AUTHORING.md): the six block types, a complete example, and the edit loop (write a failing test case, change the skill, then run `test`, `validate`, and `sync`). This repository's own skills are working examples: [`.pskill/skills/`](.pskill/skills/).
+Read [`AUTHORING.md`](AUTHORING.md): the six kinds of steps, a complete example, and how to test a skill. The skills in [`.pskill/skills/`](.pskill/skills/) are working examples.
 
-## Harnesses
+## Which agent apps work
 
-| Harness | Support |
+| Agent app | What works |
 |---|---|
-| Claude Code | Full: stubs, hooks, the permission rule, questions with its question tool, parallel subagents. |
-| Codex | Full: stubs, hooks, the command rule, parallel subagents. |
-| Any other (Gemini CLI, Cursor, ...) | The `generic` adapter: stubs in `.agents/skills/`, questions in the chat, parallel tasks one by one, no hooks. |
+| Claude Code | Everything: signpost files, hooks, the permission rule, questions with its question buttons, and parallel helper agents (subagents). |
+| Codex | Everything: signpost files, hooks, the permission rule, and parallel helper agents. It asks its questions in the chat. |
+| Any other (Gemini CLI, Cursor, ...) | The basics: signpost files in `.agents/skills/`, and questions in the chat. There are no hooks, so nothing stops the agent from ending its reply early, and no session lists your unfinished runs (use `runs --open`). Parallel tasks run one after another. |
 
 ## Known limitations
 
-- **Autonomous mode removes the human gates.** In `--mode autonomous` the agent takes every human decision itself, including "post publicly" or "close the issue". Only your harness's permission settings then protect outward actions.
-- **The runner trusts the agent's claim that you answered a question.**
-- **Without a Stop hook, enforcement is soft.** The agent can end its turn with an open block; `current` and the session-start message recover the run.
-- **The Stop hook binds to the harness and the checkout.** Two sessions of the same harness in the same folder share it. Separate checkouts do not conflict.
-- **The skill files are on disk.** An agent could read future blocks. This is not a security boundary.
-- **No isolation without subagents.** With the generic adapter, parallel tasks run one by one in the main agent's context.
-- **Codex runs allowed commands outside its sandbox.** The rule that lets the agent call the runner without a prompt also runs the runner, and so the skills' `script` blocks, outside the Codex sandbox. Delete `.codex/rules/pskill.rules` to keep the sandbox; Codex then asks once per block.
+- **Autonomous mode means no questions to you.** With `--mode autonomous`, the agent also makes the decisions that normally need you, such as "post this publicly" or "close this issue". Only your agent app's own permission settings then protect you.
+- **pskill trusts the agent when it says that you answered a question.**
+- **Without hooks, the agent can stop halfway.** Find the run with `runs --open`, then continue it with `current <run>`.
+- **Two sessions of the same agent app in the same folder share the hooks.** Keep one session per folder, or use a separate clone per session.
+- **The agent could read the later steps of a skill.** They are plain files on disk. This does not matter for normal use, but it is not a security barrier.
+- **Without helper agents, parallel tasks share one context.** In apps without subagents, the agent does the tasks one after another, so each task can see the earlier ones.
+- **Codex runs allowed commands outside its sandbox** (the safety area that limits what commands can do). The rule that lets the agent call the runner without asking also lets the runner, and the scripts that a skill runs, work outside that sandbox. To keep the sandbox, delete `.codex/rules/pskill.rules`. Codex then asks your permission before each runner command.
 
 ## Troubleshooting
 
-- **The skill does not trigger:** run `uv run .pskill/pskill.py sync`, then check that the stub exists in the folder your harness reads.
-- **A run seems lost:** run `uv run .pskill/pskill.py runs --open`, then `current <run>`.
-- **A run is paused:** the pause message names the reason. Fix it, then run `resume <run>`.
-- **`update` refuses to run:** someone edited a vendored file by hand. Move the change upstream, or run `update --force`.
+- **The skill does not start:** run `uv run .pskill/pskill.py sync`, then open a new session.
+- **You lost track of a run:** run `uv run .pskill/pskill.py runs --open`, then `current <run>`.
+- **A run is paused:** the pause message says why. Fix the cause, then run `resume <run>`.
+- **`update` refuses to run:** someone changed a runner file in `.pskill/` by hand. Undo that change, or run `update --force` to overwrite it.
 
 ## Develop pskill
 
-See [`AGENTS.md`](AGENTS.md) for the repository map, the commands, and the rules (red-green, always). The design is in [`SPEC.md`](SPEC.md).
+See [`AGENTS.md`](AGENTS.md) for the repository map, the commands, and the rules. The full design is in [`SPEC.md`](SPEC.md).
 
 ## License
 
