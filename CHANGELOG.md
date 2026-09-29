@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **A Skills screen in the viewer:** it lists every skill, also a skill that never ran. Open one to see its graph without a run. Click a block to see its instruction, its fields, its choices, and where it can go. A call block links to its child skill. The screen also shows what `pskill validate` finds. A run links to its skill's graph.
+- **A small start dot:** the graph starts at a small dot instead of a large circle.
 - **A choice can lead to different blocks:** in a decision with choices, a choice can take an edge list instead of one block. The runner follows the choice, then the first matching edge. A per-item loop can now keep the question buttons; `AUTHORING.md` shows the pattern.
 - **A hint for `?` in test cases:** when a case file fails to parse at a `?` inside `{ }`, `pskill test` now says to put the value in quotes, with the fixed line as an example.
 - **Retries and a timeout per block:** a `task`, `decision`, `parallel`, or `script` block can set its own `retries`, and a `script` block its own `timeout_s`. Each one overrides the global value in `.pskill/config.yaml` for that block. The canvas hint names them.

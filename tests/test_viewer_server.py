@@ -92,3 +92,24 @@ def test_the_viewer_files_are_served(server: ThreadingHTTPServer) -> None:
 def test_paths_outside_the_viewer_folder_are_refused(server: ThreadingHTTPServer) -> None:
     assert get(server, "/../../.pskill/skills/plan-work/skill.yaml")[0] == 404
     assert get(server, "/missing.css")[0] == 404
+
+
+def test_the_skills_endpoint_lists_every_skill(server: ThreadingHTTPServer) -> None:
+    status, content_type, body = get(server, "/api/skills")
+
+    assert (status, content_type) == (200, "application/json; charset=utf-8")
+    assert [skill["skill_id"] for skill in json.loads(body)["skills"]] == ["plan-work"]
+
+
+def test_the_skill_endpoint_returns_one_skill(server: ThreadingHTTPServer) -> None:
+    status, _, body = get(server, "/api/skills/plan-work")
+
+    assert status == 200
+    assert json.loads(body)["skill"]["id"] == "plan-work"
+
+
+def test_an_unknown_skill_is_not_found(server: ThreadingHTTPServer) -> None:
+    status, _, body = get(server, "/api/skills/missing")
+
+    assert status == 404
+    assert json.loads(body) == {"error": "There is no skill with this id."}

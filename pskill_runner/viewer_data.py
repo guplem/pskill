@@ -341,7 +341,8 @@ def task_row_sizes(count: int) -> list[int]:
 
 
 def canvas_template(frames: list[CanvasFrame], edges: list[CanvasEdge], task_counts: dict[tuple[int, str], int]) -> str:
-    lines = ["flowchart TD", f'  {START_NODE}(("start"))']
+    # A small start dot: Mermaid 12 gives a labeled circle a fixed radius of about 90 px.
+    lines = ["flowchart TD", f"  {START_NODE}@{{ shape: sm-circ }}"]
     for index, frame in enumerate(frames):
         indent = "  " if index == 0 else "    "
         if index > 0:
@@ -577,20 +578,7 @@ def run_canvas(
     edges = [edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame)]
     edges = number_edges(edges + task_frame_edges(task_counts))
     annotated = annotate_rows(rows, row_frames, frames, edges, info["mode"])
-    nodes: list[dict[str, Any]] = [
-        {
-            "id": node_id(index, block.id),
-            "token": label_token(node_id(index, block.id)),
-            "frame": index,
-            "skill_id": frame.skill.id,
-            "block": block.id,
-            "type": block_type_name(block),
-            "hint": node_hint(block),
-            "kind": "block",
-        }
-        for index, frame in enumerate(frames)
-        for block in frame.skill.blocks.values()
-    ]
+    nodes = block_nodes(frames)
     labels = {node["id"]: node_label(node["block"], [node["type"]], []) for node in nodes}
     for (index, block_id), count in task_counts.items():
         parent = node_id(index, block_id)
@@ -616,20 +604,42 @@ def run_canvas(
         "start": START_NODE,
         "labels": labels,
         "nodes": nodes,
-        "edges": [
-            {
-                "id": edge.id,
-                "source": edge.source,
-                "target": edge.target,
-                "label": edge.text,
-                "kind": edge.kind,
-                "hint": edge.hint,
-            }
-            for edge in edges
-        ],
+        "edges": canvas_edge_rows(edges),
         "current": current_step(info, annotated),
     }
     return canvas, annotated
+
+
+def block_nodes(frames: list[CanvasFrame]) -> list[dict[str, Any]]:
+    """One node per block of every frame, with what the page needs to draw and explain it."""
+    return [
+        {
+            "id": node_id(index, block.id),
+            "token": label_token(node_id(index, block.id)),
+            "frame": index,
+            "skill_id": frame.skill.id,
+            "block": block.id,
+            "type": block_type_name(block),
+            "hint": node_hint(block),
+            "kind": "block",
+        }
+        for index, frame in enumerate(frames)
+        for block in frame.skill.blocks.values()
+    ]
+
+
+def canvas_edge_rows(edges: list[CanvasEdge]) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": edge.id,
+            "source": edge.source,
+            "target": edge.target,
+            "label": edge.text,
+            "kind": edge.kind,
+            "hint": edge.hint,
+        }
+        for edge in edges
+    ]
 
 
 # --- the runs overview ------------------------------------------------------------------------

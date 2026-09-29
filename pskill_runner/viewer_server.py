@@ -1,7 +1,7 @@
 """`pskill view`: a small local web server for the read-only viewer (SPEC.md section 14).
 
-It serves the static files of `viewer/` and two JSON endpoints. It listens on 127.0.0.1 only, and reads
-the run files on every request, so it never shows stale state.
+It serves the static files of `viewer/` and four JSON endpoints (runs and skills). It listens on 127.0.0.1
+only, and reads the files on every request, so it never shows stale state.
 """
 
 import json
@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from pskill_runner.project import Project
+from pskill_runner.skill_view import skill_detail, skills_overview
 from pskill_runner.viewer_data import run_detail, runs_overview
 
 LOCAL_HOST = "127.0.0.1"
@@ -41,6 +42,14 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": "There is no run with this id."})
             else:
                 self.send_json(HTTPStatus.OK, detail)
+        elif path == "/api/skills":
+            self.send_json(HTTPStatus.OK, skills_overview(self.project))
+        elif path.startswith("/api/skills/"):
+            skill = skill_detail(self.project, path.removeprefix("/api/skills/"))
+            if skill is None:
+                self.send_json(HTTPStatus.NOT_FOUND, {"error": "There is no skill with this id."})
+            else:
+                self.send_json(HTTPStatus.OK, skill)
         else:
             self.send_viewer_file(path)
 

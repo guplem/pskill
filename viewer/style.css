@@ -952,3 +952,103 @@ details[open] summary {
     display: none;
   }
 }
+
+/* --- the skills page and the skill screen -------------------------------------------------------- */
+
+.nav {
+  display: flex;
+  gap: 4px;
+  margin-right: 8px;
+}
+
+.nav-link {
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  color: var(--ink);
+}
+
+.nav-link[aria-current="page"] {
+  color: var(--ink);
+  background: var(--code-bg);
+}
+
+a.tool {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.skill-card-description {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.skill-card.has-error {
+  border-color: var(--bad);
+}
+
+.errors-text {
+  color: var(--bad);
+  word-break: break-word;
+}
+
+/* The skill screen has no run: every block has the same solid frame, and every edge is a plain line. */
+.layer.is-skill g.node.is-plain rect,
+.layer.is-skill g.node.is-plain polygon,
+.layer.is-skill g.node circle {
+  stroke: var(--muted) !important;
+}
+
+.layer.is-skill g.node.is-plain .nodeLabel b {
+  color: var(--ink) !important;
+}
+
+.layer.is-skill g.node.is-plain .block-icon-svg {
+  stroke: var(--ink);
+}
+
+.layer.is-skill path.flowchart-link {
+  stroke: var(--muted) !important;
+  stroke-dasharray: none !important;
+}
+
+.layer.is-skill path.flowchart-link.edge-pattern-dotted {
+  stroke-dasharray: 3 3 !important;
+}
+
+.problems,
+.fields {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.problem.is-error strong {
+  color: var(--bad);
+}
+
+.problem.is-warning strong {
+  color: var(--now-ink);
+}
+
+/* The start dot. */
+.layer g.node[data-node="start"] circle {
+  fill: var(--muted) !important;
+  stroke: var(--muted) !important;
+}
+
+.layer g.node.is-done[data-node="start"] circle {
+  fill: var(--done) !important;
+  stroke: var(--done) !important;
+}
