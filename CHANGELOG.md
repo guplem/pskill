@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2 (2026-09-29)
+
+Fixes from the real Codex runs.
+
+- **Harness switch:** `current` now records a new harness, like `submit` and `resume`. Before, a run continued with `current` in another agent app kept the old app's name, so that app's Stop hook ignored the run until the first answer.
+- **Parallel tasks:** the last subagent now gets only "all tasks are done", not the next block. The main agent reads the next block with `current`.
+- **Codex needs Full access:** the README and `SPEC.md` (L7) now say so. In the Codex sandbox, the runner cannot send answers.
+
 ## 0.1.1 (2026-09-29)
 
 Fixes from the first runs in a real Claude Code session.

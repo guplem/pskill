@@ -200,8 +200,9 @@ def test_parallel_with_subagents_lists_every_task_and_waits_for_all(tmp_path: Pa
     assert "1 of 2 tasks are done" in waiting
     assert read_run_info(project, run_id)["status"] == "active"
 
-    final = submit_answer(project, run_id, "wrong: []\n", task=0)
-    assert "finished with status succeeded" in final
+    last_task = submit_answer(project, run_id, "wrong: []\n", task=0)
+    assert last_task == "Task 0 is recorded. All 2 tasks are done.\n"
+    assert "finished with status succeeded" in current_packet(project, run_id)
     assert read_run_info(project, run_id)["outputs"] == {"wrong_count": 1}
     results = read_run_state(project, run_id)["frames"][0]["steps"]["check"]["results"]
     assert results == [{"wrong": []}, {"wrong": ["The sky is green."]}]

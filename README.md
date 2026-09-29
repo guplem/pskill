@@ -81,7 +81,7 @@ Read [`AUTHORING.md`](AUTHORING.md): the six kinds of steps, a complete example,
 | Agent app | What works |
 |---|---|
 | Claude Code | Everything: signpost files, hooks, the permission rule, questions with its question buttons, and parallel helper agents (subagents). |
-| Codex | Everything: signpost files, hooks, the permission rule, and parallel helper agents. It asks its questions in the chat. |
+| Codex | Everything, with Full access (see the known limitations): signpost files, hooks, the permission rule, and parallel helper agents. It asks its questions in the chat. |
 | Any other (Gemini CLI, Cursor, ...) | The basics: signpost files in `.agents/skills/`, and questions in the chat. There are no hooks, so nothing stops the agent from ending its reply early, and no session lists your unfinished runs (use `runs --open`). Parallel tasks run one after another. |
 
 ## Known limitations
@@ -92,7 +92,7 @@ Read [`AUTHORING.md`](AUTHORING.md): the six kinds of steps, a complete example,
 - **Two sessions of the same agent app in the same folder share the hooks.** Keep one session per folder, or use a separate clone per session.
 - **The agent could read the later steps of a skill.** They are plain files on disk. This does not matter for normal use, but it is not a security barrier.
 - **Without helper agents, parallel tasks share one context.** In apps without subagents, the agent does the tasks one after another, so each task can see the earlier ones.
-- **Codex runs allowed commands outside its sandbox** (the safety area that limits what commands can do). The rule that lets the agent call the runner without asking also lets the runner, and the scripts that a skill runs, work outside that sandbox. To keep the sandbox, delete `.codex/rules/pskill.rules`. Codex then asks your permission before each runner command.
+- **Codex needs Full access.** Codex's sandbox (the safety area that limits what commands can do) stops the runner from sending answers, because the runner needs files outside your project and the internet. Choose "Full access" in Codex's permissions menu, or start Codex with `codex --sandbox danger-full-access`. Full access turns off the sandbox for every command of the agent, not only for pskill. If you keep the sandbox, Codex asks you to approve each answer.
 
 ## Troubleshooting
 

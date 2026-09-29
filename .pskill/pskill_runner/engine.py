@@ -144,11 +144,14 @@ def start_run(
 
 
 def current_packet(project: Project, run_id: str | None, harness: str | None = None) -> str:
-    """Print the current packet again, worded for the calling harness. This changes nothing."""
-    run = Run.load(project, resolve_run_id(project, run_id))
-    if harness is not None:
-        run.adapter = adapter_for(harness)
-    return run.current_text()
+    """Print the current packet again, worded for the calling harness. Only a harness change is recorded."""
+    resolved_run_id = resolve_run_id(project, run_id)
+    with run_lock(run_folder(project, resolved_run_id)):
+        run = Run.load(project, resolved_run_id)
+        run.use_harness(harness)
+        text = run.current_text()
+        run.save()
+    return text
 
 
 def submit_answer(
@@ -905,7 +908,11 @@ class Run:
         results = [task["output"] for task in tasks]
         self.frame["tasks"] = None
         self.complete_block(block, {"results": results}, decided_by="agent", duration_ms=duration_ms)
-        return self.advance()
+        next_text = self.advance()
+        if self.adapter.can_spawn_subagents:
+            # The last subagent must not see the next block: the main agent reads it with `current`.
+            return f"Task {index} is recorded. All {len(tasks)} tasks are done.\n"
+        return next_text
 
     def issue_packet_for_next_task(self, block: ParallelBlock) -> str:
         self.info["packet_issued_at"] = timestamp(utc_now())

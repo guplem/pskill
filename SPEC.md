@@ -89,7 +89,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 - **L3. Enforcement is soft without a Stop hook.** `pskill current` and the session-start message recover a run that the agent left.
 - **L4. The Stop hook binds by harness and checkout.** Two sessions of the same harness in the same folder share the hook. Separate checkouts (the user's `monorepo-clone-N` folders) do not conflict.
 - **L5. Instruction files are on disk.** The agent could read future blocks. This is not a security boundary.
-- **L7. Codex runs allowed commands outside its sandbox.** The Codex rule that lets the agent call the runner without a prompt also runs the runner outside the sandbox, so the runner's `script` blocks do too. Remove `.codex/rules/pskill.rules` to keep the sandbox and accept a prompt per block.
+- **L7. Codex needs Full access.** Inside the Codex sandbox, `uv` cannot open its cache (outside the project) or reach PyPI. The Codex rule lets only plain runner commands, such as `start` and `current`, run outside the sandbox: Codex does not match the rule to the `submit` form with an answer on stdin (verified in #24). So the user runs Codex with Full access (`--sandbox danger-full-access`), or approves each `submit`. pskill never changes this setting. Full access also means that the runner's `script` blocks run without the sandbox.
 - **L6. No isolation without subagents.** With the `generic` adapter, parallel tasks run one by one in the main agent's context, so each task can see the earlier ones.
 
 ### 3.2 Items to verify at implementation time
@@ -426,7 +426,7 @@ done:
 - **Shell detection.** On macOS and Linux, use the bash form. On Windows, use the bash form when the env var `MSYSTEM` is set (Git Bash), else the PowerShell form. The adapter may override this (VERIFY which shell Codex uses on Windows). When `submit` fails to parse, its error message shows the other form too.
 - **No answer.** When stdin is a terminal, or no data arrives within 10 s, `submit` fails at once with the correct command form. It never hangs.
 - **Parsing.** Read the answer with PyYAML's `BaseLoader`, so every value arrives as text. Then convert each field to its declared type from the block's output schema: `integer`, `number`, `boolean` (only `true` or `false`), arrays and objects field by field. So `choice: no` stays the text `no`, and `question: 1.10` stays `1.10`. A value that does not convert is a validation error that names the field.
-- **Parallel tasks:** each subagent runs `submit <run> --task <n>` with its own answer.
+- **Parallel tasks:** each subagent runs `submit <run> --task <n>` with its own answer. The reply only says that the task is recorded, also for the last task: the main agent reads the next block with `current`.
 - **Reserved keys**, removed before validation:
   - `$answered_by`: `human` or `agent`. Required for human decisions in interactive mode.
   - `$cannot_complete`: a reason text. The agent declares that it cannot do the block. This counts as a failed attempt. It is the agent's only escape.
@@ -554,7 +554,7 @@ class HarnessAdapter(Protocol):
 
 `sync` adds exactly one allow rule for each target harness, and nothing else:
 - **Claude Code** (`.claude/settings.json`, key `permissions.allow`): `Bash(uv run .pskill/pskill.py *)` (verified: the `*` form matches the whole command, including a heredoc).
-- **Codex** (`.codex/rules/pskill.rules`): `prefix_rule(pattern = ["uv", "run", ".pskill/pskill.py"], decision = "allow")`. Codex runs an allowed command **outside its sandbox** (limitation L7). Codex splits a PowerShell command at `;` and `|` before it checks rules; whether the `$OutputEncoding` part of the PowerShell `submit` form still prompts is checked in the acceptance run (#24).
+- **Codex** (`.codex/rules/pskill.rules`): `prefix_rule(pattern = ["uv", "run", ".pskill/pskill.py"], decision = "allow")`. Codex runs an allowed command **outside its sandbox** (limitation L7). The rule matches only a plain command: the `submit` form with an answer on stdin does not match (verified in #24), so Codex needs Full access (L7).
 
 Rules:
 - `sync` finds its own rule by its exact text. It never removes or changes other rules.
