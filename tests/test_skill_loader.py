@@ -150,3 +150,32 @@ def test_a_script_parses_text_by_default(tmp_path: Path) -> None:
     script = skill.blocks["list_docs"]
     assert isinstance(script, ScriptBlock)
     assert script.parse == "text"
+
+
+def test_a_block_can_set_its_own_retries_and_a_script_its_own_timeout(tmp_path: Path) -> None:
+    skill_yaml = ALL_BLOCKS_SKILL.replace("    parse: json\n", "    parse: json\n    retries: 0\n    timeout_s: 30\n")
+
+    script = load_skill(write_skill(tmp_path, "all-blocks", skill_yaml)).blocks["list_docs"]
+
+    assert isinstance(script, ScriptBlock)
+    assert (script.retries, script.timeout_s) == (0, 30)
+
+
+def test_retries_and_timeout_are_unset_by_default(tmp_path: Path) -> None:
+    skill = load_skill(write_skill(tmp_path, "plan-work", PLAN_SKILL, PLAN_SKILL_FILES))
+
+    task = skill.blocks["create_plan"]
+    assert isinstance(task, TaskBlock)
+    assert task.retries is None
+
+
+def test_only_a_script_takes_a_timeout_and_an_end_takes_no_retries(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    timeout_s: 30\n").replace(
+        "    type: end\n    status: succeeded", "    type: end\n    retries: 1\n    status: succeeded"
+    )
+
+    with pytest.raises(SkillLoadError) as raised:
+        load_skill(write_skill(tmp_path, "plan-work", skill_yaml, PLAN_SKILL_FILES))
+
+    assert any("blocks.create_plan" in problem and "'timeout_s'" in problem for problem in raised.value.problems)
+    assert any("blocks.done" in problem and "'retries'" in problem for problem in raised.value.problems)

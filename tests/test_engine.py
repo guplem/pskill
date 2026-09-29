@@ -309,3 +309,15 @@ def test_current_in_another_harness_records_the_change(tmp_path: Path) -> None:
     assert read_run_info(project, run_id)["harness"] == "codex"
     changed = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "harness_changed"]
     assert [(event["from"], event["to"]) for event in changed] == [("generic", "codex")]
+
+
+def test_a_block_with_its_own_retries_pauses_after_them(tmp_path: Path) -> None:
+    project = make_project(
+        tmp_path, skill_yaml=PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    retries: 0\n")
+    )
+    run_id = start(project)
+
+    packet = submit_answer(project, run_id, "status: maybe\n")
+
+    assert read_run_info(project, run_id)["pause_reason"] == "block_failed"
+    assert "is paused at block create_plan (block_failed)" in packet

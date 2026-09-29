@@ -18,7 +18,7 @@ from pskill_runner.project import Project
 from pskill_runner.run_records import RunInfo, RunState
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, utc_now
 from pskill_runner.skill_loader import SkillLoadError, load_skill
-from pskill_runner.skill_model import AnyBlock, CallBlock, DecisionBlock, EndBlock, Skill
+from pskill_runner.skill_model import AnyBlock, CallBlock, DecisionBlock, EndBlock, RetryableBlock, ScriptBlock, Skill
 
 FINISHED_STATUSES = ("succeeded", "failed", "cancelled")
 FAILED_PAUSE_REASONS = ("block_failed", "runner_error")
@@ -153,6 +153,14 @@ def node_hint(block: AnyBlock) -> str:
         lines.append(f"Status: {block.status}.")
     if block.max_visits is not None:
         lines.append(f"It runs at most {block.max_visits} times.")
+    if isinstance(block, RetryableBlock) and block.retries is not None:
+        lines.append(
+            "It does not try again when it fails."
+            if block.retries == 0
+            else f"It tries again up to {block.retries} times when it fails."
+        )
+    if isinstance(block, ScriptBlock) and block.timeout_s is not None:
+        lines.append(f"The command stops after {block.timeout_s} s.")
     return "\n".join(lines)
 
 

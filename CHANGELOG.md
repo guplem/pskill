@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **A hint for `?` in test cases:** when a case file fails to parse at a `?` inside `{ }`, `pskill test` now says to put the value in quotes, with the fixed line as an example.
+- **Retries and a timeout per block:** a `task`, `decision`, `parallel`, or `script` block can set its own `retries`, and a `script` block its own `timeout_s`. Each one overrides the global value in `.pskill/config.yaml` for that block. The canvas hint names them.
 
 ## 0.5.0 (2026-09-29)
 

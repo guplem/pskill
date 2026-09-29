@@ -280,3 +280,27 @@ def test_generic_packets_name_no_harness_tool(tmp_path: Path) -> None:
 
     for packet in (parallel_packet, task_packet):
         assert not any(tool_name in packet for tool_name in HARNESS_TOOL_NAMES), packet
+
+
+def test_a_script_with_its_own_retries_runs_that_many_extra_times(tmp_path: Path) -> None:
+    failing = SCRIPT_SKILL.replace(
+        "\"import json; print(json.dumps({'files': ['a.md', 'b.md']}))\"", '"import sys; sys.exit(3)"'
+    ).replace("    parse: json\n", "    parse: json\n    retries: 0\n")
+    project = make_project(tmp_path, {"scripted": failing})
+
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+
+    script_runs = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
+    assert len(script_runs) == 1
+
+
+def test_a_script_with_its_own_timeout_stops_after_it(tmp_path: Path) -> None:
+    slow = SCRIPT_SKILL.replace(
+        "\"import json; print(json.dumps({'files': ['a.md', 'b.md']}))\"", '"import time; time.sleep(10)"'
+    ).replace("    parse: json\n", "    parse: json\n    retries: 0\n    timeout_s: 1\n")
+    project = make_project(tmp_path, {"scripted": slow})
+
+    run_id, packet = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+
+    assert read_run_info(project, run_id)["status"] == "paused"
+    assert "within 1 s" in packet

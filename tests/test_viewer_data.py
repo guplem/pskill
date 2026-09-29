@@ -1,12 +1,14 @@
 """Tests for pskill_runner.viewer_data: everything the viewer shows, built on the server side."""
 
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from pskill_runner.engine import start_run, submit_answer
 from pskill_runner.project import Project, find_project
-from pskill_runner.viewer_data import run_detail, runs_overview, task_row_sizes, timeline_rows
+from pskill_runner.skill_model import ScriptBlock
+from pskill_runner.viewer_data import node_hint, run_detail, runs_overview, task_row_sizes, timeline_rows
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 from tests.test_engine_blocks import (
     CHILD_SKILL,
@@ -876,3 +878,14 @@ def test_an_answer_out_of_order_in_a_later_visit_stays_in_that_visit(tmp_path: P
     assert [task["output"] for task in first_visit[-1]["tasks"]] == [{"wrong": ["v1"]}] * 3
     assert [task["state"] for task in second_visit[-1]["tasks"]] == ["open", "done"]
     assert second_visit[-1]["tasks"][1]["output"] == {"wrong": ["v2"]}
+
+
+def test_a_node_hint_names_the_blocks_own_retries_and_timeout() -> None:
+    script = ScriptBlock(id="list_files", run=["git", "ls-files"], retries=0, timeout_s=30, next=[])
+
+    assert node_hint(script) == (
+        "The runner runs a command. No AI model takes part.\n"
+        "It does not try again when it fails.\n"
+        "The command stops after 30 s."
+    )
+    assert node_hint(replace(script, retries=4, timeout_s=None)).endswith("It tries again up to 4 times when it fails.")

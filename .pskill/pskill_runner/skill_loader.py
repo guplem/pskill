@@ -108,9 +108,10 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
         "on_max_visits": raw.get("on_max_visits"),
     }
     block_type = raw["type"]
+    retryable: dict[str, Any] = {**common, "retries": raw.get("retries")}
     if block_type == "task":
         return TaskBlock(
-            **common,
+            **retryable,
             instruction=raw["instruction"],
             output=parse_field_map(raw["output"]),
             next=parse_edges(raw["next"]),
@@ -119,7 +120,7 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
         raw_next = raw["next"]
         next_blocks: list[Edge] | ChoiceMap = dict(raw_next) if isinstance(raw_next, dict) else parse_edges(raw_next)
         return DecisionBlock(
-            **common,
+            **retryable,
             decider=raw["decider"],
             instruction=raw["instruction"],
             choices=raw.get("choices"),
@@ -128,7 +129,7 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
         )
     if block_type == "parallel":
         return ParallelBlock(
-            **common,
+            **retryable,
             for_each=raw["for_each"],
             agent=raw.get("agent"),
             instruction=raw["instruction"],
@@ -136,7 +137,13 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
             next=parse_edges(raw["next"]),
         )
     if block_type == "script":
-        return ScriptBlock(**common, run=raw["run"], parse=raw.get("parse", "text"), next=parse_edges(raw["next"]))
+        return ScriptBlock(
+            **retryable,
+            run=raw["run"],
+            parse=raw.get("parse", "text"),
+            timeout_s=raw.get("timeout_s"),
+            next=parse_edges(raw["next"]),
+        )
     if block_type == "call":
         return CallBlock(**common, skill=raw["skill"], inputs=raw.get("inputs", {}), next=parse_edges(raw["next"]))
     if block_type == "end":

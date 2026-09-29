@@ -99,6 +99,7 @@ blocks:
 - Field types: `string`, `integer`, `number`, `boolean`, `array` (with `items`), `object` (with `properties`). A field is required unless `optional: true`.
 - A `parallel` block may name `agent: <name>`: the text of `.pskill/agents/<name>.md` then heads each task's prompt.
 - A `script` gives `steps.<id>.exit_code`, `.stdout`, and `.stderr`, plus `.json` with `parse: json`.
+- A failed block tries again `retries` times (2 by default, set in `.pskill/config.yaml`), then the run pauses. A `task`, `decision`, `parallel`, or `script` block can set its own `retries: 0` (no second try) or more. A `script` can set its own `timeout_s: 60` (300 by default).
 
 ## Edges and loops
 
