@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 (2026-09-29)
+
+A fix for the arrow tips in dark mode.
 
 - **Arrow tips in dark mode:** the arrow tips on the canvas were black, so the dark theme hid them. They now take the color of their line: blue on a taken edge, grey on the others.
 
