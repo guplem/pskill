@@ -55,7 +55,8 @@ def test_the_markdown_and_the_json_tree_are_built_from_elements() -> None:
 
     assert "function markdown(" in script
     assert "function jsonTree(" in script
-    assert "insertAdjacentHTML" not in script and "outerHTML" not in script
+    for html_parser in ("insertAdjacentHTML", "outerHTML", "createContextualFragment", "DOMParser", "document.write"):
+        assert html_parser not in script
 
 
 def test_the_launchers_start_the_viewer_from_the_folder_above_them() -> None:

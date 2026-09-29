@@ -97,7 +97,11 @@ def node_id(frame_index: int, block_id: str) -> str:
 
 
 def task_node_id(parent: str, task: int) -> str:
-    return f"{parent}_t{task}"
+    return f"{parent}_T{task}"
+
+
+def task_frame_id(parent: str) -> str:
+    return f"{parent}_TASKS"
 
 
 def label_token(node: str) -> str:
@@ -280,7 +284,7 @@ def task_frame_lines(parent: str, block_id: str, count: int, indent: str) -> lis
 
     Mermaid ignores `direction LR` in a frame that an edge links, so invisible links (`~~~`) make the rows.
     """
-    lines = [f'{indent}subgraph {parent}_tasks ["{block_id} · {count} task{"" if count == 1 else "s"}"]']
+    lines = [f'{indent}subgraph {task_frame_id(parent)} ["{block_id} · {count} task{"" if count == 1 else "s"}"]']
     lines.append(f"{indent}  direction LR")
     for task in range(count):
         lines.append(f'{indent}  {task_node_id(parent, task)}["{label_token(task_node_id(parent, task))}"]')
@@ -515,7 +519,7 @@ def task_frame_edges(task_counts: dict[tuple[int, str], int]) -> list[CanvasEdge
     edges = []
     for index, block_id in task_counts:
         parent = node_id(index, block_id)
-        edges.append(CanvasEdge(parent, f"{parent}_tasks", None, "tasks", index, block_id, "", TASKS_EDGE_HINT))
+        edges.append(CanvasEdge(parent, task_frame_id(parent), None, "tasks", index, block_id, "", TASKS_EDGE_HINT))
     return edges
 
 
@@ -653,12 +657,6 @@ def live_tasks(state: RunState) -> tuple[str, str, int] | None:
     return ">".join(frame["skill_id"] for frame in frames), top["current_block"], len(top["tasks"])
 
 
-def result_count(row: dict[str, Any]) -> int:
-    output = row["output"]
-    results = output.get("results") if isinstance(output, dict) else None
-    return len(results) if isinstance(results, list) else 0
-
-
 def task_view(entry: dict[str, Any] | None, task: int, packet: str | None) -> dict[str, Any]:
     """One task as the page shows it: done (an accepted answer), rejected (only rejected answers), or open."""
     submissions = entry["submissions"] if entry is not None else []
@@ -676,15 +674,29 @@ def task_view(entry: dict[str, Any] | None, task: int, packet: str | None) -> di
     }
 
 
+def parallel_visits(rows: list[dict[str, Any]]) -> dict[tuple[str, int, str, int], list[dict[str, Any]]]:
+    """The rows of each visit of a parallel block, by frame chain, call of that frame, block, and visit.
+
+    A child skill counts its visits from 1 again on each call, so the call number keeps two calls apart.
+    """
+    calls: dict[str, int] = {}
+    groups: dict[tuple[str, int, str, int], list[dict[str, Any]]] = {}
+    for row in rows:
+        chain = str(row["frame"])
+        if row["from"] is None and row["task"] in (None, 0):
+            calls[chain] = calls.get(chain, 0) + 1  # the first block of a new call of this frame
+        if row["block_type"] == "parallel":
+            key = (chain, calls.get(chain, 1), str(row["block"]), int(row["visit"]))
+            groups.setdefault(key, []).append(row)
+    return groups
+
+
 def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
     """Give each row of a parallel block every task of its visit, as known up to that row.
 
     With subagents, one row holds every task. One by one (the generic adapter), each task has its own row.
     """
-    groups: dict[tuple[str, str, int], list[dict[str, Any]]] = {}
-    for row in rows:
-        if row["block_type"] == "parallel":
-            groups.setdefault((str(row["frame"]), str(row["block"]), int(row["visit"])), []).append(row)
+    groups = parallel_visits(rows)
     live = live_tasks(state)
     last_key = list(groups)[-1] if groups else None
     for key, group in groups.items():
@@ -693,9 +705,11 @@ def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
             packets.update(task_packets(row["packet"]))
             if row["task"] is not None and row["packet"]:
                 packets[row["task"]] = row["packet"]
-        live_count = live[2] if live is not None and key == last_key and live[:2] == key[:2] else 0
-        seen = [entry["task"] + 1 for row in group for entry in row["tasks"]]
-        count = max([live_count, *seen, *(task + 1 for task in packets), *map(result_count, group)], default=0)
+        live_count = live[2] if live is not None and key == last_key and live[:2] == (key[0], key[2]) else 0
+        # A rejected answer can name a task that does not exist, so only accepted answers and task rows count.
+        accepted = [entry["task"] + 1 for row in group for entry in row["tasks"] if entry["output"] is not None]
+        own_rows = [row["task"] + 1 for row in group if row["task"] is not None]
+        count = max([live_count, *accepted, *own_rows, *(task + 1 for task in packets)], default=0)
         known: dict[int, dict[str, Any]] = {}
         for row in group:
             known.update({entry["task"]: entry for entry in row["tasks"]})
