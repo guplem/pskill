@@ -1108,8 +1108,8 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 
 - `pskill view` starts a `ThreadingHTTPServer` on `127.0.0.1` only and opens the browser. The launchers `view.cmd`, `view.command`, and `view.sh` run the same command on a double-click.
 - **All logic lives in the Python server,** so pytest covers it. The server builds:
-  - the canvas: one Mermaid template for the whole run. Each child skill that the run entered is a framed `subgraph`, linked by a dotted edge from its call block. Node ids are `f<frame>_<block>`. Each node label is a token that the page replaces.
-  - the timeline rows. Each row carries its node, the edge that it arrived by (matched from the logged `from` and `reason`), its node label after the step, whether a person decides it, and the edge that it left by.
+  - the canvas: one Mermaid template for the whole run. Each child skill that the run entered is a framed `subgraph`, linked by a dotted edge from its call block. Each parallel block that the run entered has a frame of task nodes next to it, one per task, in balanced rows of at most 4, linked by a dotted edge. Node ids are `f<frame>_<block>`, and `f<frame>_<block>_t<n>` for a task. Each node label is a token that the page replaces.
+  - the timeline rows. Each row carries its node, the edge that it arrived by (matched from the logged `from` and `reason`), its node label after the step, whether a person decides it, and the edge that it left by. It also carries its input and output titles, the stdout of each script run parsed as JSON when it is JSON, and, for a parallel block, every task of its visit: its state (done, rejected, or open), its prompt, its answers, and its output.
   - a hint in plain words for each node (the block's `description`, what its type does, who decides) and each edge (when the run takes it, with the whole condition). The page shows them as hover tooltips.
   - the current step and its state (now, waiting for the user, or failed),
   - the summary numbers.
@@ -1134,12 +1134,15 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 2. **Run.**
    - A top bar: a run switcher, the status, the harness and mode, a note when the skill changed after the run started, Follow live, Fit, and zoom.
    - The canvas: the graph fills the screen. Drag to pan, and use the wheel to zoom. It opens at a readable zoom, centered on the current step. With Follow live, it keeps the current step in view.
-   - A side panel for the clicked node:
+   - A side panel for the clicked node. Drag its left edge to change its width; the page keeps the width in `localStorage`.
      - the status and the type, and a visit picker when the block ran more than once,
      - where it came from and why, the duration, who decided, and the edge that it left by,
-     - an excerpt of the exact packet, and the whole packet,
-     - every submission (rejected ones with their errors), the output, and the script runs,
-     - the run state as JSON.
+     - the input: the packet as rendered Markdown, or the command of a script,
+     - for a parallel block, one chip per task; a click on a chip or on a task node shows that task's prompt, answers, and output,
+     - every submission (rejected ones with their errors), and the output: a JSON tree, or the exit code and parsed result of a script,
+     - the run state as a JSON tree.
+
+     Long content shows its first 3 lines, with a button to show all of it. The panel builds Markdown and JSON trees from elements, never from HTML.
    - A replay bar: one mark per step, with rejected answers and human decisions marked. Drag it, press play, or use the left and right arrow keys, and the canvas and the panel show the run as it was at that step. At its end, it follows the live run. This is the step-through replay (D14).
 
 ---

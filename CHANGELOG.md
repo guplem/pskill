@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+A run viewer that a person who did not write the skill can follow.
+
+- **Tooltips on the canvas:** hover a step to see what its block type does and who decides. Hover an edge to see when the run takes it, with its whole condition.
+- **Subagents on the canvas:** a parallel block shows one node per task, colored by its state: done, rejected answer, or open. Click a task to see its prompt, its answers, and its output.
+- **A readable side panel:** each step names its input and its output. Packets show as formatted Markdown, JSON shows as a tree that folds, and a script shows its command, its exit code, and its parsed result. Long content shows 3 lines until you ask for all of it.
+- **A wider panel:** drag the panel's left edge. The viewer keeps the width.
+
 ## 0.3.0 (2026-09-29)
 
 Choose where the hooks go, and `harnesses` becomes `permissions` (rename it in `.pskill/config.yaml`).
