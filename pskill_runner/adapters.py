@@ -66,3 +66,17 @@ def detect_harness(environment: Mapping[str, str]) -> str:
     if environment.get("CODEX_THREAD_ID"):
         return CODEX.name
     return GENERIC.name
+
+
+def detect_hook_harness(environment: Mapping[str, str], hook_input: Mapping[str, object]) -> str:
+    """Guess the app that runs a hook from a shared hooks file, from the signs that each app documents.
+
+    Codex sends a `turn_id` in the input of its turn hooks, such as Stop. Claude Code sets
+    CLAUDE_PROJECT_DIR for every hook. The `turn_id` comes first: a Codex started from a Claude Code
+    session may inherit CLAUDE_PROJECT_DIR.
+    """
+    if hook_input.get("turn_id"):
+        return CODEX.name
+    if environment.get("CLAUDE_PROJECT_DIR"):
+        return CLAUDE_CODE.name
+    return detect_harness(environment)

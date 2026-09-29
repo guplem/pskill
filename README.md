@@ -51,7 +51,7 @@ uv run .pskill/pskill.py update
   - **When you open a new session:** the hook lists your unfinished runs, so the agent can continue them.
 - **A permission rule**, so your agent app does not ask your permission every time the agent talks to the runner. It allows only the runner command (`uv run .pskill/pskill.py ...`), nothing else.
 
-Where these go: `.claude/settings.json` for Claude Code; `.codex/hooks.json` and `.codex/rules/pskill.rules` for Codex. Both apps use them only after you trust the project folder. Claude Code asks you the first time that you open the folder. Codex also asks you once to approve each hook (type `/hooks` in Codex).
+Where these go: `.claude/settings.json` for Claude Code; `.codex/hooks.json` and `.codex/rules/pskill.rules` for Codex. If your project generates these files from its own source (a script that rebuilds them), list that source in `hook_files` in `.pskill/config.yaml`. Then `sync` writes the two hooks there, and your script copies them into the app files. Both apps use them only after you trust the project folder. Claude Code asks you the first time that you open the folder. Codex also asks you once to approve each hook (type `/hooks` in Codex).
 
 `init` also adds one line to `.gitattributes` (the git file that sets rules per path): `.pskill/** text eol=lf`. This line keeps the files in `.pskill/` at LF line endings (the Unix style) on every OS. So the file hashes that pskill records stay the same, and `update` does not think that you edited the runner. The line matters only when you commit `.pskill/`. If you do not commit `.pskill/`, you can remove the line.
 
