@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pskill_runner.skill_loader import load_catalog, load_skill
 from pskill_runner.validator import Problem, validate_skill
-from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 
 def problems_for(tmp_path: Path, skill_yaml: str, files: dict[str, str] | None = None) -> list[Problem]:
@@ -256,3 +256,36 @@ def test_parallel_output_fields_need_a_description(tmp_path: Path) -> None:
     errors = catalog_problems(tmp_path, CALLER_SKILL.replace(', description: "What you found."', ""))
 
     assert "blocks.research: the output field 'report' needs a description" in errors
+
+
+def per_item_problems(tmp_path: Path, skill_yaml: str = PER_ITEM_SKILL) -> list[Problem]:
+    return validate_skill(load_skill(write_skill(tmp_path, "per-item", skill_yaml)))
+
+
+def test_a_choice_with_an_edge_list_is_valid(tmp_path: Path) -> None:
+    assert per_item_problems(tmp_path) == []
+
+
+def test_a_choice_edge_list_is_checked_like_any_edge_list(tmp_path: Path) -> None:
+    skill_yaml = PER_ITEM_SKILL.replace(
+        "        - to: done\n", '        - when: "{{ true }}"\n          to: done\n'
+    ).replace(
+        "      stop: done\n",
+        '      stop:\n        - when: "steps.ask_finding.choice"\n          to: done\n        - to: done\n',
+    )
+
+    problems = per_item_problems(tmp_path, skill_yaml)
+
+    assert "blocks.ask_finding: the choice 'fix': the last edge has a when, so no edge may match" in messages(
+        problems, "warning"
+    )
+    assert "blocks.ask_finding: a when must be exactly one {{ ... }}" in messages(problems, "error")
+
+
+def test_an_edge_list_for_a_missing_choice_is_reported(tmp_path: Path) -> None:
+    skill_yaml = PER_ITEM_SKILL.replace("      fix:\n        - when", "      mend:\n        - when")
+
+    errors = messages(per_item_problems(tmp_path, skill_yaml), "error")
+
+    assert "blocks.ask_finding: the choice 'fix' has no entry in next" in errors
+    assert "blocks.ask_finding: next has 'mend', which is not a choice" in errors

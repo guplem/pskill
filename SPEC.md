@@ -203,7 +203,16 @@ next:                                # 2. conditions, first match wins; the last
 next:                                # 3. decision blocks with choices only: one entry per choice
   approve: publish_plan
   change: create_plan
+
+next:                                # 3b. a choice can take an edge list (form 2) instead of one block
+  fix:
+    - when: "{{ (history.ask_finding | length) < (steps.list_findings.json.findings | length) }}"
+      to: ask_finding
+    - to: fix_findings
+  skip: ask_finding
 ```
+
+In form 3b the runner first follows the choice, then the first matching edge of that choice's list. This keeps the question buttons in a per-item loop, where the block after a choice depends on how many items are left.
 
 ### 5.5 Visit caps
 
@@ -263,7 +272,7 @@ ask_user:
   next: create_plan
 ```
 
-- **With choices**, the output always has `choice` and `rationale`, and `next` uses the choice map.
+- **With choices**, the output always has `choice` and `rationale`, and `next` uses the choice map. Each choice maps to one block, or to an edge list (section 5.4, form 3b).
 - **Without choices**, the output always has `answer`, and `next` uses form 1 or 2. `decider: agent` needs choices; otherwise use a `task`.
 - **Human decider, interactive mode.** The agent prepares what the instruction says, shows it to the user, asks exactly one question, and waits. It submits the user's answer with `"$answered_by": "human"`.
 - **A free-text reply to a decision with choices** (for example the "Other" field of Claude's question tool): the agent maps it to the closest choice and copies the user's words into `rationale`. When no choice fits, the agent asks again.

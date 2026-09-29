@@ -118,7 +118,11 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
         )
     if block_type == "decision":
         raw_next = raw["next"]
-        next_blocks: list[Edge] | ChoiceMap = dict(raw_next) if isinstance(raw_next, dict) else parse_edges(raw_next)
+        next_blocks: list[Edge] | ChoiceMap = (
+            {choice: parse_edges(edges) for choice, edges in raw_next.items()}
+            if isinstance(raw_next, dict)
+            else parse_edges(raw_next)
+        )
         return DecisionBlock(
             **retryable,
             decider=raw["decider"],

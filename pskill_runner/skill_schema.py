@@ -40,7 +40,7 @@ FIELD_SPEC_SCHEMA: dict[str, Any] = {
                 },
             ]
         },
-        "choice_map": {"type": "object", "additionalProperties": {"type": "string"}},
+        "choice_map": {"type": "object", "additionalProperties": {"$ref": "#/$defs/edges"}},
     }
 }
 

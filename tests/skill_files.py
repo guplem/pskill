@@ -65,3 +65,35 @@ blocks:
 """
 
 PLAN_SKILL_FILES = {"instructions/approve_plan.md": "Show the plan:\n\n{{ steps.create_plan.plan }}\n"}
+
+# A per-item loop: each choice goes back for the next finding, or on once every finding has an answer.
+PER_ITEM_SKILL = """\
+schema: pskill/v1
+id: per-item
+description: Decide about each finding.
+goal: Decide about every finding.
+inputs:
+  findings: {type: array, items: {type: string}, description: "The findings."}
+outputs:
+  fixed: {type: integer, description: "How many findings to fix."}
+entry: ask_finding
+blocks:
+  ask_finding:
+    type: decision
+    decider: agent
+    instruction: "Decide about the next finding."
+    max_visits: 10
+    choices:
+      fix: Fix the finding.
+      stop: Stop asking.
+    next:
+      fix:
+        - when: "{{ (history.ask_finding | length) < (inputs.findings | length) }}"
+          to: ask_finding
+        - to: done
+      stop: done
+  done:
+    type: end
+    status: succeeded
+    outputs: {fixed: "{{ history.ask_finding | selectattr('choice', 'equalto', 'fix') | list | length }}"}
+"""

@@ -15,8 +15,10 @@ class Edge:
     when: str | None = None
 
 
-# A decision with choices uses a choice map (choice id -> target block). Every other block uses edges.
-ChoiceMap = dict[str, str]
+# A decision with choices uses a choice map: choice id -> its edges. `approve: done` in YAML is one edge
+# with no `when`; an edge list lets one choice lead to different blocks by condition. Every other block
+# uses edges.
+ChoiceMap = dict[str, list[Edge]]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -101,7 +103,7 @@ def block_edges(block: AnyBlock) -> list[Edge]:
     if isinstance(block, EndBlock):
         return []
     if isinstance(block.next, dict):
-        return [Edge(to=target) for target in block.next.values()]
+        return [edge for choice_edges in block.next.values() for edge in choice_edges]
     return list(block.next)
 
 

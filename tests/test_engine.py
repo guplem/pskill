@@ -18,7 +18,7 @@ from pskill_runner.engine import (
 )
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import read_events
-from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 FINISHED_PLAN = "status: finished\nplan: |\n  1. Build the form.\n  2. Add the tests.\n"
 QUESTION_PLAN = "status: question\nplan: Draft.\nquestion: Which database?\n"
@@ -321,3 +321,28 @@ def test_a_block_with_its_own_retries_pauses_after_them(tmp_path: Path) -> None:
 
     assert read_run_info(project, run_id)["pause_reason"] == "block_failed"
     assert "is paused at block create_plan (block_failed)" in packet
+
+
+def test_a_choice_with_an_edge_list_takes_the_first_matching_edge(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "per-item", PER_ITEM_SKILL)
+    run_id, _ = start_run(project, "per-item", {"findings": ["a", "b"]}, mode="interactive", harness="generic")
+
+    packet = submit_answer(project, run_id, "choice: fix\nrationale: Real bug.\n")
+
+    frame = read_run_state(project, run_id)["frames"][0]
+    assert (frame["current_block"], frame["visits"]["ask_finding"]) == ("ask_finding", 2)
+    assert frame["arrival_reason"] == "choice fix: {{ (history.ask_finding | length) < (inputs.findings | length) }}"
+    assert "- fix: Fix the finding." in packet
+    submit_answer(project, run_id, "choice: fix\nrationale: Also real.\n")
+    info = read_run_info(project, run_id)
+    assert (info["status"], info["outputs"]) == ("succeeded", {"fixed": 2})
+
+
+def test_a_plain_choice_target_still_records_the_choice(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "per-item", PER_ITEM_SKILL)
+    run_id, _ = start_run(project, "per-item", {"findings": ["a", "b"]}, mode="interactive", harness="generic")
+
+    submit_answer(project, run_id, "choice: stop\nrationale: Enough.\n")
+
+    assert read_run_info(project, run_id)["outputs"] == {"fixed": 0}
+    assert read_run_state(project, run_id)["frames"][0]["arrival_reason"] == "choice stop"
