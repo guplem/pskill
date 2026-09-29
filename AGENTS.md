@@ -41,7 +41,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `hooks.py` | The Stop and session-start hook logic, for every harness. |
 | `vendoring.py` | `pskill init` and `pskill update`: copy the runner into a project, with file hashes. |
 | `release.py` | The release archive `pskill.zip`, and unpacking an archive given to `init` or `update`. |
-| `viewer_data.py` | Everything the viewer shows: marked Mermaid graphs, timeline rows, summaries. |
+| `viewer_data.py` | Everything the viewer shows: the run canvas (one Mermaid template, child skills included), timeline rows with their node and edges, summaries. |
 | `viewer_server.py` | `pskill view`: the local server on 127.0.0.1 (JSON API plus the static files). |
 
 ## Commands

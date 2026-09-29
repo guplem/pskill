@@ -1102,29 +1102,38 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 
 - `pskill view` starts a `ThreadingHTTPServer` on `127.0.0.1` only and opens the browser. The launchers `view.cmd`, `view.command`, and `view.sh` run the same command on a double-click.
 - **All logic lives in the Python server,** so pytest covers it. The server builds:
-  - the Mermaid source with marks for visited, current, and failed blocks,
-  - the timeline rows,
+  - the canvas: one Mermaid template for the whole run. Each child skill that the run entered is a framed `subgraph`, linked by a dotted edge from its call block. Node ids are `f<frame>_<block>`. Each node label is a token that the page replaces.
+  - the timeline rows. Each row carries its node, the edge that it arrived by (matched from the logged `from` and `reason`), its node label after the step, whether a person decides it, and the edge that it left by.
+  - the current step and its state (now, waiting for the user, or failed),
   - the summary numbers.
 
-  The front end only draws them. It has no build step: plain HTML, CSS, and JavaScript.
-- **Mermaid comes from a CDN.** `index.html` loads one exact, pinned version from jsDelivr (`https://cdn.jsdelivr.net/npm/mermaid@<version>/dist/mermaid.esm.min.mjs`), with a Subresource Integrity hash. VERIFY the current version and file path when you pin it.
-- **Offline:** the graph area shows "Graph unavailable offline (Mermaid did not load)" and the Mermaid source text. The timeline, the state panel, and the Runs screen still work, because they do not need Mermaid.
+  The front end only draws them. For the replay, it adds up the rows up to the chosen step. It has no build step: plain HTML, CSS, and JavaScript.
+- **Mermaid comes from a CDN.** `index.html` loads one exact, pinned version from jsDelivr (`https://cdn.jsdelivr.net/npm/mermaid@<version>/dist/mermaid.min.js`), with a Subresource Integrity hash.
+- **Fonts:** Manrope and IBM Plex Mono from Google Fonts. The page falls back to the system fonts when they do not load.
+- **Offline:** the canvas shows "Graph unavailable offline (Mermaid did not load)" and the steps as a list of cards in the node style. The side panel, the replay bar, and the Runs screen still work, because they do not need Mermaid.
 - While the open run is unfinished, the page polls every second.
 
 | Endpoint | Returns |
 |---|---|
 | `GET /api/runs?skill=` | Run rows, plus one summary row per skill: runs, success rate, median duration. |
-| `GET /api/runs/<id>` | `run.json`, the marked Mermaid graph per frame, the timeline rows, and the current state. |
+| `GET /api/runs/<id>` | `run.json`, the canvas, the timeline rows, and the current state. |
+
+**Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, and dashed grey for not visited. Taken edges are solid blue. The page follows the system's dark mode.
 
 **Two screens:**
 1. **Runs.**
-   - A table with the skill filter: id, skill, status, harness, mode, start, duration.
-   - Above the table, the per-skill summary row.
+   - Run cards with the filters Unfinished, All, and Failed.
+   - Above the cards, the per-skill summary row.
 2. **Run.**
-   - A header: status, harness, mode, duration, and a note when the skill changed after the run started.
-   - The graph, with visit counts in the nodes.
-   - A timeline with one row per block. Select a row, or use the left and right arrow keys, to see the exact packet, every submission (rejected ones with their errors), the output, who decided, and the duration. For scripts, the row shows the command, exit code, and output. Selecting a row also highlights the block in the graph. This is the step-through replay (D14).
-   - A state panel with a collapsible JSON tree.
+   - A top bar: a run switcher, the status, the harness and mode, a note when the skill changed after the run started, Follow live, Fit, and zoom.
+   - The canvas: the graph fills the screen. Drag to pan, and use the wheel to zoom. It opens at a readable zoom, centered on the current step. With Follow live, it keeps the current step in view.
+   - A side panel for the clicked node:
+     - the status and the type, and a visit picker when the block ran more than once,
+     - where it came from and why, the duration, who decided, and the edge that it left by,
+     - an excerpt of the exact packet, and the whole packet,
+     - every submission (rejected ones with their errors), the output, and the script runs,
+     - the run state as JSON.
+   - A replay bar: one mark per step, with rejected answers and human decisions marked. Drag it, press play, or use the left and right arrow keys, and the canvas and the panel show the run as it was at that step. At its end, it follows the live run. This is the step-through replay (D14).
 
 ---
 
@@ -1209,7 +1218,7 @@ Each milestone starts with the listed failing tests and ends with green CI on th
 | M2 | All blocks + tests | A `script` result lands in `steps`; a failing script pauses; `to_file` writes a file; a `call` runs the child and returns `status` and `outputs`; a child cannot read the caller's steps; `parallel` completes only after all tasks; one-by-one mode; the lock holds under concurrent submits; the `pskill test` answer queue and path check | The three proof skills validate, and all their test cases pass. |
 | M3 | Claude Code | The stub text; `sync` is idempotent; `sync` keeps foreign hooks, foreign permission rules, and hand-written skills; `sync` adds the one allow rule; the Stop hook blocks an `active` run and gives up after 3 blocks; the session-start hook rewrites a stale stub, skips a broken skill with a warning, and lists open runs; `init` and `update` with a hash check | In the `guplem/pskill` repository, `implement-issue` runs in real Claude Code from trigger to end on a real issue. An early stop gets blocked. A new session resumes the run. |
 | M4 | Codex + generic check | Codex: detection, `.codex/hooks.json` merge that keeps foreign hooks, Stop and session-start responses from fixtures, subagent wording, the `agents/openai.yaml` sidecar for `manual` skills. Generic: an unknown environment falls back to `generic`; its packets name no harness tool | In the same repository, `implement-issue` runs in real Codex from trigger to end, with an early stop blocked. A manual run in Gemini CLI or Cursor through `generic` also reaches the end. The trace shows the right harness each time. |
-| M5 | Viewer | Mermaid marks; the page still renders the timeline when Mermaid fails to load; timeline rows; summary numbers; the API returns 404 for an unknown run; the server binds only to 127.0.0.1 | A live run updates within 2 s. A finished run can be stepped through. |
+| M5 | Viewer | Canvas marks; the page still shows the steps when Mermaid fails to load; timeline rows; summary numbers; the API returns 404 for an unknown run; the server binds only to 127.0.0.1 | A live run updates within 2 s. A finished run can be stepped through. |
 | M6 | Docs + release | A test that builds the release archive and runs `init --from <archive>` into a temp project | A tag on `guplem/pskill` makes CI publish `pskill.zip` as a release asset. A new project gets from zero to a first run with only the README. The first install command is `uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init` (VERIFY that `uv run` accepts a script URL). |
 
 ---

@@ -1,10 +1,12 @@
 """The data that the viewer shows (SPEC.md section 14). The browser only draws it.
 
-Everything is built here, in Python, so the tests cover it: the Mermaid graph with its marks, the
-timeline rows of a run, and the per-skill summaries.
+Everything is built here, in Python, so the tests cover it: the canvas (one Mermaid template for the
+whole run, child skills included), the timeline rows with their node, arrival edge, and label, and the
+per-skill summaries. The page only adds up the rows up to the replay step.
 """
 
 import statistics
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,73 +15,400 @@ from pskill_runner.project import Project
 from pskill_runner.run_records import RunInfo
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, utc_now
 from pskill_runner.skill_loader import SkillLoadError, load_skill
-from pskill_runner.skill_model import DecisionBlock, EndBlock, Skill
+from pskill_runner.skill_model import AnyBlock, DecisionBlock, EndBlock, Skill
 
 FINISHED_STATUSES = ("succeeded", "failed", "cancelled")
 FAILED_PAUSE_REASONS = ("block_failed", "runner_error")
 EDGE_LABEL_LIMIT = 60
 SCRIPT_FIELDS = ("argv", "exit_code", "stdout", "stderr", "duration_ms", "problem")
-MERMAID_CLASSES = [
-    "  classDef visited fill:#dbeafe,stroke:#2563eb",
-    "  classDef current fill:#fef3c7,stroke:#d97706,stroke-width:3px",
-    "  classDef failed fill:#fee2e2,stroke:#dc2626,stroke-width:3px",
-]
+START_NODE = "start"
+DOTTED_EDGE_KINDS = ("visit_cap", "call")
 
 
-# --- the graph ---------------------------------------------------------------------------------
+# --- the canvas: frames, nodes, and edges --------------------------------------------------------
 
 
-def skill_mermaid(skill: Skill, visits: dict[str, int], current_block: str | None, failed: bool) -> str:
-    """A Mermaid flowchart of the skill, with visit counts and marks for the visited and current blocks."""
-    lines = ["flowchart TD"]
-    lines += [edge_line('start(("start"))', edge.to, condition_label(edge.when)) for edge in skill.entry]
-    for block in skill.blocks.values():
-        block_type = type(block).__name__.removesuffix("Block").lower()
-        lines.append(f'  {block.id}["{block.id}<br/>{block_type}{visit_text(visits.get(block.id, 0))}"]')
-    for block in skill.blocks.values():
-        lines += block_edge_lines(block)
-    lines += MERMAID_CLASSES
-    for block_id in skill.blocks:
-        if block_id == current_block:
-            lines.append(f"  class {block_id} {'failed' if failed else 'current'}")
-        elif visits.get(block_id, 0) > 0:
-            lines.append(f"  class {block_id} visited")
+@dataclass
+class CanvasFrame:
+    """One skill on the canvas: the root skill, or a child skill entered through a call block."""
+
+    skill: Skill
+    parent: int | None
+    called_by: str | None
+
+
+@dataclass
+class CanvasEdge:
+    """One edge of the template. `text` is the plain label; `label` is the same text, safe for Mermaid."""
+
+    source: str
+    target: str
+    text: str | None
+    kind: str
+    frame: int
+    from_block: str | None
+    to_block: str
+    when: str | None = None
+    choice: str | None = None
+    id: str = ""
+
+    @property
+    def label(self) -> str | None:
+        return None if self.text is None else mermaid_text(self.text)
+
+
+def node_id(frame_index: int, block_id: str) -> str:
+    return f"f{frame_index}_{block_id}"
+
+
+def label_token(node: str) -> str:
+    """The placeholder that the page swaps for the node label of the replay step."""
+    return f"@@{node}@@"
+
+
+def block_type_name(block: AnyBlock) -> str:
+    return type(block).__name__.removesuffix("Block").lower()
+
+
+def mermaid_text(text: str) -> str:
+    """Text that is safe inside a quoted Mermaid label."""
+    for character, entity in (('"', "#quot;"), ("'", "#39;"), ("<", "#lt;"), (">", "#gt;")):
+        text = text.replace(character, entity)
+    return text
+
+
+def condition_text(condition: str) -> str:
+    """A `when` as plain text: without the braces, and shortened."""
+    text = condition.strip().removeprefix("{{").removesuffix("}}").strip()
+    return text if len(text) <= EDGE_LABEL_LIMIT else text[: EDGE_LABEL_LIMIT - 1] + "…"
+
+
+def assign_frames(
+    rows: list[dict[str, Any]], skills: dict[str, Skill], root: Skill
+) -> tuple[list[CanvasFrame], list[int | None]]:
+    """The canvas frames, and the frame index of each row (None for a child whose skill copy is missing).
+
+    A row's `frame` is its call chain, like "parent>child". A child is a new frame per call block, so
+    the same child skill called from two call blocks gets two frames.
+    """
+    frames = [CanvasFrame(root, parent=None, called_by=None)]
+    active: dict[str, int | None] = {}
+    last_call: dict[str, str] = {}
+    previous_depth = 0
+    row_frames: list[int | None] = []
+    for row in rows:
+        chain = str(row["frame"])
+        depth = chain.count(">")
+        if chain not in active or depth > previous_depth:
+            active[chain] = frame_for_chain(chain, frames, active, last_call, skills)
+        if row["block_type"] == "call":
+            last_call[chain] = row["block"]
+        previous_depth = depth
+        row_frames.append(active[chain])
+    return frames, row_frames
+
+
+def frame_for_chain(
+    chain: str,
+    frames: list[CanvasFrame],
+    active: dict[str, int | None],
+    last_call: dict[str, str],
+    skills: dict[str, Skill],
+) -> int | None:
+    if ">" not in chain:
+        return 0
+    parent_chain, skill_id = chain.rsplit(">", 1)
+    parent = active.get(parent_chain, 0)
+    called_by = last_call.get(parent_chain)
+    if parent is None or skill_id not in skills:
+        return None
+    for index, frame in enumerate(frames):
+        if frame.parent == parent and frame.called_by == called_by and frame.skill.id == skill_id:
+            return index
+    frames.append(CanvasFrame(skills[skill_id], parent=parent, called_by=called_by))
+    return len(frames) - 1
+
+
+def block_edges(index: int, block: AnyBlock) -> list[CanvasEdge]:
+    """The edges out of one block: its choices or its next edges, plus its visit-cap edge."""
+    if isinstance(block, EndBlock):
+        return []
+    source = node_id(index, block.id)
+    edges = []
+    if isinstance(block, DecisionBlock) and isinstance(block.next, dict):
+        for choice, target in block.next.items():
+            edges.append(
+                CanvasEdge(source, node_id(index, target), choice, "choice", index, block.id, target, choice=choice)
+            )
+    else:
+        for edge in block.next if isinstance(block.next, list) else []:
+            text = condition_text(edge.when) if edge.when is not None else None
+            edges.append(
+                CanvasEdge(source, node_id(index, edge.to), text, "next", index, block.id, edge.to, when=edge.when)
+            )
+    if block.on_max_visits is not None:
+        target = block.on_max_visits
+        edges.append(CanvasEdge(source, node_id(index, target), "visit cap", "visit_cap", index, block.id, target))
+    return edges
+
+
+def frame_edges(index: int, frame: CanvasFrame) -> list[CanvasEdge]:
+    """The entry edges (from the start, or from the call block), then every block's edges."""
+    edges = []
+    if frame.parent is None:
+        for edge in frame.skill.entry:
+            text = condition_text(edge.when) if edge.when is not None else None
+            edges.append(CanvasEdge(START_NODE, node_id(0, edge.to), text, "entry", 0, None, edge.to, when=edge.when))
+    elif frame.called_by is not None:
+        caller = node_id(frame.parent, frame.called_by)
+        for target in dict.fromkeys(edge.to for edge in frame.skill.entry):
+            edges.append(CanvasEdge(caller, node_id(index, target), None, "call", index, None, target))
+    for block in frame.skill.blocks.values():
+        edges += block_edges(index, block)
+    return edges
+
+
+def number_edges(edges: list[CanvasEdge]) -> list[CanvasEdge]:
+    """Give each edge the DOM id that Mermaid gives it: `L_<source>_<target>_<n>`.
+
+    Mermaid 12 numbers the first edge of a source and target pair 0, and each later one of that pair
+    one more than the count of edges before it: 0, 2, 3, ...
+    """
+    counts: dict[tuple[str, str], int] = {}
+    for edge in edges:
+        count = counts.get((edge.source, edge.target), 0)
+        counts[(edge.source, edge.target)] = count + 1
+        edge.id = f"L_{edge.source}_{edge.target}_{0 if count == 0 else count + 1}"
+    return edges
+
+
+def canvas_template(frames: list[CanvasFrame], edges: list[CanvasEdge]) -> str:
+    lines = ["flowchart TD", f'  {START_NODE}(("start"))']
+    for index, frame in enumerate(frames):
+        indent = "  " if index == 0 else "    "
+        if index > 0:
+            lines.append(f'  subgraph f{index} ["{frame.skill.id} · called by {frame.called_by}"]')
+        for block_id in frame.skill.blocks:
+            lines.append(f'{indent}{node_id(index, block_id)}["{label_token(node_id(index, block_id))}"]')
+        if index > 0:
+            lines.append("  end")
+    for edge in edges:
+        arrow = "-.->" if edge.kind in DOTTED_EDGE_KINDS else "-->"
+        label = f'|"{edge.label}"|' if edge.label is not None else ""
+        lines.append(f"  {edge.source} {arrow}{label} {edge.target}")
     return "\n".join(lines) + "\n"
 
 
-def block_edge_lines(block: Any) -> list[str]:
-    if isinstance(block, EndBlock):
-        return []
-    lines = []
-    if isinstance(block, DecisionBlock) and isinstance(block.next, dict):
-        lines += [edge_line(block.id, target, choice) for choice, target in block.next.items()]
+# --- the canvas: what each timeline row adds --------------------------------------------------
+
+
+def matches_reason(edge: CanvasEdge, reason: str) -> bool:
+    """Whether the engine's logged reason names this edge's condition."""
+    return edge.when == reason or (edge.when is None and reason == "always")
+
+
+def arrival_edge(row: dict[str, Any], frame: int, edges: list[CanvasEdge]) -> CanvasEdge | None:
+    """The edge that a row arrived by, matched from the logged `from` and `reason`."""
+    candidates = [edge for edge in edges if edge.frame == frame and edge.to_block == row["block"]]
+    from_block, reason = row["from"], str(row["reason"] or "")
+    if from_block is None:
+        wanted_kind = "entry" if frame == 0 else "call"
+        matches = [edge for edge in candidates if edge.kind == wanted_kind]
+        return next(iter([edge for edge in matches if matches_reason(edge, reason)] or matches), None)
+    own = [edge for edge in candidates if edge.from_block == from_block]
+    if reason.startswith("choice "):
+        exact = [edge for edge in own if edge.choice == reason.removeprefix("choice ")]
+    elif reason.startswith("visit cap of "):
+        exact = [edge for edge in own if edge.kind == "visit_cap"]
     else:
-        lines += [edge_line(block.id, edge.to, condition_label(edge.when)) for edge in block.next]
-    if block.on_max_visits is not None:
-        lines.append(f'  {block.id} -.->|"visit cap"| {block.on_max_visits}')
-    return lines
+        exact = [edge for edge in own if edge.kind == "next" and matches_reason(edge, reason)]
+    return next(iter(exact or own), None)
 
 
-def edge_line(source: str, target: str, label: str | None) -> str:
-    if label is None:
-        return f"  {source} --> {target}"
-    return f'  {source} -->|"{label}"| {target}'
+def format_duration(milliseconds: int) -> str:
+    if milliseconds < 1000:
+        return f"{milliseconds} ms"
+    seconds = round(milliseconds / 1000)
+    return f"{seconds} s" if seconds < 60 else f"{seconds // 60} min {seconds % 60:02d} s"
 
 
-def condition_label(condition: str | None) -> str | None:
-    """A `when` shown as an edge label: without the braces, shortened, and safe for Mermaid."""
-    if condition is None:
+def row_outcome(row: dict[str, Any]) -> str | None:
+    """The short result shown on the node: a choice, a child status, an exit code, or a task count."""
+    output = row["output"] if isinstance(row["output"], dict) else {}
+    if row["block_type"] == "decision" and "choice" in output:
+        return str(output["choice"])
+    if row["block_type"] == "call" and "status" in output:
+        return str(output["status"])
+    if row["block_type"] == "script" and row["script_runs"]:
+        return f"exit {row['script_runs'][-1]['exit_code']}"
+    if row["block_type"] == "parallel" and isinstance(output.get("results"), list):
+        return f"{len(output['results'])} tasks"
+    return None
+
+
+def row_details(row: dict[str, Any], rejected: int) -> tuple[list[str], list[str]]:
+    """The plain details of a node after a row (type, duration, outcome) and its badges (visit, rejected)."""
+    details = [str(row["block_type"])]
+    if row["duration_ms"] is not None:
+        details.append(format_duration(int(row["duration_ms"])))
+    outcome = row_outcome(row)
+    if outcome is not None:
+        details.append(outcome)
+    badges: list[str] = []
+    if int(row["visit"]) >= 2:
+        badges.append(f"visit {row['visit']}")
+    if rejected:
+        badges.append(f"{rejected} rejected")
+    return details, badges
+
+
+def node_label(block_id: str, details: list[str], badges: list[str]) -> str:
+    label = f"<b>{block_id}</b><br/>{mermaid_text(' · '.join(details))}"
+    return label + (f"<br/>{' · '.join(badges)}" if badges else "")
+
+
+def arrival_text(row: dict[str, Any], called_by: str | None) -> str:
+    """Where a row came from and why, in plain words."""
+    reason = str(row["reason"] or "")
+    if row["from"] is None:
+        chain = str(row["frame"]).split(">")
+        if len(chain) == 1:
+            return "the start"
+        return f"{called_by or chain[-2]} (call)"
+    if reason == "always":
+        return str(row["from"])
+    if reason.startswith(("choice ", "visit cap of ")):
+        return f"{row['from']} ({reason})"
+    return f"{row['from']} ({condition_text(reason)})"
+
+
+def asks_human(block: AnyBlock | None, mode: str) -> bool:
+    """A human decision asks the user only in an interactive run; in autonomous mode the agent decides."""
+    return isinstance(block, DecisionBlock) and block.decider == "human" and mode == "interactive"
+
+
+def next_step_in_frame(rows: list[dict[str, Any]], index: int, row_frames: list[int | None]) -> dict[str, Any] | None:
+    """The next row of the same frame, skipping the other tasks of the same parallel block."""
+    row = rows[index]
+    if row["block_type"] == "end":
         return None
-    text = condition.strip().removeprefix("{{").removesuffix("}}").strip()
-    if len(text) > EDGE_LABEL_LIMIT:
-        text = text[: EDGE_LABEL_LIMIT - 1] + "…"
-    return text.replace('"', "#quot;").replace("'", "#39;")
+    for later, frame in zip(rows[index + 1 :], row_frames[index + 1 :], strict=True):
+        if frame != row_frames[index]:
+            continue
+        other_task = later["block"] == row["block"] and later["visit"] == row["visit"] and later["task"] is not None
+        if other_task:
+            continue
+        return None if later["from"] is None else later
+    return None
 
 
-def visit_text(count: int) -> str:
-    if count == 0:
-        return ""
-    return f" · {count} visit" if count == 1 else f" · {count} visits"
+def left_by(
+    row: dict[str, Any], later: dict[str, Any] | None, edges_by_id: dict[str, CanvasEdge]
+) -> dict[str, Any] | None:
+    if later is None:
+        return None
+    reason = str(later["reason"] or "")
+    if reason.startswith("visit cap of "):
+        return {"to": later["block"], "label": f"visit cap of {later['from']}"}
+    edge = edges_by_id.get(later["edge"] or "")
+    return {"to": later["block"], "label": edge.text if edge is not None and edge.source == row["node"] else None}
+
+
+def annotate_rows(
+    rows: list[dict[str, Any]],
+    row_frames: list[int | None],
+    frames: list[CanvasFrame],
+    edges: list[CanvasEdge],
+    mode: str,
+) -> list[dict[str, Any]]:
+    """New rows, each with its node, arrival edge, labels, texts, human mark, and the edge it left by."""
+    rejected_per_block: dict[tuple[int | None, str], int] = {}
+    annotated: list[dict[str, Any]] = []
+    for row, frame in zip(rows, row_frames, strict=True):
+        key = (frame, str(row["block"]))
+        rejected_per_block[key] = rejected_per_block.get(key, 0) + sum(
+            1 for submission in row["submissions"] if not submission["accepted"]
+        )
+        details, badges = row_details(row, rejected_per_block[key])
+        block = frames[frame].skill.blocks.get(row["block"]) if frame is not None else None
+        edge = arrival_edge(row, frame, edges) if frame is not None else None
+        called_by = frames[frame].called_by if frame is not None else None
+        annotated.append(
+            {
+                **row,
+                "node": node_id(frame, row["block"]) if frame is not None else None,
+                "edge": edge.id if edge is not None else None,
+                "label": node_label(row["block"], details, badges),
+                "summary": " · ".join(details + badges),
+                "arrival": arrival_text(row, called_by),
+                "asks_human": asks_human(block, mode),
+            }
+        )
+    edges_by_id = {edge.id: edge for edge in edges}
+    for index, row in enumerate(annotated):
+        row["left_by"] = left_by(row, next_step_in_frame(annotated, index, row_frames), edges_by_id)
+    return annotated
+
+
+def current_step(info: RunInfo, rows: list[dict[str, Any]]) -> dict[str, str] | None:
+    """The node that the run waits at, and how it waits. None for a finished run."""
+    if info["status"] in FINISHED_STATUSES or not rows or rows[-1]["node"] is None:
+        return None
+    if info["status"] == "paused" and info["pause_reason"] in FAILED_PAUSE_REASONS:
+        state = "failed"
+    elif info["status"] == "waiting_for_human":
+        state = "waiting"
+    else:
+        state = "now"
+    return {"node": rows[-1]["node"], "state": state}
+
+
+def load_run_skills(folder: Path) -> dict[str, Skill]:
+    """Every skill copy that the run keeps in its own `skills/` folder."""
+    skills: dict[str, Skill] = {}
+    for skill_folder in sorted((folder / "skills").glob("*")):
+        try:
+            skills[skill_folder.name] = load_skill(skill_folder)
+        except SkillLoadError:
+            continue
+    return skills
+
+
+def run_canvas(
+    folder: Path, info: RunInfo, rows: list[dict[str, Any]]
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """The canvas of a run (None when its skill copy does not load), and the rows with their canvas fields."""
+    skills = load_run_skills(folder)
+    root = skills.get(info["skill_id"])
+    if root is None:
+        return None, annotate_rows(rows, [None] * len(rows), [], [], info["mode"])
+    frames, row_frames = assign_frames(rows, skills, root)
+    edges = number_edges([edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame)])
+    annotated = annotate_rows(rows, row_frames, frames, edges, info["mode"])
+    nodes: list[dict[str, Any]] = [
+        {
+            "id": node_id(index, block.id),
+            "token": label_token(node_id(index, block.id)),
+            "frame": index,
+            "skill_id": frame.skill.id,
+            "block": block.id,
+            "type": block_type_name(block),
+        }
+        for index, frame in enumerate(frames)
+        for block in frame.skill.blocks.values()
+    ]
+    canvas = {
+        "template": canvas_template(frames, edges),
+        "start": START_NODE,
+        "labels": {node["id"]: node_label(node["block"], [node["type"]], []) for node in nodes},
+        "nodes": nodes,
+        "edges": [
+            {"id": edge.id, "source": edge.source, "target": edge.target, "label": edge.text, "kind": edge.kind}
+            for edge in edges
+        ],
+        "current": current_step(info, annotated),
+    }
+    return canvas, annotated
 
 
 # --- the runs overview ------------------------------------------------------------------------
@@ -139,12 +468,12 @@ def run_detail(project: Project, run_id: str) -> dict[str, Any] | None:
     if not (folder / "run.json").is_file():
         return None
     info = read_run_info(project, run_id)
-    events = read_events(folder)
+    canvas, rows = run_canvas(folder, info, timeline_rows(read_events(folder)))
     return {
         "info": info,
         "state": read_run_state(project, run_id),
-        "timeline": timeline_rows(events),
-        "graphs": run_graphs(folder, info, events),
+        "canvas": canvas,
+        "timeline": rows,
         "skill_changed": skill_changed(project, info),
     }
 
@@ -153,37 +482,6 @@ def skill_changed(project: Project, info: RunInfo) -> bool:
     """Whether the project's copy of the skill differs from the copy that the run uses (D22)."""
     skill_folder = project.skills_folder / info["skill_id"]
     return not skill_folder.is_dir() or folder_hash(skill_folder) != info["skill_hash"]
-
-
-def event_skill(event: dict[str, Any]) -> str:
-    """The skill that an event belongs to: the last skill of its call chain."""
-    return str(event["frame"]).split(">")[-1]
-
-
-def is_block_entry(event: dict[str, Any]) -> bool:
-    """A block_started event. A one-by-one parallel block logs one per task; count only the first."""
-    return event["type"] == "block_started" and event.get("task") in (None, 0)
-
-
-def run_graphs(folder: Path, info: RunInfo, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """One marked graph per skill that the run entered, in the order the run entered them."""
-    skill_ids = list(dict.fromkeys(event_skill(event) for event in events if event["type"] == "block_started"))
-    deepest_skill = skill_ids[-1] if skill_ids else info["skill_id"]
-    unfinished = info["status"] not in FINISHED_STATUSES
-    failed = info["status"] == "paused" and info["pause_reason"] in FAILED_PAUSE_REASONS
-    graphs = []
-    for skill_id in skill_ids or [info["skill_id"]]:
-        try:
-            skill = load_skill(folder / "skills" / skill_id)
-        except SkillLoadError:
-            continue
-        visits: dict[str, int] = {}
-        for event in events:
-            if is_block_entry(event) and event_skill(event) == skill_id:
-                visits[event["block"]] = visits.get(event["block"], 0) + 1
-        current = info["current_block"] if unfinished and skill_id == deepest_skill else None
-        graphs.append({"skill_id": skill_id, "mermaid": skill_mermaid(skill, visits, current, failed)})
-    return graphs
 
 
 def timeline_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -234,11 +532,16 @@ def find_open_row(
     """The row that an event belongs to. In subagent mode, task answers belong to the block's one row."""
     frame, block = str(event["frame"]), str(event.get("block", ""))
     task: int | None = event.get("task")
-    return open_rows.get((frame, block, task)) or open_rows.get((frame, block, None))
+    if task is not None:
+        return open_rows.get((frame, block, task)) or open_rows.get((frame, block, None))
+    # Without a task: the newest row of the block. For a one-by-one parallel block, that is the last task.
+    same_block = [row for key, row in open_rows.items() if key[:2] == (frame, block)]
+    return max(same_block, key=lambda row: int(row["seq"])) if same_block else None
 
 
 def record_completion(row: dict[str, Any], event: dict[str, Any]) -> None:
-    if event["decided_by"] != "runner":
+    joins_tasks = row["task"] is not None and event.get("task") is None
+    if event["decided_by"] != "runner" and not joins_tasks:
         row["submissions"].append({"accepted": True, "errors": [], "raw": None})
     row["output"] = event["output"]
     row["decided_by"] = event["decided_by"]
