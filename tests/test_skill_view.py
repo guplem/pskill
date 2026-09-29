@@ -200,3 +200,19 @@ def test_an_id_that_is_not_a_skill_id_has_no_detail(tmp_path: Path) -> None:
     write_skill(tmp_path / "outside", "evil", PLAN_SKILL.replace("id: plan-work", "id: evil"), PLAN_SKILL_FILES)
 
     assert skill_detail(project, "../../outside/evil") is None
+
+
+def test_each_block_has_its_editable_keys_and_their_values_as_written(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    blocks = detail_of(project, "plan-work")["blocks"]
+
+    create_plan = blocks["create_plan"]["editable"]
+    assert create_plan["keys"] == ["description", "max_visits", "on_max_visits", "instruction", "next", "retries"]
+    assert create_plan["values"]["max_visits"] == 3
+    assert create_plan["values"]["next"] == [
+        {"when": "{{ steps.create_plan.status == 'question' }}", "to": "ask_user"},
+        {"to": "approve_plan"},
+    ]
+    assert blocks["approve_plan"]["editable"]["values"]["next"] == {"approve": "done", "stop": "stopped"}
+    assert "description" not in create_plan["values"]

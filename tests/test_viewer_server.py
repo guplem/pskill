@@ -1,5 +1,6 @@
 """Tests for pskill_runner.viewer_server: the local JSON API and the static viewer files."""
 
+import http.client
 import io
 import json
 import threading
@@ -9,6 +10,7 @@ import zipfile
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -152,3 +154,69 @@ def test_a_skill_named_export_gets_its_detail_not_a_download(tmp_path: Path) -> 
 
     assert (status, content_type) == (200, "application/json; charset=utf-8")
     assert json.loads(body)["skill"]["id"] == "export"
+
+
+def post(
+    server: ThreadingHTTPServer, path: str, body: dict[str, Any], headers: dict[str, str] | None = None
+) -> tuple[int, Any]:
+    url = f"http://127.0.0.1:{server.server_address[1]}{path}"
+    request = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method="POST")
+    request.add_header("Content-Type", "application/json")
+    for name, value in (headers or {}).items():
+        request.add_header(name, value)
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        return error.code, json.loads(error.read())
+
+
+DESCRIPTION_CHANGE = {"action": "update", "block": "done", "values": {"description": "The happy end."}}
+
+
+def test_the_edit_endpoint_saves_a_change_and_returns_the_new_detail(
+    server: ThreadingHTTPServer, project: Project
+) -> None:
+    status, body = post(server, "/api/skills/plan-work/edit", DESCRIPTION_CHANGE)
+
+    assert status == 200
+    assert body["blocks"]["done"]["description"] == "The happy end."
+    assert "description: The happy end." in (project.skills_folder / "plan-work" / "skill.yaml").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_an_edit_with_a_problem_returns_the_problems(server: ThreadingHTTPServer) -> None:
+    status, body = post(server, "/api/skills/plan-work/edit", {"action": "delete", "block": "done"})
+
+    assert status == 400
+    assert "approve_plan" in body["error"][0]
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{"Origin": "https://example.com"}, {"Host": "evil.example:7777"}, {"Content-Type": "text/plain"}],
+)
+def test_an_edit_from_another_page_is_refused(
+    server: ThreadingHTTPServer, project: Project, headers: dict[str, str]
+) -> None:
+    before = (project.skills_folder / "plan-work" / "skill.yaml").read_text(encoding="utf-8")
+
+    status, _ = post(server, "/api/skills/plan-work/edit", DESCRIPTION_CHANGE, headers)
+
+    assert status == 403
+    assert (project.skills_folder / "plan-work" / "skill.yaml").read_text(encoding="utf-8") == before
+
+
+@pytest.mark.parametrize("length", ["abc", "-1"])
+def test_an_edit_with_a_bad_length_is_refused(server: ThreadingHTTPServer, length: str) -> None:
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
+    connection.putrequest("POST", "/api/skills/plan-work/edit")
+    connection.putheader("Content-Type", "application/json")
+    connection.putheader("Content-Length", length)
+    connection.endheaders()
+
+    response = connection.getresponse()
+
+    assert response.status == 403
+    connection.close()

@@ -75,6 +75,7 @@ const app = document.getElementById("app");
 const view = {
   screen: null,
   skillId: null,
+  editing: false,
   skills: [],
   runId: null,
   detail: null,
@@ -368,7 +369,17 @@ function buildSkillScreen() {
   });
   const status = element("span", null, "run-status");
   const zoomLabel = element("span", "100 %", "note");
-  bar.append(picker, status, element("span", null, "spacer"), ...zoomTools(zoomLabel));
+  const addBar = buildAddBar();
+  const editToggle = button("Edit", () => {
+    view.editing = !view.editing;
+    editToggle.setAttribute("aria-pressed", String(view.editing));
+    addBar.hidden = !view.editing;
+    drawPanel();
+  });
+  editToggle.setAttribute("aria-pressed", String(view.editing));
+  editToggle.title = "Change the blocks and edges of this skill. Each save writes skill.yaml and keeps its comments.";
+  addBar.hidden = !view.editing;
+  bar.append(picker, status, element("span", null, "spacer"), addBar, editToggle, ...zoomTools(zoomLabel));
   const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected block");
   layer.classList.add("is-skill");
   const screen = element("div", null, "run-screen skill-screen");
@@ -376,6 +387,33 @@ function buildSkillScreen() {
   app.className = "";
   app.replaceChildren(screen);
   view.parts = { picker, status, follow: null, zoomLabel, canvas, layer, note, panel, workspace };
+}
+
+// The editor's "add a block" controls: a type, a new block id, and the button.
+function buildAddBar() {
+  const bar = element("form", null, "add-bar");
+  const type = element("select", null, "run-picker");
+  type.setAttribute("aria-label", "Type of the new block");
+  for (const name of Object.keys(BLOCK_ICONS)) {
+    const option = element("option", name);
+    option.value = name;
+    type.append(option);
+  }
+  const id = element("input", null, "edit-input");
+  id.placeholder = "new_block_id";
+  id.setAttribute("aria-label", "Id of the new block");
+  const add = element("button", "Add block", "tool");
+  add.type = "submit";
+  bar.append(type, id, add);
+  bar.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const blockId = id.value.trim();
+    if (await saveEdit({ action: "add", block: blockId, type: type.value }, null)) {
+      id.value = "";
+      selectNode(`f0_${blockId}`);
+    }
+  });
+  return bar;
 }
 
 function drawSkillTopbar() {
@@ -820,7 +858,283 @@ function drawPanel() {
 
 function drawSkillPanel() {
   const details = view.detail.blocks[view.selectedNode ? blockOfNode(view.selectedNode) : ""];
-  view.parts.panel.replaceChildren(...(details ? blockSections(details) : skillSections()));
+  if (view.editing && details) {
+    view.parts.panel.replaceChildren(editForm(details));
+  } else if (details) {
+    view.parts.panel.replaceChildren(...blockSections(details));
+  } else {
+    view.parts.panel.replaceChildren(...skillSections());
+    if (view.editing && !view.detail.error) {
+      view.parts.panel.append(element("p", "Click a block to edit it, or add a block in the top bar.", "note"));
+    }
+  }
+}
+
+// --- the skill screen: the editor ----------------------------------------------------------------
+
+const EDIT_CHOICES = {
+  decider: ["human", "agent"],
+  parse: ["text", "json"],
+  status: ["succeeded", "failed", "cancelled"],
+};
+const EDIT_LABELS = {
+  description: "Description (a short label)",
+  max_visits: "Visits at most",
+  on_max_visits: "After the last visit, go to",
+  retries: "Retries after a failure",
+  timeout_s: "Timeout (seconds)",
+  decider: "Decider",
+  parse: "Parse the output as",
+  status: "Status",
+  skill: "Child skill",
+  agent: "Agent (a file in .pskill/agents/)",
+  for_each: "For each (a {{ }} list, or a JSON list)",
+  run: "Command (one argument per line)",
+  choices: "Choices",
+  next: "Next (the first edge whose condition is true)",
+};
+
+function blockIds() {
+  return Object.keys(view.detail.blocks);
+}
+
+// The form for one block. Save sends only the keys that changed, so the rest of skill.yaml stays as it is.
+function editForm(details) {
+  const block = blockOfNode(view.selectedNode);
+  const { keys, values } = details.editable;
+  const form = element("form", null, "edit-form");
+  const head = element("div", null, "panel-head");
+  head.append(element("h2", block), blockType(details.type));
+  const errors = element("pre", null, "errors");
+  errors.hidden = true;
+  const readers = {};
+  let choicesEditor = null;
+  const fields = element("div", null, "edit-fields");
+  for (const key of keys) {
+    if (key === "instruction" || key === "report") continue; // drawn below, with its file
+    if (key === "next") continue;
+    const control = editControl(key, values[key]);
+    if (key === "choices") choicesEditor = control;
+    readers[key] = control.read;
+    fields.append(editRow(EDIT_LABELS[key] || key, control.node));
+  }
+  const proseKey = keys.includes("report") ? "report" : keys.includes("instruction") ? "instruction" : null;
+  if (proseKey) {
+    const area = element("textarea", details.instruction ?? values[proseKey] ?? "", "edit-text");
+    area.rows = 8;
+    if (details.instruction_file) {
+      readers.instruction_text = () => area.value;
+      fields.append(editRow(`${proseKey === "report" ? "Report" : "Instruction"} (the file ${details.instruction_file})`, area));
+    } else {
+      readers[proseKey] = () => area.value || null;
+      fields.append(editRow(proseKey === "report" ? "Report (what the agent tells the user)" : "Instruction", area));
+    }
+  }
+  if (keys.includes("next")) {
+    // A decision with choices has one edge list per choice; every other block has one edge list.
+    const hasChoices = choicesEditor && (choicesEditor.read() || (values.next && typeof values.next === "object" && !Array.isArray(values.next)));
+    const nextEditor = hasChoices ? choiceNextEditor(values.next, choicesEditor) : edgeListEditor(toEdges(values.next));
+    readers.next = nextEditor.read;
+    fields.append(editRow(EDIT_LABELS.next, nextEditor.node));
+  }
+  const save = element("button", "Save", "tool primary");
+  save.type = "submit";
+  const cancel = button("Cancel", () => drawPanel());
+  const remove = button("Delete block", async () => {
+    if (!window.confirm(`Delete the block ${block}? Blocks that lead to it must change first.`)) return;
+    if (await saveEdit({ action: "delete", block }, errors)) selectNode(null);
+  }, "tool danger");
+  const actions = element("div", null, "edit-actions");
+  actions.append(save, cancel, element("span", null, "spacer"), remove);
+  form.append(head, element("p", "Changes go to skill.yaml when you save. Comments and the other blocks stay as they are.", "note"), fields, errors, actions);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const changed = {};
+    try {
+      for (const [key, read] of Object.entries(readers)) {
+        const value = key === "next" ? simpleNext(read()) : read();
+        const before = key === "instruction_text" ? details.instruction : values[key];
+        if (JSON.stringify(value ?? null) !== JSON.stringify(before ?? null)) changed[key] = value;
+      }
+    } catch (error) {
+      errors.textContent = `Not saved: ${error.message}`;
+      errors.hidden = false;
+      return;
+    }
+    if (!Object.keys(changed).length) {
+      drawPanel();
+      return;
+    }
+    await saveEdit({ action: "update", block, values: changed }, errors);
+  });
+  return form;
+}
+
+function editRow(label, control) {
+  const row = element("label", null, "edit-row");
+  row.append(element("span", label, "edit-label"), control);
+  return row;
+}
+
+// One control for a key: its element, and a function that reads its value (null removes the key).
+function editControl(key, value) {
+  if (EDIT_CHOICES[key]) return selectControl(EDIT_CHOICES[key], value ?? EDIT_CHOICES[key][0], false);
+  if (key === "on_max_visits") return selectControl(blockIds(), value, true);
+  if (key === "skill") return selectControl(view.skills.map((skill) => skill.skill_id), value, false);
+  if (["max_visits", "retries", "timeout_s"].includes(key)) {
+    const input = element("input", null, "edit-input");
+    input.type = "number";
+    input.min = key === "retries" ? "0" : "1";
+    input.value = value ?? "";
+    return { node: input, read: () => (input.value === "" ? null : Number(input.value)) };
+  }
+  if (key === "run") {
+    const area = element("textarea", (value || []).join("\n"), "edit-text mono");
+    area.rows = 4;
+    return { node: area, read: () => area.value.split("\n").map((line) => line.trim()).filter(Boolean) };
+  }
+  if (key === "for_each") {
+    const area = element("textarea", typeof value === "string" ? value : JSON.stringify(value ?? []), "edit-text mono");
+    area.rows = 2;
+    return { node: area, read: () => (area.value.trim().startsWith("[") ? JSON.parse(area.value) : area.value.trim()) };
+  }
+  if (key === "choices") return choicesControl(value || {});
+  const input = element("input", null, "edit-input");
+  input.value = value ?? "";
+  return { node: input, read: () => input.value.trim() || null };
+}
+
+function selectControl(options, value, allowNone) {
+  const select = element("select", null, "run-picker");
+  const names = allowNone ? ["", ...options] : options;
+  for (const name of names) {
+    const option = element("option", name || "(none)");
+    option.value = name;
+    option.selected = name === (value ?? "");
+    select.append(option);
+  }
+  return { node: select, read: () => select.value || null };
+}
+
+// The choices of a decision: one row per choice id and its meaning. The next editor follows its ids.
+function choicesControl(choices) {
+  const box = element("div", null, "edit-list");
+  const listeners = [];
+  const addRow = (id = "", meaning = "") => {
+    const row = element("div", null, "edit-list-row");
+    const idInput = element("input", null, "edit-input narrow");
+    idInput.value = id;
+    idInput.placeholder = "choice";
+    const meaningInput = element("input", null, "edit-input");
+    meaningInput.value = meaning;
+    meaningInput.placeholder = "What the choice means";
+    idInput.addEventListener("change", () => listeners.forEach((listener) => listener()));
+    row.append(idInput, meaningInput, button("×", () => {
+      row.remove();
+      listeners.forEach((listener) => listener());
+    }, "tool small"));
+    box.insertBefore(row, addButton);
+  };
+  const addButton = button("Add a choice", () => addRow(), "tool small");
+  box.append(addButton);
+  for (const [id, meaning] of Object.entries(choices)) addRow(id, meaning);
+  const read = () => {
+    const result = {};
+    for (const row of box.querySelectorAll(".edit-list-row")) {
+      const [idInput, meaningInput] = row.querySelectorAll("input");
+      if (idInput.value.trim()) result[idInput.value.trim()] = meaningInput.value.trim();
+    }
+    return Object.keys(result).length ? result : null;
+  };
+  return { node: box, read, onChange: (listener) => listeners.push(listener) };
+}
+
+// `next` in its shortest form, as the server writes it: one edge with no condition is just the block id.
+function simpleNext(next) {
+  if (Array.isArray(next)) return next.length === 1 && !next[0].when ? next[0].to : next;
+  if (next && typeof next === "object") return Object.fromEntries(Object.entries(next).map(([id, edges]) => [id, simpleNext(edges)]));
+  return next;
+}
+
+function toEdges(next) {
+  if (typeof next === "string") return [{ when: "", to: next }];
+  return (next || []).map((edge) => ({ when: edge.when || "", to: edge.to }));
+}
+
+// A list of edges: a condition (empty means always) and a target block per row, first match wins.
+function edgeListEditor(edges) {
+  const box = element("div", null, "edit-list");
+  const addRow = (edge = { when: "", to: blockIds()[0] }) => {
+    const row = element("div", null, "edit-list-row");
+    const when = element("input", null, "edit-input mono");
+    when.value = edge.when;
+    when.placeholder = "always, or {{ condition }}";
+    const target = selectControl(blockIds(), edge.to, false).node;
+    row.append(when, element("span", "→", "note"), target, button("×", () => row.remove(), "tool small"));
+    box.insertBefore(row, addButton);
+  };
+  const addButton = button("Add an edge", () => addRow(), "tool small");
+  box.append(addButton);
+  for (const edge of edges) addRow(edge);
+  const read = () =>
+    [...box.querySelectorAll(".edit-list-row")].map((row) => {
+      const when = row.querySelector("input").value.trim();
+      const to = row.querySelector("select").value;
+      return when ? { when, to } : { to };
+    });
+  return { node: box, read };
+}
+
+// The next map of a decision with choices: one edge list per choice id of the choices editor.
+function choiceNextEditor(next, choicesEditor) {
+  const box = element("div", null, "edit-choice-next");
+  const editors = {};
+  const known = typeof next === "object" && next && !Array.isArray(next) ? next : {};
+  const draw = () => {
+    const ids = Object.keys(choicesEditor.read() || {});
+    const kept = Object.fromEntries(ids.map((id) => [id, editors[id]?.read() ?? toEdges(known[id])]));
+    box.replaceChildren();
+    for (const id of ids) {
+      editors[id] = edgeListEditor(kept[id].length ? toEdges(kept[id]) : [{ when: "", to: blockIds()[0] }]);
+      const group = element("div", null, "edit-choice");
+      group.append(element("code", id), editors[id].node);
+      box.append(group);
+    }
+  };
+  choicesEditor.onChange(draw);
+  draw();
+  const read = () => {
+    const result = {};
+    for (const id of Object.keys(choicesEditor.read() || {})) result[id] = editors[id].read();
+    return result;
+  };
+  return { node: box, read };
+}
+
+// Send one change to the server. On success, draw the new skill; on a problem, show it and keep the form.
+async function saveEdit(request, errorBox) {
+  const response = await fetch(`/api/skills/${encodeURIComponent(view.skillId)}/edit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    const text = Array.isArray(body.error) ? body.error.join("\n") : String(body.error);
+    if (errorBox) {
+      errorBox.textContent = `Not saved:\n${text}`;
+      errorBox.hidden = false;
+    } else {
+      window.alert(`Not saved:\n${text}`);
+    }
+    return false;
+  }
+  view.detail = body;
+  view.detailText = JSON.stringify(body);
+  drawSkillTopbar();
+  drawPanel();
+  await drawCanvas();
+  return true;
 }
 
 function blockOfNode(node) {

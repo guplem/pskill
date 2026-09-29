@@ -11,6 +11,7 @@ from typing import Any
 from pskill_runner.engine import list_runs
 from pskill_runner.field_types import FieldMap, FieldSpec
 from pskill_runner.project import Project
+from pskill_runner.skill_editor import COMMON_KEYS, EDITABLE_KEYS
 from pskill_runner.skill_loader import SKILL_FILE_NAME, SkillLoadError, load_catalog, load_skill
 from pskill_runner.skill_model import (
     AnyBlock,
@@ -39,6 +40,7 @@ from pskill_runner.viewer_data import (
     node_label,
     number_edges,
 )
+from pskill_runner.yaml_loading import load_skill_yaml
 
 
 def skill_folders(project: Project) -> list[Path]:
@@ -82,6 +84,7 @@ def skill_detail(project: Project, skill_id: str) -> dict[str, Any] | None:
     except SkillLoadError as error:
         return {"skill": {"id": skill_id}, "canvas": None, "blocks": {}, "problems": [], "error": error.problems}
     catalog = load_catalog(project.skills_folder, project.agents_folder)
+    raw_blocks = load_skill_yaml((folder / SKILL_FILE_NAME).read_text(encoding="utf-8"))["blocks"]
     problems = [
         {"level": problem.level, "location": problem.location, "message": problem.message}
         for problem in validate_skill(skill, catalog)
@@ -89,7 +92,10 @@ def skill_detail(project: Project, skill_id: str) -> dict[str, Any] | None:
     return {
         "skill": skill_facts(skill),
         "canvas": skill_canvas(skill),
-        "blocks": {block.id: block_details(skill, block) for block in skill.blocks.values()},
+        "blocks": {
+            block.id: {**block_details(skill, block), "editable": editable_values(raw_blocks, block)}
+            for block in skill.blocks.values()
+        },
         "problems": problems,
         "error": None,
     }
@@ -162,6 +168,13 @@ def prose_text(skill: Skill, value: str | None) -> str | None:
     if value is None or (value.endswith(".md") and not (skill.folder / value).is_file()):
         return None
     return skill.instruction_text(value)
+
+
+def editable_values(raw_blocks: dict[str, Any], block: AnyBlock) -> dict[str, Any]:
+    """The keys that the skill editor can change for this block, and their values as `skill.yaml` has them."""
+    keys = [*COMMON_KEYS, *EDITABLE_KEYS[block_type_name(block)]]
+    raw_block = raw_blocks[block.id]
+    return {"keys": keys, "values": {key: raw_block[key] for key in keys if key in raw_block}}
 
 
 def block_facts(block: AnyBlock) -> list[list[str]]:
