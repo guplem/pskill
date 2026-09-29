@@ -1,4 +1,4 @@
-// The pskill viewer. It only draws what the local server returns (pskill_runner/viewer_data.py).
+// The pskill viewer. It only draws what the local server returns (pskill_runner/viewer_data.py and skill_view.py).
 // Every text from a run goes into the page through textContent, never as HTML.
 
 const UNFINISHED = ["active", "waiting_for_human", "paused"];
@@ -64,9 +64,18 @@ const TASK_STATE_MEANING = {
   open: "The task has no answer yet.",
 };
 const EDGE_STYLE_HINT = "Solid blue: the run took this edge. Dashed grey: the run did not take it.";
+const SKILL_START_HINT = "A run of this skill begins here.";
+const INVOCATION_MEANING = {
+  auto: "The agent can start it on its own, when the request matches the description.",
+  manual: "Only the user starts it.",
+  internal: "Only a call block of another skill starts it.",
+};
 
 const app = document.getElementById("app");
 const view = {
+  screen: null,
+  skillId: null,
+  skills: [],
   runId: null,
   detail: null,
   detailText: null,
@@ -164,8 +173,22 @@ function topbar() {
   const bar = element("header", null, "topbar");
   const brand = element("a", "pskill", "brand");
   brand.href = "#/";
-  bar.append(brand);
+  const nav = element("nav", null, "nav");
+  for (const [text, href, screens] of [
+    ["Runs", "#/", ["runs", "run"]],
+    ["Skills", "#/skills", ["skills", "skill"]],
+  ]) {
+    const link = element("a", text, "nav-link");
+    link.href = href;
+    if (screens.includes(view.screen)) link.setAttribute("aria-current", "page");
+    nav.append(link);
+  }
+  bar.append(brand, nav);
   return bar;
+}
+
+function isSkillScreen() {
+  return view.screen === "skill";
 }
 
 // --- the runs page ----------------------------------------------------------------------------
@@ -178,6 +201,7 @@ const RUN_FILTERS = {
 
 async function showRuns() {
   const overview = await fetchJson("/api/runs");
+  if (view.screen !== "runs") return; // the user moved on while it loaded
   const text = JSON.stringify(overview) + view.runsFilter;
   if (text !== view.detailText) {
     view.detailText = text;
@@ -230,6 +254,43 @@ function drawRuns(overview) {
   app.replaceChildren(topbar(), page);
 }
 
+// --- the skills page ----------------------------------------------------------------------------
+
+async function showSkills() {
+  const overview = await fetchJson("/api/skills");
+  if (view.screen !== "skills") return; // the user moved on while it loaded
+  const text = JSON.stringify(overview);
+  if (text === view.detailText) return;
+  view.detailText = text;
+  const page = element("main", null, "runs-page");
+  const cards = element("div", null, "run-cards");
+  for (const skill of overview.skills) {
+    const card = element("a", null, skill.error ? "run-card skill-card has-error" : "run-card skill-card");
+    card.href = `#/skill/${encodeURIComponent(skill.skill_id)}`;
+    const head = element("div", null, "run-card-head");
+    head.append(element("span", skill.skill_id));
+    if (skill.error) head.append(element("span", "does not load", "pill state-failed"));
+    else if (skill.invocation !== "auto") head.append(element("span", skill.invocation, "pill state-idle"));
+    card.append(head);
+    if (skill.error) {
+      card.append(element("span", skill.error, "run-card-meta errors-text"));
+    } else {
+      card.append(
+        element("span", skill.description, "skill-card-description"),
+        element("span", `${skill.blocks} blocks · ${skill.runs} run${skill.runs === 1 ? "" : "s"}`, "run-card-meta"),
+      );
+    }
+    cards.append(card);
+  }
+  page.append(
+    element("h1", "Skills"),
+    element("p", "Every skill in .pskill/skills/. Open one to see its steps and how they connect.", "note"),
+    overview.skills.length ? cards : element("p", "This project has no skills yet.", "note"),
+  );
+  app.className = "";
+  app.replaceChildren(topbar(), page);
+}
+
 // --- the run screen: layout -------------------------------------------------------------------
 
 function buildRunScreen() {
@@ -247,29 +308,8 @@ function buildRunScreen() {
   });
   follow.setAttribute("aria-pressed", String(view.followLive));
   const zoomLabel = element("span", "100 %", "note");
-  bar.append(
-    picker,
-    status,
-    element("span", null, "spacer"),
-    follow,
-    button("Fit", fitCanvas),
-    button("−", () => zoomBy(1 / 1.2)),
-    zoomLabel,
-    button("+", () => zoomBy(1.2)),
-  );
-
-  const canvas = element("div", null, "canvas");
-  const layer = element("div", null, "layer");
-  const note = element("p", null, "canvas-note");
-  canvas.append(layer, note);
-  attachPanAndZoom(canvas);
-  const panel = element("aside", null, "panel");
-  panel.setAttribute("aria-label", "The selected step");
-  const workspace = element("div", null, "workspace");
-  const handle = element("div", null, "panel-handle");
-  handle.title = "Drag to make the panel wider or narrower";
-  workspace.append(canvas, handle, panel);
-  attachPanelResize(workspace, handle);
+  bar.append(picker, status, element("span", null, "spacer"), follow, ...zoomTools(zoomLabel));
+  const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected step");
 
   const replay = element("footer", null, "replay");
   const play = button("▶", togglePlay, "play");
@@ -296,6 +336,73 @@ function buildRunScreen() {
   view.parts = { picker, status, follow, zoomLabel, canvas, layer, note, panel, progress, marks, slider, labels, play, workspace };
 }
 
+function zoomTools(zoomLabel) {
+  return [button("Fit", fitCanvas), button("−", () => zoomBy(1 / 1.2)), zoomLabel, button("+", () => zoomBy(1.2))];
+}
+
+// The canvas, the panel, and the handle between them: the same on the run screen and the skill screen.
+function buildWorkspace(panelLabel) {
+  const canvas = element("div", null, "canvas");
+  const layer = element("div", null, "layer");
+  const note = element("p", null, "canvas-note");
+  canvas.append(layer, note);
+  attachPanAndZoom(canvas);
+  const panel = element("aside", null, "panel");
+  panel.setAttribute("aria-label", panelLabel);
+  const workspace = element("div", null, "workspace");
+  const handle = element("div", null, "panel-handle");
+  handle.title = "Drag to make the panel wider or narrower";
+  workspace.append(canvas, handle, panel);
+  attachPanelResize(workspace, handle);
+  return { workspace, canvas, layer, note, panel };
+}
+
+// --- the skill screen: layout -------------------------------------------------------------------
+
+function buildSkillScreen() {
+  const bar = topbar();
+  const picker = element("select", null, "run-picker");
+  picker.setAttribute("aria-label", "Skill");
+  picker.addEventListener("change", () => {
+    location.hash = `#/skill/${encodeURIComponent(picker.value)}`;
+  });
+  const status = element("span", null, "run-status");
+  const zoomLabel = element("span", "100 %", "note");
+  bar.append(picker, status, element("span", null, "spacer"), ...zoomTools(zoomLabel));
+  const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected block");
+  layer.classList.add("is-skill");
+  const screen = element("div", null, "run-screen skill-screen");
+  screen.append(bar, workspace);
+  app.className = "";
+  app.replaceChildren(screen);
+  view.parts = { picker, status, follow: null, zoomLabel, canvas, layer, note, panel, workspace };
+}
+
+function drawSkillTopbar() {
+  const { picker, status } = view.parts;
+  const skillId = view.detail.skill.id;
+  const options = view.skills.length ? view.skills.map((skill) => skill.skill_id) : [skillId];
+  picker.replaceChildren(
+    ...options.map((id) => {
+      const option = element("option", id);
+      option.value = id;
+      option.selected = id === skillId;
+      return option;
+    }),
+  );
+  const parts = [];
+  if (view.detail.skill.invocation) {
+    const invocation = element("span", `invocation: ${view.detail.skill.invocation}`, "note");
+    invocation.title = INVOCATION_MEANING[view.detail.skill.invocation] || "";
+    parts.push(invocation);
+  }
+  const errors = view.detail.problems.filter((problem) => problem.level === "error").length;
+  const warnings = view.detail.problems.length - errors;
+  if (errors) parts.push(element("span", `${errors} error${errors === 1 ? "" : "s"}`, "pill state-failed"));
+  if (warnings) parts.push(element("span", `${warnings} warning${warnings === 1 ? "" : "s"}`, "pill state-now"));
+  status.replaceChildren(...parts);
+}
+
 function drawTopbar() {
   const { picker, status } = view.parts;
   const info = view.detail.info;
@@ -313,13 +420,17 @@ function drawTopbar() {
   const parts = [statusPill(info.status), harnessAndMode];
   if (info.pause_reason) parts.push(element("span", `paused: ${info.pause_reason}`, "note"));
   if (view.detail.skill_changed) parts.push(element("span", "The skill changed after this run started.", "note"));
+  const skillLink = element("a", "Skill graph", "tool");
+  skillLink.href = `#/skill/${encodeURIComponent(info.skill_id)}`;
+  skillLink.title = `See the skill ${info.skill_id} as it is now in .pskill/skills/, without this run.`;
+  parts.push(skillLink);
   status.replaceChildren(...parts);
 }
 
 // --- the run screen: which state each node has at the replay step ------------------------------
 
 function rows() {
-  return view.detail.timeline;
+  return view.detail.timeline || []; // the skill screen has no timeline
 }
 
 function stepState() {
@@ -352,6 +463,7 @@ function taskNodeState(nodeInfo, state) {
 }
 
 function nodeState(node, state) {
+  if (isSkillScreen()) return "plain";
   const nodeInfo = view.detail.canvas?.nodes.find((item) => item.id === node);
   if (nodeInfo && nodeInfo.kind === "task") return taskNodeState(nodeInfo, state);
   if (node === state.stepNode) return state.stepNodeState;
@@ -367,12 +479,13 @@ async function drawCanvas() {
   }
   view.rendering = true;
   try {
-    if (!window.mermaid) {
-      drawStepList();
-    } else if (view.detail.canvas) {
-      await drawGraph();
+    if (isSkillScreen() && !view.detail.canvas) {
+      drawLoadError();
+    } else if (!window.mermaid || !view.detail.canvas) {
+      if (isSkillScreen()) drawBlockList();
+      else drawStepList();
     } else {
-      drawStepList();
+      await drawGraph();
     }
   } finally {
     view.rendering = false;
@@ -427,28 +540,37 @@ async function drawGraph() {
     }
     if (node !== data.start) group.addEventListener("click", () => view.dragEnded || selectNode(node));
     if (nodeInfo) group.querySelector(".block-icon")?.replaceChildren(blockIcon(nodeInfo.type));
-    if (node === data.start) addHint(group, START_HINT);
+    if (node === data.start) addHint(group, isSkillScreen() ? SKILL_START_HINT : START_HINT);
+    else if (nodeInfo && isSkillScreen()) addHint(group, `${nodeInfo.hint}\n\nClick to see this block.`);
     else if (nodeInfo) addHint(group, `${nodeInfo.hint}\n\n${NODE_STATE_TEXT[stateName]}: ${NODE_STATE_MEANING[stateName]}\nClick to see this step.`);
   }
   for (const edge of data.edges) {
-    const taken = state.taken.has(edge.id) || (edge.kind === "tasks" && state.visited.has(edge.source));
     const path = svgNode.querySelector(`[id="${renderId}-${edge.id}"]`);
+    const label = svgNode.querySelector(`g.label[data-id="${edge.id}"]`);
+    if (isSkillScreen()) {
+      if (label) addHint(label, edge.hint);
+      if (path) addHint(path, edge.hint);
+      continue;
+    }
+    const taken = state.taken.has(edge.id) || (edge.kind === "tasks" && state.visited.has(edge.source));
     if (path) path.classList.toggle("is-taken", taken);
     const hint = `${edge.hint}\n${taken ? "The run took this edge." : "The run has not taken this edge."}\n${EDGE_STYLE_HINT}`;
-    const label = svgNode.querySelector(`g.label[data-id="${edge.id}"]`);
     if (label) addHint(label, hint);
     if (path) addHint(path, hint);
   }
   for (const cluster of svgNode.querySelectorAll("g.cluster")) {
     addHint(cluster, cluster.id.endsWith("_TASKS") ? TASK_FRAME_HINT : CHILD_SKILL_HINT);
   }
-  view.parts.note.textContent = "Drag to move · wheel to zoom · click a step to see it";
+  view.parts.note.textContent = `Drag to move · wheel to zoom · click a ${isSkillScreen() ? "block" : "step"} to see it`;
   if (!view.fitted) {
-    // Open at a readable zoom: fit a small graph, and center a large one on the current step.
+    // Open at a readable zoom: fit a small graph, and center a large one on the current step (or the start).
     view.fitted = true;
     fitCanvas();
-    if (view.transform.scale < READABLE_SCALE) centerOnStep(READABLE_SCALE);
-  } else if (view.followLive) {
+    if (view.transform.scale < READABLE_SCALE) {
+      if (isSkillScreen()) centerOnNode(data.start, READABLE_SCALE, { atTop: true });
+      else centerOnStep(READABLE_SCALE);
+    }
+  } else if (view.followLive && !isSkillScreen()) {
     centerOnStep();
   } else {
     applyTransform();
@@ -515,7 +637,11 @@ function zoomBy(factor, centerX, centerY) {
 }
 
 function centerOnStep(targetScale = view.transform.scale) {
-  const node = stepState().stepNode;
+  centerOnNode(stepState().stepNode, targetScale);
+}
+
+// Center the view on a node. With `atTop`, put the node near the top edge instead of the middle.
+function centerOnNode(node, targetScale = view.transform.scale, { atTop = false } = {}) {
   const group = node && view.parts.layer.querySelector(`g.node[data-node="${node}"]`);
   if (!group) return applyTransform();
   const box = view.parts.canvas.getBoundingClientRect();
@@ -525,7 +651,8 @@ function centerOnStep(targetScale = view.transform.scale) {
   const centerX = (groupBox.left - layerBox.left + groupBox.width / 2) / applied;
   const centerY = (groupBox.top - layerBox.top + groupBox.height / 2) / applied;
   const scale = targetScale;
-  view.transform = { scale, x: box.width / 2 - centerX * scale, y: box.height / 2 - centerY * scale };
+  const screenY = atTop ? 40 : box.height / 2;
+  view.transform = { scale, x: box.width / 2 - centerX * scale, y: screenY - centerY * scale };
   applyTransform();
 }
 
@@ -550,7 +677,7 @@ function attachPanAndZoom(canvas) {
       // A drag is not a click on the node under the pointer.
       view.dragEnded = true;
       setTimeout(() => (view.dragEnded = false), 0);
-      if (view.followLive) view.parts.follow.click();
+      if (view.followLive && view.parts.follow) view.parts.follow.click();
     }
     drag = null;
     canvas.classList.remove("dragging");
@@ -630,6 +757,10 @@ function selectTask(task) {
 }
 
 function drawPanel() {
+  if (isSkillScreen()) {
+    drawSkillPanel();
+    return;
+  }
   const panel = view.parts.panel;
   const state = stepState();
   const node = view.selectedNode || (view.selectedRow === null ? state.stepNode : null);
@@ -673,6 +804,141 @@ function drawPanel() {
   stateDetails.append(element("summary", "Run state now (inputs, steps, history)"), jsonTree(view.detail.state, "state"));
   parts.push(stateDetails);
   panel.replaceChildren(...parts);
+}
+
+// --- the skill screen: the side panel --------------------------------------------------------------
+
+function drawSkillPanel() {
+  const details = view.detail.blocks[view.selectedNode ? blockOfNode(view.selectedNode) : ""];
+  view.parts.panel.replaceChildren(...(details ? blockSections(details) : skillSections()));
+}
+
+function blockOfNode(node) {
+  return view.detail.canvas?.nodes.find((item) => item.id === node)?.block ?? "";
+}
+
+// Nothing selected: the skill itself, and what `pskill validate` says about it.
+function skillSections() {
+  const skill = view.detail.skill;
+  const head = element("div", null, "panel-head");
+  head.append(element("h2", skill.id));
+  if (skill.description) head.append(element("p", skill.description, "note panel-hint"));
+  const parts = [head];
+  if (view.detail.error) {
+    parts.push(section("The skill does not load", element("pre", view.detail.error.join("\n"), "errors")));
+    return parts;
+  }
+  parts.push(section("Goal", element("p", skill.goal)));
+  parts.push(problemsSection());
+  if (skill.inputs.length) parts.push(section("Inputs", fieldList(skill.inputs)));
+  if (skill.outputs.length) parts.push(section("Outputs", fieldList(skill.outputs)));
+  parts.push(element("p", "Click a block on the canvas to see its instruction, its fields, and where it can go.", "note"));
+  return parts;
+}
+
+function problemsSection() {
+  const problems = view.detail.problems;
+  if (!problems.length) return section("Checks", element("p", "pskill validate finds no problem in this skill.", "note"));
+  const list = element("ul", null, "problems");
+  for (const problem of problems) {
+    const item = element("li", null, `problem is-${problem.level}`);
+    item.append(element("strong", `${problem.level} `), document.createTextNode(`${problem.location}: ${problem.message}`));
+    list.append(item);
+  }
+  return section(`Checks · ${problems.length}`, list);
+}
+
+function blockSections(details) {
+  const block = blockOfNode(view.selectedNode);
+  const head = element("div", null, "panel-head");
+  const title = element("div", null, "panel-title");
+  title.append(element("h2", block));
+  head.append(title, blockType(details.type));
+  head.append(element("p", details.hint, "note panel-hint"));
+  const parts = [head];
+  if (details.facts.length) {
+    const facts = element("dl", null, "facts");
+    for (const [name, value] of details.facts) facts.append(element("dt", name), element("dd", value));
+    parts.push(facts);
+  }
+  if (details.child_skill) {
+    const link = element("a", `Open the skill ${details.child_skill}`, "tool");
+    link.href = `#/skill/${encodeURIComponent(details.child_skill)}`;
+    parts.push(section("Child skill", element("p", "This block runs another skill and gets its outputs back.", "note"), link));
+  }
+  if (details.command) parts.push(section("Command", element("pre", details.command.join(" "), "command")));
+  if (details.instruction !== null) {
+    const title = details.type === "end" ? "Report" : "Instruction";
+    const source = details.instruction_file ? `From ${details.instruction_file}. ` : "";
+    parts.push(
+      section(
+        title,
+        element("p", `${source}Values in {{ }} are filled in during a run.`, "note"),
+        folded(markdown(details.instruction), `${block}:instruction`),
+      ),
+    );
+  } else if (details.instruction_file) {
+    parts.push(section("Instruction", element("p", `The file ${details.instruction_file} is missing.`, "errors")));
+  }
+  if (details.choices.length) {
+    const list = element("dl", null, "facts");
+    for (const choice of details.choices) list.append(element("dt", choice.choice), element("dd", choice.meaning));
+    parts.push(section("Choices", list));
+  }
+  if (details.fields.length) parts.push(section("Output: what the answer must hold", fieldList(details.fields)));
+  if (details.inputs.length) parts.push(section("Inputs to the child skill", valueList(details.inputs)));
+  if (details.outputs.length) parts.push(section("Outputs of the skill", valueList(details.outputs)));
+  if (details.exits.length) {
+    const list = element("ul");
+    for (const exit of details.exits) list.append(element("li", `→ ${exit.to}: ${exit.hint}`));
+    parts.push(section("Where it can go", list));
+  }
+  return parts;
+}
+
+function fieldList(fields) {
+  const list = element("ul", null, "fields");
+  for (const field of fields) {
+    const item = element("li");
+    const type = `${field.type}${field.optional ? ", optional" : ""}${field.values ? `: ${field.values.join(" | ")}` : ""}`;
+    item.append(element("code", field.name), element("span", ` (${type})`, "note"));
+    if (field.description) item.append(document.createTextNode(` ${field.description}`));
+    list.append(item);
+  }
+  return list;
+}
+
+function valueList(values) {
+  const list = element("dl", null, "facts");
+  for (const value of values) list.append(element("dt", value.name), element("dd", value.value, "mono"));
+  return list;
+}
+
+// The skill screen without Mermaid (offline): one card per block, in the file order.
+function drawBlockList() {
+  const list = element("div", null, "step-list");
+  list.append(element("p", "Graph unavailable offline (Mermaid did not load). The blocks:", "note"));
+  for (const [block, details] of Object.entries(view.detail.blocks)) {
+    const card = button(null, () => selectNode(details.node), "step-card");
+    card.append(element("strong", block), blockType(details.type));
+    list.append(card);
+  }
+  view.parts.layer.replaceChildren();
+  view.parts.canvas.querySelector(".step-list")?.remove();
+  view.parts.canvas.append(list);
+  view.parts.note.textContent = "";
+}
+
+function drawLoadError() {
+  const box = element("div", null, "step-list");
+  box.append(
+    element("p", "The skill does not load, so it has no graph. Fix these problems in skill.yaml:", "note"),
+    element("pre", view.detail.error.join("\n"), "errors"),
+  );
+  view.parts.layer.replaceChildren();
+  view.parts.canvas.querySelector(".step-list")?.remove();
+  view.parts.canvas.append(box);
+  view.parts.note.textContent = "";
 }
 
 function section(title, ...content) {
@@ -1016,6 +1282,7 @@ async function showRun(runId) {
     fetchJson(`/api/runs/${encodeURIComponent(runId)}`),
     fetchJson("/api/runs").catch(() => ({ runs: [] })),
   ]);
+  if (view.screen !== "run" || view.runId !== runId) return; // the user moved on while it loaded
   const text = JSON.stringify(detail);
   if (text !== view.detailText) {
     view.detailText = text;
@@ -1030,17 +1297,54 @@ async function showRun(runId) {
   if (UNFINISHED.includes(detail.info.status)) view.pollTimer = setTimeout(render, POLL_MS);
 }
 
+// --- the skill screen: loading ---------------------------------------------------------------------
+
+async function showSkill(skillId) {
+  if (view.skillId !== skillId || !view.parts) {
+    view.skillId = skillId;
+    view.detail = null;
+    view.detailText = null;
+    view.fitted = false;
+    view.selectedNode = null;
+    view.openFolds.clear();
+    buildSkillScreen();
+  }
+  const [detail, overview] = await Promise.all([
+    fetchJson(`/api/skills/${encodeURIComponent(skillId)}`),
+    fetchJson("/api/skills").catch(() => ({ skills: [] })),
+  ]);
+  if (view.screen !== "skill" || view.skillId !== skillId) return; // the user moved on while it loaded
+  const text = JSON.stringify(detail);
+  if (text === view.detailText) return;
+  view.detailText = text;
+  view.detail = detail;
+  view.skills = overview.skills;
+  drawSkillTopbar();
+  drawPanel();
+  await drawCanvas();
+}
+
 // --- routing ----------------------------------------------------------------------------------
 
 async function render() {
   clearTimeout(view.pollTimer);
-  const match = location.hash.match(/^#\/run\/(.+)$/);
+  const runMatch = location.hash.match(/^#\/run\/(.+)$/);
+  const skillMatch = location.hash.match(/^#\/skill\/(.+)$/);
+  const screen = runMatch ? "run" : skillMatch ? "skill" : location.hash === "#/skills" ? "skills" : "runs";
+  if (screen !== view.screen) {
+    view.parts = null; // another screen: build its layout again
+    view.runId = null;
+    view.skillId = null;
+  }
+  view.screen = screen;
   try {
-    if (match) {
-      await showRun(decodeURIComponent(match[1]));
+    if (runMatch) {
+      await showRun(decodeURIComponent(runMatch[1]));
+    } else if (skillMatch) {
+      await showSkill(decodeURIComponent(skillMatch[1]));
+    } else if (screen === "skills") {
+      await showSkills();
     } else {
-      view.runId = null;
-      view.parts = null;
       await showRuns();
     }
   } catch (error) {
@@ -1062,7 +1366,7 @@ window.addEventListener("hashchange", () => {
   render();
 });
 window.addEventListener("keydown", (event) => {
-  if (!view.parts || ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+  if (view.screen !== "run" || !view.parts || ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
   if (event.key === "ArrowRight") setStep(view.step + 1);
   else if (event.key === "ArrowLeft") setStep(view.step - 1);
 });

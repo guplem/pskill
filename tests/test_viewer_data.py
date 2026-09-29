@@ -235,7 +235,7 @@ def test_the_canvas_has_one_node_per_block_and_labeled_edges(tmp_path: Path) -> 
     template = canvas["template"]
     assert template.startswith("flowchart TD\n")
     assert '  f0_create_plan["@@f0_create_plan@@"]\n' in template
-    assert '  start(("start"))\n' in template
+    assert "  start@{ shape: sm-circ }\n" in template
     assert "  start --> f0_create_plan\n" in template
     assert '  f0_create_plan -->|"steps.create_plan.status == #39;question#39;"| f0_ask_user\n' in template
     assert '  f0_approve_plan -->|"approve"| f0_done\n' in template

@@ -1127,17 +1127,19 @@ The three proof skills together must exercise every runtime feature. pytest fixt
   The front end only draws them. For the replay, it adds up the rows up to the chosen step. It has no build step: plain HTML, CSS, and JavaScript.
 - **Mermaid comes from a CDN.** `index.html` loads one exact, pinned version from jsDelivr (`https://cdn.jsdelivr.net/npm/mermaid@<version>/dist/mermaid.min.js`), with a Subresource Integrity hash.
 - **Fonts:** Manrope and IBM Plex Mono from Google Fonts. The page falls back to the system fonts when they do not load.
-- **Offline:** the canvas shows "Graph unavailable offline (Mermaid did not load)" and the steps as a list of cards in the node style. The side panel, the replay bar, and the Runs screen still work, because they do not need Mermaid.
+- **Offline:** the canvas shows "Graph unavailable offline (Mermaid did not load)" and the steps (or, on the skill screen, the blocks) as a list of cards in the node style. The side panel, the replay bar, and the Runs and Skills screens still work, because they do not need Mermaid.
 - While the open run is unfinished, the page polls every second.
 
 | Endpoint | Returns |
 |---|---|
 | `GET /api/runs?skill=` | Run rows, plus one summary row per skill: runs, success rate, median duration. |
 | `GET /api/runs/<id>` | `run.json`, the canvas, the timeline rows, and the current state. |
+| `GET /api/skills` | One row per skill in `.pskill/skills/`: description, invocation, block count, run count, and the load error of a skill that does not load. |
+| `GET /api/skills/<id>` | The skill's facts, its canvas (one frame, no run parts), the details of each block, and the `pskill validate` problems, or the load error. |
 
 **Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, and dashed grey for not visited. Taken edges are solid blue. Each block type has its own icon, drawn for pskill as inline SVG: on its node above the block name, and next to the type in the side panel. The page follows the system's dark mode.
 
-**Two screens:**
+**Four screens:**
 1. **Runs.**
    - Run cards with the filters Unfinished, All, and Failed.
    - Above the cards, the per-skill summary row.
@@ -1153,7 +1155,14 @@ The three proof skills together must exercise every runtime feature. pytest fixt
      - the run state as a JSON tree.
 
      Long content shows its first 3 lines, with a button to show all of it. The panel builds Markdown and JSON trees from elements, never from HTML.
+   - A link to the skill screen of the run's skill.
    - A replay bar: one mark per step, with rejected answers and human decisions marked. Drag it, press play, or use the left and right arrow keys, and the canvas and the panel show the run as it was at that step. At its end, it follows the live run. This is the step-through replay (D14).
+3. **Skills.** One card per skill in `.pskill/skills/`, also a skill with no runs, with its description, block count, and run count. A skill that does not load shows its error.
+4. **Skill.** One skill's graph without a run, read from `.pskill/skills/` (never from a run copy). `skill_view.py` builds it.
+   - The same canvas as the run screen, with every block and every edge, and no run parts: no status, no current step, no timeline, and no replay bar. Every node has the same plain style.
+   - The side panel with nothing selected: the goal, the inputs and outputs, and the `pskill validate` problems.
+   - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A call block links to its child skill's screen.
+   - A skill that does not load shows its load error instead of a graph.
 
 ---
 
@@ -1269,7 +1278,7 @@ Each of these was in an earlier draft. Each one added complexity for little user
 | Token counts per block | Durations only. Harness session files are private formats that change without notice. |
 | Mermaid copied into every project (about 3 MB) | A pinned CDN copy; the viewer works without the graph when offline |
 | A hook that runs `sync` after each file edit, and git hooks | The session-start hook refreshes stubs; `AUTHORING.md` tells the agent to run `sync` after an edit; CI fails on a stale stub |
-| An analytics screen and a static skills screen | A summary row on the Runs screen; any run shows its graph |
+| An analytics screen | A summary row on the Runs screen |
 
 ### 18.1 Backlog: future issues
 

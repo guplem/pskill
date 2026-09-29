@@ -35,9 +35,10 @@ def test_the_page_loads_its_two_fonts_from_google_fonts_with_system_fonts_as_the
 def test_the_script_draws_the_steps_without_mermaid_and_never_inserts_run_text_as_html() -> None:
     script = (VIEWER / "app.js").read_text(encoding="utf-8")
 
-    assert "if (!window.mermaid)" in script
+    assert "!window.mermaid" in script
     assert "Graph unavailable offline" in script
-    assert '"step-card"' in script  # offline, the steps are drawn as node-style cards
+    assert '"step-card"' in script  # offline, the steps (or the blocks of a skill) are drawn as node-style cards
+    assert "drawBlockList()" in script
     assert script.count("innerHTML") == 1  # only for Mermaid's own SVG output
     assert 'securityLevel: "strict"' in script
 
