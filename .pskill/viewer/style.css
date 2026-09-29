@@ -488,6 +488,11 @@ pre {
   font-size: 20px;
 }
 
+.panel-hint {
+  margin: 0;
+  white-space: pre-line;
+}
+
 .panel section {
   display: flex;
   flex-direction: column;

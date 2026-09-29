@@ -22,7 +22,29 @@ const STATUS_STATE = {
   failed: "failed",
   cancelled: "idle",
 };
+const STATUS_MEANING = {
+  active: "The runner waits for the agent's answer.",
+  waiting_for_human: "A decision waits for your answer.",
+  paused: "The run stopped for now. It can resume.",
+  succeeded: "The run finished and the skill reached its goal.",
+  failed: "The run finished without the skill reaching its goal.",
+  cancelled: "Someone stopped the run before its end.",
+};
 const NODE_STATE_TEXT = { done: "Done", now: "Now", waiting: "Waiting for you", failed: "Failed", unvisited: "Not visited" };
+const NODE_STATE_MEANING = {
+  done: "The run went through this step.",
+  now: "The run is at this step at this point of the replay.",
+  waiting: "This step waits for your answer.",
+  failed: "This step failed.",
+  unvisited: "The run has not reached this step at this point of the replay.",
+};
+const MODE_MEANING = {
+  interactive: "Interactive mode: human decisions ask you.",
+  autonomous: "Autonomous mode: the agent makes every decision, human decisions included.",
+};
+const START_HINT = "The run begins here.";
+const CHILD_SKILL_HINT = "A child skill. The call block at the end of the dotted edge runs it, and gets its outputs back.";
+const EDGE_STYLE_HINT = "Solid blue: the run took this edge. Dashed grey: the run did not take it.";
 
 const app = document.getElementById("app");
 const view = {
@@ -78,7 +100,16 @@ function formatTime(timestamp) {
 function statusPill(status) {
   const pill = element("span", null, `pill state-${STATUS_STATE[status] || "idle"}`);
   pill.append(element("span", null, "dot"), document.createTextNode(STATUS_TEXT[status] || status));
+  if (STATUS_MEANING[status]) pill.title = STATUS_MEANING[status];
   return pill;
+}
+
+// A hover tooltip on a Mermaid group: an SVG <title> for the shapes, and an HTML title for the label.
+function addHint(group, text) {
+  const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+  title.textContent = text;
+  group.prepend(title);
+  for (const label of group.querySelectorAll("foreignObject > div")) label.title = text;
 }
 
 async function fetchJson(path) {
@@ -206,6 +237,7 @@ function buildRunScreen() {
   slider.min = "0";
   slider.setAttribute("aria-label", "Replay step");
   slider.addEventListener("input", () => setStep(Number(slider.value)));
+  slider.addEventListener("pointermove", hintStepUnderPointer);
   track.append(element("div", null, "replay-line"), progress, marks, slider);
   const labels = element("div", null, "replay-labels");
   const body = element("div", null, "replay-body");
@@ -231,7 +263,9 @@ function drawTopbar() {
       return option;
     }),
   );
-  const parts = [statusPill(info.status), element("span", `${info.harness} · ${info.mode}`, "note")];
+  const harnessAndMode = element("span", `${info.harness} · ${info.mode}`, "note");
+  harnessAndMode.title = `Harness: ${info.harness}, the agent tool that runs the skill.\n${MODE_MEANING[info.mode] || ""}`;
+  const parts = [statusPill(info.status), harnessAndMode];
   if (info.pause_reason) parts.push(element("span", `paused: ${info.pause_reason}`, "note"));
   if (view.detail.skill_changed) parts.push(element("span", "The skill changed after this run started.", "note"));
   status.replaceChildren(...parts);
@@ -316,15 +350,25 @@ async function drawGraph() {
     const match = group.id.match(/-flowchart-(.+)-\d+$/);
     if (!match) continue;
     const node = match[1];
+    const stateName = nodeState(node, state);
     group.dataset.node = node;
-    group.classList.add(`is-${nodeState(node, state)}`);
+    group.classList.add(`is-${stateName}`);
     if (node === view.selectedNode) group.classList.add("is-selected");
     if (node !== data.start) group.addEventListener("click", () => view.dragEnded || selectNode(node));
+    const nodeInfo = data.nodes.find((item) => item.id === node);
+    if (node === data.start) addHint(group, START_HINT);
+    else if (nodeInfo) addHint(group, `${nodeInfo.hint}\n\n${NODE_STATE_TEXT[stateName]}: ${NODE_STATE_MEANING[stateName]}\nClick to see this step.`);
   }
   for (const edge of data.edges) {
+    const taken = state.taken.has(edge.id);
     const path = svgNode.querySelector(`[id="${renderId}-${edge.id}"]`);
-    if (path) path.classList.toggle("is-taken", state.taken.has(edge.id));
+    if (path) path.classList.toggle("is-taken", taken);
+    const hint = `${edge.hint}\n${taken ? "The run took this edge." : "The run has not taken this edge."}\n${EDGE_STYLE_HINT}`;
+    const label = svgNode.querySelector(`g.label[data-id="${edge.id}"]`);
+    if (label) addHint(label, hint);
+    if (path) addHint(path, hint);
   }
+  for (const cluster of svgNode.querySelectorAll("g.cluster")) addHint(cluster, CHILD_SKILL_HINT);
   view.parts.note.textContent = "Drag to move · wheel to zoom · click a step to see it";
   if (!view.fitted) {
     // Open at a readable zoom: fit a small graph, and center a large one on the current step.
@@ -492,6 +536,7 @@ function drawPanel() {
   const skillText = nodeInfo && nodeInfo.frame > 0 ? ` · in ${nodeInfo.skill_id}` : "";
   head.append(title, element("span", `${type}${skillText}`, "note"));
   const parts = [head];
+  if (nodeInfo) parts.push(element("p", nodeInfo.hint, "note panel-hint"));
   if (visits.length > 1) parts.push(visitPicker(visits, chosen));
   if (!chosen) {
     parts.push(element("p", "The run has not reached this step at this point of the replay.", "note"));
@@ -526,19 +571,23 @@ function exitsOf(node) {
   const list = element("ul");
   for (const edge of view.detail.canvas.edges.filter((item) => item.source === node)) {
     const target = view.detail.canvas.nodes.find((item) => item.id === edge.target);
-    list.append(element("li", `→ ${target ? target.block : edge.target}${edge.label ? ` (${edge.label})` : ""}`));
+    list.append(element("li", `→ ${target ? target.block : edge.target}: ${edge.hint}`));
   }
   return list;
 }
 
 function rowSections(row) {
   const facts = element("dl", null, "facts");
-  const addFact = (name, value) => facts.append(element("dt", name), element("dd", value));
-  addFact("Arrived from", row.arrival);
-  addFact("Started", formatTime(row.ts));
-  addFact("Duration", row.duration_ms === null ? "not finished" : formatDuration(row.duration_ms));
-  if (row.decided_by) addFact("Decided by", row.decided_by);
-  if (row.left_by) addFact("Went next to", `${row.left_by.to}${row.left_by.label ? ` (${row.left_by.label})` : ""}`);
+  const addFact = (name, value, hint) => {
+    const term = element("dt", name);
+    term.title = hint;
+    facts.append(term, element("dd", value));
+  };
+  addFact("Arrived from", row.arrival, "The step before this one, and the edge condition that led here.");
+  addFact("Started", formatTime(row.ts), "When the run entered this step.");
+  addFact("Duration", row.duration_ms === null ? "not finished" : formatDuration(row.duration_ms), "From the start of this step to its accepted answer.");
+  if (row.decided_by) addFact("Decided by", row.decided_by, "Who gave the accepted answer: the agent, a human, or the runner itself.");
+  if (row.left_by) addFact("Went next to", `${row.left_by.to}${row.left_by.label ? ` (${row.left_by.label})` : ""}`, "The step after this one, and the edge condition that led there.");
   const parts = [facts];
   if (row.packet) {
     const lines = row.packet.split("\n");
@@ -603,6 +652,21 @@ function drawReplay() {
   );
   play.textContent = view.playTimer ? "❚❚" : "▶";
   play.setAttribute("aria-label", view.playTimer ? "Pause the replay" : "Play the run from here");
+}
+
+// The tooltip of the replay bar names the step under the pointer. The slider covers the marks.
+function hintStepUnderPointer(event) {
+  const { slider } = view.parts;
+  const all = rows();
+  if (!all.length) return;
+  const box = slider.getBoundingClientRect();
+  const ratio = Math.min(Math.max((event.clientX - box.left) / box.width, 0), 1);
+  const index = Math.round(ratio * (all.length - 1));
+  const row = all[index];
+  let meaning = "Blue mark: a step of the run.";
+  if (row.submissions.some((submission) => !submission.accepted)) meaning = "Red mark: the runner rejected an answer at this step.";
+  else if (row.asks_human) meaning = "Purple mark: a person decides this step.";
+  slider.title = `Step ${index + 1} of ${all.length} · ${row.block} · ${row.summary}\n${meaning}\nClick or drag to see the run at this step.`;
 }
 
 function setStep(step) {

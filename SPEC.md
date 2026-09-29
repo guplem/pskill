@@ -1105,6 +1105,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 - **All logic lives in the Python server,** so pytest covers it. The server builds:
   - the canvas: one Mermaid template for the whole run. Each child skill that the run entered is a framed `subgraph`, linked by a dotted edge from its call block. Node ids are `f<frame>_<block>`. Each node label is a token that the page replaces.
   - the timeline rows. Each row carries its node, the edge that it arrived by (matched from the logged `from` and `reason`), its node label after the step, whether a person decides it, and the edge that it left by.
+  - a hint in plain words for each node (the block's `description`, what its type does, who decides) and each edge (when the run takes it, with the whole condition). The page shows them as hover tooltips.
   - the current step and its state (now, waiting for the user, or failed),
   - the summary numbers.
 

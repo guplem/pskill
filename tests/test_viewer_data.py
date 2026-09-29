@@ -73,6 +73,29 @@ blocks:
 """
 
 
+LONG_CONDITION_SKILL = """\
+schema: pskill/v1
+id: long-condition
+description: Has a condition too long for its edge label.
+goal: Check the hints.
+entry: work
+blocks:
+  work:
+    type: task
+    description: Does the one piece of work.
+    instruction: "Work."
+    output:
+      status: {type: string, description: "How it went."}
+    next:
+      - when: "{{ steps.work.status == 'a very long status name that does not fit on the edge label' }}"
+        to: done
+      - to: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
 def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "plan-work", PLAN_SKILL, PLAN_SKILL_FILES)
     write_skill(tmp_path / ".pskill" / "skills", "scripted", SCRIPT_SKILL)
@@ -82,6 +105,7 @@ def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "failing", FAILING_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "loop-parent", LOOP_PARENT_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "fanout", PARALLEL_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "long-condition", LONG_CONDITION_SKILL)
     (tmp_path / ".pskill" / "agents").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".pskill" / "agents" / "checker.md").write_text("You check facts.", encoding="utf-8")
     return find_project(tmp_path)
@@ -146,6 +170,48 @@ def test_a_child_skill_is_a_subgraph_linked_from_its_call_block(tmp_path: Path) 
     child_row = detail["timeline"][-1]
     assert child_row["node"] == "f1_greet"
     assert child_row["edge"] == "L_f0_child_f1_greet_0"
+
+
+def test_each_node_has_a_hint_that_explains_its_block(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    plan_run, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+    long_run, _ = start_run(project, "long-condition", {}, mode="interactive", harness="generic")
+
+    plan_hints = {node["block"]: node["hint"] for node in detail_of(project, plan_run)["canvas"]["nodes"]}
+    long_hints = {node["block"]: node["hint"] for node in detail_of(project, long_run)["canvas"]["nodes"]}
+
+    assert plan_hints["create_plan"] == (
+        "task block: the agent does a piece of work and returns a typed answer.\nIt runs at most 3 times."
+    )
+    assert plan_hints["ask_user"] == (
+        "decision block: one choice is picked from a list, or a question gets an answer.\n"
+        "The user decides in an interactive run. The agent decides in an autonomous run."
+    )
+    assert plan_hints["done"] == "end block: the skill finishes here with a status and outputs.\nStatus: succeeded."
+    assert long_hints["work"].startswith("Does the one piece of work.\ntask block: ")
+
+
+def test_each_edge_has_a_hint_with_its_whole_condition(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    plan_run, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+    long_run, _ = start_run(project, "long-condition", {}, mode="interactive", harness="generic")
+    parent_run = run_parent_to_the_end(project)
+
+    def hints(run_id: str) -> dict[str, str]:
+        return {edge["id"]: edge["hint"] for edge in detail_of(project, run_id)["canvas"]["edges"]}
+
+    plan = hints(plan_run)
+    assert plan["L_start_f0_create_plan_0"] == "The run starts here."
+    assert plan["L_f0_create_plan_f0_ask_user_0"] == "Taken when steps.create_plan.status == 'question'."
+    assert plan["L_f0_create_plan_f0_approve_plan_0"] == "Taken when no condition above matches."
+    assert plan["L_f0_ask_user_f0_create_plan_0"] == "Always taken."
+    assert plan["L_f0_approve_plan_f0_done_0"] == 'Taken when the decider picks "approve": Accept the plan.'
+    assert plan["L_f0_create_plan_f0_stopped_0"] == (
+        "Taken instead when the run tries to enter create_plan after its 3 visits (the visit cap)."
+    )
+    long_condition = "steps.work.status == 'a very long status name that does not fit on the edge label'"
+    assert hints(long_run)["L_f0_work_f0_done_0"] == f"Taken when {long_condition}."
+    assert hints(parent_run)["L_f0_child_f1_greet_0"] == "The call block child runs the skill child, which starts here."
 
 
 def test_each_step_knows_its_node_and_the_edge_it_arrived_by(tmp_path: Path) -> None:
