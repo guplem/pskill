@@ -4,9 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>pskill viewer</title>
+    <!-- Two fonts from Google Fonts. Offline, style.css falls back to the system fonts. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
     <link rel="stylesheet" href="style.css" />
-    <!-- Mermaid draws the skill graphs. It comes from a CDN, pinned to one version (SPEC.md section 14).
-         Offline, the page still works: the graph area shows its text source instead. -->
+    <!-- Mermaid lays out the skill graph. It comes from a CDN, pinned to one version (SPEC.md section 14).
+         Offline, the page still works: the canvas shows the steps as a list instead. -->
     <script
       src="https://cdn.jsdelivr.net/npm/mermaid@12.0.0/dist/mermaid.min.js"
       integrity="sha384-xzghz1GQ5u9HCpVskeDPqMsdogD1yvuMQbEK53+wi+G70+6J1AG0L2cfi9PHjDWI"
@@ -15,10 +22,6 @@
     <script type="module" src="app.js"></script>
   </head>
   <body>
-    <header>
-      <a href="#/" class="brand">pskill</a>
-      <span class="subtitle">runs viewer (read-only)</span>
-    </header>
-    <main id="app">Loading…</main>
+    <div id="app" class="loading">Loading…</div>
   </body>
 </html>

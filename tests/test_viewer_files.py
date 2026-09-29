@@ -20,7 +20,18 @@ def test_the_page_loads_mermaid_from_a_pinned_cdn_version_with_an_integrity_hash
     assert 'crossorigin="anonymous"' in index
 
 
-def test_the_script_draws_the_timeline_without_mermaid_and_never_inserts_run_text_as_html() -> None:
+def test_the_page_loads_its_two_fonts_from_google_fonts_with_system_fonts_as_the_fallback() -> None:
+    index = (VIEWER / "index.html").read_text(encoding="utf-8")
+    style = (VIEWER / "style.css").read_text(encoding="utf-8")
+
+    assert re.search(
+        r'href="https://fonts\.googleapis\.com/css2\?family=Manrope[^"]*IBM\+Plex\+Mono[^"]*display=swap"', index
+    )
+    assert '"Manrope", system-ui' in style
+    assert '"IBM Plex Mono", ui-monospace' in style
+
+
+def test_the_script_draws_the_steps_without_mermaid_and_never_inserts_run_text_as_html() -> None:
     script = (VIEWER / "app.js").read_text(encoding="utf-8")
 
     assert "if (!window.mermaid)" in script
