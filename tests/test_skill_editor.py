@@ -168,6 +168,40 @@ def test_changing_the_last_key_of_a_middle_block_keeps_the_blank_line_after_it(t
     ]
 
 
+def test_a_comment_between_two_blocks_stays_when_the_block_above_changes(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "    next: create_plan\n  approve_plan:", "    next: create_plan\n  # between blocks\n\n  approve_plan:"
+    )
+    project = make_project(tmp_path, skill_yaml)
+    before = skill_text(project)
+
+    update_block(project, "plan-work", "ask_user", {"description": "Ask."})
+
+    assert changed_lines(before, skill_text(project)) == ["+    description: Ask."]
+
+
+def test_a_broken_alias_is_a_problem_not_a_crash(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    next: create_plan\n", "    next: &back create_plan\n").replace(
+        "    status: cancelled\n", "    status: cancelled\n    description: *back\n"
+    )
+    project = make_project(tmp_path, skill_yaml)
+
+    with pytest.raises(EditError, match="not valid YAML"):
+        update_block(project, "plan-work", "ask_user", {"next": "approve_plan"})
+
+
+def test_a_file_with_crlf_line_ends_keeps_them(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    path = project.skills_folder / "plan-work" / "skill.yaml"
+    path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+
+    update_block(project, "plan-work", "ask_user", {"description": "Ask."})
+
+    data = path.read_bytes()
+    assert b"\n" not in data.replace(b"\r\n", b"")
+    assert b"    description: Ask.\r\n" in data
+
+
 # --- add and delete --------------------------------------------------------------------------------
 
 

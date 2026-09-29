@@ -1,5 +1,6 @@
 """Tests for pskill_runner.viewer_server: the local JSON API and the static viewer files."""
 
+import http.client
 import io
 import json
 import threading
@@ -205,3 +206,17 @@ def test_an_edit_from_another_page_is_refused(
 
     assert status == 403
     assert (project.skills_folder / "plan-work" / "skill.yaml").read_text(encoding="utf-8") == before
+
+
+@pytest.mark.parametrize("length", ["abc", "-1"])
+def test_an_edit_with_a_bad_length_is_refused(server: ThreadingHTTPServer, length: str) -> None:
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
+    connection.putrequest("POST", "/api/skills/plan-work/edit")
+    connection.putheader("Content-Type", "application/json")
+    connection.putheader("Content-Length", length)
+    connection.endheaders()
+
+    response = connection.getresponse()
+
+    assert response.status == 403
+    connection.close()

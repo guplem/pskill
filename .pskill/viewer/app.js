@@ -931,7 +931,9 @@ function editForm(details) {
     }
   }
   if (keys.includes("next")) {
-    const nextEditor = choicesEditor ? choiceNextEditor(values.next, choicesEditor) : edgeListEditor(toEdges(values.next));
+    // A decision with choices has one edge list per choice; every other block has one edge list.
+    const hasChoices = choicesEditor && (choicesEditor.read() || (values.next && typeof values.next === "object" && !Array.isArray(values.next)));
+    const nextEditor = hasChoices ? choiceNextEditor(values.next, choicesEditor) : edgeListEditor(toEdges(values.next));
     readers.next = nextEditor.read;
     fields.append(editRow(EDIT_LABELS.next, nextEditor.node));
   }

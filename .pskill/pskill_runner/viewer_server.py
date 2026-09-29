@@ -74,7 +74,7 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.FORBIDDEN, {"error": refusal})
             return
         try:
-            request = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
+            request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             apply_edit(self.project, edit_match[1], request)
         except (ValueError, TypeError, KeyError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": [f"The request is not a valid edit: {error}"]})
@@ -100,8 +100,9 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             return "Only the viewer page may change skills."
         if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
             return "A change must be sent as JSON."
-        if int(self.headers.get("Content-Length") or 0) > MAX_EDIT_BYTES:
-            return "The change is too large."
+        length = self.headers.get("Content-Length", "")
+        if not length.isdigit() or int(length) > MAX_EDIT_BYTES:
+            return "A change needs a Content-Length of at most 1 MB."
         return None
 
     def send_export(self, skill_id: str) -> None:

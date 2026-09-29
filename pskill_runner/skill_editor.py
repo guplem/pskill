@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import yaml
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString
@@ -200,13 +201,14 @@ def splice_block(text: str, document: CommentedMap, block_id: str) -> str:
     stop = starts[keys[index + 1]] if index + 1 < len(keys) else end
     key_line = document["blocks"].lc.key(block_id)[0]
     comments_above = lines[starts[block_id] : key_line]
-    blank_lines_after: list[str] = []
+    # The blank lines and comment lines after the block belong to the space between blocks: keep them.
+    lines_after: list[str] = []
     for line in reversed(lines[starts[block_id] : stop]):
-        if line.strip():
+        if line.strip() and not is_comment_line(line):
             break
-        blank_lines_after.insert(0, line)
+        lines_after.insert(0, line)
     body = dumped_block_lines(document, block_id)
-    return "".join(lines[: starts[block_id]] + comments_above + body + blank_lines_after + lines[stop:])
+    return "".join(lines[: starts[block_id]] + comments_above + body + lines_after + lines[stop:])
 
 
 # --- values ---------------------------------------------------------------------------------------------
@@ -317,6 +319,7 @@ def skill_folder(project: Project, skill_id: str) -> Path:
 
 
 def read_skill_text(folder: Path) -> str:
+    """The text with "\n" line ends. `write_text_atomic` writes the line ends that the file had."""
     return (folder / SKILL_FILE_NAME).read_text(encoding="utf-8")
 
 
@@ -342,7 +345,10 @@ def blocks_that_lead_to(folder: Path, block_id: str) -> list[str]:
 
 def check_structure(text: str, folder_name: str) -> None:
     """Refuse a change that leaves the skill with a structure error (the file would not load)."""
-    raw = load_skill_yaml(text)
+    try:
+        raw = load_skill_yaml(text)
+    except yaml.YAMLError as error:
+        raise EditError([f"The change would leave skill.yaml not valid YAML: {error}"]) from error
     problems = structure_problems(raw, folder_name) if isinstance(raw, dict) else ["skill.yaml is not a mapping"]
     if problems:
         raise EditError(problems)
@@ -352,5 +358,6 @@ def write_text_atomic(path: Path, text: str) -> None:
     """Write to a temp file first, then replace the target, so a reader never sees half a file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f".{path.name}.tmp")
-    temp_path.write_text(text, encoding="utf-8", newline="\n")
+    newline = "\r\n" if path.is_file() and b"\r\n" in path.read_bytes() else "\n"
+    temp_path.write_text(text, encoding="utf-8", newline=newline)  # a CRLF file stays CRLF
     os.replace(temp_path, path)
