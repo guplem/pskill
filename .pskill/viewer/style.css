@@ -276,9 +276,28 @@ pre {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: minmax(0, 1fr) var(--panel-width, 420px);
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
+  position: relative;
+}
+
+.panel-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: var(--panel-width, 420px);
+  z-index: 2;
+  width: 8px;
+  margin-right: -4px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.panel-handle:hover,
+.panel-handle.dragging {
+  background: var(--done);
+  opacity: 0.35;
 }
 
 .canvas {
@@ -672,6 +691,183 @@ details[open] summary {
   color: var(--muted);
 }
 
+/* The side panel: folded blocks, JSON trees, Markdown, and the tasks of a parallel block. */
+
+.fold-body {
+  max-height: calc(var(--fold-lines) * 1.55em + 20px);
+  overflow: hidden;
+}
+
+.fold:not(.is-open):not(.fits) .fold-body {
+  mask-image: linear-gradient(to bottom, black 55%, transparent);
+}
+
+.fold.is-open .fold-body {
+  max-height: none;
+}
+
+.fold.fits .fold-toggle {
+  display: none;
+}
+
+.fold.fits .fold-body {
+  max-height: none;
+}
+
+.fold-toggle {
+  padding: 4px 0 0;
+  border: none;
+  background: none;
+  color: var(--done);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.panel h4 {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.json {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.json-root {
+  padding: 8px 12px;
+  background: var(--code-bg);
+  border-radius: 8px;
+}
+
+.json summary.json-summary {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.json-children {
+  margin-left: 4px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+
+.json-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.json-row > .json {
+  flex: 1;
+  min-width: 0;
+}
+
+.json-key {
+  flex: none;
+  color: var(--muted);
+}
+
+.json-string {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.json-literal {
+  color: var(--done);
+}
+
+.json-null {
+  color: var(--ghost-ink);
+}
+
+.markdown {
+  padding: 10px 12px;
+  background: var(--code-bg);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown p {
+  margin: 0 0 8px;
+  white-space: pre-line;
+}
+
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: 12px 0 4px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.markdown h4 {
+  font-size: 14px;
+}
+
+.markdown h5 {
+  font-size: 13.5px;
+}
+
+.markdown h6 {
+  font-size: 13px;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.markdown code {
+  padding: 0 4px;
+  background: var(--surface);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.markdown pre {
+  margin: 0 0 8px;
+  background: var(--surface);
+}
+
+.task-chip.is-done {
+  border-color: var(--done);
+  color: var(--done);
+}
+
+.task-chip.is-rejected {
+  border-color: var(--bad);
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.task-chip.is-open {
+  border-style: dashed;
+  color: var(--ghost-ink);
+}
+
+.task-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.layer g.node.is-task .nodeLabel {
+  font-size: 11.5px;
+}
+
 @media (max-width: 900px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
@@ -681,5 +877,9 @@ details[open] summary {
   .panel {
     border-left: none;
     border-top: 1px solid var(--line);
+  }
+
+  .panel-handle {
+    display: none;
   }
 }

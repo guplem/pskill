@@ -6,9 +6,15 @@ from typing import Any
 
 from pskill_runner.engine import start_run, submit_answer
 from pskill_runner.project import Project, find_project
-from pskill_runner.viewer_data import run_detail, runs_overview, timeline_rows
+from pskill_runner.viewer_data import run_detail, runs_overview, task_row_sizes, timeline_rows
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_engine_blocks import CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
+from tests.test_engine_blocks import (
+    CHILD_SKILL,
+    PARALLEL_SKILL,
+    PARENT_SKILL,
+    SCRIPT_SKILL,
+    adapter_with_subagents,  # noqa: F401 (an autouse fixture: the harness "subagents-for-tests")
+)
 
 QUESTION = "status: question\nplan: Draft.\nquestion: Which database?\n"
 FINISHED = "status: finished\nplan: Use Postgres.\n"
@@ -96,6 +102,79 @@ blocks:
 """
 
 
+FANOUT_TWICE_SKILL = """\
+schema: pskill/v1
+id: fanout-twice
+description: Checks the documents, then the first two again.
+goal: Check twice.
+inputs:
+  files: {type: array, items: {type: string}, description: "The documents."}
+entry: check
+blocks:
+  check:
+    type: parallel
+    for_each: "{{ inputs.files if (history.check | default([]) | length) == 0 else inputs.files[:2] }}"
+    instruction: "Check {{ item }}."
+    output:
+      wrong: {type: array, items: {type: string}, description: "The wrong claims."}
+    next:
+      - when: "{{ (history.check | length) < 2 }}"
+        to: check
+      - to: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+FANOUT_CALLER_SKILL = """\
+schema: pskill/v1
+id: fanout-caller
+description: Calls the fanout skill twice, with other documents.
+goal: Check two sets of documents.
+entry: fan
+blocks:
+  fan:
+    type: call
+    skill: fanout
+    inputs:
+      files: "{{ ['a.md', 'b.md', 'c.md'] if (history.fan | default([]) | length) == 0 else ['x.md'] }}"
+    next:
+      - when: "{{ (history.fan | length) < 2 }}"
+        to: fan
+      - to: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+HEADING_TASK_SKILL = """\
+schema: pskill/v1
+id: heading-task
+description: A parallel block whose instruction has a task heading of its own.
+goal: Check the documents.
+inputs:
+  files: {type: array, items: {type: string}, description: "The documents."}
+entry: check
+blocks:
+  check:
+    type: parallel
+    for_each: "{{ inputs.files }}"
+    instruction: |
+      Check {{ item }}.
+
+      #### Task 1
+      #### Task 5
+      This heading is part of the instruction, not a task.
+    output:
+      wrong: {type: array, items: {type: string}, description: "The wrong claims."}
+    next: check_tasks
+  check_tasks:
+    type: end
+    status: succeeded
+"""
+
+
 def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "plan-work", PLAN_SKILL, PLAN_SKILL_FILES)
     write_skill(tmp_path / ".pskill" / "skills", "scripted", SCRIPT_SKILL)
@@ -106,6 +185,9 @@ def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "loop-parent", LOOP_PARENT_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "fanout", PARALLEL_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "long-condition", LONG_CONDITION_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "fanout-twice", FANOUT_TWICE_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "fanout-caller", FANOUT_CALLER_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "heading-task", HEADING_TASK_SKILL)
     (tmp_path / ".pskill" / "agents").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".pskill" / "agents" / "checker.md").write_text("You check facts.", encoding="utf-8")
     return find_project(tmp_path)
@@ -521,3 +603,274 @@ def test_the_run_detail_notes_a_skill_that_changed_after_the_run_started(tmp_pat
 
 def test_an_unknown_run_has_no_detail(tmp_path: Path) -> None:
     assert run_detail(make_project(tmp_path), "r-00000000-0000-0000") is None
+
+
+# --- the tasks of a parallel block, script results, and input and output titles ---------------------
+
+
+def check_row_of(project: Project, run_id: str) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+    (row,) = rows
+    return row
+
+
+def test_a_parallel_row_with_subagents_keeps_each_task_answer_and_output(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: 3\n", task=1)
+    submit_answer(project, run_id, "wrong: [x]\n", task=1)
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    row = check_row_of(project, run_id)
+
+    assert [submission["task"] for submission in row["submissions"]] == [1, 1, 0]
+    tasks = row["tasks"]
+    assert [(task["task"], task["state"], task["output"]) for task in tasks] == [
+        (0, "done", {"wrong": []}),
+        (1, "done", {"wrong": ["x"]}),
+    ]
+    assert [len(task["submissions"]) for task in tasks] == [1, 2]
+    assert [task["label"] for task in tasks] == ["task 0", "task 1 · 1 rejected"]
+    assert tasks[0]["packet"].startswith("You are a subagent of a pskill run.")
+    assert "Check every claim in a.md." in tasks[0]["packet"]
+    assert "Check every claim in b.md." in tasks[1]["packet"]
+    assert row["output"] == {"results": [{"wrong": []}, {"wrong": ["x"]}]}
+
+
+def test_a_one_by_one_parallel_block_lists_the_tasks_of_its_visit(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+    submit_answer(project, run_id, "wrong: [x]\n", task=1)
+
+    first, second = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+
+    assert [(task["task"], task["state"]) for task in first["tasks"]] == [(0, "done"), (1, "open")]
+    assert [(task["task"], task["state"]) for task in second["tasks"]] == [(0, "done"), (1, "done")]
+    assert second["tasks"][1]["output"] == {"wrong": ["x"]}
+    assert "Check every claim in b.md." in second["tasks"][1]["packet"]
+
+
+def test_each_task_is_done_rejected_or_open(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md", "c.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: 3\n", task=0)
+    submit_answer(project, run_id, "wrong: []\n", task=1)
+
+    row = check_row_of(project, run_id)
+
+    assert [task["state"] for task in row["tasks"]] == ["rejected", "done", "open"]
+    assert row["output"] is None
+    assert [len(task["submissions"]) for task in row["tasks"]] == [1, 1, 0]
+
+
+def test_the_canvas_draws_a_frame_of_task_nodes_next_to_a_parallel_block(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    detail = detail_of(project, run_id)
+
+    template = detail["canvas"]["template"]
+    assert '  subgraph f0_check_TASKS ["check · 2 tasks"]\n    direction LR\n' in template
+    assert '    f0_check_T0["@@f0_check_T0@@"]\n' in template
+    assert '    f0_check_T1["@@f0_check_T1@@"]\n' in template
+    assert "  f0_check -.- f0_check_TASKS\n" in template
+    assert "    f0_check_T0 ~~~ f0_check_T1\n" in template  # invisible links put the tasks in rows
+    nodes = {node["id"]: node for node in detail["canvas"]["nodes"]}
+    assert nodes["f0_check_T1"]["kind"] == "task"
+    assert nodes["f0_check_T1"]["parent"] == "f0_check"
+    assert nodes["f0_check_T1"]["task"] == 1
+    assert nodes["f0_check"]["kind"] == "block"
+    edges = {edge["id"]: edge for edge in detail["canvas"]["edges"]}
+    assert edges["L_f0_check_f0_check_TASKS_0"]["kind"] == "tasks"
+    row = check_row_of(project, run_id)
+    assert [task["node"] for task in row["tasks"]] == ["f0_check_T0", "f0_check_T1"]
+
+
+def test_the_task_rows_are_balanced_so_that_no_task_stands_alone() -> None:
+    assert task_row_sizes(1) == [1]
+    assert task_row_sizes(4) == [4]
+    assert task_row_sizes(5) == [3, 2]
+    assert task_row_sizes(9) == [3, 3, 3]
+    assert task_row_sizes(13) == [4, 3, 3, 3]
+
+
+def test_a_script_run_keeps_its_stdout_parsed_as_json(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    json_run, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    failed_run, _ = start_run(project, "failing", {}, mode="interactive", harness="generic")
+
+    json_script = detail_of(project, json_run)["timeline"][0]["script_runs"][0]
+    failed_script = detail_of(project, failed_run)["timeline"][0]["script_runs"][0]
+
+    assert json_script["parsed"] == {"files": ["a.md", "b.md"]}
+    assert failed_script["parsed"] is None
+
+
+def test_each_row_names_its_input_and_output(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    plan_run = run_to_the_end(project)
+    script_run, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+
+    plan_rows = detail_of(project, plan_run)["timeline"]
+    script_row = detail_of(project, script_run)["timeline"][0]
+
+    titles = {row["block"]: (row["input_title"], row["output_title"]) for row in plan_rows}
+    assert titles["create_plan"] == ("Input: the instruction the agent got", "Output: the agent's answer")
+    assert titles["ask_user"] == ("Input: the question to decide", "Output: the decision")
+    assert titles["done"] == ("Input: the report the agent got", "Output: the skill's outputs")
+    assert (script_row["input_title"], script_row["output_title"]) == (
+        "Input: the command the runner ran",
+        "Output: the command's result",
+    )
+
+
+def test_a_parallel_block_in_a_child_skill_keeps_the_tasks_of_each_call(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "fanout-caller", {}, mode="interactive", harness="subagents-for-tests")
+    for task in range(3):
+        submit_answer(project, run_id, "wrong: []\n", task=task)
+    submit_answer(project, run_id, "wrong: [second]\n", task=0)
+
+    detail = detail_of(project, run_id)
+
+    first, second = [row for row in detail["timeline"] if row["block"] == "check"]
+    assert [task["state"] for task in first["tasks"]] == ["done", "done", "done"]
+    assert [(task["task"], task["output"]) for task in second["tasks"]] == [(0, {"wrong": ["second"]})]
+    assert second["tasks"][0]["node"] == "f1_check_T0"
+    template = detail["canvas"]["template"]
+    frame = template[template.index("  subgraph f1 ") : template.index("  end\n", template.index("  subgraph f1 "))]
+    assert '    subgraph f1_check_TASKS ["check · 3 tasks"]\n' in frame
+
+
+def test_a_parallel_block_that_runs_twice_keeps_the_tasks_of_each_visit(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout-twice", {"files": ["a.md", "b.md", "c.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    for task in range(3):
+        submit_answer(project, run_id, "wrong: []\n", task=task)
+    submit_answer(project, run_id, "wrong: [again]\n", task=0)
+
+    detail = detail_of(project, run_id)
+
+    first, second = [row for row in detail["timeline"] if row["block"] == "check"]
+    assert [task["output"] for task in first["tasks"]] == [{"wrong": []}, {"wrong": []}, {"wrong": []}]
+    assert [(task["task"], task["output"]) for task in second["tasks"]] == [(0, {"wrong": ["again"]}), (1, None)]
+    assert '  subgraph f0_check_TASKS ["check · 3 tasks"]\n' in detail["canvas"]["template"]
+
+
+def test_a_live_one_by_one_block_counts_its_tasks_from_the_run_state(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md", "c.md"]}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    rows = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+
+    assert [task["state"] for task in rows[-1]["tasks"]] == ["done", "open", "open"]
+
+
+def test_a_rejected_answer_one_by_one_stays_with_its_task(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "wrong: 3\n", task=0)
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+    submit_answer(project, run_id, "wrong: []\n", task=1)
+
+    first, second = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+
+    assert first["tasks"][0]["label"] == "task 0 · 1 rejected"
+    assert [len(task["submissions"]) for task in second["tasks"]] == [2, 1]
+
+
+def test_an_answer_for_a_task_that_does_not_exist_adds_no_task(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md", "c.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: 3\n", task=7)
+
+    detail = detail_of(project, run_id)
+
+    row = check_row_of(project, run_id)
+    assert len(row["tasks"]) == 3
+    assert [submission["task"] for submission in row["submissions"]] == [7]
+    assert "f0_check_T7" not in detail["canvas"]["template"]
+
+
+def test_a_task_frame_with_many_tasks_has_several_rows(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    files = [f"{name}.md" for name in "abcde"]
+    run_id, _ = start_run(project, "fanout", {"files": files}, mode="interactive", harness="subagents-for-tests")
+
+    template = detail_of(project, run_id)["canvas"]["template"]
+
+    assert "    f0_check_T0 ~~~ f0_check_T1 ~~~ f0_check_T2\n" in template
+    assert "    f0_check_T3 ~~~ f0_check_T4\n" in template
+
+
+def test_a_one_by_one_answer_out_of_order_keeps_one_visit(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md", "c.md"]}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "wrong: [b]\n", task=1)  # the packet shows task 0
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    rows = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+
+    assert [len(row["tasks"]) for row in rows] == [3] * len(rows)
+    assert [task["state"] for task in rows[-1]["tasks"]] == ["done", "done", "open"]
+    assert rows[-1]["tasks"][1]["output"] == {"wrong": ["b"]}
+
+
+def test_a_task_heading_inside_an_instruction_adds_no_task(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    subagent_run, _ = start_run(
+        project, "heading-task", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    one_by_one_run, _ = start_run(
+        project, "heading-task", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic"
+    )
+
+    for run_id in (subagent_run, one_by_one_run):
+        detail = detail_of(project, run_id)
+        rows = [row for row in detail["timeline"] if row["block"] == "check"]
+        assert len(rows[-1]["tasks"]) == 2
+        assert "This heading is part of the instruction" in rows[-1]["tasks"][0]["packet"]
+        assert "f0_check_T5" not in detail["canvas"]["template"]
+
+
+def test_the_task_frame_id_never_equals_a_block_node_id(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "heading-task", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+
+    template = detail_of(project, run_id)["canvas"]["template"]
+
+    assert '  subgraph f0_check_TASKS ["check · 2 tasks"]\n' in template
+    assert '  f0_check_tasks["@@f0_check_tasks@@"]\n' in template
+
+
+def test_an_answer_out_of_order_in_a_later_visit_stays_in_that_visit(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout-twice", {"files": ["a.md", "b.md", "c.md"]}, mode="interactive", harness="generic"
+    )
+    for task in range(3):
+        submit_answer(project, run_id, "wrong: [v1]\n", task=task)
+    submit_answer(project, run_id, "wrong: [v2]\n", task=1)  # visit 2 shows task 0
+
+    rows = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+    first_visit = [row for row in rows if row["visit"] == 1]
+    second_visit = [row for row in rows if row["visit"] == 2]
+
+    assert [task["output"] for task in first_visit[-1]["tasks"]] == [{"wrong": ["v1"]}] * 3
+    assert [task["state"] for task in second_visit[-1]["tasks"]] == ["open", "done"]
+    assert second_visit[-1]["tasks"][1]["output"] == {"wrong": ["v2"]}

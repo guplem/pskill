@@ -41,6 +41,24 @@ def test_the_script_draws_the_steps_without_mermaid_and_never_inserts_run_text_a
     assert 'securityLevel: "strict"' in script
 
 
+def test_the_panel_width_is_saved_in_local_storage_inside_try_catch() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    uses = script.count("localStorage")
+    guarded = len(re.findall(r"try \{\n\s*(?:return )?[^\n]*localStorage", script))
+    assert uses >= 2  # read and write the width
+    assert guarded == uses  # a browser that blocks site data throws on every use
+
+
+def test_the_markdown_and_the_json_tree_are_built_from_elements() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    assert "function markdown(" in script
+    assert "function jsonTree(" in script
+    for html_parser in ("insertAdjacentHTML", "outerHTML", "createContextualFragment", "DOMParser", "document.write"):
+        assert html_parser not in script
+
+
 def test_the_launchers_start_the_viewer_from_the_folder_above_them() -> None:
     for name in ("view.cmd", "view.command", "view.sh"):
         launcher = (REPOSITORY_ROOT / "launchers" / name).read_text(encoding="utf-8")

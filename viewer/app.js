@@ -4,7 +4,10 @@
 const UNFINISHED = ["active", "waiting_for_human", "paused"];
 const POLL_MS = 1000;
 const PLAY_MS = 700;
-const EXCERPT_LINES = 14;
+const FOLD_LINE_LIMIT = 3;
+const PANEL_WIDTH_KEY = "pskill.panelWidth";
+const PANEL_MIN_WIDTH = 320;
+const CANVAS_MIN_WIDTH = 240;
 const READABLE_SCALE = 0.9;
 const STATUS_TEXT = {
   active: "running",
@@ -44,6 +47,13 @@ const MODE_MEANING = {
 };
 const START_HINT = "The run begins here.";
 const CHILD_SKILL_HINT = "A child skill. The call block at the end of the dotted edge runs it, and gets its outputs back.";
+const TASK_FRAME_HINT = "The tasks of the parallel block at the end of the dotted edge. Each node is one task that one subagent does.";
+const TASK_STATE_TEXT = { done: "Done", rejected: "Answer rejected", open: "Open" };
+const TASK_STATE_MEANING = {
+  done: "The task has an accepted answer.",
+  rejected: "The runner rejected every answer of this task so far.",
+  open: "The task has no answer yet.",
+};
 const EDGE_STYLE_HINT = "Solid blue: the run took this edge. Dashed grey: the run did not take it.";
 
 const app = document.getElementById("app");
@@ -57,6 +67,8 @@ const view = {
   followLive: true,
   selectedNode: null,
   selectedRow: null,
+  selectedTask: null,
+  openFolds: new Set(),
   transform: { x: 0, y: 0, scale: 1 },
   appliedScale: 1,
   fitted: false,
@@ -224,7 +236,10 @@ function buildRunScreen() {
   const panel = element("aside", null, "panel");
   panel.setAttribute("aria-label", "The selected step");
   const workspace = element("div", null, "workspace");
-  workspace.append(canvas, panel);
+  const handle = element("div", null, "panel-handle");
+  handle.title = "Drag to make the panel wider or narrower";
+  workspace.append(canvas, handle, panel);
+  attachPanelResize(workspace, handle);
 
   const replay = element("footer", null, "replay");
   const play = button("▶", togglePlay, "play");
@@ -248,7 +263,7 @@ function buildRunScreen() {
   screen.append(bar, workspace, replay);
   app.className = "";
   app.replaceChildren(screen);
-  view.parts = { picker, status, follow, zoomLabel, canvas, layer, note, panel, progress, marks, slider, labels, play };
+  view.parts = { picker, status, follow, zoomLabel, canvas, layer, note, panel, progress, marks, slider, labels, play, workspace };
 }
 
 function drawTopbar() {
@@ -282,15 +297,33 @@ function stepState() {
   const visited = new Set(upToStep.map((row) => row.node).filter(Boolean));
   const taken = new Set(upToStep.map((row) => row.edge).filter(Boolean));
   const labels = {};
-  for (const row of upToStep) if (row.node) labels[row.node] = row.label;
+  const taskStates = {};
+  for (const row of upToStep) {
+    if (row.node) labels[row.node] = row.label;
+    for (const task of row.tasks) {
+      if (!task.node) continue;
+      labels[task.node] = task.label;
+      taskStates[task.node] = task.state;
+    }
+  }
   const atEnd = view.step === rows().length - 1;
   const current = view.detail.canvas && view.detail.canvas.current;
   const stepNode = upToStep.length ? upToStep[upToStep.length - 1].node : null;
   const stepNodeState = atEnd ? (current ? current.state : "done") : "now";
-  return { visited, taken, labels, stepNode, stepNodeState };
+  return { visited, taken, labels, taskStates, stepNode, stepNodeState };
+}
+
+// A task node: blue when done, red after a rejected answer, orange while open at the step, else grey.
+function taskNodeState(nodeInfo, state) {
+  const taskState = state.taskStates[nodeInfo.id] || "open";
+  if (taskState === "done") return "done";
+  if (taskState === "rejected") return "failed";
+  return nodeInfo.parent === state.stepNode && state.stepNodeState === "now" ? "now" : "unvisited";
 }
 
 function nodeState(node, state) {
+  const nodeInfo = view.detail.canvas?.nodes.find((item) => item.id === node);
+  if (nodeInfo && nodeInfo.kind === "task") return taskNodeState(nodeInfo, state);
   if (node === state.stepNode) return state.stepNodeState;
   return state.visited.has(node) || node === view.detail.canvas?.start ? "done" : "unvisited";
 }
@@ -354,13 +387,20 @@ async function drawGraph() {
     group.dataset.node = node;
     group.classList.add(`is-${stateName}`);
     if (node === view.selectedNode) group.classList.add("is-selected");
-    if (node !== data.start) group.addEventListener("click", () => view.dragEnded || selectNode(node));
     const nodeInfo = data.nodes.find((item) => item.id === node);
+    if (nodeInfo && nodeInfo.kind === "task") {
+      group.classList.add("is-task");
+      group.addEventListener("click", () => view.dragEnded || selectNode(nodeInfo.parent, null, nodeInfo.task));
+      const taskState = state.taskStates[node] || "open";
+      addHint(group, `${nodeInfo.hint}\n\n${TASK_STATE_TEXT[taskState]}: ${TASK_STATE_MEANING[taskState]}\nClick to see this task.`);
+      continue;
+    }
+    if (node !== data.start) group.addEventListener("click", () => view.dragEnded || selectNode(node));
     if (node === data.start) addHint(group, START_HINT);
     else if (nodeInfo) addHint(group, `${nodeInfo.hint}\n\n${NODE_STATE_TEXT[stateName]}: ${NODE_STATE_MEANING[stateName]}\nClick to see this step.`);
   }
   for (const edge of data.edges) {
-    const taken = state.taken.has(edge.id);
+    const taken = state.taken.has(edge.id) || (edge.kind === "tasks" && state.visited.has(edge.source));
     const path = svgNode.querySelector(`[id="${renderId}-${edge.id}"]`);
     if (path) path.classList.toggle("is-taken", taken);
     const hint = `${edge.hint}\n${taken ? "The run took this edge." : "The run has not taken this edge."}\n${EDGE_STYLE_HINT}`;
@@ -368,7 +408,9 @@ async function drawGraph() {
     if (label) addHint(label, hint);
     if (path) addHint(path, hint);
   }
-  for (const cluster of svgNode.querySelectorAll("g.cluster")) addHint(cluster, CHILD_SKILL_HINT);
+  for (const cluster of svgNode.querySelectorAll("g.cluster")) {
+    addHint(cluster, cluster.id.endsWith("_TASKS") ? TASK_FRAME_HINT : CHILD_SKILL_HINT);
+  }
   view.parts.note.textContent = "Drag to move · wheel to zoom · click a step to see it";
   if (!view.fitted) {
     // Open at a readable zoom: fit a small graph, and center a large one on the current step.
@@ -495,12 +537,64 @@ function attachPanAndZoom(canvas) {
 
 // --- the run screen: the side panel -------------------------------------------------------------
 
-function selectNode(node, rowIndex = null) {
+function savedPanelWidth() {
+  try {
+    return Number(localStorage.getItem(PANEL_WIDTH_KEY)) || null;
+  } catch {
+    return null; // the browser blocks site data
+  }
+}
+
+function savePanelWidth(width) {
+  try {
+    localStorage.setItem(PANEL_WIDTH_KEY, String(width));
+  } catch {
+    // the browser blocks site data: the width lasts until the reload
+  }
+}
+
+function setPanelWidth(workspace, width) {
+  const widest = Math.max(PANEL_MIN_WIDTH, workspace.getBoundingClientRect().width - CANVAS_MIN_WIDTH);
+  const clamped = Math.round(Math.min(Math.max(width, PANEL_MIN_WIDTH), widest));
+  workspace.style.setProperty("--panel-width", `${clamped}px`);
+  return clamped;
+}
+
+function attachPanelResize(workspace, handle) {
+  const saved = savedPanelWidth();
+  if (saved) {
+    workspace.style.setProperty("--panel-width", `${saved}px`);
+    requestAnimationFrame(() => setPanelWidth(workspace, saved)); // fit it to this window once the page has a size
+  }
+  handle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    handle.classList.add("dragging");
+  });
+  handle.addEventListener("pointermove", (event) => {
+    if (!handle.hasPointerCapture(event.pointerId)) return;
+    setPanelWidth(workspace, workspace.getBoundingClientRect().right - event.clientX);
+  });
+  handle.addEventListener("pointerup", (event) => {
+    if (!handle.hasPointerCapture(event.pointerId)) return;
+    handle.releasePointerCapture(event.pointerId);
+    savePanelWidth(setPanelWidth(workspace, workspace.getBoundingClientRect().right - event.clientX));
+  });
+  handle.addEventListener("lostpointercapture", () => handle.classList.remove("dragging")); // also a cancelled drag
+}
+
+function selectNode(node, rowIndex = null, task = null) {
   view.selectedNode = node;
   view.selectedRow = rowIndex;
+  view.selectedTask = task;
   for (const group of view.parts.layer.querySelectorAll("g.node")) {
     group.classList.toggle("is-selected", group.dataset.node === node);
   }
+  drawPanel();
+}
+
+function selectTask(task) {
+  view.selectedTask = task;
   drawPanel();
 }
 
@@ -545,7 +639,7 @@ function drawPanel() {
     parts.push(...rowSections(chosen.row));
   }
   const stateDetails = element("details");
-  stateDetails.append(element("summary", "Run state now (inputs, steps, history)"), element("pre", JSON.stringify(view.detail.state, null, 2)));
+  stateDetails.append(element("summary", "Run state now (inputs, steps, history)"), jsonTree(view.detail.state, "state"));
   parts.push(stateDetails);
   panel.replaceChildren(...parts);
 }
@@ -569,7 +663,7 @@ function visitPicker(visits, chosen) {
 
 function exitsOf(node) {
   const list = element("ul");
-  for (const edge of view.detail.canvas.edges.filter((item) => item.source === node)) {
+  for (const edge of view.detail.canvas.edges.filter((item) => item.source === node && item.kind !== "tasks")) {
     const target = view.detail.canvas.nodes.find((item) => item.id === edge.target);
     list.append(element("li", `→ ${target ? target.block : edge.target}: ${edge.hint}`));
   }
@@ -589,37 +683,210 @@ function rowSections(row) {
   if (row.decided_by) addFact("Decided by", row.decided_by, "Who gave the accepted answer: the agent, a human, or the runner itself.");
   if (row.left_by) addFact("Went next to", `${row.left_by.to}${row.left_by.label ? ` (${row.left_by.label})` : ""}`, "The step after this one, and the edge condition that led there.");
   const parts = [facts];
-  if (row.packet) {
-    const lines = row.packet.split("\n");
-    const excerpt = element("pre", lines.slice(0, EXCERPT_LINES).join("\n") + (lines.length > EXCERPT_LINES ? "\n…" : ""));
-    const whole = element("details");
-    whole.append(element("summary", "The whole packet"), element("pre", row.packet));
-    parts.push(section("What the agent got", excerpt, whole));
-  }
-  if (row.submissions.length) {
-    parts.push(section(`Answers · ${row.submissions.length}`, ...row.submissions.map(answerCard)));
-  }
-  if (row.output !== null) parts.push(section("Output", element("pre", JSON.stringify(row.output, null, 2))));
-  if (row.script_runs.length) parts.push(section("Script runs", ...row.script_runs.map(scriptCard)));
+  if (row.block_type === "script") return [...parts, ...scriptSections(row)];
+  if (row.packet) parts.push(section(row.input_title, folded(markdown(row.packet), `${row.seq}:input`)));
+  if (row.tasks.length) parts.push(tasksSection(row));
+  // The answers of a parallel block's tasks show with their task; the rest shows here.
+  const listed = new Set(row.tasks.map((task) => task.task));
+  const answers = row.submissions.filter((submission) => submission.task === null || !listed.has(submission.task));
+  if (answers.length) parts.push(section(`Answers · ${answers.length}`, ...answers.map((item, index) => answerCard(item, index, row.seq))));
+  if (row.output !== null) parts.push(section(row.output_title, folded(jsonTree(row.output, `${row.seq}:output`), `${row.seq}:output`)));
   return parts;
 }
 
-function answerCard(submission, index) {
+function scriptSections(row) {
+  const parts = [];
+  for (const [index, script] of row.script_runs.entries()) {
+    const key = `${row.seq}:script${index}`;
+    parts.push(section(row.input_title, element("pre", `$ ${script.argv.join(" ")}`, "command")));
+    const result = [element("p", `Exit code ${script.exit_code ?? "-"} · ${formatDuration(script.duration_ms)}`, "note")];
+    if (script.parsed !== null) {
+      result.push(folded(jsonTree(script.parsed, `${key}:parsed`), `${key}:parsed`));
+      const raw = element("details");
+      raw.append(element("summary", "The raw stdout"), element("pre", script.stdout));
+      result.push(raw);
+    } else if (script.stdout) {
+      result.push(folded(element("pre", script.stdout), `${key}:stdout`));
+    }
+    if (script.stderr) result.push(element("h4", "stderr"), folded(element("pre", script.stderr), `${key}:stderr`));
+    if (script.problem) result.push(element("pre", `The runner said: ${script.problem}`, "errors"));
+    parts.push(section(row.output_title, ...result));
+  }
+  return parts;
+}
+
+function tasksSection(row) {
+  const counts = { done: 0, rejected: 0, open: 0 };
+  for (const task of row.tasks) counts[task.state] += 1;
+  const summary = Object.entries(counts)
+    .filter(([, count]) => count)
+    .map(([name, count]) => `${count} ${TASK_STATE_TEXT[name].toLowerCase()}`)
+    .join(" · ");
+  const chips = element("div", null, "visits");
+  const selected = view.selectedTask ?? row.task;
+  for (const task of row.tasks) {
+    const chip = button(task.label, () => selectTask(task.task), `tool task-chip is-${task.state}`);
+    chip.title = `${TASK_STATE_TEXT[task.state]}: ${TASK_STATE_MEANING[task.state]}`;
+    chip.setAttribute("aria-pressed", String(task.task === selected));
+    chips.append(chip);
+  }
+  const chosen = row.tasks.find((task) => task.task === selected);
+  const detail = chosen ? taskDetail(chosen, row.seq) : element("p", "Click a task to see its prompt, its answers, and its output.", "note");
+  return section(`Tasks · ${row.tasks.length}`, element("p", summary, "note"), chips, detail);
+}
+
+function taskDetail(task, seq) {
+  const box = element("div", null, "task-detail");
+  box.append(element("h4", `Task ${task.task} · ${TASK_STATE_TEXT[task.state]}`));
+  if (task.packet) box.append(element("h4", "Input: the prompt that the subagent got"), folded(markdown(task.packet), `${seq}:task${task.task}:input`));
+  if (task.submissions.length) {
+    box.append(element("h4", `Answers · ${task.submissions.length}`), ...task.submissions.map((item, index) => answerCard(item, index, `${seq}:task${task.task}`)));
+  }
+  if (task.output !== null) {
+    const key = `${seq}:task${task.task}:output`;
+    box.append(element("h4", `Output: the answer of task ${task.task}`), folded(jsonTree(task.output, key), key));
+  }
+  return box;
+}
+
+function answerCard(submission, index, keyPrefix) {
   const card = element("div", null, submission.accepted ? "answer" : "answer rejected");
   const head = element("div", null, "answer-head");
-  head.append(element("span", null, "dot"), document.createTextNode(`Answer ${index + 1} · ${submission.accepted ? "accepted" : "rejected"}`));
+  const taskText = submission.task !== null && submission.task !== undefined ? ` · task ${submission.task}` : "";
+  head.append(element("span", null, "dot"), document.createTextNode(`Answer ${index + 1}${taskText} · ${submission.accepted ? "accepted" : "rejected"}`));
   card.append(head);
-  if (submission.raw) card.append(element("pre", submission.raw));
-  if (submission.errors.length) card.append(element("pre", `The runner said:\n${submission.errors.join("\n")}`, "errors"));
+  if (submission.raw) card.append(folded(element("pre", submission.raw), `${keyPrefix}:answer${index}`));
+  if (submission.errors.length) {
+    card.append(folded(element("pre", `The runner said:\n${submission.errors.join("\n")}`, "errors"), `${keyPrefix}:errors${index}`));
+  }
   return card;
 }
 
-function scriptCard(script) {
-  const lines = [`$ ${script.argv.join(" ")}`, `exit code ${script.exit_code ?? "-"} · ${formatDuration(script.duration_ms)}`];
-  if (script.stdout) lines.push("", script.stdout);
-  if (script.stderr) lines.push("", "[stderr]", script.stderr);
-  if (script.problem) lines.push("", `[problem] ${script.problem}`);
-  return element("pre", lines.join("\n"));
+// --- the run screen: JSON trees, Markdown, and folded blocks ---------------------------------------
+
+// Long content shows its first lines, with a button to show all of it. The open ones stay open on redraws.
+// A fold that fits needs no button, and no height limit, so a JSON node that opens later still shows whole.
+function folded(content, key) {
+  const box = element("div", null, "fold");
+  box.style.setProperty("--fold-lines", String(FOLD_LINE_LIMIT));
+  const body = element("div", null, "fold-body");
+  body.append(content);
+  const isOpen = view.openFolds.has(key);
+  box.classList.toggle("is-open", isOpen);
+  const toggle = button(isOpen ? "Show less" : "Show all", () => {
+    const open = box.classList.toggle("is-open");
+    if (open) view.openFolds.add(key);
+    else view.openFolds.delete(key);
+    toggle.textContent = open ? "Show less" : "Show all";
+  }, "fold-toggle");
+  box.append(body, toggle);
+  requestAnimationFrame(() => box.classList.toggle("fits", !isOpen && body.scrollHeight <= body.clientHeight + 1));
+  return box;
+}
+
+// A JSON value as a tree: objects and arrays fold, the first level is open. `key` names the node, so an
+// opened node stays open on redraws.
+function jsonTree(value, key, depth = 0) {
+  if (value === null || typeof value !== "object") return jsonLeaf(value);
+  const isList = Array.isArray(value);
+  const entries = isList ? value.map((item, index) => [index, item]) : Object.entries(value);
+  const count = `${entries.length} ${isList ? "item" : "key"}${entries.length === 1 ? "" : "s"}`;
+  const tree = element("details", null, depth === 0 ? "json json-root" : "json");
+  tree.open = depth === 0 || view.openFolds.has(key);
+  if (depth > 0) {
+    tree.addEventListener("toggle", () => (tree.open ? view.openFolds.add(key) : view.openFolds.delete(key)));
+  }
+  tree.append(element("summary", isList ? `[ ${count} ]` : `{ ${count} }`, "json-summary"));
+  const children = element("div", null, "json-children");
+  for (const [name, item] of entries) {
+    const line = element("div", null, "json-row");
+    line.append(element("span", `${name}:`, "json-key"), jsonTree(item, `${key}/${name}`, depth + 1));
+    children.append(line);
+  }
+  tree.append(children);
+  return tree;
+}
+
+function jsonLeaf(value) {
+  if (typeof value === "string") return element("span", value, "json-string");
+  return element("span", String(value), value === null ? "json-null" : "json-literal");
+}
+
+// A small Markdown renderer: headings, fenced code, lists, paragraphs, inline code, and bold.
+// It builds elements and text nodes only, so the run text never goes into the page as HTML.
+function markdown(text) {
+  const box = element("div", null, "markdown");
+  const lines = text.split("\n");
+  let paragraph = [];
+  let list = null;
+  const flushParagraph = () => {
+    if (paragraph.length) box.append(inlineMarkdown(element("p"), paragraph.join("\n")));
+    paragraph = [];
+  };
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const fence = line.match(/^\s*(```|~~~)/);
+    const isHeredocEnd = heredocEnd(line);
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    const item = line.match(/^\s*(?:[-*]|(\d+)\.)\s+(.*)$/);
+    if (fence) {
+      flushParagraph();
+      list = null;
+      const code = [];
+      for (index += 1; index < lines.length && !lines[index].trim().startsWith(fence[1]); index += 1) code.push(lines[index]);
+      box.append(element("pre", code.join("\n")));
+    } else if (isHeredocEnd) {
+      flushParagraph();
+      list = null;
+      const code = [line];
+      while (index + 1 < lines.length) {
+        index += 1;
+        code.push(lines[index]);
+        if (isHeredocEnd(lines[index])) break;
+      }
+      box.append(element("pre", code.join("\n")));
+    } else if (heading) {
+      flushParagraph();
+      list = null;
+      box.append(inlineMarkdown(element(`h${Math.min(heading[1].length + 3, 6)}`), heading[2]));
+    } else if (item) {
+      flushParagraph();
+      const tag = item[1] ? "OL" : "UL";
+      if (!list || list.tagName !== tag) {
+        box.append((list = element(tag.toLowerCase())));
+        if (item[1]) list.start = Number(item[1]); // a list that a blank line cut goes on with its own number
+      }
+      list.append(inlineMarkdown(element("li"), item[2]));
+    } else if (!line.trim()) {
+      flushParagraph();
+      list = null;
+    } else if (list && /^\s+/.test(line)) {
+      inlineMarkdown(list.lastChild, ` ${line.trim()}`); // a list item that goes on over several lines
+    } else {
+      list = null;
+      paragraph.push(line);
+    }
+  }
+  flushParagraph();
+  return box;
+}
+
+// The test for the last line of a heredoc (`<<'PSKILL'`) or a PowerShell here-string (`@'`) that this line
+// opens, or null.
+function heredocEnd(line) {
+  const shell = line.match(/<<-?\s*['"]?(\w+)['"]?\s*$/);
+  if (shell) return (next) => next.trim() === shell[1];
+  if (/@['"]\s*$/.test(line)) return (next) => /^['"]@/.test(next.trim());
+  return null;
+}
+
+function inlineMarkdown(parent, text) {
+  for (const part of text.split(/(`[^`]+`|\*\*[^*]+\*\*)/)) {
+    if (/^`[^`]+`$/.test(part)) parent.append(element("code", part.slice(1, -1)));
+    else if (/^\*\*[^*]+\*\*$/.test(part)) parent.append(element("strong", part.slice(2, -2)));
+    else if (part) parent.append(document.createTextNode(part));
+  }
+  return parent;
 }
 
 // --- the run screen: the replay bar ---------------------------------------------------------------
@@ -675,6 +942,7 @@ function setStep(step) {
   view.stepAtEnd = view.step === last;
   view.selectedNode = null;
   view.selectedRow = null;
+  view.selectedTask = null;
   drawReplay();
   drawPanel();
   drawCanvas();
@@ -710,6 +978,7 @@ async function showRun(runId) {
     view.fitted = false;
     view.stepAtEnd = true;
     view.selectedNode = null;
+    view.openFolds.clear();
     buildRunScreen();
   }
   const [detail, overview] = await Promise.all([
@@ -748,6 +1017,13 @@ async function render() {
   }
 }
 
+window.addEventListener("resize", () => {
+  const workspace = view.parts?.workspace;
+  // Fit the width that the user chose (not the current one) to the new window: it comes back when it grows.
+  // Without site data (blocked storage), fit the current width instead.
+  const chosen = savedPanelWidth() || parseFloat(workspace?.style.getPropertyValue("--panel-width") || "");
+  if (workspace && chosen) setPanelWidth(workspace, chosen);
+});
 window.addEventListener("hashchange", () => {
   view.detailText = null;
   if (view.playTimer) clearInterval(view.playTimer);
