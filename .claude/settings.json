@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run \"${CLAUDE_PROJECT_DIR}/.pskill/pskill.py\" hook stop --harness claude-code"
+            "command": "uv run --no-project python -c \"import os, subprocess, sys; root = os.environ.get('CLAUDE_PROJECT_DIR', ''); runner = root + '/.pskill/pskill.py'; arguments = ['uv', 'run', runner, 'hook', 'stop', '--harness', 'claude-code']; sys.exit(subprocess.call(arguments) if os.path.isfile(runner) else 0)\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run \"${CLAUDE_PROJECT_DIR}/.pskill/pskill.py\" hook session-start --harness claude-code"
+            "command": "uv run --no-project python -c \"import os, subprocess, sys; root = os.environ.get('CLAUDE_PROJECT_DIR', ''); runner = root + '/.pskill/pskill.py'; arguments = ['uv', 'run', runner, 'hook', 'session-start', '--harness', 'claude-code']; sys.exit(subprocess.call(arguments) if os.path.isfile(runner) else 0)\""
           }
         ]
       }

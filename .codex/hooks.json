@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run \"$(git rev-parse --show-toplevel)/.pskill/pskill.py\" hook stop --harness codex"
+            "command": "uv run --no-project python -c \"import os, subprocess, sys; root = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip(); runner = root + '/.pskill/pskill.py'; arguments = ['uv', 'run', runner, 'hook', 'stop', '--harness', 'codex']; sys.exit(subprocess.call(arguments) if os.path.isfile(runner) else 0)\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run \"$(git rev-parse --show-toplevel)/.pskill/pskill.py\" hook session-start --harness codex"
+            "command": "uv run --no-project python -c \"import os, subprocess, sys; root = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip(); runner = root + '/.pskill/pskill.py'; arguments = ['uv', 'run', runner, 'hook', 'session-start', '--harness', 'codex']; sys.exit(subprocess.call(arguments) if os.path.isfile(runner) else 0)\""
           }
         ]
       }

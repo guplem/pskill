@@ -252,7 +252,7 @@ def test_sync_writes_the_stubs_and_the_claude_settings(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert (root / ".claude" / "skills" / "plan-work" / "SKILL.md").is_file()
     assert (root / ".agents" / "skills" / "plan-work" / "SKILL.md").is_file()
-    assert "hook stop --harness claude-code" in (root / ".claude" / "settings.json").read_text(encoding="utf-8")
+    assert "'stop', '--harness', 'claude-code'" in (root / ".claude" / "settings.json").read_text(encoding="utf-8")
     assert run_pskill(root, "sync", "--check").returncode == 0
 
 

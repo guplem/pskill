@@ -16,19 +16,21 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pskill_runner.hook_settings import read_json_settings, with_pskill_hooks, write_if_changed
+from pskill_runner.hook_settings import hook_command, read_json_settings, with_pskill_hooks, write_if_changed
 
 HOOKS_RELATIVE_PATH = Path(".codex") / "hooks.json"
 RULES_RELATIVE_PATH = Path(".codex") / "rules" / "pskill.rules"
-# Codex runs hooks from the session's folder, which may be a subfolder. `$(...)` works in bash and PowerShell.
-RUNNER_FOR_HOOKS = 'uv run "$(git rev-parse --show-toplevel)/.pskill/pskill.py"'
+# Codex runs hooks from the session's folder, which may be a subfolder, so the root comes from git.
+PROJECT_ROOT_CODE = (
+    "subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()"
+)
 PSKILL_HOOKS: dict[str, dict[str, Any]] = {
     "Stop": {
-        "hooks": [{"type": "command", "command": f"{RUNNER_FOR_HOOKS} hook stop --harness codex"}],
+        "hooks": [{"type": "command", "command": hook_command(PROJECT_ROOT_CODE, "stop", "codex")}],
     },
     "SessionStart": {
         "matcher": "startup|resume|clear|compact",
-        "hooks": [{"type": "command", "command": f"{RUNNER_FOR_HOOKS} hook session-start --harness codex"}],
+        "hooks": [{"type": "command", "command": hook_command(PROJECT_ROOT_CODE, "session-start", "codex")}],
     },
 }
 RULES_TEXT = """\
