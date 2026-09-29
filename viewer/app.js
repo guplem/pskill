@@ -1,6 +1,8 @@
 // The pskill viewer. It only draws what the local server returns (pskill_runner/viewer_data.py and skill_view.py).
 // Every text from a run goes into the page through textContent, never as HTML.
 
+import { FACT_FIELDS, FIELD_HELP } from "./field_help.js";
+
 const UNFINISHED = ["active", "waiting_for_human", "paused"];
 const POLL_MS = 1000;
 const PLAY_MS = 700;
@@ -162,6 +164,54 @@ function addHint(group, text) {
   title.textContent = text;
   group.prepend(title);
   for (const label of group.querySelectorAll("foreignObject > div")) label.title = text;
+}
+
+// A "?" button for one field of skill.yaml: a hover tooltip, and a dialog with details and examples on a click.
+function helpButton(field) {
+  const help = FIELD_HELP[field];
+  const node = button("?", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    showFieldHelp(field);
+  }, "help-button");
+  node.title = help.short;
+  node.setAttribute("aria-label", `About ${help.title}`);
+  return node;
+}
+
+// A heading or a label with its "?" button after the text.
+function withHelp(tag, text, field, className) {
+  const node = element(tag, null, className ? `${className} with-help` : "with-help");
+  node.append(document.createTextNode(text), helpButton(field));
+  return node;
+}
+
+function showFieldHelp(field) {
+  const help = FIELD_HELP[field];
+  const dialog = element("dialog", null, "help-dialog");
+  const body = element("div", null, "help-body");
+  const head = element("div", null, "help-head");
+  head.append(element("h2", help.title, "mono"), button("Close", () => dialog.close(), "tool small"));
+  body.append(head, element("p", help.short, "help-lead"));
+  for (const paragraph of help.details) body.append(inlineMarkdown(element("p"), paragraph));
+  if (help.examples.length) body.append(element("h3", help.examples.length === 1 ? "Example" : "Examples"));
+  for (const example of help.examples) body.append(element("p", example.caption, "note"), element("pre", example.code));
+  body.append(element("p", "AUTHORING.md in .pskill/ has the full guide to writing skills.", "note"));
+  dialog.append(body);
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close(); // a click on the backdrop
+  });
+  dialog.addEventListener("close", () => dialog.remove());
+  for (const old of document.querySelectorAll(".help-dialog")) old.remove(); // in case a close event never came
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+// The block type with its "?" button, for the head of the side panel on the skill screen.
+function typeLine(type) {
+  const line = element("span", null, "with-help");
+  line.append(blockType(type), helpButton("type"));
+  return line;
 }
 
 async function fetchJson(path) {
@@ -904,7 +954,7 @@ function editForm(details) {
   const { keys, values } = details.editable;
   const form = element("form", null, "edit-form");
   const head = element("div", null, "panel-head");
-  head.append(element("h2", block), blockType(details.type));
+  head.append(element("h2", block), typeLine(details.type));
   const errors = element("pre", null, "errors");
   errors.hidden = true;
   const readers = {};
@@ -916,7 +966,7 @@ function editForm(details) {
     const control = editControl(key, values[key]);
     if (key === "choices") choicesEditor = control;
     readers[key] = control.read;
-    fields.append(editRow(EDIT_LABELS[key] || key, control.node));
+    fields.append(editRow(EDIT_LABELS[key] || key, control.node, key));
   }
   const proseKey = keys.includes("report") ? "report" : keys.includes("instruction") ? "instruction" : null;
   if (proseKey) {
@@ -924,10 +974,10 @@ function editForm(details) {
     area.rows = 8;
     if (details.instruction_file) {
       readers.instruction_text = () => area.value;
-      fields.append(editRow(`${proseKey === "report" ? "Report" : "Instruction"} (the file ${details.instruction_file})`, area));
+      fields.append(editRow(`${proseKey === "report" ? "Report" : "Instruction"} (the file ${details.instruction_file})`, area, proseKey));
     } else {
       readers[proseKey] = () => area.value || null;
-      fields.append(editRow(proseKey === "report" ? "Report (what the agent tells the user)" : "Instruction", area));
+      fields.append(editRow(proseKey === "report" ? "Report (what the agent tells the user)" : "Instruction", area, proseKey));
     }
   }
   if (keys.includes("next")) {
@@ -935,7 +985,7 @@ function editForm(details) {
     const hasChoices = choicesEditor && (choicesEditor.read() || (values.next && typeof values.next === "object" && !Array.isArray(values.next)));
     const nextEditor = hasChoices ? choiceNextEditor(values.next, choicesEditor) : edgeListEditor(toEdges(values.next));
     readers.next = nextEditor.read;
-    fields.append(editRow(EDIT_LABELS.next, nextEditor.node));
+    fields.append(editRow(EDIT_LABELS.next, nextEditor.node, "next"));
   }
   const save = element("button", "Save", "tool primary");
   save.type = "submit";
@@ -970,9 +1020,10 @@ function editForm(details) {
   return form;
 }
 
-function editRow(label, control) {
-  const row = element("label", null, "edit-row");
-  row.append(element("span", label, "edit-label"), control);
+// A div, not a label: a label passes a click on its text to the first button in it, the "?" button.
+function editRow(label, control, field) {
+  const row = element("div", null, "edit-row");
+  row.append(FIELD_HELP[field] ? withHelp("span", label, field, "edit-label") : element("span", label, "edit-label"), control);
   return row;
 }
 
@@ -1152,10 +1203,10 @@ function skillSections() {
     parts.push(section("The skill does not load", element("pre", view.detail.error.join("\n"), "errors")));
     return parts;
   }
-  parts.push(section("Goal", element("p", skill.goal)));
+  parts.push(section(withHelp("h3", "Goal", "goal"), element("p", skill.goal)));
   parts.push(problemsSection());
-  if (skill.inputs.length) parts.push(section("Inputs", fieldList(skill.inputs)));
-  if (skill.outputs.length) parts.push(section("Outputs", fieldList(skill.outputs)));
+  if (skill.inputs.length) parts.push(section(withHelp("h3", "Inputs", "skill_inputs"), fieldList(skill.inputs)));
+  if (skill.outputs.length) parts.push(section(withHelp("h3", "Outputs", "skill_outputs"), fieldList(skill.outputs)));
   parts.push(element("p", "Click a block on the canvas to see its instruction, its fields, and where it can go.", "note"));
   return parts;
 }
@@ -1177,45 +1228,49 @@ function blockSections(details) {
   const head = element("div", null, "panel-head");
   const title = element("div", null, "panel-title");
   title.append(element("h2", block));
-  head.append(title, blockType(details.type));
+  head.append(title, typeLine(details.type));
   head.append(element("p", details.hint, "note panel-hint"));
   const parts = [head];
   if (details.facts.length) {
     const facts = element("dl", null, "facts");
-    for (const [name, value] of details.facts) facts.append(element("dt", name), element("dd", value));
+    for (const [name, value] of details.facts) {
+      facts.append(FACT_FIELDS[name] ? withHelp("dt", name, FACT_FIELDS[name]) : element("dt", name), element("dd", value));
+    }
     parts.push(facts);
   }
   if (details.child_skill) {
     const link = element("a", `Open the skill ${details.child_skill}`, "tool");
     link.href = `#/skill/${encodeURIComponent(details.child_skill)}`;
-    parts.push(section("Child skill", element("p", "This block runs another skill and gets its outputs back.", "note"), link));
+    parts.push(section(withHelp("h3", "Child skill", "skill"), element("p", "This block runs another skill and gets its outputs back.", "note"), link));
   }
-  if (details.command) parts.push(section("Command", element("pre", details.command.join(" "), "command")));
+  if (details.command) parts.push(section(withHelp("h3", "Command", "run"), element("pre", details.command.join(" "), "command")));
   if (details.instruction !== null) {
     const title = details.type === "end" ? "Report" : "Instruction";
     const source = details.instruction_file ? `From ${details.instruction_file}. ` : "";
     parts.push(
       section(
-        title,
+        withHelp("h3", title, details.type === "end" ? "report" : "instruction"),
         element("p", `${source}Values in {{ }} are filled in during a run.`, "note"),
         folded(markdown(details.instruction), `${block}:instruction`),
       ),
     );
   } else if (details.instruction_file) {
-    parts.push(section("Instruction", element("p", `The file ${details.instruction_file} is missing.`, "errors")));
+    const field = details.type === "end" ? "report" : "instruction";
+    const heading = withHelp("h3", field === "report" ? "Report" : "Instruction", field);
+    parts.push(section(heading, element("p", `The file ${details.instruction_file} is missing.`, "errors")));
   }
   if (details.choices.length) {
     const list = element("dl", null, "facts");
     for (const choice of details.choices) list.append(element("dt", choice.choice), element("dd", choice.meaning));
-    parts.push(section("Choices", list));
+    parts.push(section(withHelp("h3", "Choices", "choices"), list));
   }
-  if (details.fields.length) parts.push(section("Output: what the answer must hold", fieldList(details.fields)));
-  if (details.inputs.length) parts.push(section("Inputs to the child skill", valueList(details.inputs)));
-  if (details.outputs.length) parts.push(section("Outputs of the skill", valueList(details.outputs)));
+  if (details.fields.length) parts.push(section(withHelp("h3", "Output: what the answer must hold", "output"), fieldList(details.fields)));
+  if (details.inputs.length) parts.push(section(withHelp("h3", "Inputs to the child skill", "inputs"), valueList(details.inputs)));
+  if (details.outputs.length) parts.push(section(withHelp("h3", "Outputs of the skill", "outputs"), valueList(details.outputs)));
   if (details.exits.length) {
     const list = element("ul");
     for (const exit of details.exits) list.append(element("li", `→ ${exit.to}: ${exit.hint}`));
-    parts.push(section("Where it can go", list));
+    parts.push(section(withHelp("h3", "Where it can go", "next"), list));
   }
   return parts;
 }
@@ -1265,9 +1320,10 @@ function drawLoadError() {
   view.parts.note.textContent = "";
 }
 
+// The title is text, or a heading node (for example one with a "?" button).
 function section(title, ...content) {
   const node = element("section");
-  node.append(element("h3", title), ...content);
+  node.append(typeof title === "string" ? element("h3", title) : title, ...content);
   return node;
 }
 

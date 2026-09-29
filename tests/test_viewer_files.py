@@ -6,6 +6,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from pskill_runner.skill_schema import BLOCK_SCHEMAS
 from pskill_runner.vendoring import vendored_file_map
 from pskill_runner.viewer_data import BLOCK_TYPE_MEANINGS
 
@@ -117,3 +118,33 @@ def test_the_arrow_tips_use_a_theme_color() -> None:
     style = (VIEWER / "style.css").read_text(encoding="utf-8")
 
     assert ".layer .arrowMarkerPath {\n  fill: var(--muted) !important;" in style
+
+
+def test_every_block_field_has_a_help_entry() -> None:
+    help_script = (VIEWER / "field_help.js").read_text(encoding="utf-8")
+    help_entries = set(re.findall(r"^  (\w+): \{$", help_script, re.MULTILINE))
+    block_fields = {field for schema in BLOCK_SCHEMAS.values() for field in schema["properties"]}
+
+    assert block_fields - help_entries == set()
+
+
+def test_every_fact_of_the_skill_screen_has_a_help_entry() -> None:
+    help_script = (VIEWER / "field_help.js").read_text(encoding="utf-8")
+    fact_map = help_script.split("export const FACT_FIELDS = {", 1)[1]
+    mapped_facts = set(re.findall(r'^  "?([\w ]+?)"?: "\w+",$', fact_map, re.MULTILINE))
+    fact_names = set(
+        re.findall(
+            r'facts\.append\(\["([^"]+)"',
+            (REPOSITORY_ROOT / "pskill_runner" / "skill_view.py").read_text(encoding="utf-8"),
+        )
+    )
+
+    assert fact_names - mapped_facts == set()
+
+
+def test_a_help_button_opens_a_dialog_with_the_details() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    assert 'import { FACT_FIELDS, FIELD_HELP } from "./field_help.js";' in script
+    assert "dialog.showModal()" in script
+    assert "node.title = help.short" in script
