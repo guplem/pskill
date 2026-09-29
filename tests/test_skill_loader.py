@@ -7,7 +7,7 @@ import pytest
 from pskill_runner.field_types import FieldSpec
 from pskill_runner.skill_loader import SkillLoadError, load_skill
 from pskill_runner.skill_model import CallBlock, DecisionBlock, Edge, EndBlock, ParallelBlock, ScriptBlock, TaskBlock
-from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 
 def test_load_skill_builds_the_typed_model(tmp_path: Path) -> None:
@@ -27,7 +27,7 @@ def test_load_skill_builds_the_typed_model(tmp_path: Path) -> None:
     decision = skill.blocks["approve_plan"]
     assert isinstance(decision, DecisionBlock)
     assert decision.choices == {"approve": "Accept the plan.", "stop": "Stop without a plan."}
-    assert decision.next == {"approve": "done", "stop": "stopped"}
+    assert decision.next == {"approve": [Edge(to="done")], "stop": [Edge(to="stopped")]}
     end = skill.blocks["stopped"]
     assert isinstance(end, EndBlock)
     assert end.status == "cancelled"
@@ -179,3 +179,16 @@ def test_only_a_script_takes_a_timeout_and_an_end_takes_no_retries(tmp_path: Pat
 
     assert any("blocks.create_plan" in problem and "'timeout_s'" in problem for problem in raised.value.problems)
     assert any("blocks.done" in problem and "'retries'" in problem for problem in raised.value.problems)
+
+
+def test_a_choice_can_take_an_edge_list(tmp_path: Path) -> None:
+    decision = load_skill(write_skill(tmp_path, "per-item", PER_ITEM_SKILL)).blocks["ask_finding"]
+
+    assert isinstance(decision, DecisionBlock)
+    assert decision.next == {
+        "fix": [
+            Edge(to="ask_finding", when="{{ (history.ask_finding | length) < (inputs.findings | length) }}"),
+            Edge(to="done"),
+        ],
+        "stop": [Edge(to="done")],
+    }

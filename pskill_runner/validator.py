@@ -18,6 +18,7 @@ from pskill_runner.skill_model import (
     AnyBlock,
     CallBlock,
     DecisionBlock,
+    Edge,
     EndBlock,
     ParallelBlock,
     ScriptBlock,
@@ -167,16 +168,24 @@ def end_problems(skill: Skill, location: str, block: EndBlock) -> list[Problem]:
 
 
 def edge_problems(skill: Skill, location: str, block: AnyBlock) -> list[Problem]:
-    edges = block_edges(block)
     problems = [
         error(location, "a when must be exactly one {{ ... }}")
-        for edge in edges
+        for edge in block_edges(block)
         if edge.when is not None and not is_single_expression(edge.when)
     ]
-    # Choice maps become edges without a when, so this only fires for a real condition list.
-    if edges and edges[-1].when is not None:
-        problems.append(warning(location, "the last edge has a when, so no edge may match"))
+    for owner, edges in edge_lists(block):
+        if edges and edges[-1].when is not None:
+            problems.append(warning(location, f"{owner}the last edge has a when, so no edge may match"))
     return problems
+
+
+def edge_lists(block: AnyBlock) -> list[tuple[str, list[Edge]]]:
+    """Each list in which the first matching edge wins, with a prefix that names its choice."""
+    if isinstance(block, EndBlock):
+        return []
+    if isinstance(block.next, dict):
+        return [(f"the choice {choice!r}: ", edges) for choice, edges in block.next.items()]
+    return [("", block.next)]
 
 
 def block_output(block: AnyBlock) -> FieldMap | None:

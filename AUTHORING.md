@@ -111,7 +111,28 @@ blocks:
       to: ask_user
     - to: approve
   ```
-- A decision with choices uses a map: one entry per choice, and no other entries.
+- A decision with choices uses a map: one entry per choice, and no other entries. A choice can take one block, or an edge list for when the next block depends on more than the choice.
+- **A per-item loop** asks about one item per visit and keeps the question buttons. Each choice goes back to the same block until every item has an answer:
+  ```yaml
+  ask_finding:
+    type: decision
+    decider: human
+    instruction: "Show finding {{ (history.ask_finding | length) + 1 }} and ask what to do with it."
+    max_visits: 50
+    choices:
+      fix: Fix this finding.
+      skip: Leave this finding.
+    next:
+      fix:
+        - when: "{{ (history.ask_finding | length) < (steps.list_findings.json.findings | length) }}"
+          to: ask_finding
+        - to: fix_findings
+      skip:
+        - when: "{{ (history.ask_finding | length) < (steps.list_findings.json.findings | length) }}"
+          to: ask_finding
+        - to: fix_findings
+  ```
+  While the block is open, `history.ask_finding` holds the earlier answers only. After the answer, it holds this one too, so the edges count every answer.
 - `max_visits: 3` with `on_max_visits: done` caps a loop. Without `on_max_visits`, reaching the cap pauses the run. The validator warns about a loop with no cap.
 
 ## Computed values

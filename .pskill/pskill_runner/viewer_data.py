@@ -174,6 +174,21 @@ def condition_hint(when: str | None, has_other_edges: bool) -> str:
     return " when no condition above matches." if has_other_edges else ""
 
 
+def choice_hint(choice: str, meaning: str | None, when: str | None, has_other_edges: bool) -> str:
+    """When the run takes one edge of a choice: the choice alone, or the choice and its condition."""
+    picks = f'Taken when the decider picks "{choice}"'
+    if when is None and not has_other_edges:
+        return picks + (f": {meaning}" if meaning else ".")
+    return picks + " and" + condition_hint(when, has_other_edges).removeprefix(" when")
+
+
+def split_choice_reason(reason: str) -> tuple[str, str | None]:
+    """The engine logs "choice fix", or "choice fix: {{ ... }}" when a condition of the choice matched."""
+    # Split at ": {{", not ": ": a choice id may hold ": ", and a logged condition always starts with "{{".
+    choice, separator, when = reason.removeprefix("choice ").partition(": {{")
+    return choice, "{{" + when if separator else None
+
+
 def assign_frames(
     rows: list[dict[str, Any]], skills: dict[str, Skill], root: Skill
 ) -> tuple[list[CanvasFrame], list[int | None]]:
@@ -228,13 +243,23 @@ def block_edges(index: int, block: AnyBlock) -> list[CanvasEdge]:
     edges = []
     if isinstance(block, DecisionBlock) and isinstance(block.next, dict):
         choices = block.choices or {}
-        for choice, target in block.next.items():
-            hint = f'Taken when the decider picks "{choice}"' + (f": {choices[choice]}" if choices.get(choice) else ".")
-            edges.append(
-                CanvasEdge(
-                    source, node_id(index, target), choice, "choice", index, block.id, target, hint, choice=choice
+        for choice, choice_edges in block.next.items():
+            for edge in choice_edges:
+                label = choice if edge.when is None else f"{choice}: {condition_text(edge.when)}"
+                edges.append(
+                    CanvasEdge(
+                        source,
+                        node_id(index, edge.to),
+                        label,
+                        "choice",
+                        index,
+                        block.id,
+                        edge.to,
+                        choice_hint(choice, choices.get(choice), edge.when, len(choice_edges) > 1),
+                        when=edge.when,
+                        choice=choice,
+                    )
                 )
-            )
     else:
         next_edges = block.next if isinstance(block.next, list) else []
         for edge in next_edges:
@@ -353,7 +378,8 @@ def arrival_edge(row: dict[str, Any], frame: int, edges: list[CanvasEdge]) -> Ca
         return next(iter([edge for edge in matches if matches_reason(edge, reason)] or matches), None)
     own = [edge for edge in candidates if edge.from_block == from_block]
     if reason.startswith("choice "):
-        exact = [edge for edge in own if edge.choice == reason.removeprefix("choice ")]
+        choice, when = split_choice_reason(reason)
+        exact = [edge for edge in own if edge.choice == choice and edge.when == when]
     elif reason.startswith("visit cap of "):
         exact = [edge for edge in own if edge.kind == "visit_cap"]
     else:
@@ -413,7 +439,10 @@ def arrival_text(row: dict[str, Any], called_by: str | None) -> str:
         return f"{called_by or chain[-2]} (call)"
     if reason == "always":
         return str(row["from"])
-    if reason.startswith(("choice ", "visit cap of ")):
+    if reason.startswith("choice "):
+        choice, when = split_choice_reason(reason)
+        return f"{row['from']} (choice {choice}" + (f", {condition_text(when)})" if when else ")")
+    if reason.startswith("visit cap of "):
         return f"{row['from']} ({reason})"
     return f"{row['from']} ({condition_text(reason)})"
 

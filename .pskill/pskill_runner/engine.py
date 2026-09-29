@@ -543,7 +543,9 @@ class Run:
         if isinstance(block, EndBlock):
             raise RunError("An end block has no next block.")
         if isinstance(block, DecisionBlock) and isinstance(block.next, dict):
-            target, reason = block.next[value["choice"]], f"choice {value['choice']}"
+            choice = value["choice"]
+            target, condition = self.choose_edge(block.next[choice])
+            reason = f"choice {choice}" if condition == "always" else f"choice {choice}: {condition}"
         else:
             edges = block.next if isinstance(block.next, list) else []
             target, reason = self.choose_edge(edges)

@@ -8,8 +8,15 @@ from typing import Any
 from pskill_runner.engine import start_run, submit_answer
 from pskill_runner.project import Project, find_project
 from pskill_runner.skill_model import ScriptBlock
-from pskill_runner.viewer_data import node_hint, run_detail, runs_overview, task_row_sizes, timeline_rows
-from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from pskill_runner.viewer_data import (
+    node_hint,
+    run_detail,
+    runs_overview,
+    split_choice_reason,
+    task_row_sizes,
+    timeline_rows,
+)
+from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 from tests.test_engine_blocks import (
     CHILD_SKILL,
     PARALLEL_SKILL,
@@ -889,3 +896,38 @@ def test_a_node_hint_names_the_blocks_own_retries_and_timeout() -> None:
         "The command stops after 30 s."
     )
     assert node_hint(replace(script, retries=4, timeout_s=None)).endswith("It tries again up to 4 times when it fails.")
+
+
+def test_a_choice_with_an_edge_list_draws_one_edge_per_condition(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "per-item", PER_ITEM_SKILL)
+    project = find_project(tmp_path)
+    run_id, _ = start_run(project, "per-item", {"findings": ["a", "b"]}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "choice: fix\nrationale: Real.\n")
+    submit_answer(project, run_id, "choice: fix\nrationale: Real too.\n")
+
+    detail = detail_of(project, run_id)
+
+    condition = "(history.ask_finding | length) < (inputs.findings | length)"
+    template = detail["canvas"]["template"]
+    assert f'  f0_ask_finding -->|"fix: {condition.replace("<", "#lt;")}"| f0_ask_finding\n' in template
+    assert '  f0_ask_finding -->|"fix"| f0_done\n' in template
+    assert '  f0_ask_finding -->|"stop"| f0_done\n' in template
+    hints = {edge["id"]: edge["hint"] for edge in detail["canvas"]["edges"]}
+    assert hints["L_f0_ask_finding_f0_ask_finding_0"] == f'Taken when the decider picks "fix" and {condition}.'
+    assert hints["L_f0_ask_finding_f0_done_0"] == 'Taken when the decider picks "fix" and no condition above matches.'
+    assert hints["L_f0_ask_finding_f0_done_2"] == 'Taken when the decider picks "stop": Stop asking.'
+    rows = detail["timeline"]
+    assert [row["edge"] for row in rows] == [
+        "L_start_f0_ask_finding_0",
+        "L_f0_ask_finding_f0_ask_finding_0",
+        "L_f0_ask_finding_f0_done_0",
+    ]
+    assert [row["arrival"] for row in rows[1:]] == [
+        f"ask_finding (choice fix, {condition})",
+        "ask_finding (choice fix)",
+    ]
+
+
+def test_a_choice_reason_splits_only_before_its_condition() -> None:
+    assert split_choice_reason("choice yes: go") == ("yes: go", None)
+    assert split_choice_reason("choice fix: {{ a < b }}") == ("fix", "{{ a < b }}")
