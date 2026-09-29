@@ -15,7 +15,7 @@ from pskill_runner.project import Project
 from pskill_runner.run_records import RunInfo
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, utc_now
 from pskill_runner.skill_loader import SkillLoadError, load_skill
-from pskill_runner.skill_model import AnyBlock, DecisionBlock, EndBlock, Skill
+from pskill_runner.skill_model import AnyBlock, CallBlock, DecisionBlock, EndBlock, Skill
 
 FINISHED_STATUSES = ("succeeded", "failed", "cancelled")
 FAILED_PAUSE_REASONS = ("block_failed", "runner_error")
@@ -23,6 +23,14 @@ EDGE_LABEL_LIMIT = 60
 SCRIPT_FIELDS = ("argv", "exit_code", "stdout", "stderr", "duration_ms", "problem")
 START_NODE = "start"
 DOTTED_EDGE_KINDS = ("visit_cap", "call")
+BLOCK_TYPE_MEANINGS = {
+    "task": "the agent does a piece of work and returns a typed answer.",
+    "decision": "one choice is picked from a list, or a question gets an answer.",
+    "parallel": "subagents do one task per list item at the same time, and the results join into one list.",
+    "script": "the runner runs a command. No AI model takes part.",
+    "call": "the runner runs another skill and gets its outputs.",
+    "end": "the skill finishes here with a status and outputs.",
+}
 
 
 # --- the canvas: frames, nodes, and edges --------------------------------------------------------
@@ -39,7 +47,10 @@ class CanvasFrame:
 
 @dataclass
 class CanvasEdge:
-    """One edge of the template. `text` is the plain label; `label` is the same text, safe for Mermaid."""
+    """One edge of the template. `text` is the plain label; `label` is the same text, safe for Mermaid.
+
+    `hint` says in plain words when the run takes the edge, with the whole condition.
+    """
 
     source: str
     target: str
@@ -48,6 +59,7 @@ class CanvasEdge:
     frame: int
     from_block: str | None
     to_block: str
+    hint: str
     when: str | None = None
     choice: str | None = None
     id: str = ""
@@ -77,10 +89,46 @@ def mermaid_text(text: str) -> str:
     return text
 
 
+def whole_condition_text(condition: str) -> str:
+    """A `when` as plain text, without the braces."""
+    return condition.strip().removeprefix("{{").removesuffix("}}").strip()
+
+
 def condition_text(condition: str) -> str:
     """A `when` as plain text: without the braces, and shortened."""
-    text = condition.strip().removeprefix("{{").removesuffix("}}").strip()
+    text = whole_condition_text(condition)
     return text if len(text) <= EDGE_LABEL_LIMIT else text[: EDGE_LABEL_LIMIT - 1] + "…"
+
+
+def node_hint(block: AnyBlock) -> str:
+    """The block in plain words: its description, what its type does, and who decides or what it runs."""
+    type_name = block_type_name(block)
+    lines = [block.description] if block.description else []
+    lines.append(f"{type_name} block: {BLOCK_TYPE_MEANINGS[type_name]}")
+    if isinstance(block, DecisionBlock):
+        human = block.decider == "human"
+        lines.append(
+            "The user decides in an interactive run. The agent decides in an autonomous run."
+            if human
+            else "The agent decides."
+        )
+    if isinstance(block, CallBlock):
+        lines.append(f"Skill: {block.skill}.")
+    if isinstance(block, EndBlock):
+        lines.append(f"Status: {block.status}.")
+    if block.max_visits is not None:
+        lines.append(f"It runs at most {block.max_visits} times.")
+    return "\n".join(lines)
+
+
+def condition_hint(when: str | None, has_other_edges: bool) -> str:
+    """The end of a hint sentence: when the run takes one edge of an edge list (the first match wins).
+
+    Empty for the only edge of a list, which the run always takes.
+    """
+    if when is not None:
+        return f" when {whole_condition_text(when)}."
+    return " when no condition above matches." if has_other_edges else ""
 
 
 def assign_frames(
@@ -136,19 +184,33 @@ def block_edges(index: int, block: AnyBlock) -> list[CanvasEdge]:
     source = node_id(index, block.id)
     edges = []
     if isinstance(block, DecisionBlock) and isinstance(block.next, dict):
+        choices = block.choices or {}
         for choice, target in block.next.items():
+            hint = f'Taken when the decider picks "{choice}"' + (f": {choices[choice]}" if choices.get(choice) else ".")
             edges.append(
-                CanvasEdge(source, node_id(index, target), choice, "choice", index, block.id, target, choice=choice)
+                CanvasEdge(
+                    source, node_id(index, target), choice, "choice", index, block.id, target, hint, choice=choice
+                )
             )
     else:
-        for edge in block.next if isinstance(block.next, list) else []:
+        next_edges = block.next if isinstance(block.next, list) else []
+        for edge in next_edges:
             text = condition_text(edge.when) if edge.when is not None else None
+            ending = condition_hint(edge.when, len(next_edges) > 1)
+            hint = f"Taken{ending}" if ending else "Always taken."
             edges.append(
-                CanvasEdge(source, node_id(index, edge.to), text, "next", index, block.id, edge.to, when=edge.when)
+                CanvasEdge(
+                    source, node_id(index, edge.to), text, "next", index, block.id, edge.to, hint, when=edge.when
+                )
             )
     if block.on_max_visits is not None:
         target = block.on_max_visits
-        edges.append(CanvasEdge(source, node_id(index, target), "visit cap", "visit_cap", index, block.id, target))
+        hint = (
+            f"Taken instead when the run tries to enter {block.id} after its {block.max_visits} visits (the visit cap)."
+        )
+        edges.append(
+            CanvasEdge(source, node_id(index, target), "visit cap", "visit_cap", index, block.id, target, hint)
+        )
     return edges
 
 
@@ -158,11 +220,15 @@ def frame_edges(index: int, frame: CanvasFrame) -> list[CanvasEdge]:
     if frame.parent is None:
         for edge in frame.skill.entry:
             text = condition_text(edge.when) if edge.when is not None else None
-            edges.append(CanvasEdge(START_NODE, node_id(0, edge.to), text, "entry", 0, None, edge.to, when=edge.when))
+            hint = "The run starts here" + (condition_hint(edge.when, len(frame.skill.entry) > 1) or ".")
+            edges.append(
+                CanvasEdge(START_NODE, node_id(0, edge.to), text, "entry", 0, None, edge.to, hint, when=edge.when)
+            )
     elif frame.called_by is not None:
         caller = node_id(frame.parent, frame.called_by)
+        hint = f"The call block {frame.called_by} runs the skill {frame.skill.id}, which starts here."
         for target in dict.fromkeys(edge.to for edge in frame.skill.entry):
-            edges.append(CanvasEdge(caller, node_id(index, target), None, "call", index, None, target))
+            edges.append(CanvasEdge(caller, node_id(index, target), None, "call", index, None, target, hint))
     for block in frame.skill.blocks.values():
         edges += block_edges(index, block)
     return edges
@@ -393,6 +459,7 @@ def run_canvas(
             "skill_id": frame.skill.id,
             "block": block.id,
             "type": block_type_name(block),
+            "hint": node_hint(block),
         }
         for index, frame in enumerate(frames)
         for block in frame.skill.blocks.values()
@@ -403,7 +470,14 @@ def run_canvas(
         "labels": {node["id"]: node_label(node["block"], [node["type"]], []) for node in nodes},
         "nodes": nodes,
         "edges": [
-            {"id": edge.id, "source": edge.source, "target": edge.target, "label": edge.text, "kind": edge.kind}
+            {
+                "id": edge.id,
+                "source": edge.source,
+                "target": edge.target,
+                "label": edge.text,
+                "kind": edge.kind,
+                "hint": edge.hint,
+            }
             for edge in edges
         ],
         "current": current_step(info, annotated),
