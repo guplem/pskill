@@ -710,6 +710,10 @@ details[open] summary {
   display: none;
 }
 
+.fold.fits .fold-body {
+  max-height: none;
+}
+
 .fold-toggle {
   padding: 4px 0 0;
   border: none;
