@@ -1,9 +1,11 @@
 """Tests for pskill_runner.viewer_server: the local JSON API and the static viewer files."""
 
+import io
 import json
 import threading
 import urllib.error
 import urllib.request
+import zipfile
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -113,3 +115,40 @@ def test_an_unknown_skill_is_not_found(server: ThreadingHTTPServer) -> None:
 
     assert status == 404
     assert json.loads(body) == {"error": "There is no skill with this id."}
+
+
+def test_the_export_endpoint_downloads_the_skill_as_a_zip(server: ThreadingHTTPServer) -> None:
+    url = f"http://127.0.0.1:{server.server_address[1]}/api/skills/plan-work/export"
+    with urllib.request.urlopen(url, timeout=10) as response:
+        headers = response.headers
+        body = response.read()
+
+    assert headers["Content-Type"] == "application/zip"
+    assert headers["Content-Disposition"] == 'attachment; filename="plan-work.zip"'
+    assert zipfile.ZipFile(io.BytesIO(body)).namelist() == ["plan-work/SKILL.md"]
+
+
+def test_the_export_of_an_unknown_skill_is_not_found(server: ThreadingHTTPServer) -> None:
+    status, _, body = get(server, "/api/skills/missing/export")
+
+    assert status == 404
+    assert "missing" in json.loads(body)["error"]
+
+
+def test_a_skill_named_export_gets_its_detail_not_a_download(tmp_path: Path) -> None:
+    write_skill(
+        tmp_path / ".pskill" / "skills", "export", PLAN_SKILL.replace("id: plan-work", "id: export"), PLAN_SKILL_FILES
+    )
+    viewer_folder = tmp_path / "viewer"
+    viewer_folder.mkdir()
+    running_server = make_server(find_project(tmp_path), viewer_folder, port=0)
+    thread = threading.Thread(target=running_server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, content_type, body = get(running_server, "/api/skills/export")
+    finally:
+        running_server.shutdown()
+        running_server.server_close()
+
+    assert (status, content_type) == (200, "application/json; charset=utf-8")
+    assert json.loads(body)["skill"]["id"] == "export"

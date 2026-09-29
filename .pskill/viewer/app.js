@@ -400,6 +400,16 @@ function drawSkillTopbar() {
   const warnings = view.detail.problems.length - errors;
   if (errors) parts.push(element("span", `${errors} error${errors === 1 ? "" : "s"}`, "pill state-failed"));
   if (warnings) parts.push(element("span", `${warnings} warning${warnings === 1 ? "" : "s"}`, "pill state-now"));
+  if (!view.detail.error && !errors) {
+    // The server builds the export (skill_export.py); the page only offers the download.
+    const exportLink = element("a", "Export as Markdown", "tool");
+    exportLink.href = `/api/skills/${encodeURIComponent(skillId)}/export`;
+    exportLink.download = `${skillId}.zip`;
+    exportLink.title =
+      "Download this skill as a plain SKILL.md that any agent can follow without pskill, with its scripts, " +
+      "its subagent roles, and its child skills. Nothing checks the order then: the agent follows the text.";
+    parts.push(exportLink);
+  }
   status.replaceChildren(...parts);
 }
 

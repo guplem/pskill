@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Export a skill as Markdown:** the skill screen has an "Export as Markdown" button. It downloads a zip with a plain `SKILL.md` that any agent can follow without pskill: every block is a numbered step, every edge a "go to step N" line, and every `{{ }}` value a plain name. The skill's scripts, its subagent roles, and its child skills come with it.
 - **A Skills screen in the viewer:** it lists every skill, also a skill that never ran. Open one to see its graph without a run. Click a block to see its instruction, its fields, its choices, and where it can go. A call block links to its child skill. The screen also shows what `pskill validate` finds. A run links to its skill's graph.
 - **A small start dot:** the graph starts at a small dot instead of a large circle.
 - **A choice can lead to different blocks:** in a decision with choices, a choice can take an edge list instead of one block. The runner follows the choice, then the first matching edge. A per-item loop can now keep the question buttons; `AUTHORING.md` shows the pattern.

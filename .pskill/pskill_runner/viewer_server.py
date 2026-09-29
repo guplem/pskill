@@ -1,10 +1,11 @@
 """`pskill view`: a small local web server for the read-only viewer (SPEC.md section 14).
 
-It serves the static files of `viewer/` and four JSON endpoints (runs and skills). It listens on 127.0.0.1
-only, and reads the files on every request, so it never shows stale state.
+It serves the static files of `viewer/`, four JSON endpoints (runs and skills), and a skill export.
+It listens on 127.0.0.1 only, and reads the files on every request, so it never shows stale state.
 """
 
 import json
+import re
 import webbrowser
 from functools import partial
 from http import HTTPStatus
@@ -14,10 +15,12 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from pskill_runner.project import Project
+from pskill_runner.skill_export import ExportError, export_zip
 from pskill_runner.skill_view import skill_detail, skills_overview
 from pskill_runner.viewer_data import run_detail, runs_overview
 
 LOCAL_HOST = "127.0.0.1"
+EXPORT_PATH = re.compile(r"/api/skills/([^/]+)/export")
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
@@ -42,6 +45,8 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": "There is no run with this id."})
             else:
                 self.send_json(HTTPStatus.OK, detail)
+        elif export_match := EXPORT_PATH.fullmatch(path):
+            self.send_export(export_match[1])
         elif path == "/api/skills":
             self.send_json(HTTPStatus.OK, skills_overview(self.project))
         elif path.startswith("/api/skills/"):
@@ -52,6 +57,16 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.OK, skill)
         else:
             self.send_viewer_file(path)
+
+    def send_export(self, skill_id: str) -> None:
+        """The skill as plain Markdown skills in a zip file, as a download (issue #55)."""
+        try:
+            archive = export_zip(self.project, skill_id)
+        except ExportError as error:
+            self.send_json(HTTPStatus.NOT_FOUND, {"error": str(error)})
+            return
+        disposition = f'attachment; filename="{skill_id}.zip"'
+        self.send_body(HTTPStatus.OK, "application/zip", archive, {"Content-Disposition": disposition})
 
     def send_json(self, status: HTTPStatus, data: Any) -> None:
         self.send_body(status, "application/json; charset=utf-8", json.dumps(data).encode("utf-8"))
@@ -65,9 +80,13 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_body(HTTPStatus.OK, CONTENT_TYPES[file_path.suffix], file_path.read_bytes())
 
-    def send_body(self, status: HTTPStatus, content_type: str, body: bytes) -> None:
+    def send_body(
+        self, status: HTTPStatus, content_type: str, body: bytes, headers: dict[str, str] | None = None
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

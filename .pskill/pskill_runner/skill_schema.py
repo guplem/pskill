@@ -4,6 +4,7 @@ The loader checks the top level first, then each block against the schema of its
 This gives one clear message per problem instead of one vague message for the whole file.
 """
 
+import re
 from typing import Any
 
 FIELD_TYPES = ["string", "integer", "number", "boolean", "array", "object"]
@@ -45,6 +46,8 @@ FIELD_SPEC_SCHEMA: dict[str, Any] = {
 }
 
 BLOCK_ID_PATTERN = "^[a-z0-9_]{1,64}$"
+SKILL_ID_PATTERN = "^[a-z0-9]+(-[a-z0-9]+)*$"
+SKILL_ID_MAX_LENGTH = 64
 
 TOP_LEVEL_SCHEMA: dict[str, Any] = {
     **FIELD_SPEC_SCHEMA,
@@ -54,7 +57,7 @@ TOP_LEVEL_SCHEMA: dict[str, Any] = {
     "patternProperties": {"^x-": {}},
     "properties": {
         "schema": {"const": "pskill/v1"},
-        "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64},
+        "id": {"type": "string", "pattern": SKILL_ID_PATTERN, "maxLength": SKILL_ID_MAX_LENGTH},
         "description": {"type": "string"},
         "goal": {"type": "string"},
         "invocation": {"enum": ["auto", "manual", "internal"]},
@@ -69,6 +72,12 @@ TOP_LEVEL_SCHEMA: dict[str, Any] = {
         },
     },
 }
+
+
+def is_skill_id(text: str) -> bool:
+    """Whether a text can be a skill id, so it is also safe as one folder name in `.pskill/skills/`."""
+    return len(text) <= SKILL_ID_MAX_LENGTH and re.match(SKILL_ID_PATTERN, text) is not None
+
 
 COMMON_BLOCK_PROPERTIES: dict[str, Any] = {
     "type": {"type": "string"},

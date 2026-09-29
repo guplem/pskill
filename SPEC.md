@@ -1136,6 +1136,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 | `GET /api/runs/<id>` | `run.json`, the canvas, the timeline rows, and the current state. |
 | `GET /api/skills` | One row per skill in `.pskill/skills/`: description, invocation, block count, run count, and the load error of a skill that does not load. |
 | `GET /api/skills/<id>` | The skill's facts, its canvas (one frame, no run parts), the details of each block, and the `pskill validate` problems, or the load error. |
+| `GET /api/skills/<id>/export` | The skill as plain Markdown skills, in a zip file (section 14.1). |
 
 **Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, and dashed grey for not visited. Taken edges are solid blue. Each block type has its own icon, drawn for pskill as inline SVG: on its node above the block name, and next to the type in the side panel. The page follows the system's dark mode.
 
@@ -1163,6 +1164,20 @@ The three proof skills together must exercise every runtime feature. pytest fixt
    - The side panel with nothing selected: the goal, the inputs and outputs, and the `pskill validate` problems.
    - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A call block links to its child skill's screen.
    - A skill that does not load shows its load error instead of a graph.
+   - An "Export as Markdown" button downloads the export (section 14.1).
+
+### 14.1 Export as Markdown
+
+`skill_export.py` turns a skill into a plain `SKILL.md` that any agent can follow without pskill. No runner checks the agent then, so the export only describes the graph as clearly as it can:
+
+- **Frontmatter:** `name` and `description`, plus `disable-model-invocation: true` for a `manual` or `internal` skill.
+- **Steps:** one `## Step N: <block>` heading per block, in graph order (breadth first from the entry). A short "How to follow this skill" part comes first.
+- **Edges:** "go to step N" lines, with each condition as a plain expression. A visit cap becomes "Do this step at most N times".
+- **Values:** `{{ steps.x.y }}` becomes `x.y`, `history.x` becomes `x.all_visits`, and `{% %}` tags become words. Inside the author's own code, a value stays a bare name.
+- **Block types:** a human decision asks the user, a script is a command that the agent runs, a parallel block uses subagents or does the items one by one, and an end step names its status, outputs, and report.
+- **Files:** the zip holds `<skill>/SKILL.md`, the skill's `scripts/`, and each pskill agent that it uses as `<skill>/subagents/<name>.md`. (Not `agents/`: Codex reads `agents/openai.yaml` there.)
+- **Child skills:** each child skill of a call block is exported as its own folder in the same zip. The call step tells the agent to follow it, then to come back.
+- **The run state file:** a script that reads `PSKILL_STATE_FILE` gets a note: write a JSON file with `inputs` and `steps`, and set the variable to its path.
 
 ---
 

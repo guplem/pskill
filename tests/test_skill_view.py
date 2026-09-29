@@ -193,3 +193,10 @@ def test_a_missing_instruction_file_is_named_instead_of_failing(tmp_path: Path) 
     assert approve_plan["instruction"] is None
     assert approve_plan["instruction_file"] == "instructions/approve_plan.md"
     assert any("approve_plan.md" in problem["message"] for problem in detail["problems"])
+
+
+def test_an_id_that_is_not_a_skill_id_has_no_detail(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    write_skill(tmp_path / "outside", "evil", PLAN_SKILL.replace("id: plan-work", "id: evil"), PLAN_SKILL_FILES)
+
+    assert skill_detail(project, "../../outside/evil") is None
