@@ -1,5 +1,6 @@
 """Tests for pskill_runner.viewer_data: everything the viewer shows, built on the server side."""
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -7,12 +8,48 @@ from pskill_runner.engine import start_run, submit_answer
 from pskill_runner.project import Project, find_project
 from pskill_runner.viewer_data import run_detail, runs_overview
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_engine_blocks import CHILD_SKILL, PARENT_SKILL, SCRIPT_SKILL
+from tests.test_engine_blocks import CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
 
 QUESTION = "status: question\nplan: Draft.\nquestion: Which database?\n"
 FINISHED = "status: finished\nplan: Use Postgres.\n"
 USER_ANSWER = "answer: Postgres.\n$answered_by: human\n"
 APPROVE = "choice: approve\nrationale: Fine.\n$answered_by: human\n"
+
+TWO_ROADS_SKILL = """\
+schema: pskill/v1
+id: two-roads
+description: Two choices lead to one block.
+goal: Pick a road.
+entry: pick
+blocks:
+  pick:
+    type: decision
+    decider: agent
+    instruction: "Pick a road."
+    choices:
+      left: Go left.
+      right: Go right.
+    next: {left: done, right: done}
+  done:
+    type: end
+    status: succeeded
+"""
+
+FAILING_SKILL = """\
+schema: pskill/v1
+id: failing
+description: Runs a script that fails.
+goal: Fail.
+entry: break_it
+blocks:
+  break_it:
+    type: script
+    run: [python, -c, "import sys; sys.exit(1)"]
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
 
 
 def make_project(tmp_path: Path) -> Project:
@@ -20,7 +57,19 @@ def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "scripted", SCRIPT_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "parent", PARENT_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "child", CHILD_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "two-roads", TWO_ROADS_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "failing", FAILING_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "fanout", PARALLEL_SKILL)
+    (tmp_path / ".pskill" / "agents").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".pskill" / "agents" / "checker.md").write_text("You check facts.", encoding="utf-8")
     return find_project(tmp_path)
+
+
+def run_parent_to_the_end(project: Project) -> str:
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello.\n")
+    submit_answer(project, run_id, "text: Hi Ada.\n")
+    return run_id
 
 
 def run_to_the_end(project: Project) -> str:
@@ -106,10 +155,11 @@ def test_a_step_after_a_visit_cap_arrives_by_the_visit_cap_edge(tmp_path: Path) 
         submit_answer(project, run_id, QUESTION)
         submit_answer(project, run_id, USER_ANSWER)
 
-    last_row = detail_of(project, run_id)["timeline"][-1]
+    rows = detail_of(project, run_id)["timeline"]
 
-    assert last_row["node"] == "f0_stopped"
-    assert last_row["edge"] == "L_f0_create_plan_f0_stopped_0"
+    assert rows[-1]["node"] == "f0_stopped"
+    assert rows[-1]["edge"] == "L_f0_create_plan_f0_stopped_0"
+    assert rows[-2]["left_by"] == {"to": "stopped", "label": "visit cap of create_plan"}
 
 
 def test_each_step_has_the_label_of_its_node_after_the_step(tmp_path: Path) -> None:
@@ -134,7 +184,7 @@ def test_human_steps_are_marked_and_each_step_knows_where_it_went_next(tmp_path:
     rows = detail_of(project, run_id)["timeline"]
 
     assert [row["asks_human"] for row in rows] == [False, True, False, True, False]
-    assert rows[0]["left_by"] == {"to": "ask_user", "label": "steps.create_plan.status == #39;question#39;"}
+    assert rows[0]["left_by"] == {"to": "ask_user", "label": "steps.create_plan.status == 'question'"}
     assert rows[3]["left_by"] == {"to": "done", "label": "approve"}
     assert rows[-1]["left_by"] is None
 
@@ -147,6 +197,98 @@ def test_the_canvas_names_the_current_step_and_its_state(tmp_path: Path) -> None
 
     assert detail_of(project, open_run)["canvas"]["current"] == {"node": "f0_ask_user", "state": "waiting"}
     assert detail_of(project, finished_run)["canvas"]["current"] is None
+
+
+def test_repeated_edges_between_two_nodes_are_numbered_like_mermaid(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "two-roads", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "choice: right\nrationale: Shorter.\n")
+
+    detail = detail_of(project, run_id)
+
+    edge_ids = [edge["id"] for edge in detail["canvas"]["edges"]]
+    assert "L_f0_pick_f0_done_0" in edge_ids
+    assert "L_f0_pick_f0_done_2" in edge_ids
+    assert detail["timeline"][-1]["edge"] == "L_f0_pick_f0_done_2"
+
+
+def test_a_call_block_leaves_by_the_edge_after_its_child_returned(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = run_parent_to_the_end(project)
+
+    rows = detail_of(project, run_id)["timeline"]
+
+    assert [row["node"] for row in rows] == ["f0_greet", "f0_child", "f1_greet", "f1_done", "f0_done"]
+    call_row = rows[1]
+    assert call_row["left_by"] == {"to": "done", "label": "steps.child.status == 'succeeded'"}
+    assert call_row["label"].endswith(" · succeeded")
+    assert rows[-1]["edge"] == "L_f0_child_f0_done_0"
+
+
+def test_a_child_without_its_skill_copy_gets_no_node(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello.\n")
+    shutil.rmtree(project.runs_folder / run_id / "skills" / "child")
+
+    detail = detail_of(project, run_id)
+
+    child_row = detail["timeline"][-1]
+    assert child_row["node"] is None
+    assert child_row["edge"] is None
+    assert "f1_greet" not in detail["canvas"]["template"]
+
+
+def test_rows_get_their_texts_even_without_a_canvas(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, QUESTION)
+    shutil.rmtree(project.runs_folder / run_id / "skills" / "plan-work")
+
+    detail = detail_of(project, run_id)
+
+    assert detail["canvas"] is None
+    first, second = detail["timeline"]
+    assert first["node"] is None
+    assert first["arrival"] == "the start"
+    assert first["summary"].startswith("task · ")
+    assert second["arrival"] == "create_plan (steps.create_plan.status == 'question')"
+
+
+def test_an_autonomous_run_never_waits_for_the_user(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="autonomous", harness="generic")
+    submit_answer(project, run_id, QUESTION)
+
+    detail = detail_of(project, run_id)
+
+    assert detail["timeline"][-1]["asks_human"] is False
+    assert detail["canvas"]["current"] == {"node": "f0_ask_user", "state": "now"}
+
+
+def test_the_current_step_is_now_for_the_agent_and_failed_after_a_failed_script(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    agent_run, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+    failed_run, _ = start_run(project, "failing", {}, mode="interactive", harness="generic")
+    child_run, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, child_run, "text: Hello.\n")
+
+    assert detail_of(project, agent_run)["canvas"]["current"] == {"node": "f0_create_plan", "state": "now"}
+    assert detail_of(project, failed_run)["canvas"]["current"] == {"node": "f0_break_it", "state": "failed"}
+    assert detail_of(project, child_run)["canvas"]["current"] == {"node": "f1_greet", "state": "now"}
+
+
+def test_a_one_by_one_parallel_block_keeps_its_final_output(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+    submit_answer(project, run_id, "wrong: [x]\n", task=1)
+
+    check_rows = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "check"]
+
+    assert [row["task"] for row in check_rows] == [0, 1]
+    assert check_rows[-1]["output"] == {"results": [{"wrong": []}, {"wrong": ["x"]}]}
+    assert check_rows[-1]["label"].endswith(" · 2 tasks")
 
 
 # --- the runs overview and the run detail ------------------------------------------------------
