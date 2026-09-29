@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 (2026-09-29)
+
+A fix for projects that have the hooks but not the runner.
 
 - **Hooks without the runner:** the hook commands now do nothing when `.pskill/pskill.py` is missing. Before, `uv` failed with exit code 2, which Claude Code and Codex read as "do not stop", so the agent was pushed on at every stop. The new commands also work in bash, PowerShell, and cmd. Run `pskill update` (or `pskill sync`) to get them.
 
