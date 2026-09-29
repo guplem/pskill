@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-09-29)
+
+A Skills screen that shows, exports, and edits each skill, and more ways to route and retry.
 
 - **Edit a skill in the viewer:** on the skill screen, "Edit" lets you change a block (its instruction, edges, choices, visit cap, retries, and more), add a block, or delete one. A save writes `skill.yaml`: only the changed block's lines change, and its comments stay. A change that would break the file's structure is refused. The runner now needs one more package, `ruamel.yaml`; `uv` installs it on the next run.
 - **Export a skill as Markdown:** the skill screen has an "Export as Markdown" button. It downloads a zip with a plain `SKILL.md` that any agent can follow without pskill: every block is a numbered step, every edge a "go to step N" line, and every `{{ }}` value a plain name. The skill's scripts, its subagent roles, and its child skills come with it.
