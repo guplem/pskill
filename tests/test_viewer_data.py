@@ -8,7 +8,14 @@ from typing import Any
 from pskill_runner.engine import start_run, submit_answer
 from pskill_runner.project import Project, find_project
 from pskill_runner.skill_model import ScriptBlock
-from pskill_runner.viewer_data import node_hint, run_detail, runs_overview, task_row_sizes, timeline_rows
+from pskill_runner.viewer_data import (
+    node_hint,
+    run_detail,
+    runs_overview,
+    split_choice_reason,
+    task_row_sizes,
+    timeline_rows,
+)
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 from tests.test_engine_blocks import (
     CHILD_SKILL,
@@ -919,3 +926,8 @@ def test_a_choice_with_an_edge_list_draws_one_edge_per_condition(tmp_path: Path)
         f"ask_finding (choice fix, {condition})",
         "ask_finding (choice fix)",
     ]
+
+
+def test_a_choice_reason_splits_only_before_its_condition() -> None:
+    assert split_choice_reason("choice yes: go") == ("yes: go", None)
+    assert split_choice_reason("choice fix: {{ a < b }}") == ("fix", "{{ a < b }}")

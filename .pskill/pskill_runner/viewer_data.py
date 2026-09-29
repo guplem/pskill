@@ -184,8 +184,9 @@ def choice_hint(choice: str, meaning: str | None, when: str | None, has_other_ed
 
 def split_choice_reason(reason: str) -> tuple[str, str | None]:
     """The engine logs "choice fix", or "choice fix: {{ ... }}" when a condition of the choice matched."""
-    choice, _, when = reason.removeprefix("choice ").partition(": ")
-    return choice, when or None
+    # Split at ": {{", not ": ": a choice id may hold ": ", and a logged condition always starts with "{{".
+    choice, separator, when = reason.removeprefix("choice ").partition(": {{")
+    return choice, "{{" + when if separator else None
 
 
 def assign_frames(
