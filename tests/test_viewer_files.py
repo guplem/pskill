@@ -7,6 +7,7 @@ import urllib.request
 from pathlib import Path
 
 from pskill_runner.vendoring import vendored_file_map
+from pskill_runner.viewer_data import BLOCK_TYPE_MEANINGS
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 VIEWER = REPOSITORY_ROOT / "viewer"
@@ -57,6 +58,14 @@ def test_the_markdown_and_the_json_tree_are_built_from_elements() -> None:
     assert "function jsonTree(" in script
     for html_parser in ("insertAdjacentHTML", "outerHTML", "createContextualFragment", "DOMParser", "document.write"):
         assert html_parser not in script
+
+
+def test_every_block_type_has_an_icon() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    icons = script[script.index("const BLOCK_ICONS = {") : script.index("};", script.index("const BLOCK_ICONS = {"))]
+
+    for block_type in BLOCK_TYPE_MEANINGS:
+        assert f"\n  {block_type}: [" in icons
 
 
 def test_the_launchers_start_the_viewer_from_the_folder_above_them() -> None:

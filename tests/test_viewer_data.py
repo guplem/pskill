@@ -231,7 +231,9 @@ def test_the_canvas_has_one_node_per_block_and_labeled_edges(tmp_path: Path) -> 
     assert '  f0_create_plan -->|"steps.create_plan.status == #39;question#39;"| f0_ask_user\n' in template
     assert '  f0_approve_plan -->|"approve"| f0_done\n' in template
     assert '  f0_create_plan -.->|"visit cap"| f0_stopped\n' in template
-    assert canvas["labels"]["f0_create_plan"] == "<b>create_plan</b><br/>task"
+    assert (
+        canvas["labels"]["f0_create_plan"] == "<span class='block-icon'>\u00a0</span><br/><b>create_plan</b><br/>task"
+    )
     assert {node["id"]: node["block"] for node in canvas["nodes"]}["f0_ask_user"] == "ask_user"
     edge_ids = [edge["id"] for edge in canvas["edges"]]
     assert "L_start_f0_create_plan_0" in edge_ids
@@ -263,14 +265,14 @@ def test_each_node_has_a_hint_that_explains_its_block(tmp_path: Path) -> None:
     long_hints = {node["block"]: node["hint"] for node in detail_of(project, long_run)["canvas"]["nodes"]}
 
     assert plan_hints["create_plan"] == (
-        "task block: the agent does a piece of work and returns a typed answer.\nIt runs at most 3 times."
+        "The agent does a piece of work and returns a typed answer.\nIt runs at most 3 times."
     )
     assert plan_hints["ask_user"] == (
-        "decision block: one choice is picked from a list, or a question gets an answer.\n"
+        "One choice is picked from a list, or a question gets an answer.\n"
         "The user decides in an interactive run. The agent decides in an autonomous run."
     )
-    assert plan_hints["done"] == "end block: the skill finishes here with a status and outputs.\nStatus: succeeded."
-    assert long_hints["work"].startswith("Does the one piece of work.\ntask block: ")
+    assert plan_hints["done"] == "The skill finishes here with a status and outputs.\nStatus: succeeded."
+    assert long_hints["work"].startswith("Does the one piece of work.\nThe agent does ")
 
 
 def test_each_edge_has_a_hint_with_its_whole_condition(tmp_path: Path) -> None:
@@ -342,7 +344,7 @@ def test_each_step_has_the_label_of_its_node_after_the_step(tmp_path: Path) -> N
 
     first_plan, _, second_plan, approve, _ = detail_of(project, run_id)["timeline"]
 
-    assert first_plan["label"].startswith("<b>create_plan</b><br/>task · ")
+    assert first_plan["label"].startswith("<span class='block-icon'>\u00a0</span><br/><b>create_plan</b><br/>task · ")
     assert first_plan["label"].endswith("<br/>1 rejected")
     assert second_plan["label"].endswith("<br/>visit 2 · 1 rejected")
     assert "· approve" in approve["label"]
@@ -587,7 +589,7 @@ def test_the_run_detail_shows_script_results(tmp_path: Path) -> None:
     assert script_row["block"] == "list_files"
     assert script_row["script_runs"][0]["exit_code"] == 0
     assert script_row["script_runs"][0]["argv"][0] == "python"
-    assert script_row["label"].startswith("<b>list_files</b><br/>script · ")
+    assert script_row["label"].startswith("<span class='block-icon'>\u00a0</span><br/><b>list_files</b><br/>script · ")
     assert script_row["label"].endswith(" · exit 0")
 
 

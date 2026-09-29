@@ -45,6 +45,15 @@ const MODE_MEANING = {
   interactive: "Interactive mode: human decisions ask you.",
   autonomous: "Autonomous mode: the agent makes every decision, human decisions included.",
 };
+// One icon per block type, drawn for pskill: line paths on a 16 by 16 grid, in the color of the text.
+const BLOCK_ICONS = {
+  task: ["M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z", "M5.5 8.2l1.8 1.8 3.4-3.8"], // a checked box
+  decision: ["M8 1.8l6.2 6.2L8 14.2 1.8 8z", "M8 8h.01"], // a diamond with a dot
+  parallel: ["M2 8h4", "M6 8c2 0 2-4.5 4.5-4.5H14", "M6 8h8", "M6 8c2 0 2 4.5 4.5 4.5H14"], // one line that splits in three
+  script: ["M2.5 3h11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z", "M4.5 6.5l2 1.5-2 1.5", "M8.5 10h3"], // a terminal
+  call: ["M9 2.5h3.5a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9", "M2 8h8", "M7.5 5.5L10 8l-2.5 2.5"], // an arrow into a box
+  end: ["M4 14V2.5", "M4 3h8l-2 2.75L12 8.5H4"], // a flag
+};
 const START_HINT = "The run begins here.";
 const CHILD_SKILL_HINT = "A child skill. The call block at the end of the dotted edge runs it, and gets its outputs back.";
 const TASK_FRAME_HINT = "The tasks of the parallel block at the end of the dotted edge. Each node is one task that one subagent does.";
@@ -114,6 +123,27 @@ function statusPill(status) {
   pill.append(element("span", null, "dot"), document.createTextNode(STATUS_TEXT[status] || status));
   if (STATUS_MEANING[status]) pill.title = STATUS_MEANING[status];
   return pill;
+}
+
+function blockIcon(type) {
+  const namespace = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(namespace, "svg");
+  icon.setAttribute("viewBox", "0 0 16 16");
+  icon.setAttribute("class", "block-icon-svg");
+  icon.setAttribute("aria-hidden", "true");
+  for (const shape of BLOCK_ICONS[type] || []) {
+    const path = document.createElementNS(namespace, "path");
+    path.setAttribute("d", shape);
+    icon.append(path);
+  }
+  return icon;
+}
+
+// The block type as the panel and the offline cards show it: its icon, then its name.
+function blockType(type, text = type) {
+  const line = element("span", null, "block-type");
+  line.append(blockIcon(type), document.createTextNode(text));
+  return line;
 }
 
 // A hover tooltip on a Mermaid group: an SVG <title> for the shapes, and an HTML title for the label.
@@ -396,6 +426,7 @@ async function drawGraph() {
       continue;
     }
     if (node !== data.start) group.addEventListener("click", () => view.dragEnded || selectNode(node));
+    if (nodeInfo) group.querySelector(".block-icon")?.replaceChildren(blockIcon(nodeInfo.type));
     if (node === data.start) addHint(group, START_HINT);
     else if (nodeInfo) addHint(group, `${nodeInfo.hint}\n\n${NODE_STATE_TEXT[stateName]}: ${NODE_STATE_MEANING[stateName]}\nClick to see this step.`);
   }
@@ -434,7 +465,7 @@ function drawStepList() {
       const card = button(null, () => selectNode(row.node, index), "step-card");
       const stateName = index === view.step ? state.stepNodeState : "done";
       card.classList.add(`is-${stateName}`);
-      card.append(element("strong", row.block), element("small", row.summary));
+      card.append(element("strong", row.block), blockType(row.block_type, row.summary));
       list.append(card);
     });
   view.parts.layer.replaceChildren();
@@ -628,9 +659,9 @@ function drawPanel() {
   title.append(element("h2", nodeInfo ? nodeInfo.block : chosen.row.block), element("span", NODE_STATE_TEXT[nodeStateName], `pill state-${stateClass}`));
   const type = nodeInfo ? nodeInfo.type : chosen.row.block_type;
   const skillText = nodeInfo && nodeInfo.frame > 0 ? ` · in ${nodeInfo.skill_id}` : "";
-  head.append(title, element("span", `${type}${skillText}`, "note"));
+  head.append(title, blockType(type, `${type}${skillText}`));
+  if (nodeInfo) head.append(element("p", nodeInfo.hint, "note panel-hint"));
   const parts = [head];
-  if (nodeInfo) parts.push(element("p", nodeInfo.hint, "note panel-hint"));
   if (visits.length > 1) parts.push(visitPicker(visits, chosen));
   if (!chosen) {
     parts.push(element("p", "The run has not reached this step at this point of the replay.", "note"));
