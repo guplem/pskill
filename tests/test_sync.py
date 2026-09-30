@@ -62,6 +62,22 @@ def test_a_listed_hook_file_gets_the_shared_hooks_and_the_app_files_lose_theirs(
     assert sync_project(project, check_only=False) == []
 
 
+def test_the_shared_hooks_that_a_generator_copies_into_the_app_files_stay(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "hook_files: [.agents/hooks/hooks.json]\n")
+    sync_project(project, check_only=False)
+    source_hooks = read_json(tmp_path / SHARED_SOURCE)["hooks"]
+    for app_file in (CLAUDE_SETTINGS, CODEX_HOOKS):  # what the project's own generator does: it replaces `hooks`
+        settings = read_json(tmp_path / app_file) if (tmp_path / app_file).is_file() else {}
+        (tmp_path / app_file).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / app_file).write_text(json.dumps({**settings, "hooks": source_hooks}), encoding="utf-8")
+
+    assert sync_project(project, check_only=True) == []
+    sync_project(project, check_only=False)
+
+    for app_file in (CLAUDE_SETTINGS, CODEX_HOOKS):
+        assert hook_commands(read_json(tmp_path / app_file), "Stop") == [first_command(SHARED_HOOKS, "Stop")]
+
+
 def test_a_listed_hook_file_keeps_its_own_hooks(tmp_path: Path) -> None:
     (tmp_path / SHARED_SOURCE).parent.mkdir(parents=True)
     foreign = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "./notify.sh"}]}]}}

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A generated hooks source keeps its hooks:** when `hook_files` lists a project's own hooks source, and the project's generator copies it into `.claude/settings.json` and `.codex/hooks.json`, `sync` now leaves the shared hooks in those two files. Before, `sync` removed them, and `sync --check` always reported both files as out of date.
+
 ## 0.8.1 (2026-09-30)
 
 A warning about `history` in a loop that can run again.

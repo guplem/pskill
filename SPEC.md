@@ -650,7 +650,7 @@ pskill/
 
 `config.yaml`:
 
-- **`hook_files`** are paths, because every hooks file has the same shape (`{"hooks": {...}}`). An app's own file (`.claude/settings.json`, `.codex/hooks.json`) gets that app's hook commands. Any other file, such as a project's own source of hooks that generates the app files, gets shared commands that pass `--harness auto`. The runner then detects the app from the hook input (`turn_id` means Codex) or the environment (`CLAUDE_PROJECT_DIR` means Claude Code). `sync` removes pskill's hooks from the app files that are not listed.
+- **`hook_files`** are paths, because every hooks file has the same shape (`{"hooks": {...}}`). An app's own file (`.claude/settings.json`, `.codex/hooks.json`) gets that app's hook commands. Any other file, such as a project's own source of hooks that generates the app files, gets shared commands that pass `--harness auto`. The runner then detects the app from the hook input (`turn_id` means Codex) or the environment (`CLAUDE_PROJECT_DIR` means Claude Code). `sync` removes an app's own pskill hooks from its app file when that file is not listed. It keeps the shared hooks there: only the project's generator puts them there, when it copies the listed source.
 - **`permissions`** are app names, because each app keeps its rules in its own format, in a fixed place: Claude Code in `permissions.allow` of `.claude/settings.json`, Codex in `.codex/rules/pskill.rules`.
 - The old setting `harnesses` stops with an error that names these two settings.
 
