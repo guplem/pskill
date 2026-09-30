@@ -148,3 +148,14 @@ def test_a_help_button_opens_a_dialog_with_the_details() -> None:
     assert 'import { FACT_FIELDS, FIELD_HELP } from "./field_help.js";' in script
     assert "dialog.showModal()" in script
     assert "node.title = help.short" in script
+
+
+def test_the_node_that_the_panel_shows_gets_a_ring_that_beats_mermaid_styles() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    style = (VIEWER / "style.css").read_text(encoding="utf-8")
+    selection_rule = style.split(".layer g.node.is-selected circle {", 1)[1].split("}", 1)[0]
+
+    assert script.count("markSelection();") >= 5  # the graph, both card lists, a node click, and a task click
+    assert "var(--ink)" in selection_rule
+    assert "!important" in selection_rule  # Mermaid scopes its own drop-shadow by id
+    assert ".step-card.is-selected" in style
