@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 (2026-09-30)
+
+A name for each parallel task.
 
 - **A name for each parallel task:** a `parallel` block can set `task_name`, a `{{ }}` value per item, for example `task_name: "{{ item.name }}"`. The packet heads each task with its name, and the viewer shows it on the task's node and chip instead of "task 0". When the name is missing or empty, the task keeps its number. The proof skills name their tasks: `implement-issue` by agent, and `review-pr` by review focus.
 
