@@ -137,10 +137,15 @@ def test_editing_a_proof_skill_block_changes_nothing_else(tmp_path: Path, skill_
     before = skill_text(project, skill_id)
     block_ids = list(load_skill(project.skills_folder / skill_id).blocks)
     for block_id in (middle_block, block_ids[-1]):
+        # Every proof block has a description: remove it, then add it back as a new key.
+        update_block(project, skill_id, block_id, {"description": None})
+        without = skill_text(project, skill_id)
+        assert [line[:17] for line in changed_lines(before, without)] == ["-    description:"]
+
         update_block(project, skill_id, block_id, {"description": f"{block_id} edited."})
 
         after = skill_text(project, skill_id)
-        assert changed_lines(before, after) == [f"+    description: {block_id} edited."]
+        assert changed_lines(without, after) == [f"+    description: {block_id} edited."]
         block_lines = after.split(f"\n  {block_id}:\n", 1)[1].splitlines()
         assert block_lines[0].startswith("    type: ")
         assert block_lines[1] == f"    description: {block_id} edited."  # a new key goes where authors put it
