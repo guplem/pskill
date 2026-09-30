@@ -137,6 +137,7 @@ def test_script_parallel_and_call_blocks_are_loaded(tmp_path: Path) -> None:
     assert isinstance(parallel, ParallelBlock)
     assert parallel.for_each == "{{ steps.list_docs.json.files }}"
     assert parallel.agent == "fact-checker"
+    assert parallel.task_name is None
     assert parallel.next == [Edge(to="review")]
     call = skill.blocks["review"]
     assert isinstance(call, CallBlock)
@@ -192,3 +193,14 @@ def test_a_choice_can_take_an_edge_list(tmp_path: Path) -> None:
         ],
         "stop": [Edge(to="done")],
     }
+
+
+def test_a_parallel_block_can_name_its_tasks(tmp_path: Path) -> None:
+    skill_yaml = ALL_BLOCKS_SKILL.replace(
+        "    agent: fact-checker\n", '    agent: fact-checker\n    task_name: "{{ item }}"\n'
+    )
+
+    parallel = load_skill(write_skill(tmp_path, "all-blocks", skill_yaml)).blocks["check_docs"]
+
+    assert isinstance(parallel, ParallelBlock)
+    assert parallel.task_name == "{{ item }}"

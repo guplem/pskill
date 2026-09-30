@@ -2,7 +2,7 @@
 
 from typing import Any, TypedDict
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: parallel tasks have a name
 
 ACTIVE_STATUSES = ("active", "waiting_for_human")
 UNFINISHED_STATUSES = ("active", "waiting_for_human", "paused")
@@ -40,6 +40,7 @@ class ParallelTask(TypedDict):
 
     item: Any
     agent: str | None
+    name: str | None  # from the block's `task_name`; None shows as "task <n>"
     output: dict[str, Any] | None  # None until a valid answer arrives
     attempts: int
 

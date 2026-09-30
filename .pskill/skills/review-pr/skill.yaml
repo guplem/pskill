@@ -47,6 +47,7 @@ blocks:
     description: Review each angle in parallel
     for_each: "{{ steps.plan_review.angles }}"
     agent: reviewer
+    task_name: "{{ item.focus }}"
     instruction: instructions/analyze.md
     output:
       findings: {type: array, items: *finding, description: "Your findings for this focus only."}

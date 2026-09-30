@@ -111,6 +111,10 @@ blocks:
     outputs: {wrong_count: "{{ steps.check.results | map(attribute='wrong') | map('length') | sum }}"}
 """
 
+NAMED_PARALLEL_SKILL = PARALLEL_SKILL.replace(
+    "    agent: checker\n", '    agent: checker\n    task_name: "Check {{ item }}"\n'
+)
+
 
 @pytest.fixture(autouse=True)
 def adapter_with_subagents(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -304,3 +308,44 @@ def test_a_script_with_its_own_timeout_stops_after_it(tmp_path: Path) -> None:
 
     assert read_run_info(project, run_id)["status"] == "paused"
     assert "within 1 s" in packet
+
+
+def test_each_parallel_task_gets_the_name_that_task_name_computes(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": NAMED_PARALLEL_SKILL}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+
+    assert "#### Task 0 · Check a.md\n" in packet and "#### Task 1 · Check b.md\n" in packet
+    tasks = read_run_state(project, run_id)["frames"][0]["tasks"] or []
+    assert [task["name"] for task in tasks] == ["Check a.md", "Check b.md"]
+    started = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_started"]
+    assert started[-1]["task_names"] == ["Check a.md", "Check b.md"]
+
+
+@pytest.mark.parametrize("task_name", ["{{ item.name }}", "   ", "{{ '' }}"])
+def test_a_task_name_that_fails_or_is_empty_leaves_the_task_unnamed(tmp_path: Path, task_name: str) -> None:
+    skill_yaml = NAMED_PARALLEL_SKILL.replace("Check {{ item }}", task_name)
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(
+        project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+
+    assert read_run_info(project, run_id)["status"] == "active"
+    assert "#### Task 0\n" in packet
+    assert (read_run_state(project, run_id)["frames"][0]["tasks"] or [])[0]["name"] is None
+    started = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_started"]
+    assert "task_names" not in started[-1]
+
+
+def test_a_long_task_name_is_one_short_line(tmp_path: Path) -> None:
+    skill_yaml = NAMED_PARALLEL_SKILL.replace("Check {{ item }}", "Check\n  {{ item }} {{ 'x' * 80 }}")
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
+
+    name = (read_run_state(project, run_id)["frames"][0]["tasks"] or [])[0]["name"] or ""
+    assert name.startswith("Check a.md xxx") and "\n" not in name
+    assert len(name) == 60 and name.endswith("…")

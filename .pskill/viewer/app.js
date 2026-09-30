@@ -938,6 +938,7 @@ const EDIT_LABELS = {
   status: "Status",
   skill: "Child skill",
   agent: "Agent (a file in .pskill/agents/)",
+  task_name: "Task name (a {{ }} value per item)",
   for_each: "For each (a {{ }} list, or a JSON list)",
   run: "Command (one argument per line)",
   choices: "Choices",
@@ -1330,7 +1331,9 @@ function section(title, ...content) {
 function visitPicker(visits, chosen) {
   const picker = element("div", null, "visits");
   visits.forEach((item, position) => {
-    const label = item.row.task !== null && item.row.task !== undefined ? `Task ${item.row.task}` : `Visit ${position + 1}`;
+    const name = item.row.tasks.find((task) => task.task === item.row.task)?.name;
+    const taskLabel = name ? `Task ${item.row.task} · ${name}` : `Task ${item.row.task}`;
+    const label = item.row.task !== null && item.row.task !== undefined ? taskLabel : `Visit ${position + 1}`;
     const chip = button(label, () => selectNode(item.row.node, item.index));
     chip.setAttribute("aria-pressed", String(item === chosen));
     picker.append(chip);
@@ -1414,7 +1417,8 @@ function tasksSection(row) {
 
 function taskDetail(task, seq) {
   const box = element("div", null, "task-detail");
-  box.append(element("h4", `Task ${task.task} · ${TASK_STATE_TEXT[task.state]}`));
+  const name = task.name ? ` · ${task.name}` : "";
+  box.append(element("h4", `Task ${task.task}${name} · ${TASK_STATE_TEXT[task.state]}`));
   if (task.packet) box.append(element("h4", "Input: the prompt that the subagent got"), folded(markdown(task.packet), `${seq}:task${task.task}:input`));
   if (task.submissions.length) {
     box.append(element("h4", `Answers · ${task.submissions.length}`), ...task.submissions.map((item, index) => answerCard(item, index, `${seq}:task${task.task}`)));

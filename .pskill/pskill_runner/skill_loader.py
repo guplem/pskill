@@ -136,6 +136,7 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
             **retryable,
             for_each=raw["for_each"],
             agent=raw.get("agent"),
+            task_name=raw.get("task_name"),
             instruction=raw["instruction"],
             output=parse_field_map(raw["output"]),
             next=parse_edges(raw["next"]),

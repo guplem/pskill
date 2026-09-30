@@ -184,3 +184,12 @@ def test_the_parallel_packet_names_the_harness_spawn_tool() -> None:
     packet = replace(PLAN_PACKET, subagent_wording="Use the Agent tool, one call per task.")
 
     assert "Use the Agent tool, one call per task." in render_parallel_packet(packet, [task], total_tasks=1)
+
+
+def test_a_named_task_shows_its_name_in_its_heading() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    tasks = [TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields, name="security")]
+
+    text = render_parallel_packet(PLAN_PACKET, tasks, total_tasks=1)
+
+    assert "#### Task 0 · security\nYou are a subagent of a pskill run." in text

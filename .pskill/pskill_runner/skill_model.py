@@ -67,6 +67,7 @@ class ParallelBlock(RetryableBlock):
 
     for_each: list[Any] | str
     agent: str | None = None
+    task_name: str | None = None  # a {{ }} value per item: the task's name in the packet and the viewer
     instruction: str
     output: FieldMap
     next: list[Edge]

@@ -19,6 +19,7 @@ from pskill_runner.viewer_data import (
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 from tests.test_engine_blocks import (
     CHILD_SKILL,
+    NAMED_PARALLEL_SKILL,
     PARALLEL_SKILL,
     PARENT_SKILL,
     SCRIPT_SKILL,
@@ -931,3 +932,35 @@ def test_a_choice_with_an_edge_list_draws_one_edge_per_condition(tmp_path: Path)
 def test_a_choice_reason_splits_only_before_its_condition() -> None:
     assert split_choice_reason("choice yes: go") == ("yes: go", None)
     assert split_choice_reason("choice fix: {{ a < b }}") == ("fix", "{{ a < b }}")
+
+
+def test_a_named_task_shows_its_name_on_its_chip_and_its_node(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    write_skill(
+        tmp_path / ".pskill" / "skills", "fanout-named", NAMED_PARALLEL_SKILL.replace("id: fanout", "id: fanout-named")
+    )
+    run_id, _ = start_run(
+        project, "fanout-named", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: 3\n", task=1)
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+    submit_answer(project, run_id, "wrong: []\n", task=1)
+
+    detail = detail_of(project, run_id)
+    row = next(row for row in detail["timeline"] if row["block"] == "check")
+
+    assert [(task["name"], task["label"]) for task in row["tasks"]] == [
+        ("Check a.md", "Check a.md"),
+        ("Check b.md", "Check b.md · 1 rejected"),
+    ]
+    assert row["tasks"][0]["packet"].startswith("You are a subagent of a pskill run.")
+    assert detail["canvas"]["labels"]["f0_check_T1"] == "Check b.md"
+
+
+def test_an_unnamed_task_keeps_its_number_as_its_label(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="generic")
+
+    row = check_row_of(project, run_id)
+
+    assert [(task["name"], task["label"]) for task in row["tasks"]] == [(None, "task 0")]

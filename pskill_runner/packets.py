@@ -116,6 +116,7 @@ class TaskPrompt:
     agent_text: str | None  # the pskill agent's role, or None
     instruction: str
     return_fields: FieldMap
+    name: str | None = None  # from the block's `task_name`
 
 
 def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], total_tasks: int) -> str:
@@ -130,7 +131,8 @@ def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], to
         f"When every subagent has finished, run: {packet.runner_command} current {packet.run_id}",
     ]
     for task in open_tasks:
-        lines += ["", f"#### Task {task.index}", task_prompt_text(packet, task)]
+        name = f" · {task.name}" if task.name else ""
+        lines += ["", f"#### Task {task.index}{name}", task_prompt_text(packet, task)]
     return "\n".join(lines) + "\n"
 
 

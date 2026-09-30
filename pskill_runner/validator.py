@@ -218,7 +218,7 @@ def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Pro
     if isinstance(block, CallBlock):
         texts += string_values(list(block.inputs.values()))
     if isinstance(block, ParallelBlock):
-        texts += string_values([block.for_each, block.agent])
+        texts += string_values([block.for_each, block.agent, block.task_name])
     prose = prose_value(block)
     if prose is not None:
         if prose.endswith(".md") and not (skill.folder / prose).is_file():

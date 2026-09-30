@@ -230,6 +230,8 @@ def parallel_body(skill: Skill, block: ParallelBlock) -> list[str]:
             f"Give each subagent a role first: the file `{SUBAGENTS_FOLDER}/<name>.md`, where the name is "
             f"`{condition_text(block.agent)}`."
         )
+    if block.task_name is not None:
+        lines.append(f"Name each task: {plain_text(block.task_name)}.")
     lines += ["The task:", plain_text(prose(skill, block.instruction))]
     lines.append(
         f"**Write down:** `{block.id}.results`, the list of the answers of every item, in item order. "

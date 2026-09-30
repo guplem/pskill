@@ -287,6 +287,7 @@ research:
     - {agent: pattern-scout, focus: "Find the closest existing code and its conventions."}
     - {agent: adr-checker, focus: "Find the ADRs that limit this change."}
   agent: "{{ item.agent }}"            # optional: a pskill agent from .pskill/agents/
+  task_name: "{{ item.agent }}"        # optional: the name of each task, in the packet and the viewer
   instruction: instructions/research.md   # uses {{ item.focus }}
   output:                              # the output of each task
     report: {type: string, description: "What you found, with file paths."}
@@ -316,6 +317,7 @@ fact_check:
 
 - Each item becomes one task. `item` is the current list element in the templates.
 - **`agent`** names a file `.pskill/agents/<name>.md`. The file is the subagent's role and rules, in Markdown. The runner puts its text at the top of the task prompt. The harness then spawns a plain subagent, so the same agent works on every harness. With no `agent`, the task gets a plain subagent with only its instruction.
+- **`task_name`** is one `{{ }}` value, computed once per item, that names the task. The packet heads the task with `#### Task <n> · <name>`, and the viewer labels the task's node and chip with it. The runner puts the name on one line and cuts it to 60 characters. A name that is missing, empty, or fails to compute is no name: the task shows as `task <n>`, and the run goes on. When the main agent builds the list, give each item an optional `name` field in that block's `output`, and set `task_name: "{{ item.name }}"`.
 - pskill agents are only reusable prompt text. pskill never reads harness agent files (`.claude/agents/`, `.codex/agents/`), and `sync` never writes them. The main agent spawns a plain subagent (in Claude: `general-purpose`) and gives it the prompt that the runner built. This keeps agents versioned with the skills, so they cannot drift apart.
 - `steps.research.results` is the list of task outputs, in item order.
 - Each task has its own submission. The block completes when every task has a valid submission. An empty list completes at once.
@@ -505,7 +507,7 @@ Additions by block type:
 - **Decision with choices:** the Return section lists each choice and its meaning.
 - **Human decision, interactive:** "Ask the user and wait. Submit the user's answer with `"$answered_by": "human"`. Do not decide for the user." The adapter adds the wording for its question tool (section 9).
 - **Human decision, autonomous:** "This run is autonomous. Decide as the user would, from the goal, this session, and the project. Explain why in `rationale`."
-- **Parallel with subagents:** the packet lists every task with its full prompt (goal, instruction, return format, its own submit command with `--task <n>`). It says: "Spawn one subagent per task, all at once. Give each one exactly its prompt. When all have finished, run `pskill current <run>`."
+- **Parallel with subagents:** the packet lists every task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with its full prompt (goal, instruction, return format, its own submit command with `--task <n>`). It says: "Spawn one subagent per task, all at once. Give each one exactly its prompt. When all have finished, run `pskill current <run>`."
 - **Parallel without subagents:** the packet gives one task at a time, like a normal block.
 - **Final packet:** the status, the rendered `report`, the outputs, and "The run is finished."
 
@@ -688,7 +690,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 | type | Extra fields |
 |---|---|
 | `run_started` | `skill_id`, `skill_hash`, `inputs`, `mode`, `harness`, `runner_version` |
-| `block_started` | `block`, `block_type`, `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks) |
+| `block_started` | `block`, `block_type`, `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null) |
 | `submission_rejected` | `block`, `task?`, `errors`, `raw` |
 | `block_completed` | `block`, `task?`, `output`, `decided_by` (`agent`, `human`, `agent_autonomous`, `runner`), `duration_ms` |
 | `script_ran` | `block`, `argv`, `exit_code`, `stdout`, `stderr` (each cut to 64 KiB), `duration_ms` |
@@ -840,6 +842,7 @@ blocks:
       - {agent: pattern-scout, focus: "Find the closest existing code for this change and its conventions."}
       - {agent: adr-checker, focus: "Find the architecture decisions (ADRs) that limit this change."}
     agent: "{{ item.agent }}"                       # .pskill/agents/pattern-scout.md, .pskill/agents/adr-checker.md
+    task_name: "{{ item.agent }}"
     instruction: instructions/research.md
     output:
       report: {type: string, description: "What you found, with file paths and ADR numbers."}
@@ -987,6 +990,7 @@ blocks:
     type: parallel
     for_each: "{{ steps.plan_review.angles }}"      # the count is decided during the run
     agent: reviewer                                 # .pskill/agents/reviewer.md
+    task_name: "{{ item.focus }}"
     instruction: "Review the pull request for {{ item.focus }}. {{ item.brief }}"
     output:
       findings: {type: array, items: *finding, description: "Your findings for this focus only."}
@@ -1119,7 +1123,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 - `pskill view` starts a `ThreadingHTTPServer` on `127.0.0.1` only and opens the browser. The launchers `view.cmd`, `view.command`, and `view.sh` run the same command on a double-click.
 - **All logic lives in the Python server,** so pytest covers it. The server builds:
   - the canvas: one Mermaid template for the whole run. Each child skill that the run entered is a framed `subgraph`, linked by a dotted edge from its call block. Each parallel block that the run entered has a frame of task nodes next to it, one per task, in balanced rows of at most 4, linked by a dotted edge. Node ids are `f<frame>_<block>`, and `f<frame>_<block>_T<n>` for a task (upper case, which a block id cannot contain). Each node label is a token that the page replaces.
-  - the timeline rows. Each row carries its node, the edge that it arrived by (matched from the logged `from` and `reason`), its node label after the step, whether a person decides it, and the edge that it left by. It also carries its input and output titles, the stdout of each script run parsed as JSON when it is JSON, and, for a parallel block, every task of its visit: its state (done, rejected, or open), its prompt, its answers, and its output.
+  - the timeline rows. Each row carries its node, the edge that it arrived by (matched from the logged `from` and `reason`), its node label after the step, whether a person decides it, and the edge that it left by. It also carries its input and output titles, the stdout of each script run parsed as JSON when it is JSON, and, for a parallel block, every task of its visit: its name (from `task_name`, logged on `block_started`), its state (done, rejected, or open), its prompt, its answers, and its output.
   - a hint in plain words for each node (the block's `description`, what its type does, who decides) and each edge (when the run takes it, with the whole condition). The page shows them as hover tooltips.
   - the current step and its state (now, waiting for the user, or failed),
   - the summary numbers.
@@ -1152,7 +1156,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
      - the status and the type, and a visit picker when the block ran more than once,
      - where it came from and why, the duration, who decided, and the edge that it left by,
      - the input: the packet as rendered Markdown, or the command of a script,
-     - for a parallel block, one chip per task; a click on a chip or on a task node shows that task's prompt, answers, and output,
+     - for a parallel block, one chip per task, with the task's name (or `task <n>`); a click on a chip or on a task node shows that task's prompt, answers, and output,
      - every submission (rejected ones with their errors), and the output: a JSON tree, or the exit code and parsed result of a script,
      - the run state as a JSON tree.
 
@@ -1186,7 +1190,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 
 The skill screen can change a skill. `skill_editor.py` writes the change to `skill.yaml`.
 
-- **What it edits:** a block's description, visit cap, retries, instruction or report (inline, or the text of its `.md` file), `next` edges (with conditions, and per choice), choices, decider, command, parse, timeout, child skill, agent, `for_each`, and end status. It also adds a block of any type (the smallest valid block) and deletes a block that no edge leads to. It does not edit field maps, `inputs`, `outputs`, or the skill's top level: edit those in the file.
+- **What it edits:** a block's description, visit cap, retries, instruction or report (inline, or the text of its `.md` file), `next` edges (with conditions, and per choice), choices, decider, command, parse, timeout, child skill, agent, task name, `for_each`, and end status. It also adds a block of any type (the smallest valid block) and deletes a block that no edge leads to. It does not edit field maps, `inputs`, `outputs`, or the skill's top level: edit those in the file.
 - **Only the changed block changes.** `ruamel.yaml` (a YAML library that keeps comments) reads the file. The editor replaces only the lines of the changed block, so every other line stays byte for byte the same. Inside the block, the comments, the quotes, and the anchors stay. A new key goes where the skill files put it (for example `description` after `type`). A list that the author wrapped over two lines becomes one line, but only in the changed block.
 - **Only keys that changed:** the page sends only the keys that the user changed, so an untouched key keeps its exact form.
 - **A structure error is refused:** a change after which the skill does not load is not saved, and the file stays as it was. A validation problem (for example an end that misses a required output) is saved, and the checks show it, because many edits need several steps.

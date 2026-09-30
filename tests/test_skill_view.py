@@ -7,7 +7,7 @@ from pskill_runner.engine import start_run
 from pskill_runner.project import Project, find_project
 from pskill_runner.skill_view import skill_detail, skills_overview
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_engine_blocks import CHILD_SKILL, PARENT_SKILL, SCRIPT_SKILL
+from tests.test_engine_blocks import CHILD_SKILL, NAMED_PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
 
 
 def make_project(tmp_path: Path) -> Project:
@@ -216,3 +216,13 @@ def test_each_block_has_its_editable_keys_and_their_values_as_written(tmp_path: 
     ]
     assert blocks["approve_plan"]["editable"]["values"]["next"] == {"approve": "done", "stop": "stopped"}
     assert "description" not in create_plan["values"]
+
+
+def test_a_parallel_block_shows_its_task_name(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "fanout", NAMED_PARALLEL_SKILL)
+    detail = skill_detail(find_project(tmp_path), "fanout") or {}
+
+    check = detail["blocks"]["check"]
+
+    assert ["task name", "Check {{ item }}"] in check["facts"]
+    assert "task_name" in check["editable"]["keys"]

@@ -72,6 +72,7 @@ blocks:
   check_names:                # parallel: one subagent task per item, joined into steps.check_names.results
     type: parallel
     for_each: "{{ inputs.files }}"
+    task_name: "{{ item }}"   # optional: the name of each task in the viewer
     instruction: "Check the names in {{ item }}."
     output:
       problems: {type: array, items: {type: string}, description: "Bad names."}
@@ -98,6 +99,7 @@ blocks:
 - Every top-level field of `inputs`, `outputs`, and each block `output` needs a `description`.
 - Field types: `string`, `integer`, `number`, `boolean`, `array` (with `items`), `object` (with `properties`). A field is required unless `optional: true`.
 - A `parallel` block may name `agent: <name>`: the text of `.pskill/agents/<name>.md` then heads each task's prompt.
+- A `parallel` block may set `task_name`, a `{{ }}` value per item, to name each task in the packet and the viewer. Without a name, a task shows as "task 0". When a block of the main agent builds the list, add an optional `name` field to its items and set `task_name: "{{ item.name }}"`.
 - A `script` gives `steps.<id>.exit_code`, `.stdout`, and `.stderr`, plus `.json` with `parse: json`.
 - A failed block tries again `retries` times (2 by default, set in `.pskill/config.yaml`), then the run pauses. A `task`, `decision`, `parallel`, or `script` block can set its own `retries: 0` (no second try) or more. A `script` can set its own `timeout_s: 60` (300 by default).
 
