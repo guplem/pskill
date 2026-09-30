@@ -63,6 +63,7 @@ def pskill_hooks(root_code: str, harness: str) -> dict[str, dict[str, Any]]:
 
 # For a file that no single app owns, such as a project's own source of hooks: the runner detects the app.
 SHARED_HOOKS = pskill_hooks(GIT_ROOT_CODE, "auto")
+SHARED_COMMANDS = frozenset(handler["command"] for group in SHARED_HOOKS.values() for handler in group["hooks"])
 
 
 def is_pskill_hook(command: str) -> bool:
@@ -80,12 +81,15 @@ def with_pskill_hooks(settings: dict[str, Any], pskill_hooks: dict[str, dict[str
     return updated
 
 
-def without_pskill_hooks(settings: dict[str, Any]) -> dict[str, Any]:
-    """A copy of the settings with every pskill handler removed, and the groups that it leaves empty."""
+def without_pskill_hooks(settings: dict[str, Any], keep: frozenset[str] = frozenset()) -> dict[str, Any]:
+    """A copy of the settings with every pskill handler removed (except the `keep` commands), and the groups that
+    it leaves empty."""
     updated: dict[str, Any] = json.loads(json.dumps(settings))
     hooks = updated.get("hooks", {})
     for event in list(hooks):
-        hooks[event] = [group for group in map(without_pskill_handlers, hooks[event]) if group["hooks"]]
+        hooks[event] = [
+            group for group in (without_pskill_handlers(group, keep) for group in hooks[event]) if group["hooks"]
+        ]
         if not hooks[event]:
             del hooks[event]
     return updated
@@ -98,15 +102,22 @@ def sync_hook_file(path: Path, pskill_hooks: dict[str, dict[str, Any]], check_on
 
 
 def remove_pskill_hooks(path: Path, check_only: bool) -> bool:
-    """Take pskill's hooks out of a hooks file that is no longer in `hook_files`. Return whether it changed."""
+    """Take the app's own pskill hooks out of an app file that is not in `hook_files`. Return whether it changed.
+
+    The shared hooks stay: only a project's own generator puts them there, when it copies a listed hooks source.
+    """
     if not path.is_file():
         return False
     settings = read_json_settings(path)
-    return write_if_changed(path, settings, without_pskill_hooks(settings), check_only)
+    return write_if_changed(path, settings, without_pskill_hooks(settings, keep=SHARED_COMMANDS), check_only)
 
 
-def without_pskill_handlers(group: dict[str, Any]) -> dict[str, Any]:
-    handlers = [handler for handler in group.get("hooks", []) if not is_pskill_hook(handler.get("command", ""))]
+def without_pskill_handlers(group: dict[str, Any], keep: frozenset[str] = frozenset()) -> dict[str, Any]:
+    handlers = [
+        handler
+        for handler in group.get("hooks", [])
+        if not is_pskill_hook(handler.get("command", "")) or handler.get("command") in keep
+    ]
     return {**group, "hooks": handlers}
 
 
