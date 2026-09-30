@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A label on every proof-skill block:** each block of `create-issue`, `implement-issue`, and `review-pr` now has a short `description`. The viewer shows it in the block's hover hint, and "Export as Markdown" shows it under each step.
+
 ## 0.7.0 (2026-09-29)
 
 A help button for every field on the skill screen.

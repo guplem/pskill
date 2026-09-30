@@ -22,12 +22,14 @@ entry: read_pr
 blocks:
   read_pr:
     type: script
+    description: Read the pull request from GitHub
     run: [gh, pr, view, "{{ inputs.pr }}", --json, "headRefOid,baseRefName,files,additions,deletions"]
     parse: json
     next: plan_review
 
   plan_review:
     type: task
+    description: Pick the review angles
     instruction: instructions/plan_review.md
     output:
       angles:
@@ -42,6 +44,7 @@ blocks:
 
   analyze:
     type: parallel
+    description: Review each angle in parallel
     for_each: "{{ steps.plan_review.angles }}"
     agent: reviewer
     instruction: instructions/analyze.md
@@ -51,6 +54,7 @@ blocks:
 
   triage:
     type: task
+    description: Merge and deduplicate the findings
     instruction: instructions/triage.md
     output:
       findings: {type: array, items: *finding, description: "The merged, deduplicated findings."}
@@ -58,6 +62,7 @@ blocks:
 
   verify_quotes:
     type: script
+    description: Check each quote against the diff
     run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py", "{{ inputs.pr }}"]
     parse: json
     next:
@@ -67,6 +72,7 @@ blocks:
 
   confirm_post:
     type: decision
+    description: Ask whether to post the review
     decider: human
     instruction: instructions/confirm_post.md
     choices:
@@ -76,6 +82,7 @@ blocks:
 
   post_review:
     type: task
+    description: Post the review on GitHub
     instruction: instructions/post_review.md
     output:
       review_url: {type: string, description: "URL of the posted review."}
@@ -83,6 +90,7 @@ blocks:
 
   report:
     type: end
+    description: Report the findings
     status: succeeded
     outputs: {findings: "{{ steps.verify_quotes.json.findings }}"}
     report: instructions/report.md

@@ -14,6 +14,7 @@ entry: assess_clarity
 blocks:
   assess_clarity:
     type: task
+    description: Check that the request is clear
     instruction: instructions/assess_clarity.md
     max_visits: 6
     output:
@@ -26,6 +27,7 @@ blocks:
 
   ask_clarify:
     type: decision
+    description: Ask the user the open question
     decider: human
     instruction: "Ask the user this question, exactly as written: {{ steps.assess_clarity.question }}"
     output:
@@ -34,6 +36,7 @@ blocks:
 
   extract_terms:
     type: task
+    description: Pick search words for duplicates
     instruction: instructions/extract_terms.md
     output:
       terms: {type: array, items: {type: string}, description: "Search words for duplicates."}
@@ -41,6 +44,7 @@ blocks:
 
   search_duplicates:
     type: script
+    description: Search the existing issues
     run: [gh, issue, list, --state, all, --limit, "30", --search, "{{ steps.extract_terms.terms | join(' ') }}",
           --json, "number,title,state,url"]
     parse: json
@@ -48,6 +52,7 @@ blocks:
 
   judge_duplicates:
     type: decision
+    description: Judge whether an issue already covers it
     decider: agent
     instruction: instructions/judge_duplicates.md
     choices:
@@ -60,6 +65,7 @@ blocks:
 
   confirm_duplicate:
     type: decision
+    description: Ask whether to reuse the existing issue
     decider: human
     instruction: "Show the user issue #{{ steps.judge_duplicates.match_number }} and why it looks like the same request. Ask whether to reuse it."
     choices:
@@ -69,6 +75,7 @@ blocks:
 
   draft_issue:
     type: task
+    description: Draft the title and the body
     instruction: instructions/draft_issue.md
     max_visits: 5
     output:
@@ -78,6 +85,7 @@ blocks:
 
   confirm_draft:
     type: decision
+    description: Ask the user to approve the draft
     decider: human
     instruction: "Show the user the draft: the title \"{{ steps.draft_issue.title }}\", then the full body. Ask whether to create it."
     choices:
@@ -90,28 +98,33 @@ blocks:
 
   ensure_label:
     type: script
+    description: Make sure the review label exists
     run: [gh, label, create, waiting-for-human-check, --color, D93F0B, --force,
           --description, "No human has verified this yet: direct AI output"]
     next: create
 
   create:
     type: script
+    description: Create the issue on GitHub
     run: [gh, issue, create, --title, "{{ steps.draft_issue.title }}", --body-file, "{{ steps.draft_issue.body | to_file }}",
           --label, waiting-for-human-check]
     next: created
 
   created:
     type: end
+    description: The new issue exists
     status: succeeded
     outputs: {issue_number: "{{ steps.create.stdout.strip().split('/')[-1] | int }}"}
     report: "Tell the user the URL of the new issue: {{ steps.create.stdout.strip() }}"
 
   existing:
     type: end
+    description: An existing issue covers it
     status: succeeded
     outputs: {issue_number: "{{ steps.judge_duplicates.match_number }}"}
     report: "Tell the user that issue #{{ steps.judge_duplicates.match_number }} already covers this request."
 
   cancelled:
     type: end
+    description: The user cancelled
     status: cancelled
