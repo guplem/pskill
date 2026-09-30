@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 (2026-09-30)
+
+A label on every block of the proof skills.
 
 - **A label on every proof-skill block:** each block of `create-issue`, `implement-issue`, and `review-pr` now has a short `description`. The viewer shows it in the block's hover hint, and "Export as Markdown" shows it under each step.
 
