@@ -135,13 +135,14 @@ blocks:
         - to: fix_findings
   ```
   While the block is open, `history.ask_finding` holds the earlier answers only. After the answer, it holds this one too, so the edges count every answer.
+  `history` spans the whole run of the skill, not one pass through the loop. So when an earlier block can lead back into the loop (a second review round), the count starts at the first pass's answers and reads past the new list. Put such a loop in its own `internal` skill and run it with a `call` block: each call starts with an empty `history`.
 - `max_visits: 3` with `on_max_visits: done` caps a loop. Without `on_max_visits`, reaching the cap pauses the run. The validator warns about a loop with no cap.
 
 ## Computed values
 
 - Anything inside `{{ }}` is computed. Everything else is plain text, so `result: done` needs no quotes.
 - A value that is exactly one `{{ ... }}` keeps its type (a number, a list, true or false).
-- Names you can read: `inputs`, `steps.<block>` (the latest output), `history.<block>` (every output, oldest first), `run` (`id`, `mode`, `harness`, `dir`), `skill` (`id`, `dir`), and `item` inside a parallel block.
+- Names you can read: `inputs`, `steps.<block>` (the latest output), `history.<block>` (every output in this run of the skill, oldest first), `run` (`id`, `mode`, `harness`, `dir`), `skill` (`id`, `dir`), and `item` inside a parallel block.
 - A value from a block that has not run is missing. You can compare it (the result is false) or replace it: `{{ steps.x.value | default('none') }}`. Printing a missing value fails the run on purpose.
 - Put parentheses around a filter inside a comparison: `{{ (steps.review.outputs.findings | length) > 0 }}`.
 - `{{ text | to_file }}` writes the text to a file and gives its path. Use it for long script arguments.

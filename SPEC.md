@@ -388,7 +388,7 @@ done:
 |---|---|
 | `inputs` | Skill inputs, with defaults applied. |
 | `steps.<block_id>` | The latest valid output of that block. |
-| `history.<block_id>` | A list of every valid output of that block, oldest first. |
+| `history.<block_id>` | A list of every valid output of that block in the current frame, oldest first. A child skill's frame starts empty. |
 | `run` | `id`, `mode`, `harness`, `dir`. |
 | `skill` | `id`, `dir`. |
 | `item` | The current element, in a `parallel` block only. |
