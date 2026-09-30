@@ -53,7 +53,7 @@ OUTPUT_TITLES = {
     "call": "Output: the child skill's outputs",
     "end": "Output: the skill's outputs",
 }
-TASK_HEADING = re.compile(r"^#### Task (\d+)\n(?=You are a subagent of a pskill run\.)", re.MULTILINE)
+TASK_HEADING = re.compile(r"^#### Task (\d+)(?: · [^\n]*)?\n(?=You are a subagent of a pskill run\.)", re.MULTILINE)
 TASK_TOTAL = re.compile(r"^\d+ of (\d+) tasks are still open\.$", re.MULTILINE)
 TASKS_PER_ROW = 4
 TASK_NODE_HINT = "One task of this parallel block. One subagent (or the agent) does it and answers on its own."
@@ -556,6 +556,19 @@ def parallel_task_counts(rows: list[dict[str, Any]], row_frames: list[int | None
     return counts
 
 
+def parallel_task_names(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[str, int], str]:
+    """The latest name of each named task, by task node and task number."""
+    names: dict[tuple[str, int], str] = {}
+    for row, frame in zip(rows, row_frames, strict=True):
+        if frame is None:
+            continue
+        parent = node_id(frame, str(row["block"]))
+        for task in row["tasks"]:
+            if task["name"]:
+                names[(task_node_id(parent, task["task"]), task["task"])] = task["name"]
+    return names
+
+
 def task_frame_edges(task_counts: dict[tuple[int, str], int]) -> list[CanvasEdge]:
     """One dotted edge from each parallel block to the frame of its tasks."""
     edges = []
@@ -575,6 +588,7 @@ def run_canvas(
         return None, annotate_rows(rows, [None] * len(rows), [], [], info["mode"])
     frames, row_frames = assign_frames(rows, skills, root)
     task_counts = parallel_task_counts(rows, row_frames)
+    task_names = parallel_task_names(rows, row_frames)
     edges = [edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame)]
     edges = number_edges(edges + task_frame_edges(task_counts))
     annotated = annotate_rows(rows, row_frames, frames, edges, info["mode"])
@@ -584,7 +598,7 @@ def run_canvas(
         parent = node_id(index, block_id)
         for task in range(count):
             task_node = task_node_id(parent, task)
-            labels[task_node] = f"task {task}"
+            labels[task_node] = task_names.get((task_node, task)) or f"task {task}"
             nodes.append(
                 {
                     "id": task_node,
@@ -717,16 +731,20 @@ def live_tasks(state: RunState) -> tuple[str, str, int] | None:
     return ">".join(frame["skill_id"] for frame in frames), top["current_block"], len(top["tasks"])
 
 
-def task_view(entry: dict[str, Any] | None, task: int, packet: str | None) -> dict[str, Any]:
-    """One task as the page shows it: done (an accepted answer), rejected (only rejected answers), or open."""
+def task_view(entry: dict[str, Any] | None, task: int, packet: str | None, name: str | None) -> dict[str, Any]:
+    """One task as the page shows it: done (an accepted answer), rejected (only rejected answers), or open.
+
+    A task without a name (no `task_name`, or one that gave nothing) shows as "task <n>".
+    """
     submissions = entry["submissions"] if entry is not None else []
     output = entry["output"] if entry is not None else None
     rejected = sum(1 for submission in submissions if not submission["accepted"])
     state = "done" if output is not None else "rejected" if rejected else "open"
     return {
         "task": task,
+        "name": name,
         "state": state,
-        "label": f"task {task}" + (f" · {rejected} rejected" if rejected else ""),
+        "label": (name or f"task {task}") + (f" · {rejected} rejected" if rejected else ""),
         "submissions": submissions,
         "output": output,
         "duration_ms": entry["duration_ms"] if entry is not None else None,
@@ -763,6 +781,7 @@ def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
     last_key = list(groups)[-1] if groups else None
     for key, group in groups.items():
         packets: dict[int, str] = {}
+        names: list[str | None] = next((row["task_names"] for row in reversed(group) if row["task_names"]), [])
         for row in group:
             if row["task"] is None:
                 packets.update(task_packets(row["packet"]))  # with subagents: one packet lists every open task
@@ -776,7 +795,10 @@ def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
         known: dict[int, dict[str, Any]] = {}
         for row in group:
             known.update({entry["task"]: entry for entry in row["tasks"]})
-            row["tasks"] = [task_view(known.get(task), task, packets.get(task)) for task in range(count)]
+            row["tasks"] = [
+                task_view(known.get(task), task, packets.get(task), names[task] if task < len(names) else None)
+                for task in range(count)
+            ]
 
 
 # --- one run ------------------------------------------------------------------------------------
@@ -877,6 +899,7 @@ def new_timeline_row(event: dict[str, Any]) -> dict[str, Any]:
         "block_type": event["block_type"],
         "visit": event["visit"],
         "task": event.get("task"),
+        "task_names": event.get("task_names"),
         "from": event.get("from"),
         "reason": event.get("reason"),
         "packet": event.get("packet"),

@@ -70,6 +70,7 @@ from pskill_runner.yaml_loading import load_answer_yaml
 
 ENTRY_SCRIPT_NAME = "pskill.py"
 INLINE_BLOCK_LIMIT = 1000
+TASK_NAME_LIMIT = 60  # characters: a task name is a short label
 
 
 class RunError(Exception):
@@ -590,6 +591,9 @@ class Run:
         }
         if task is not None:
             fields["task"] = task
+        task_names = [task.get("name") for task in self.frame["tasks"] or []]
+        if isinstance(block, ParallelBlock) and any(task_names):
+            fields["task_names"] = task_names  # the viewer names the tasks of finished runs from this
         self.log("block_started", **fields)
 
     # --- end blocks ---------------------------------------------------------------------------
@@ -694,12 +698,26 @@ class Run:
             ParallelTask(
                 item=item,
                 agent=str(self.computed(block.agent, f"The agent of {block.id!r}", item)) if block.agent else None,
+                name=self.task_name(block, item),
                 output=None,
                 attempts=0,
             )
             for item in items
         ]
         return True
+
+    def task_name(self, block: ParallelBlock, item: Any) -> str | None:
+        """The task's name from `task_name`, on one short line. A name that fails or is empty is no name:
+        the task then shows as "task <n>", and the run goes on."""
+        if block.task_name is None:
+            return None
+        try:
+            name = " ".join(str(compute(block.task_name, self.context(item))).split())
+        except ComputedValueError:
+            return None
+        if len(name) > TASK_NAME_LIMIT:
+            name = name[: TASK_NAME_LIMIT - 1].rstrip() + "…"
+        return name or None
 
     def open_task_indexes(self) -> list[int]:
         return [index for index, task in enumerate(self.frame["tasks"] or []) if task["output"] is None]
@@ -718,7 +736,11 @@ class Run:
         skill = self.skill_of(self.frame)
         instruction = self.rendered(skill.instruction_text(block.instruction), f"Task {index}", task["item"])
         return TaskPrompt(
-            index=index, agent_text=self.agent_text(task["agent"]), instruction=instruction, return_fields=block.output
+            index=index,
+            agent_text=self.agent_text(task["agent"]),
+            instruction=instruction,
+            return_fields=block.output,
+            name=task.get("name"),
         )
 
     def parallel_packet(self, block: ParallelBlock, errors: list[str]) -> str:

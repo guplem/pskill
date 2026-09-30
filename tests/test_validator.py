@@ -289,3 +289,11 @@ def test_an_edge_list_for_a_missing_choice_is_reported(tmp_path: Path) -> None:
 
     assert "blocks.ask_finding: the choice 'fix' has no entry in next" in errors
     assert "blocks.ask_finding: next has 'mend', which is not a choice" in errors
+
+
+def test_references_in_a_task_name_are_checked(tmp_path: Path) -> None:
+    named = CALLER_SKILL.replace(
+        '    agent: "{{ item.agent }}"\n', '    agent: "{{ item.agent }}"\n    task_name: "{{ steps.nowhere.x }}"\n'
+    )
+
+    assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(tmp_path, named)

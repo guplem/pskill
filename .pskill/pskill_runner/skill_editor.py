@@ -27,7 +27,7 @@ COMMON_KEYS = ("description", "max_visits", "on_max_visits")
 EDITABLE_KEYS: dict[str, tuple[str, ...]] = {
     "task": ("instruction", "next", "retries"),
     "decision": ("decider", "instruction", "choices", "next", "retries"),
-    "parallel": ("for_each", "agent", "instruction", "next", "retries"),
+    "parallel": ("for_each", "agent", "task_name", "instruction", "next", "retries"),
     "script": ("run", "parse", "timeout_s", "next", "retries"),
     "call": ("skill", "next"),
     "end": ("status", "report"),
@@ -40,6 +40,7 @@ KEY_ORDER = (
     "skill",
     "for_each",
     "agent",
+    "task_name",
     "instruction",
     "run",
     "parse",

@@ -254,3 +254,14 @@ def test_an_id_that_is_not_a_skill_id_cannot_be_edited(tmp_path: Path) -> None:
 
     with pytest.raises(EditError, match="no skill"):
         update_block(project, "../plan-work", "done", {"description": "x"})
+
+
+def test_a_task_name_goes_after_the_agent(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    add_block(project, "plan-work", "fan", "parallel")
+    update_block(project, "plan-work", "fan", {"agent": "checker"})
+
+    update_block(project, "plan-work", "fan", {"task_name": "{{ item }}"})
+
+    block_lines = skill_text(project).split("\n  fan:\n", 1)[1].splitlines()
+    assert block_lines.index('    task_name: "{{ item }}"') == block_lines.index("    agent: checker") + 1

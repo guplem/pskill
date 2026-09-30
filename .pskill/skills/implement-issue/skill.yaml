@@ -71,6 +71,7 @@ blocks:
       - {agent: pattern-scout, focus: "Find the closest existing code for this change and its conventions."}
       - {agent: adr-checker, focus: "Find the recorded decisions that limit this change."}
     agent: "{{ item.agent }}"
+    task_name: "{{ item.agent }}"
     instruction: instructions/research.md
     output:
       report: {type: string, description: "What you found, with file paths and decision references."}

@@ -11,7 +11,7 @@ from pskill_runner.project import Project, find_project
 from pskill_runner.skill_export import ExportError, export_skill, export_zip, plain_text
 from pskill_runner.skill_loader import load_skill
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_engine_blocks import CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL
+from tests.test_engine_blocks import CHILD_SKILL, NAMED_PARALLEL_SKILL, PARALLEL_SKILL, PARENT_SKILL
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 PROOF_SKILLS = ["implement-issue", "review-pr", "create-issue"]
@@ -221,3 +221,13 @@ def test_a_missing_instruction_file_stops_the_export_with_its_name(tmp_path: Pat
 
 def test_whitespace_control_in_a_value_leaves_no_dash() -> None:
     assert plain_text("x {{- steps.a.b -}} z") == "x `a.b` z"
+
+
+def test_a_parallel_step_names_its_tasks(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "fanout", NAMED_PARALLEL_SKILL)
+    (tmp_path / ".pskill" / "agents").mkdir(parents=True)
+    (tmp_path / ".pskill" / "agents" / "checker.md").write_text("You check facts.", encoding="utf-8")
+
+    markdown = export_skill(find_project(tmp_path), "fanout")["fanout/SKILL.md"].decode("utf-8")
+
+    assert f"Name each task: {plain_text('Check {{ item }}')}." in markdown

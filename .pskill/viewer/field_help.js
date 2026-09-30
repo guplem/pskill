@@ -207,12 +207,33 @@ export const FIELD_HELP = {
       },
     ],
   },
+  task_name: {
+    title: "task_name (task name)",
+    short: "A short name for each task, computed from its item. The viewer and the packet show it instead of \"task 0\".",
+    details: [
+      "Optional, on `parallel` blocks. It is a `{{ }}` value, computed once per item, like `agent`. `item` is the current list element.",
+      "The name heads the task in the packet (`#### Task 0 · security`), and it labels the task's node and chip in the viewer. Keep it to a few words.",
+      "A name that is missing, empty, or fails to compute is no name: the task shows as \"task 0\", \"task 1\", and the run goes on.",
+      "When the main agent builds the list (for example in a `task` block before the parallel block), give each item a `name` field in that block's `output`, and set `task_name: \"{{ item.name }}\"`. The main agent then names each task.",
+    ],
+    examples: [
+      {
+        caption: "A name from a fixed list",
+        code: 'research:\n  type: parallel\n  for_each:\n    - {agent: pattern-scout, focus: "Find the closest code."}\n    - {agent: adr-checker, focus: "Find the ADRs."}\n  agent: "{{ item.agent }}"\n  task_name: "{{ item.agent }}"\n  instruction: "{{ item.focus }}"\n  output:\n    report: {type: string, description: "What you found."}\n  next: plan',
+      },
+      {
+        caption: "The main agent names each task",
+        code: 'plan_review:\n  type: task\n  instruction: Pick the review angles.\n  output:\n    angles:\n      type: array\n      description: "One entry per review subagent."\n      items:\n        type: object\n        properties:\n          name: {type: string, optional: true, description: \"A name of 2 to 4 words.\"}\n          brief: {type: string}\n  next: analyze\n\nanalyze:\n  type: parallel\n  for_each: "{{ steps.plan_review.angles }}"\n  task_name: "{{ item.name }}"\n  instruction: "{{ item.brief }}"\n  output:\n    findings: {type: array, items: {type: string}, description: "What you found."}\n  next: report',
+      },
+      { caption: "A file name as the name", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntask_name: "{{ item }}"' },
+    ],
+  },
   for_each: {
     title: "for_each (for each)",
     short: "The list to split into tasks: one task, and one subagent, per item.",
     details: [
       "Required on `parallel` blocks. It is a YAML list, or one `{{ }}` value that gives a list. So an earlier block can decide how many tasks there are.",
-      "In the instruction and in `agent`, `item` is the current list element.",
+      "In the instruction, in `agent`, and in `task_name`, `item` is the current list element.",
       "The block completes when every task has a valid answer. `steps.<block>.results` is the list of the task outputs, in item order. An empty list completes at once.",
       "Each subagent sees only its own task, never the other tasks.",
     ],
@@ -366,6 +387,7 @@ export const FACT_FIELDS = {
   decider: "decider",
   "for each": "for_each",
   agent: "agent",
+  "task name": "task_name",
   parse: "parse",
   timeout: "timeout_s",
   skill: "skill",

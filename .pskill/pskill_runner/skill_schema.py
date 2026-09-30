@@ -126,6 +126,7 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
         {
             "for_each": {"oneOf": [{"type": "array"}, {"type": "string"}]},
             "agent": {"type": "string"},
+            "task_name": {"type": "string"},
             "instruction": {"type": "string"},
             "output": {"$ref": "#/$defs/field_map"},
             "next": {"$ref": "#/$defs/edges"},
