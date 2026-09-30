@@ -402,9 +402,14 @@ pre {
   stroke-width: 3px !important;
 }
 
+/* The node that the side panel shows: a ring in the ink color, outside the state frame, with a small gap.
+   A drop-shadow has no spread, so four shadows with no blur draw each ring. */
 .layer g.node.is-selected rect,
-.layer g.node.is-selected polygon {
-  filter: drop-shadow(0 0 6px var(--done));
+.layer g.node.is-selected polygon,
+.layer g.node.is-selected circle {
+  filter: drop-shadow(2px 0 0 var(--ground)) drop-shadow(-2px 0 0 var(--ground)) drop-shadow(0 2px 0 var(--ground))
+    drop-shadow(0 -2px 0 var(--ground)) drop-shadow(2.5px 0 0 var(--ink)) drop-shadow(-2.5px 0 0 var(--ink))
+    drop-shadow(0 2.5px 0 var(--ink)) drop-shadow(0 -2.5px 0 var(--ink)) !important;
 }
 
 .layer path.flowchart-link {
@@ -480,6 +485,7 @@ pre {
 .step-card.is-now { border: 3px solid var(--now); background: var(--now-bg); }
 .step-card.is-waiting { border: 3px solid var(--human); background: var(--human-bg); }
 .step-card.is-failed { border: 3px solid var(--bad); background: var(--bad-bg); }
+.step-card.is-selected { outline: 2.5px solid var(--ink); outline-offset: 2px; }
 
 .step-card small,
 .step-card .block-type {

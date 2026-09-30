@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The viewer rings the shown node:** the node that the side panel shows now has a ring in the ink color, on both screens and in both themes. With no click, the current step of a run has the ring. A clicked task gets the ring too, and so does the matching card of the offline list. Before, a faint blue glow marked the clicked node, and Mermaid's own shadow hid it.
+
 ## 0.8.2 (2026-09-30)
 
 A generated hooks source keeps its hooks.

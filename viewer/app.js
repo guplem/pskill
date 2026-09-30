@@ -627,7 +627,6 @@ async function drawGraph() {
     const stateName = nodeState(node, state);
     group.dataset.node = node;
     group.classList.add(`is-${stateName}`);
-    if (node === view.selectedNode) group.classList.add("is-selected");
     const nodeInfo = data.nodes.find((item) => item.id === node);
     if (nodeInfo && nodeInfo.kind === "task") {
       group.classList.add("is-task");
@@ -656,6 +655,7 @@ async function drawGraph() {
     if (label) addHint(label, hint);
     if (path) addHint(path, hint);
   }
+  markSelection();
   for (const cluster of svgNode.querySelectorAll("g.cluster")) {
     addHint(cluster, cluster.id.endsWith("_TASKS") ? TASK_FRAME_HINT : CHILD_SKILL_HINT);
   }
@@ -683,6 +683,7 @@ function drawStepList() {
     .slice(0, view.step + 1)
     .forEach((row, index) => {
       const card = button(null, () => selectNode(row.node, index), "step-card");
+      card.dataset.node = row.node;
       const stateName = index === view.step ? state.stepNodeState : "done";
       card.classList.add(`is-${stateName}`);
       card.append(element("strong", row.block), blockType(row.block_type, row.summary));
@@ -692,6 +693,7 @@ function drawStepList() {
   view.parts.canvas.querySelector(".step-list")?.remove();
   view.parts.canvas.append(list);
   view.parts.note.textContent = "";
+  markSelection();
 }
 
 function applyTransform() {
@@ -843,15 +845,31 @@ function selectNode(node, rowIndex = null, task = null) {
   view.selectedNode = node;
   view.selectedRow = rowIndex;
   view.selectedTask = task;
-  for (const group of view.parts.layer.querySelectorAll("g.node")) {
-    group.classList.toggle("is-selected", group.dataset.node === node);
-  }
+  markSelection();
   drawPanel();
 }
 
 function selectTask(task) {
   view.selectedTask = task;
+  markSelection();
   drawPanel();
+}
+
+// The node that the side panel shows: the clicked node or, on the run screen, the current step.
+function shownNode() {
+  if (view.selectedNode || isSkillScreen()) return view.selectedNode;
+  return view.selectedRow === null ? stepState().stepNode : null;
+}
+
+// Ring the shown node, and the task node of the shown task, on the canvas and in the offline card list.
+function markSelection() {
+  const node = shownNode();
+  const taskNode = view.detail?.canvas?.nodes.find(
+    (item) => item.kind === "task" && item.parent === node && item.task === view.selectedTask,
+  )?.id;
+  for (const item of view.parts.canvas.querySelectorAll("g.node, .step-card")) {
+    item.classList.toggle("is-selected", Boolean(node) && [node, taskNode].includes(item.dataset.node));
+  }
 }
 
 function drawPanel() {
@@ -1300,6 +1318,7 @@ function drawBlockList() {
   list.append(element("p", "Graph unavailable offline (Mermaid did not load). The blocks:", "note"));
   for (const [block, details] of Object.entries(view.detail.blocks)) {
     const card = button(null, () => selectNode(details.node), "step-card");
+    card.dataset.node = details.node;
     card.append(element("strong", block), blockType(details.type));
     list.append(card);
   }
@@ -1307,6 +1326,7 @@ function drawBlockList() {
   view.parts.canvas.querySelector(".step-list")?.remove();
   view.parts.canvas.append(list);
   view.parts.note.textContent = "";
+  markSelection();
 }
 
 function drawLoadError() {
