@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1 (2026-09-30)
+
+A warning about `history` in a loop that can run again.
+
+- **The scope of `history`:** AUTHORING.md and SPEC.md now say that `history` holds every output of the skill's run, not one pass through a loop. A per-item loop that counts answers with `history.<block> | length` reads past its list when an earlier block leads back into it. The fix: put such a loop in its own `internal` skill, and run it with a `call` block. Each call starts with an empty `history`.
+
 ## 0.8.0 (2026-09-30)
 
 A name for each parallel task.
