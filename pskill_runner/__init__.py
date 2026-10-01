@@ -1,3 +1,3 @@
 """pskill runner: executes programmatic skills one block at a time."""
 
-__version__ = "0.8.3"
+__version__ = "0.8.4"
