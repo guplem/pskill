@@ -1131,7 +1131,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
   The front end only draws them. For the replay, it adds up the rows up to the chosen step. It has no build step: plain HTML, CSS, and JavaScript.
 - **Mermaid comes from a CDN.** `index.html` loads one exact, pinned version from jsDelivr (`https://cdn.jsdelivr.net/npm/mermaid@<version>/dist/mermaid.min.js`), with a Subresource Integrity hash.
 - **Fonts:** Manrope and IBM Plex Mono from Google Fonts. The page falls back to the system fonts when they do not load.
-- **Offline:** the canvas shows "Graph unavailable offline (Mermaid did not load)" and the steps (or, on the skill screen, the blocks) as a list of cards in the node style. The side panel, the replay bar, and the Runs and Skills screens still work, because they do not need Mermaid.
+- **Offline:** the canvas shows "Graph unavailable offline (Mermaid did not load)" and the steps (or, on the skill screen, the blocks) as a list of cards in the node style. The side panel, the replay bar, and the Runs, Skills, and Agents screens still work, because they do not need Mermaid.
 - While the open run is unfinished, the page polls every second.
 
 | Endpoint | Returns |
@@ -1142,10 +1142,13 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 | `GET /api/skills/<id>` | The skill's facts, its canvas (one frame, no run parts), the details of each block, and the `pskill validate` problems, or the load error. |
 | `GET /api/skills/<id>/export` | The skill as plain Markdown skills, in a zip file (section 14.1). |
 | `POST /api/skills/<id>/edit` | The skill editor's one write: update, add, or delete a block (section 14.2). Returns the new skill detail, or the problems. |
+| `GET /api/agents` | One row per agent in `.pskill/agents/`: its name, its first line, and the skills that use it. |
+| `GET /api/agents/<name>` | The agent's file path, its text, and each skill and parallel block that uses it. |
+| `POST /api/agents/<name>/edit` | The agent editor's one write: the new text of an existing agent file (`{"text": ...}`). Returns the new agent detail, or the problems. |
 
 **Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, and dashed grey for not visited. Taken edges are solid blue. Each block type has its own icon, drawn for pskill as inline SVG: on its node above the block name, and next to the type in the side panel. The page follows the system's dark mode.
 
-**Four screens:**
+**Six screens:**
 1. **Runs.**
    - Run cards with the filters Unfinished, All, and Failed.
    - Above the cards, the per-skill summary row.
@@ -1163,11 +1166,11 @@ The three proof skills together must exercise every runtime feature. pytest fixt
      Long content shows its first 3 lines, with a button to show all of it. The panel builds Markdown and JSON trees from elements, never from HTML.
    - A link to the skill screen of the run's skill.
    - A replay bar: one mark per step, with rejected answers and human decisions marked. Drag it, press play, or use the left and right arrow keys, and the canvas and the panel show the run as it was at that step. At its end, it follows the live run. This is the step-through replay (D14).
-3. **Skills.** One card per skill in `.pskill/skills/`, also a skill with no runs, with its description, block count, and run count. A skill that does not load shows its error.
+3. **Skills.** One card per skill in `.pskill/skills/`, also a skill with no runs, with its description, block count, and run count. A skill that does not load shows its error. The `internal` skills come last, in their own section.
 4. **Skill.** One skill's graph without a run, read from `.pskill/skills/` (never from a run copy). `skill_view.py` builds it.
    - The same canvas as the run screen, with every block and every edge, and no run parts: no status, no current step, no timeline, and no replay bar. Every node has the same plain style.
    - The side panel with nothing selected: the goal, the inputs and outputs, and the `pskill validate` problems.
-   - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A call block links to its child skill's screen.
+   - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A name that leads to another screen is a link with an arrow: the child skill of a call block, and the agent of a parallel block (one link per agent of a fixed `for_each` list). An agent name computed from run data has no link.
    - A script block also shows the text of each file inside its skill folder that its command runs as `{{ skill.dir }}/<path>`.
    - Each output field is a card: its name, its type, optional, its default, its allowed values, its description, and its nested fields.
    - Each exit is a card: the target block, a tag (if, otherwise, always, choice, or visit cap), and the whole condition. A hover on the card highlights its edge and its target on the canvas. A click opens the target.
@@ -1175,6 +1178,10 @@ The three proof skills together must exercise every runtime feature. pytest fixt
    - A skill that does not load shows its load error instead of a graph.
    - An "Export as Markdown" button downloads the export (section 14.1).
    - An "Edit" button turns on the skill editor (section 14.2).
+5. **Agents.** One card per agent in `.pskill/agents/`, with its first line and the skills that use it. `agent_view.py` builds it.
+6. **Agent.** One agent: its file, a link to each skill that uses it (with the block names), and its text as Markdown.
+   - "Used by" lists only the uses that `pskill validate` can see: a plain agent name, or the items of a fixed `for_each` list.
+   - An "Edit" button shows the text in a plain text box. "Save" replaces the file; a CRLF file stays CRLF. The editor changes only an agent file that exists, so a name never points outside `.pskill/agents/`.
 
 ### 14.1 Export as Markdown
 

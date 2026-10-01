@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+See and edit the agents in the viewer, and follow links to them.
+
+- **An Agents screen:** the viewer has a new "Agents" tab. It lists each agent in `.pskill/agents/` with its first line and the skills that use it.
+- **One agent's screen:** it shows the agent's text as Markdown, and links to each skill and block that uses it. "Edit" opens the text in a plain text box, and "Save" writes the file.
+- **Links with an arrow:** in a block's side panel, the child skill of a call block and the agent of a parallel block are links with an arrow (→). A click opens that skill or agent. The "Open the skill" button of a call block is gone: the link replaces it.
+
 ## 0.8.6 (2026-10-01)
 
 Internal skills are locked and listed apart.
