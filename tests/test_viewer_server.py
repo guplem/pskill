@@ -4,6 +4,7 @@ import http.client
 import io
 import json
 import threading
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -215,6 +216,25 @@ def test_an_edit_with_a_bad_length_is_refused(server: ThreadingHTTPServer, lengt
     connection.putheader("Content-Type", "application/json")
     connection.putheader("Content-Length", length)
     connection.endheaders()
+
+    response = connection.getresponse()
+
+    assert response.status == 403
+    connection.close()
+
+
+def test_a_refused_edit_with_a_late_body_still_gets_its_answer(server: ThreadingHTTPServer) -> None:
+    """The server reads the body before it answers. Else, on Windows, the late body resets the connection."""
+    body = json.dumps(DESCRIPTION_CHANGE).encode("utf-8")
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
+    connection.putrequest("POST", "/api/skills/plan-work/edit", skip_host=True)
+    connection.putheader("Host", "evil.example:7777")
+    connection.putheader("Content-Type", "application/json")
+    connection.putheader("Content-Length", str(len(body)))
+    connection.endheaders()
+    time.sleep(0.2)
+    connection.send(body)
+    time.sleep(0.2)
 
     response = connection.getresponse()
 
