@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.8.5 (2026-10-01)
+
+Clearer fields and exits in the side panel, and the script file of a script block.
 
 - **Clearer output fields:** each output field of the side panel is now a card. The name is in bold code, and the type, "optional", the default, and the allowed values are chips. The description has its own line. Nested fields, for example the item fields of an array of objects, show under their parent. Before, the panel did not show them.
 - **Clearer exits:** each "Where it can go" entry is now a card with the target block, a tag (if, otherwise, always, choice, or visit cap), and the whole condition in a code box. A hover on the card highlights its edge, its label, and its target block on the canvas. A click opens the target block.
