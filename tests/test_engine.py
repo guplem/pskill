@@ -68,6 +68,7 @@ def test_start_prints_the_first_block_and_records_the_run(tmp_path: Path) -> Non
 
     assert "· plan-work · create_plan (visit 1)" in packet
     assert "Write a plan for the login page." in packet
+    assert "### Goal" not in packet  # the stub gives the goal
     info = read_run_info(project, run_id)
     assert info["status"] == "active"
     assert info["current_block"] == "create_plan"
@@ -266,6 +267,19 @@ def test_current_prints_the_same_packet_without_changing_the_run(tmp_path: Path)
 
     assert "· create_plan (visit 1)" in packet
     assert event_types(project, run_id) == events_before
+
+
+def test_current_and_resume_repeat_the_goal_and_the_rules_for_a_new_session(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    current = current_packet(project, run_id)
+    pause_run(project, run_id)
+    resumed = resume_run(project, run_id)
+
+    for packet in (current, resumed):
+        assert "### Goal\nProduce a plan that the user approved." in packet
+        assert "### Rules" in packet
 
 
 def test_current_without_a_run_id_uses_the_newest_unfinished_run(tmp_path: Path) -> None:

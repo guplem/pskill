@@ -60,7 +60,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D5 | One run can mix main-agent work, parallel subagents, scripts, and questions to the human. | The real skills use all four. |
 | D6 | Every skill can run in `autonomous` mode. A `decision` block has `decider: agent` or `decider: human`. In autonomous mode the agent takes human decisions itself, from the skill goal, the session, and the project. | User requirement. Replaces all mode-specific prose. |
 | D7 | A Stop hook blocks the agent from ending its turn while a block is open, on harnesses that have such a hook. Other harnesses get packet wording only. | Otherwise the agent can simply stop calling the runner. |
-| D8 | A packet contains the current instruction and the skill goal. It has no future blocks. | Fewer tokens, no running ahead, and enough context for autonomous answers. |
+| D8 | The stub gives the skill goal and the loop rules once. A packet contains the current instruction and its return format, and no future blocks. It repeats the goal only where the agent never saw the stub: a subagent task, the first packet of a child skill, and `current` or `resume` (with the rules). | Fewer tokens, no running ahead, one obvious place for the goal, and enough context for autonomous answers. Changed in 0.10.0: before, every packet repeated the goal and the rules. |
 | D9 | Every agent block declares a typed output. The runner rejects invalid submissions with the error text. | State lives in the runner, typed, and survives tool calls. |
 | D10 | A nested skill call works like a function: inputs in, outputs out, no access to the caller's state. | Replaces line-number citations and file-heading contracts. |
 | D11 | Visit caps are optional. The validator warns about a loop with no cap. | User choice. |
@@ -135,7 +135,7 @@ schema: pskill/v1               # required
 id: implement-issue             # required. Lowercase letters, digits, hyphens. Equals the folder name.
 description: >-                 # required, max 1024 chars. Goes into the stubs for discovery.
   Implement a GitHub issue end to end. Use when the user asks to implement or fix an issue.
-goal: >-                        # required. Goes into every packet.
+goal: >-                        # required. Goes into the stub, and into packets only where D8 says.
   Resolve the issue with a reviewed pull request that follows the plan the user approved.
 invocation: auto                # auto (default) | manual | internal
 inputs: {}                      # field map (5.3)
@@ -355,7 +355,7 @@ review:
 ```
 
 - The runner pushes a new frame on the run's call stack. The frame has the child's own inputs and steps. The child cannot read the caller's state.
-- Packets inside the child use the child's goal. The packet header shows the chain (`implement-issue > review-pr`).
+- The first packet inside the child shows the child's goal once (D8). The packet header shows the chain (`implement-issue > review-pr`).
 - When the child reaches an `end` block, the call block completes with `steps.review.status` (`succeeded`, `failed`, or `cancelled`) and `steps.review.outputs`. The caller branches on `status` when it matters.
 - The validator rejects call cycles.
 
@@ -483,9 +483,6 @@ Packets are short Markdown on stdout, and never contain future blocks.
 ## pskill · implement-issue · create_plan (visit 2)
 Run r-20260927-1432-ab12 · interactive
 
-### Goal
-Resolve the issue with a reviewed pull request that follows the plan the user approved.
-
 ### Instruction
 <rendered instructions/create_plan.md>
 
@@ -497,7 +494,13 @@ plan: |                 # required, text: the full plan, or the draft so far whe
   ...
 question: ...           # optional, text: the single most important open question.
 PSKILL
+```
 
+The stub gives the goal and the rules (section 9.3), so a normal packet has neither (D8). Two cases add them:
+- **Goal only:** the first packet of a child skill, as `### Goal` after the header.
+- **Goal and rules:** `current` and `resume`, because a new session, or a session after `/clear` or compaction, may not have read the stub. The `### Rules` section comes last:
+
+```text
 ### Rules
 - Do only this block. The runner gives you the next one.
 - If you cannot do it, submit only the line `$cannot_complete: <reason>`.
@@ -561,7 +564,7 @@ class HarnessAdapter(Protocol):
 - **Session start.** One job:
   - **Refresh the stubs.** Run the stub part of `sync` (not hooks, not permission rules). When it changed files, print one line: "pskill: updated <n> stubs (<skill ids>)." Skip a skill whose `skill.yaml` does not load, and print one warning line for it. This covers skill edits from any source: the agent, an IDE, `git pull`, or a teammate.
   - It lists no runs, and never resumes one (section 7.6).
-- A stub goes stale only when a skill is added or removed, or when its `id`, `description`, `inputs`, or `invocation` changes. Other edits need no sync, because `start` reads `skill.yaml` fresh.
+- A stub goes stale only when a skill is added or removed, or when its `id`, `description`, `goal`, `inputs`, or `invocation` changes. Other edits need no sync, because `start` reads `skill.yaml` fresh.
 
 ### 9.2.1 Permission rules (D28)
 
@@ -582,14 +585,21 @@ name: implement-issue
 description: "Implement a GitHub issue end to end. Use when the user asks to implement or fix an issue."
 ---
 <!-- Generated by pskill from .pskill/skills/implement-issue. Do not edit. Run: uv run .pskill/pskill.py sync -->
-This is a programmatic skill. The pskill runner controls its steps.
+Source: `.pskill/skills/implement-issue/`. This is a programmatic skill: the pskill runner gives you its steps,
+one at a time.
+
+Goal: Resolve the issue with a reviewed pull request that follows the plan the user approved.
 
 1. Map the request to the inputs:
    - `issue` (string): issue number, or a text that describes new work.
 2. Run: `uv run .pskill/pskill.py start implement-issue --harness auto --input issue=<value>`
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin, in the same literal form as `submit`.
    Add `--mode autonomous` only when the user asked for no questions.
-3. Follow each packet that the runner prints until it says the run is finished.
+3. The runner prints one step. Do only that step, then run the submit command at its end.
+   The runner checks your answer and prints the next step.
+4. Repeat step 3 until the runner says the run is finished. Never skip a step, and never stop before the end.
+   If you cannot do a step, submit only the line `$cannot_complete: <reason>`.
+5. If the user asks to stop, run: `uv run .pskill/pskill.py pause <run-id>`. Each step names its run id.
 ```
 
 - The frontmatter follows the Agent Skills spec.
