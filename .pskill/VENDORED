@@ -1,10 +1,10 @@
 {
-  "version": "0.9.1",
+  "version": "0.10.0",
   "source": ".",
   "files": {
     "pskill.py": "sha256:fc6daf6c197452a1096ffa812125533026d2cf6c25e0f0e6b58c490b57c6ed79",
     "AUTHORING.md": "sha256:d7419246da4368a45e5604857672f5ae65d0eb3a0a64f8a3a8e8533f973fbd3c",
-    "pskill_runner/__init__.py": "sha256:5e1454333b4edb6a3471099b403f8c77051262f57ce0eab396883e5e107e143c",
+    "pskill_runner/__init__.py": "sha256:e4e1662047287cf7e3c3efa7a3da780619c1986e1f09328856af58d2b230277c",
     "pskill_runner/adapters.py": "sha256:0cc1c314e5dba0bb729141f8ee4d0d19ef5b9de5ebd85edf1c83bf07c44da309",
     "pskill_runner/agent_view.py": "sha256:1cde5c41977a5c0a99a1e359b95e5af4f6c078c25ac672b51bcee55da894c35f",
     "pskill_runner/answer_input.py": "sha256:2127461987aaba501b657379d5c1dacb1bfb87f1b596af27e7f32d6208ae4999",

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 (2026-10-01)
 
 The stub gives the goal and the rules once, and each step shows only what to do.
 
