@@ -207,11 +207,17 @@ function showFieldHelp(field) {
   dialog.showModal();
 }
 
-// The block type with its "?" button, for the head of the side panel on the skill screen.
-function typeLine(type) {
+// The block type and what it means, with its "?" button, for the head of the side panel on the skill screen.
+function typeLine(type, meaning) {
   const line = element("span", null, "with-help");
-  line.append(blockType(type), helpButton("type"));
+  line.append(blockType(type, `${type}: ${meaning}`), helpButton("type"));
   return line;
+}
+
+// The block's own description in the ink color, then the notes on who decides and on its limits.
+function appendBlockIntro(head, block) {
+  if (block.description) head.append(element("p", block.description, "panel-description"));
+  if (block.notes) head.append(element("p", block.notes, "note panel-hint"));
 }
 
 async function fetchJson(path) {
@@ -906,8 +912,9 @@ function drawPanel() {
   title.append(element("h2", nodeInfo ? nodeInfo.block : chosen.row.block), element("span", NODE_STATE_TEXT[nodeStateName], `pill state-${stateClass}`));
   const type = nodeInfo ? nodeInfo.type : chosen.row.block_type;
   const skillText = nodeInfo && nodeInfo.frame > 0 ? ` · in ${nodeInfo.skill_id}` : "";
-  head.append(title, blockType(type, `${type}${skillText}`));
-  if (nodeInfo) head.append(element("p", nodeInfo.hint, "note panel-hint"));
+  const meaningText = nodeInfo ? `: ${nodeInfo.type_meaning}` : "";
+  head.append(title, blockType(type, `${type}${skillText}${meaningText}`));
+  if (nodeInfo) appendBlockIntro(head, nodeInfo);
   const parts = [head];
   if (visits.length > 1) parts.push(visitPicker(visits, chosen));
   if (!chosen) {
@@ -1247,8 +1254,8 @@ function blockSections(details) {
   const head = element("div", null, "panel-head");
   const title = element("div", null, "panel-title");
   title.append(element("h2", block));
-  head.append(title, typeLine(details.type));
-  head.append(element("p", details.hint, "note panel-hint"));
+  head.append(title, typeLine(details.type, details.type_meaning));
+  appendBlockIntro(head, details);
   const parts = [head];
   if (details.facts.length) {
     const facts = element("dl", null, "facts");

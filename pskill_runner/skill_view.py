@@ -27,6 +27,7 @@ from pskill_runner.skill_model import (
 from pskill_runner.skill_schema import is_skill_id
 from pskill_runner.validator import validate_skill
 from pskill_runner.viewer_data import (
+    BLOCK_TYPE_MEANINGS,
     START_NODE,
     CanvasFrame,
     block_edges,
@@ -38,6 +39,7 @@ from pskill_runner.viewer_data import (
     node_hint,
     node_id,
     node_label,
+    node_notes,
     number_edges,
 )
 from pskill_runner.yaml_loading import load_skill_yaml
@@ -137,6 +139,8 @@ def block_details(skill: Skill, block: AnyBlock) -> dict[str, Any]:
         "type": block_type_name(block),
         "description": block.description,
         "hint": node_hint(block),
+        "type_meaning": BLOCK_TYPE_MEANINGS[block_type_name(block)],
+        "notes": node_notes(block),
         "facts": block_facts(block),
         "instruction": prose_text(skill, instruction_value),
         "instruction_file": instruction_value if instruction_value and instruction_value.endswith(".md") else None,

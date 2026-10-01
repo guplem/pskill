@@ -964,3 +964,19 @@ def test_an_unnamed_task_keeps_its_number_as_its_label(tmp_path: Path) -> None:
     row = check_row_of(project, run_id)
 
     assert [(task["name"], task["label"]) for task in row["tasks"]] == [(None, "task 0")]
+
+
+def test_each_node_sends_its_description_type_meaning_and_notes_apart(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    long_run, _ = start_run(project, "long-condition", {}, mode="interactive", harness="generic")
+    plan_run, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+
+    work = next(node for node in detail_of(project, long_run)["canvas"]["nodes"] if node["block"] == "work")
+    create_plan = next(
+        node for node in detail_of(project, plan_run)["canvas"]["nodes"] if node["block"] == "create_plan"
+    )
+
+    assert work["description"] == "Does the one piece of work."
+    assert work["type_meaning"] == "The agent does a piece of work and returns a typed answer."
+    assert create_plan["description"] is None
+    assert create_plan["notes"] == "It runs at most 3 times."
