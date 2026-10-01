@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 (2026-10-01)
 
 The Stop hook holds only the session that runs the skill.
 
