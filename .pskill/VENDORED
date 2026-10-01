@@ -35,7 +35,7 @@
     "pskill_runner/validator.py": "sha256:f16208aa6711bc1995219b5c3210ab450cac66b8b8df6ba6dffb37c89f6f7ec1",
     "pskill_runner/vendoring.py": "sha256:329f56b475b1675d65107931b9e923b5641c721cb22b778ebe0316b2ad110485",
     "pskill_runner/viewer_data.py": "sha256:a4b07287b6a89df042d4f5027e8fc9ba6a6f617a2b8f763ad36abb833ae3ca39",
-    "pskill_runner/viewer_server.py": "sha256:44ad7d21662956e359724fc182cddc3992967aef3ca345eac72d750d59d0515c",
+    "pskill_runner/viewer_server.py": "sha256:c636b01e73398eca749a97647edfaf9572584fe153986ead8bf5ff2827bc297d",
     "pskill_runner/yaml_loading.py": "sha256:22c2c28eb5f2311edd8f53ab42dc1464ab7b01b5a672b8b57887ad2d4aaa3457",
     "viewer/app.js": "sha256:d1c7e49d8563026275046c6aa6d973786e24b77d4e531ceb0c05d8391ec3bb8f",
     "viewer/field_help.js": "sha256:910c2f8253c1394ed648befe0ff49cb666f70023664c6aa1e97e99dfacfd67df",

@@ -74,6 +74,7 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         """The two write endpoints: a block of a skill (issue #3), and the text of an agent."""
+        body = self.read_body()
         path = unquote(urlparse(self.path).path)
         edit_match = EDIT_PATH.fullmatch(path)
         agent_match = AGENT_EDIT_PATH.fullmatch(path)
@@ -85,7 +86,7 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.FORBIDDEN, {"error": refusal})
             return
         try:
-            request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            request = json.loads(body)
             if edit_match is not None:
                 apply_edit(self.project, edit_match[1], request)
                 result = skill_detail(self.project, edit_match[1])
@@ -100,6 +101,17 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": error.problems})
             return
         self.send_json(HTTPStatus.OK, result)
+
+    def read_body(self) -> bytes:
+        """The request body, read before any answer. An empty body if its Content-Length is bad.
+
+        If the server answers and closes the connection before the body arrives, Windows resets the
+        connection, and the client loses the answer.
+        """
+        length = self.headers.get("Content-Length", "")
+        if not length.isdigit() or int(length) > MAX_EDIT_BYTES:
+            return b""
+        return self.rfile.read(int(length))
 
     def write_refusal(self) -> str | None:
         """Why a write must not happen, or None. Only the viewer page itself may write.
