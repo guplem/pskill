@@ -48,7 +48,7 @@ uv run .pskill/pskill.py update
 - **A small "signpost" file per skill** (`.claude/skills/<skill>/SKILL.md` and `.agents/skills/<skill>/SKILL.md`). Agents discover skills through these files. Each one tells the agent to start the runner. The real skill stays in `.pskill/skills/`.
 - **Two hooks** (small commands that your agent app runs by itself at certain moments):
   - **When the agent tries to finish its reply:** if a step of a run that this session started is still open, the hook sends the agent a message: "a pskill step is still open, continue it". So the agent keeps working instead of stopping halfway. If the agent still tries to stop 3 times in a row without sending an answer, pskill lets it stop and pauses the run. You can continue that run later.
-  - **When you open a new session:** the hook lists your unfinished runs, so the agent can continue them.
+  - **When you open a new session:** the hook refreshes the signpost files of the skills that you added or changed. To continue an unfinished run, ask the agent: it finds the run with `runs --open`.
 - **A permission rule**, so your agent app does not ask your permission every time the agent talks to the runner. It allows only the runner command (`uv run .pskill/pskill.py ...`), nothing else.
 
 Where these go: `.claude/settings.json` for Claude Code; `.codex/hooks.json` and `.codex/rules/pskill.rules` for Codex. If your project generates these files from its own source (a script that rebuilds them), list that source in `hook_files` in `.pskill/config.yaml`. Then `sync` writes the two hooks there, and your script copies them into the app files. Both apps use them only after you trust the project folder. Claude Code asks you the first time that you open the folder. Codex also asks you once to approve each hook (type `/hooks` in Codex).
@@ -84,7 +84,7 @@ Read [`AUTHORING.md`](AUTHORING.md): the six kinds of steps, a complete example,
 |---|---|
 | Claude Code | Everything: signpost files, hooks, the permission rule, questions with its question buttons, and parallel helper agents (subagents). |
 | Codex | Everything, with Full access (see the known limitations): signpost files, hooks, the permission rule, and parallel helper agents. It asks its questions in the chat. |
-| Any other (Gemini CLI, Cursor, ...) | The basics: signpost files in `.agents/skills/`, and questions in the chat. There are no hooks, so nothing stops the agent from ending its reply early, and no session lists your unfinished runs (use `runs --open`). Parallel tasks run one after another. |
+| Any other (Gemini CLI, Cursor, ...) | The basics: signpost files in `.agents/skills/`, and questions in the chat. There are no hooks, so nothing stops the agent from ending its reply early, and no hook refreshes the signpost files (run `sync`). Parallel tasks run one after another. |
 
 ## Known limitations
 

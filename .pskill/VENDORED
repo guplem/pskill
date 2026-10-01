@@ -15,7 +15,7 @@
     "pskill_runner/engine.py": "sha256:55402874fa24f75793219554845b4a0a705da618086fb08de38f30b012c1f6b3",
     "pskill_runner/field_types.py": "sha256:9d4e191f190597a2e6a9e96835ad6fbb1f15ac3551d8fcfd6be76a1ee0f3911a",
     "pskill_runner/hook_settings.py": "sha256:e678b7e1567220b26efe9e34744ad6795f9de1564fdbdadef7d450fc455cee7d",
-    "pskill_runner/hooks.py": "sha256:15083c18e9c38fc0b47b03bf0346e412e52ddd3f3ffc89bc6a787558f527ba26",
+    "pskill_runner/hooks.py": "sha256:3081fafa196bee295fc01fefce73459e3170148e37c38ad94425d124a829ffe0",
     "pskill_runner/inline_executor.py": "sha256:a76464c162882686e3a5bb79039e79e51bb49cff907ca658baee5c451e016b38",
     "pskill_runner/packets.py": "sha256:dd283edce98a2667e1950e5370cacbedc71545ecbdf3d043aaf803438383bc95",
     "pskill_runner/project.py": "sha256:b5042cc57d8f3f044b0892a04d6f82c035a1549de9609cb2f3e19ba6a8995b93",

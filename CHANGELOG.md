@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+The session-start hook no longer lists the runs.
+
+- **No run list at session start:** the hook now only refreshes the stale skill stubs. Since 0.9.0, a run belongs to one session. A list of every unfinished run in the folder invited a new session to continue the run of another live session, and so to take it over. To continue a run, ask the agent: `pskill runs --open` lists the runs.
+
 ## 0.9.0 (2026-10-01)
 
 The Stop hook holds only the session that runs the skill.
