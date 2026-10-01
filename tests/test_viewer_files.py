@@ -159,3 +159,10 @@ def test_the_node_that_the_panel_shows_gets_a_ring_that_beats_mermaid_styles() -
     assert "var(--ink)" in selection_rule
     assert "!important" in selection_rule  # Mermaid scopes its own drop-shadow by id
     assert ".step-card.is-selected" in style
+
+
+def test_the_skills_list_shows_the_internal_skills_in_their_own_section() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    assert 'skill.invocation === "internal"' in script
+    assert '"Internal skills"' in script

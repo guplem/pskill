@@ -94,10 +94,19 @@ def start_run(
     harness: str,
     executor: InlineExecutor | None = None,
     runs_folder: Path | None = None,
+    allow_internal: bool = False,
 ) -> tuple[str, str]:
-    """Create a run and return its id and its first packet. `runs_folder` lets `pskill test` use a temp folder."""
+    """Create a run and return its id and its first packet.
+
+    `runs_folder` and `allow_internal` let `pskill test` use a temp folder and replay an internal skill.
+    """
     catalog = load_catalog(project.skills_folder, project.agents_folder)
     skill = load_valid_skill(project, skill_id, catalog)
+    if skill.invocation == "internal" and not allow_internal:
+        raise RunError(
+            f"{skill_id!r} is an internal skill: only a call block of another skill starts it. "
+            "Start the skill that calls it."
+        )
     inputs = checked_inputs(skill, raw_inputs)
     now = utc_now()
     run_id = new_run_id(now)

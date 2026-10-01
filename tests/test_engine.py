@@ -282,6 +282,26 @@ def test_start_rejects_a_skill_with_errors(tmp_path: Path) -> None:
         start(project)
 
 
+INTERNAL_PLAN_SKILL = PLAN_SKILL.replace("goal:", "invocation: internal\ngoal:", 1)
+
+
+def test_start_rejects_an_internal_skill(tmp_path: Path) -> None:
+    project = make_project(tmp_path, skill_yaml=INTERNAL_PLAN_SKILL)
+
+    with pytest.raises(RunError, match=r"internal skill.*call block"):
+        start(project)
+
+
+def test_an_internal_skill_starts_when_the_caller_allows_it(tmp_path: Path) -> None:
+    project = make_project(tmp_path, skill_yaml=INTERNAL_PLAN_SKILL)
+
+    run_id, _ = start_run(
+        project, "plan-work", {"topic": "Login"}, mode="interactive", harness="generic", allow_internal=True
+    )
+
+    assert run_id.startswith("r-")
+
+
 def test_start_rejects_invalid_inputs(tmp_path: Path) -> None:
     project = make_project(tmp_path)
 

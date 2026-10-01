@@ -135,6 +135,7 @@ def run_case(project: Project, skill_id: str, case: dict[str, Any]) -> str | Non
             harness="generic",
             executor=executor,
             runs_folder=runs_folder,
+            allow_internal=True,
         )
         for _ in range(MAX_SUBMISSIONS):
             info = read_run_info(project, run_id, runs_folder)

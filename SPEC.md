@@ -150,7 +150,7 @@ blocks: {}                      # map: block id -> block
 - `invocation`:
   - `auto`: the agent may start the skill from its description.
   - `manual`: only the user starts it by name. Claude gets `disable-model-invocation: true`; Codex gets an `agents/openai.yaml` sidecar (VERIFY).
-  - `internal`: no stub. Only a `call` block can start it.
+  - `internal`: no stub. Only a `call` block can start it, and any number of skills may call it. `pskill start` refuses it; `pskill test` still replays its cases. The viewer lists it in its own "Internal skills" section.
 
 ### 5.2 Instructions
 
