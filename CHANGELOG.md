@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.6 (2026-10-01)
 
 Internal skills are locked and listed apart.
 
