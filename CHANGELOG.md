@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Clearer output fields:** each output field of the side panel is now a card. The name is in bold code, and the type, "optional", the default, and the allowed values are chips. The description has its own line. Nested fields, for example the item fields of an array of objects, show under their parent. Before, the panel did not show them.
+- **Clearer exits:** each "Where it can go" entry is now a card with the target block, a tag (if, otherwise, always, choice, or visit cap), and the whole condition in a code box. A hover on the card highlights its edge, its label, and its target block on the canvas. A click opens the target block.
+- **The script file of a script block:** when a command runs a file of its skill (`{{ skill.dir }}/scripts/read_issue.py`), the side panel shows that file's text. So you can see what the script computes, for example which labels count as blocking.
+
 ## 0.8.4 (2026-10-01)
 
 The block description stands apart in the side panel.

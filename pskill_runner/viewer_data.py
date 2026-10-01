@@ -89,6 +89,7 @@ class CanvasEdge:
     hint: str
     when: str | None = None
     choice: str | None = None
+    fallback: bool = False  # the edge with no condition after others: the run takes it when none matches
     id: str = ""
 
     @property
@@ -264,6 +265,7 @@ def block_edges(index: int, block: AnyBlock) -> list[CanvasEdge]:
                         choice_hint(choice, choices.get(choice), edge.when, len(choice_edges) > 1),
                         when=edge.when,
                         choice=choice,
+                        fallback=edge.when is None and len(choice_edges) > 1,
                     )
                 )
     else:
@@ -272,9 +274,19 @@ def block_edges(index: int, block: AnyBlock) -> list[CanvasEdge]:
             text = condition_text(edge.when) if edge.when is not None else None
             ending = condition_hint(edge.when, len(next_edges) > 1)
             hint = f"Taken{ending}" if ending else "Always taken."
+            fallback = edge.when is None and len(next_edges) > 1
             edges.append(
                 CanvasEdge(
-                    source, node_id(index, edge.to), text, "next", index, block.id, edge.to, hint, when=edge.when
+                    source,
+                    node_id(index, edge.to),
+                    text,
+                    "next",
+                    index,
+                    block.id,
+                    edge.to,
+                    hint,
+                    when=edge.when,
+                    fallback=fallback,
                 )
             )
     if block.on_max_visits is not None:
@@ -296,7 +308,18 @@ def frame_edges(index: int, frame: CanvasFrame) -> list[CanvasEdge]:
             text = condition_text(edge.when) if edge.when is not None else None
             hint = "The run starts here" + (condition_hint(edge.when, len(frame.skill.entry) > 1) or ".")
             edges.append(
-                CanvasEdge(START_NODE, node_id(0, edge.to), text, "entry", 0, None, edge.to, hint, when=edge.when)
+                CanvasEdge(
+                    START_NODE,
+                    node_id(0, edge.to),
+                    text,
+                    "entry",
+                    0,
+                    None,
+                    edge.to,
+                    hint,
+                    when=edge.when,
+                    fallback=edge.when is None and len(frame.skill.entry) > 1,
+                )
             )
     elif frame.called_by is not None:
         caller = node_id(frame.parent, frame.called_by)
@@ -657,9 +680,13 @@ def canvas_edge_rows(edges: list[CanvasEdge]) -> list[dict[str, Any]]:
             "id": edge.id,
             "source": edge.source,
             "target": edge.target,
+            "to_block": edge.to_block,
             "label": edge.text,
             "kind": edge.kind,
             "hint": edge.hint,
+            "when": whole_condition_text(edge.when) if edge.when is not None else None,
+            "choice": edge.choice,
+            "fallback": edge.fallback,
         }
         for edge in edges
     ]

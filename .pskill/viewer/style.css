@@ -1069,13 +1069,145 @@ a.tool {
 }
 
 .problems,
-.fields {
+/* Fields and exits: one card per item, so that the name, the chips, and the text read apart. */
+.fields,
+.exits {
   margin: 0;
-  padding-left: 18px;
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   font-size: 13px;
+}
+
+.field,
+.exit {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+/* Nested fields: a line on the left instead of a card in a card. */
+.field .fields {
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+  gap: 8px;
+}
+
+.field .field {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.field-head,
+.exit-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-name {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field-description {
+  margin: 4px 0 0;
+  color: var(--ink);
+}
+
+.field-values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.chip {
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--code-bg);
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 11.5px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.chip.is-value {
+  color: var(--ink);
+  font-family: var(--mono);
+}
+
+.chip.is-if { border-color: transparent; background: var(--done-bg); color: var(--done); }
+.chip.is-choice { border-color: transparent; background: var(--human-bg); color: var(--human); }
+.chip.is-visit-cap { border-color: transparent; background: var(--bad-bg); color: var(--bad); }
+
+.exit {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.exit:hover,
+.exit:focus-visible {
+  border-color: var(--ink);
+}
+
+.exit-arrow {
+  color: var(--muted);
+}
+
+.exit-condition {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--code-bg);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.exit-text {
+  color: var(--muted);
+}
+
+/* The edge and the target of the exit card under the pointer. */
+.layer path.flowchart-link.is-hovered {
+  stroke: var(--ink) !important;
+  stroke-width: 3px !important;
+  stroke-dasharray: none !important;
+}
+
+.layer g.label.is-hovered .edgeLabel,
+.layer g.label.is-hovered .edgeLabel p,
+.layer g.label.is-hovered .edgeLabel span {
+  color: var(--ink) !important;
+  font-weight: 700;
+}
+
+.layer g.node.is-exit-target rect,
+.layer g.node.is-exit-target polygon,
+.layer g.node.is-exit-target circle,
+.layer.is-skill g.node.is-exit-target rect,
+.layer.is-skill g.node.is-exit-target polygon,
+.layer.is-skill g.node.is-exit-target circle {
+  stroke: var(--ink) !important;
+  stroke-width: 3px !important;
+  stroke-dasharray: none !important;
 }
 
 .problem.is-error strong {
