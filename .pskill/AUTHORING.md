@@ -27,7 +27,7 @@ id: my-skill                  # equals the folder name
 description: >-               # what harnesses show to decide when to use the skill (max 1024 chars)
   Plan and check a change. Use when the user asks to plan a change.
 goal: A plan that the user approved, with the names in the changed files checked.
-invocation: auto              # auto (default) | manual (only the user starts it) | internal (only call blocks)
+invocation: auto              # auto (default) | manual (only the user starts it) | internal (only call blocks; `pskill start` refuses it)
 inputs:
   topic: {type: string, description: "What the user wants to change."}
   files: {type: array, items: {type: string}, description: "The files to check."}

@@ -320,14 +320,33 @@ async function showSkills() {
   if (text === view.detailText) return;
   view.detailText = text;
   const page = element("main", null, "runs-page");
+  const internalSkills = overview.skills.filter((skill) => skill.invocation === "internal");
+  const mainSkills = overview.skills.filter((skill) => skill.invocation !== "internal");
+  page.append(
+    element("h1", "Skills"),
+    element("p", "Every skill in .pskill/skills/. Open one to see its steps and how they connect.", "note"),
+    overview.skills.length ? skillCards(mainSkills) : element("p", "This project has no skills yet.", "note"),
+  );
+  if (internalSkills.length) {
+    page.append(
+      element("h2", "Internal skills"),
+      element("p", "Only a call block of another skill starts these. Several skills can call the same one.", "note"),
+      skillCards(internalSkills),
+    );
+  }
+  app.className = "";
+  app.replaceChildren(topbar(), page);
+}
+
+function skillCards(skills) {
   const cards = element("div", null, "run-cards");
-  for (const skill of overview.skills) {
+  for (const skill of skills) {
     const card = element("a", null, skill.error ? "run-card skill-card has-error" : "run-card skill-card");
     card.href = `#/skill/${encodeURIComponent(skill.skill_id)}`;
     const head = element("div", null, "run-card-head");
     head.append(element("span", skill.skill_id));
     if (skill.error) head.append(element("span", "does not load", "pill state-failed"));
-    else if (skill.invocation !== "auto") head.append(element("span", skill.invocation, "pill state-idle"));
+    else if (skill.invocation === "manual") head.append(element("span", skill.invocation, "pill state-idle"));
     card.append(head);
     if (skill.error) {
       card.append(element("span", skill.error, "run-card-meta errors-text"));
@@ -339,13 +358,7 @@ async function showSkills() {
     }
     cards.append(card);
   }
-  page.append(
-    element("h1", "Skills"),
-    element("p", "Every skill in .pskill/skills/. Open one to see its steps and how they connect.", "note"),
-    overview.skills.length ? cards : element("p", "This project has no skills yet.", "note"),
-  );
-  app.className = "";
-  app.replaceChildren(topbar(), page);
+  return cards;
 }
 
 // --- the run screen: layout -------------------------------------------------------------------

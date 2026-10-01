@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Internal skills are locked and listed apart.
+
+- **`pskill start` refuses an internal skill:** it names the reason and says to start the skill that calls it. Before, `invocation: internal` only hid the stub, and a direct start still worked. `pskill test` still replays the cases of an internal skill.
+- **Internal skills have their own section:** the skills list of the viewer shows the skills that you start first, then an "Internal skills" section. Several skills can call the same internal skill, so it gets its own card and does not sit inside one caller's card.
+
 ## 0.8.5 (2026-10-01)
 
 Clearer fields and exits in the side panel, and the script file of a script block.
