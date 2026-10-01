@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.7 (2026-10-01)
 
 See and edit the agents in the viewer, and follow links to them.
 
