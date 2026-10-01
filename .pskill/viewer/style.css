@@ -1440,3 +1440,68 @@ a.tool {
   text-transform: uppercase;
   color: var(--muted);
 }
+
+/* --- links to another skill or agent, and the agent screen ------------------------------------ */
+
+.entity-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.entity-link::after {
+  content: "→";
+  transition: transform 0.15s ease;
+}
+
+.entity-link:hover {
+  text-decoration: underline;
+}
+
+.entity-link:hover::after {
+  transform: translateX(2px);
+}
+
+.entity-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.entity-user {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.agent-page {
+  max-width: 860px;
+}
+
+.agent-page section h3,
+.agent-text-head h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.agent-text-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.agent-text-head h3 {
+  margin: 0;
+}
+
+.agent-editor {
+  width: 100%;
+  min-height: 420px;
+  box-sizing: border-box;
+}

@@ -26,7 +26,7 @@ from pskill_runner.skill_model import (
     TaskBlock,
 )
 from pskill_runner.skill_schema import is_skill_id
-from pskill_runner.validator import validate_skill
+from pskill_runner.validator import agent_names_used, validate_skill
 from pskill_runner.viewer_data import (
     BLOCK_TYPE_MEANINGS,
     START_NODE,
@@ -96,7 +96,10 @@ def skill_detail(project: Project, skill_id: str) -> dict[str, Any] | None:
         "skill": skill_facts(skill),
         "canvas": skill_canvas(skill),
         "blocks": {
-            block.id: {**block_details(skill, block), "editable": editable_values(raw_blocks, block)}
+            block.id: {
+                **block_details(skill, block, catalog.agent_names),
+                "editable": editable_values(raw_blocks, block),
+            }
             for block in skill.blocks.values()
         },
         "problems": problems,
@@ -132,8 +135,11 @@ def skill_canvas(skill: Skill) -> dict[str, Any]:
 # --- the side panel: one block's details ---------------------------------------------------------
 
 
-def block_details(skill: Skill, block: AnyBlock) -> dict[str, Any]:
-    """What the side panel shows for one block: its facts, its prose, its fields, and its exits."""
+def block_details(skill: Skill, block: AnyBlock, agent_names: set[str]) -> dict[str, Any]:
+    """What the side panel shows for one block: its facts, its prose, its fields, and its exits.
+
+    `agents` names each agent file that the block uses and that exists, so the panel can link to it.
+    """
     instruction_value = block.report if isinstance(block, EndBlock) else getattr(block, "instruction", None)
     details: dict[str, Any] = {
         "node": node_id(0, block.id),
@@ -152,10 +158,13 @@ def block_details(skill: Skill, block: AnyBlock) -> dict[str, Any]:
         "inputs": [],
         "outputs": [],
         "child_skill": None,
+        "agents": [],
         "exits": [{"to": edge.to_block, "label": edge.text, "hint": edge.hint} for edge in block_edges(0, block)],
     }
     if isinstance(block, DecisionBlock) and block.choices:
         details["choices"] = [{"choice": choice, "meaning": meaning} for choice, meaning in block.choices.items()]
+    if isinstance(block, ParallelBlock):
+        details["agents"] = [name for name in dict.fromkeys(agent_names_used(block)) if name in agent_names]
     if isinstance(block, ScriptBlock):
         details["command"] = [str(part) for part in block.run]
         details["script_files"] = script_files(skill, block)

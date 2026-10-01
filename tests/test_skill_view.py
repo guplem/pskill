@@ -300,3 +300,20 @@ def test_each_canvas_edge_has_its_target_condition_and_fallback(tmp_path: Path) 
     assert read_edges[0]["when"] == "steps.read.json.count > 0"
     assert [edge["fallback"] for edge in read_edges] == [False, True]
     assert read_edges[0]["choice"] is None
+
+
+def test_a_parallel_block_names_the_agent_files_that_it_uses(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "fanout", NAMED_PARALLEL_SKILL)
+    (tmp_path / ".pskill" / "agents").mkdir()
+    (tmp_path / ".pskill" / "agents" / "checker.md").write_text("You check facts.\n", encoding="utf-8")
+    detail = skill_detail(find_project(tmp_path), "fanout") or {}
+
+    assert detail["blocks"]["check"]["agents"] == ["checker"]
+    assert detail["blocks"]["done"]["agents"] == []
+
+
+def test_a_missing_agent_file_is_not_named_as_a_link(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "fanout", NAMED_PARALLEL_SKILL)
+    detail = skill_detail(find_project(tmp_path), "fanout") or {}
+
+    assert detail["blocks"]["check"]["agents"] == []

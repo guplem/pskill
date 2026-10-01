@@ -220,3 +220,60 @@ def test_an_edit_with_a_bad_length_is_refused(server: ThreadingHTTPServer, lengt
 
     assert response.status == 403
     connection.close()
+
+
+def write_agent(project: Project, name: str, text: str) -> None:
+    project.agents_folder.mkdir(parents=True, exist_ok=True)
+    (project.agents_folder / f"{name}.md").write_text(text, encoding="utf-8")
+
+
+def test_the_agents_endpoint_lists_every_agent(server: ThreadingHTTPServer, project: Project) -> None:
+    write_agent(project, "checker", "You check facts.\n")
+
+    status, _, body = get(server, "/api/agents")
+
+    assert status == 200
+    assert json.loads(body)["agents"][0]["name"] == "checker"
+
+
+def test_the_agent_endpoint_returns_one_agent(server: ThreadingHTTPServer, project: Project) -> None:
+    write_agent(project, "checker", "You check facts.\n")
+
+    status, _, body = get(server, "/api/agents/checker")
+
+    assert status == 200
+    assert json.loads(body)["text"] == "You check facts.\n"
+
+
+def test_an_unknown_agent_is_not_found(server: ThreadingHTTPServer) -> None:
+    status, _, _ = get(server, "/api/agents/missing")
+
+    assert status == 404
+
+
+def test_the_agent_edit_endpoint_saves_the_text_and_returns_the_new_detail(
+    server: ThreadingHTTPServer, project: Project
+) -> None:
+    write_agent(project, "checker", "You check facts.\n")
+
+    status, body = post(server, "/api/agents/checker/edit", {"text": "You check every fact.\n"})
+
+    assert status == 200
+    assert body["text"] == "You check every fact.\n"
+    assert (project.agents_folder / "checker.md").read_text(encoding="utf-8") == "You check every fact.\n"
+
+
+def test_an_edit_of_an_unknown_agent_is_refused(server: ThreadingHTTPServer) -> None:
+    status, body = post(server, "/api/agents/missing/edit", {"text": "x"})
+
+    assert status == 400
+    assert "no agent" in body["error"][0]
+
+
+def test_an_agent_edit_from_another_page_is_refused(server: ThreadingHTTPServer, project: Project) -> None:
+    write_agent(project, "checker", "You check facts.\n")
+
+    status, _ = post(server, "/api/agents/checker/edit", {"text": "x"}, {"Origin": "https://example.com"})
+
+    assert status == 403
+    assert (project.agents_folder / "checker.md").read_text(encoding="utf-8") == "You check facts.\n"

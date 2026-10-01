@@ -234,6 +234,7 @@ function topbar() {
   for (const [text, href, screens] of [
     ["Runs", "#/", ["runs", "run"]],
     ["Skills", "#/skills", ["skills", "skill"]],
+    ["Agents", "#/agents", ["agents", "agent"]],
   ]) {
     const link = element("a", text, "nav-link");
     link.href = href;
@@ -242,6 +243,21 @@ function topbar() {
   }
   bar.append(brand, nav);
   return bar;
+}
+
+// A name that leads to another skill or agent: a link with an arrow, so it reads as "go there".
+function entityLink(text, href) {
+  const link = element("a", text, "entity-link");
+  link.href = href;
+  return link;
+}
+
+function skillHref(skillId) {
+  return `#/skill/${encodeURIComponent(skillId)}`;
+}
+
+function agentHref(name) {
+  return `#/agent/${encodeURIComponent(name)}`;
 }
 
 function isSkillScreen() {
@@ -359,6 +375,99 @@ function skillCards(skills) {
     cards.append(card);
   }
   return cards;
+}
+
+// --- the agents page and the agent screen ------------------------------------------------------
+
+async function showAgents() {
+  const overview = await fetchJson("/api/agents");
+  if (view.screen !== "agents") return; // the user moved on while it loaded
+  const page = element("main", null, "runs-page");
+  const cards = element("div", null, "run-cards");
+  for (const agent of overview.agents) {
+    const card = element("a", null, "run-card skill-card");
+    card.href = agentHref(agent.name);
+    const head = element("div", null, "run-card-head");
+    head.append(element("span", agent.name));
+    const users = agent.used_by.length ? `used by ${agent.used_by.join(", ")}` : "no fixed use in a skill";
+    card.append(head, element("span", agent.summary, "skill-card-description"), element("span", users, "run-card-meta"));
+    cards.append(card);
+  }
+  page.append(
+    element("h1", "Agents"),
+    element("p", "Every agent in .pskill/agents/. A parallel block gives its text to each subagent, before the task.", "note"),
+    overview.agents.length ? cards : element("p", "This project has no agents yet.", "note"),
+  );
+  app.className = "";
+  app.replaceChildren(topbar(), page);
+}
+
+async function showAgent(name) {
+  const agent = await fetchJson(`/api/agents/${encodeURIComponent(name)}`);
+  if (view.screen !== "agent") return; // the user moved on while it loaded
+  drawAgent(agent, false);
+}
+
+function drawAgent(agent, editing) {
+  const page = element("main", null, "runs-page agent-page");
+  const users = element("div", null, "entity-links");
+  for (const user of agent.used_by) {
+    const item = element("span", null, "entity-user");
+    item.append(entityLink(user.skill, skillHref(user.skill)), element("span", `block ${user.blocks.join(", ")}`, "note"));
+    users.append(item);
+  }
+  const usedBy = agent.used_by.length
+    ? users
+    : element("p", "No skill names this agent where pskill validate can see it. A skill can still pick it from a list that a script returns.", "note");
+  page.append(element("h1", agent.name), element("p", `The file ${agent.file}.`, "note"), section("Used by", usedBy));
+  page.append(editing ? agentEditor(agent) : agentText(agent));
+  app.className = "";
+  app.replaceChildren(topbar(), page);
+}
+
+function agentText(agent) {
+  const head = element("div", null, "agent-text-head");
+  head.append(element("h3", "Text"), button("Edit", () => drawAgent(agent, true)));
+  return section(head, agent.text.trim() ? markdown(agent.text) : element("p", "The file is empty.", "note"));
+}
+
+function agentEditor(agent) {
+  const form = element("form", null, "edit-form");
+  const area = element("textarea", agent.text, "edit-text mono agent-editor");
+  area.rows = 24;
+  area.setAttribute("aria-label", `The text of ${agent.name}`);
+  const errors = element("pre", null, "errors");
+  errors.hidden = true;
+  const save = element("button", "Save", "tool primary");
+  save.type = "submit";
+  const actions = element("div", null, "edit-actions");
+  actions.append(save, button("Cancel", () => drawAgent(agent, false)));
+  form.append(element("p", `Markdown. Changes go to ${agent.file} when you save.`, "note"), area, errors, actions);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (area.value === agent.text) {
+      drawAgent(agent, false);
+      return;
+    }
+    const saved = await saveAgent(agent.name, area.value, errors);
+    if (saved) drawAgent(saved, false);
+  });
+  return form;
+}
+
+async function saveAgent(name, text, errorBox) {
+  const response = await fetch(`/api/agents/${encodeURIComponent(name)}/edit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    errorBox.textContent = `Not saved:\n${Array.isArray(body.error) ? body.error.join("\n") : String(body.error)}`;
+    errorBox.hidden = false;
+    return null;
+  }
+  return body;
 }
 
 // --- the run screen: layout -------------------------------------------------------------------
@@ -1278,14 +1387,21 @@ function blockSections(details) {
   if (details.facts.length) {
     const facts = element("dl", null, "facts");
     for (const [name, value] of details.facts) {
-      facts.append(FACT_FIELDS[name] ? withHelp("dt", name, FACT_FIELDS[name]) : element("dt", name), element("dd", value));
+      const term = FACT_FIELDS[name] ? withHelp("dt", name, FACT_FIELDS[name]) : element("dt", name);
+      const definition = element("dd");
+      if (name === "skill" && details.child_skill) definition.append(entityLink(value, skillHref(details.child_skill)));
+      else if (name === "agent" && details.agents.includes(value)) definition.append(entityLink(value, agentHref(value)));
+      else definition.textContent = value;
+      facts.append(term, definition);
     }
     parts.push(facts);
   }
-  if (details.child_skill) {
-    const link = element("a", `Open the skill ${details.child_skill}`, "tool");
-    link.href = `#/skill/${encodeURIComponent(details.child_skill)}`;
-    parts.push(section(withHelp("h3", "Child skill", "skill"), element("p", "This block runs another skill and gets its outputs back.", "note"), link));
+  // An agent name from a fixed list ("{{ item.agent }}"): one link per agent that the list names.
+  const listedAgents = details.agents.filter((name) => !details.facts.some(([fact, value]) => fact === "agent" && value === name));
+  if (listedAgents.length) {
+    const links = element("div", null, "entity-links");
+    links.append(...listedAgents.map((name) => entityLink(name, agentHref(name))));
+    parts.push(section(withHelp("h3", "Agents", "agent"), links));
   }
   if (details.command) parts.push(section(withHelp("h3", "Command", "run"), element("pre", details.command.join(" "), "command")));
   for (const file of details.script_files) {
@@ -1801,7 +1917,9 @@ async function render() {
   clearTimeout(view.pollTimer);
   const runMatch = location.hash.match(/^#\/run\/(.+)$/);
   const skillMatch = location.hash.match(/^#\/skill\/(.+)$/);
-  const screen = runMatch ? "run" : skillMatch ? "skill" : location.hash === "#/skills" ? "skills" : "runs";
+  const agentMatch = location.hash.match(/^#\/agent\/(.+)$/);
+  const listScreens = { "#/skills": "skills", "#/agents": "agents" };
+  const screen = runMatch ? "run" : skillMatch ? "skill" : agentMatch ? "agent" : listScreens[location.hash] || "runs";
   if (screen !== view.screen) {
     view.parts = null; // another screen: build its layout again
     view.runId = null;
@@ -1813,8 +1931,12 @@ async function render() {
       await showRun(decodeURIComponent(runMatch[1]));
     } else if (skillMatch) {
       await showSkill(decodeURIComponent(skillMatch[1]));
+    } else if (agentMatch) {
+      await showAgent(decodeURIComponent(agentMatch[1]));
     } else if (screen === "skills") {
       await showSkills();
+    } else if (screen === "agents") {
+      await showAgents();
     } else {
       await showRuns();
     }

@@ -166,3 +166,19 @@ def test_the_skills_list_shows_the_internal_skills_in_their_own_section() -> Non
 
     assert 'skill.invocation === "internal"' in script
     assert '"Internal skills"' in script
+
+
+def test_the_viewer_has_an_agents_page_and_an_agent_screen_with_an_editor() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    assert '["Agents", "#/agents"' in script
+    assert "/api/agents/" in script
+    assert 'element("textarea"' in script
+
+
+def test_a_name_that_leads_to_another_skill_or_agent_is_a_link_with_an_arrow() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    style = (VIEWER / "style.css").read_text(encoding="utf-8")
+
+    assert "function entityLink(" in script
+    assert ".entity-link::after" in style
