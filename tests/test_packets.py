@@ -178,7 +178,9 @@ def test_the_parallel_packet_lists_one_full_prompt_per_task() -> None:
     text = render_parallel_packet(PLAN_PACKET, tasks, total_tasks=3)
 
     assert text.startswith("## pskill · plan-work · create_plan (visit 2)")
-    assert "Spawn one subagent per task below, all at once." in text
+    assert (
+        "Spawn one subagent per task below, all at once, each with a fresh context (none of this conversation)." in text
+    )
     assert "2 of 3 tasks are still open." in text
     assert "#### Task 0\n" in text and "#### Task 2\n" in text and "#### Task 1\n" not in text
     assert "You check facts.\n" in text

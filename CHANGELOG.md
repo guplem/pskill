@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+The parallel packet asks for a fresh context in words.
+
+- **Fresh context, said plainly:** the packet of a parallel block now says to spawn each subagent "with a fresh context (none of this conversation)". Before, only the spawn tool that each app names implied it, and nothing said so in Codex.
+
 ## 0.10.0 (2026-10-01)
 
 The stub gives the goal and the rules once, and each step shows only what to do.
