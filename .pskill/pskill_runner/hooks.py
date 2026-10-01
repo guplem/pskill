@@ -3,16 +3,15 @@
 - Stop: while a run of this session has an open block, keep the agent working, at most
   `stop_hook_max_blocks` times in a row. Then allow the stop and pause the run, so a stuck agent never
   loops forever. Another session in the same checkout stops freely.
-- Session start: refresh stale skill stubs, then list the unfinished runs. Never resume a run by itself.
+- Session start: refresh stale skill stubs. It lists no runs: a run of another live session would invite
+  the new session to take it over. `pskill runs --open` lists them.
 """
 
 from pskill_runner.engine import list_runs, register_stop_attempt
 from pskill_runner.project import Project
-from pskill_runner.run_records import UNFINISHED_STATUSES, RunInfo
+from pskill_runner.run_records import RunInfo
 from pskill_runner.skill_loader import load_catalog
 from pskill_runner.stubs import RUNNER, StubError, sync_stubs
-
-LISTED_RUNS_LIMIT = 3
 
 
 def stop_hook_reason(project: Project, harness: str, session_id: str | None = None) -> str | None:
@@ -44,7 +43,7 @@ def holds_session(info: RunInfo, session_id: str | None) -> bool:
 
 def session_start_text(project: Project) -> str:
     """The context for a new session. An empty text means that nothing needs attention."""
-    lines = stub_refresh_lines(project) + open_run_lines(project)
+    lines = stub_refresh_lines(project)
     return "\n".join(lines) + "\n" if lines else ""
 
 
@@ -63,21 +62,4 @@ def stub_refresh_lines(project: Project) -> list[str]:
     if changes:
         names = ", ".join(sorted({change.skill for change in changes}))
         lines.append(f"pskill: updated {len(changes)} stubs ({names}).")
-    return lines
-
-
-def open_run_lines(project: Project) -> list[str]:
-    open_runs = [info for info in list_runs(project) if info["status"] in UNFINISHED_STATUSES]
-    if not open_runs:
-        return []
-    lines = ["pskill: unfinished runs in this checkout:"]
-    for info in open_runs[:LISTED_RUNS_LIMIT]:
-        run_id = info["run_id"]
-        block = info["current_block"] or "-"
-        lines.append(
-            f"- {run_id}  {info['skill_id']}  {block}  {info['status']}  (continue: `{RUNNER} current {run_id}`)"
-        )
-    if len(open_runs) > LISTED_RUNS_LIMIT:
-        hidden = len(open_runs) - LISTED_RUNS_LIMIT
-        lines.append(f"Run `{RUNNER} runs --open` for the other {hidden}.")
     return lines

@@ -80,16 +80,22 @@ def test_a_paused_run_or_a_run_of_another_harness_does_not_block(tmp_path: Path)
     assert stop_hook_reason(project, "claude-code") is None
 
 
-def test_session_start_refreshes_stale_stubs_and_lists_open_runs(tmp_path: Path) -> None:
+def test_session_start_refreshes_stale_stubs(tmp_path: Path) -> None:
     project = make_project(tmp_path)
-    run_id = start(project)
 
     text = session_start_text(project)
 
-    assert "pskill: updated 4 stubs (plan-work, pskill)." in text
+    assert text == "pskill: updated 4 stubs (plan-work, pskill).\n"
     assert (tmp_path / ".claude" / "skills" / "plan-work" / "SKILL.md").is_file()
-    assert f"- {run_id}  plan-work  create_plan  active" in text
-    assert f"current {run_id}" in text
+
+
+def test_session_start_never_lists_the_runs(tmp_path: Path) -> None:
+    """A listed run of another live session invites the new session to take it over."""
+    project = make_project(tmp_path)
+    sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
+    start(project, session_id="session-a")
+
+    assert session_start_text(project) == ""
 
 
 def test_session_start_is_silent_when_nothing_needs_attention(tmp_path: Path) -> None:
@@ -97,16 +103,6 @@ def test_session_start_is_silent_when_nothing_needs_attention(tmp_path: Path) ->
     sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
 
     assert session_start_text(project) == ""
-
-
-def test_session_start_lists_only_the_three_newest_open_runs(tmp_path: Path) -> None:
-    project = make_project(tmp_path)
-    run_ids = [start(project) for _ in range(4)]
-
-    text = session_start_text(project)
-
-    assert sum(run_id in text for run_id in run_ids) == 3
-    assert "runs --open" in text
 
 
 def test_session_start_warns_about_a_skill_that_does_not_load(tmp_path: Path) -> None:

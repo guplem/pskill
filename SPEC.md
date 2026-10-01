@@ -86,7 +86,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 
 - **L1. Autonomous mode removes human gates.** In autonomous mode the agent takes every human decision, including "post publicly" or "close the issue". Then only the harness permission system protects outward actions. Say this clearly in the README.
 - **L2. The runner trusts the agent's claim that a human answered.**
-- **L3. Enforcement is soft without a Stop hook.** `pskill current` and the session-start message recover a run that the agent left.
+- **L3. Enforcement is soft without a Stop hook.** `pskill runs --open` and `pskill current` recover a run that the agent left.
 - **L4. The Stop hook binds by harness, checkout, and session.** A run holds only the session that owns it, so two sessions in the same folder do not conflict. A harness that gives no session id (`generic`), and a run from before 0.9.0, hold every session of the harness in the checkout.
 - **L5. Instruction files are on disk.** The agent could read future blocks. This is not a security boundary.
 - **L7. Codex needs Full access.** Inside the Codex sandbox, `uv` cannot open its cache (outside the project) or reach PyPI. The Codex rule lets only plain runner commands, such as `start` and `current`, run outside the sandbox: Codex does not match the rule to the `submit` form with an answer on stdin (verified in #24). So the user runs Codex with Full access (`--sandbox danger-full-access`), or approves each `submit`. pskill never changes this setting. Full access also means that the runner's `script` blocks run without the sandbox.
@@ -462,7 +462,7 @@ Set the mode with `start --mode interactive|autonomous` (default from config: `i
 
 - `pskill current [<run-id>]` prints the current packet again. With no id, it uses the newest unfinished run.
 - `pskill resume <run-id>` moves a paused run back to `active` and prints the packet.
-- The session-start hook lists unfinished runs.
+- `pskill runs --open` lists the unfinished runs. The session-start hook does not list them: a run of another live session would invite the new session to take it over (L4).
 - A run always uses its own copy of the skills in `runs/<id>/skills/` (D22).
 - `start`, `current`, `submit`, and `resume` detect the harness on every call. When it differs from `run.harness`, the runner updates `run.harness` and logs `harness_changed`. The Stop hook and the packet wording then follow the new harness.
 - The same commands read the session id of the calling app: `CLAUDE_CODE_SESSION_ID` in Claude Code, `CODEX_THREAD_ID` in Codex (VERIFY: that it equals the hook's `session_id`). When it differs from `run.session_id`, the runner updates it and logs `session_changed`. So the session that continues a run (after `/clear`, or in a new session) becomes its owner. A `submit --task` never changes the owner: a subagent sends it, and a subagent may have its own id.
@@ -558,9 +558,9 @@ class HarnessAdapter(Protocol):
   - Never block the stop of a subagent. Claude Code sends subagent stops as a separate `SubagentStop` event, which pskill does not hook. VERIFY how Codex marks a subagent stop.
   - After 3 blocks in a row (config `stop_hook_max_blocks`) with no submission between them, allow the stop and pause the run with reason `agent_stopped`. This prevents an endless loop.
   - For any other case, allow the stop.
-- **Session start.** Two jobs, in this order:
-  1. **Refresh the stubs.** Run the stub part of `sync` (not hooks, not permission rules). When it changed files, print one line: "pskill: updated <n> stubs (<skill ids>)." Skip a skill whose `skill.yaml` does not load, and print one warning line for it. This covers skill edits from any source: the agent, an IDE, `git pull`, or a teammate.
-  2. **List unfinished runs.** If any exist, print one line per run for the 3 newest ones: id, skill, block, status, and the `current` command. If more exist, add "Run `pskill runs --open` for the rest." Never resume automatically.
+- **Session start.** One job:
+  - **Refresh the stubs.** Run the stub part of `sync` (not hooks, not permission rules). When it changed files, print one line: "pskill: updated <n> stubs (<skill ids>)." Skip a skill whose `skill.yaml` does not load, and print one warning line for it. This covers skill edits from any source: the agent, an IDE, `git pull`, or a teammate.
+  - It lists no runs, and never resumes one (section 7.6).
 - A stub goes stale only when a skill is added or removed, or when its `id`, `description`, `inputs`, or `invocation` changes. Other edits need no sync, because `start` reads `skill.yaml` fresh.
 
 ### 9.2.1 Permission rules (D28)
