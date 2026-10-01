@@ -97,7 +97,9 @@ def test_a_block_shows_its_instruction_fields_and_exits(tmp_path: Path) -> None:
         "type": "string",
         "description": "finished when nothing is open.",
         "optional": False,
+        "default": None,
         "values": ["finished", "question"],
+        "children": [],
     }
     assert ["visits at most", "3"] in create_plan["facts"]
     assert create_plan["type_meaning"] == "The agent does a piece of work and returns a typed answer."
@@ -228,3 +230,73 @@ def test_a_parallel_block_shows_its_task_name(tmp_path: Path) -> None:
 
     assert ["task name", "Check {{ item }}"] in check["facts"]
     assert "task_name" in check["editable"]["keys"]
+
+
+DETAILED_SKILL = """\
+schema: pskill/v1
+id: detailed
+description: Shows every detail of a block.
+goal: Check the panel details.
+invocation: manual
+entry: read
+blocks:
+  read:
+    type: script
+    run: [uv, run, "{{ skill.dir }}/scripts/read.py", "{{ skill.dir }}/../outside.py"]
+    parse: json
+    next:
+      - when: "{{ steps.read.json.count > 0 }}"
+        to: plan
+      - to: done
+  plan:
+    type: task
+    instruction: Plan it.
+    output:
+      mode: {type: string, enum: [fast, slow], default: fast, description: "How to plan."}
+      gaps:
+        type: array
+        description: "The open questions."
+        items:
+          type: object
+          properties:
+            name: {type: string, description: "2 to 4 words."}
+            question: {type: string, optional: true, description: "The question."}
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_a_script_block_shows_the_skill_file_that_its_command_runs(tmp_path: Path) -> None:
+    files = {"scripts/read.py": "LABELS = ['blocked']\n"}
+    write_skill(tmp_path / ".pskill" / "skills", "detailed", DETAILED_SKILL, files)
+    (tmp_path / ".pskill" / "skills" / "outside.py").write_text("SECRET = 1\n", encoding="utf-8")
+
+    read = detail_of(find_project(tmp_path), "detailed")["blocks"]["read"]
+
+    assert read["script_files"] == [{"path": "scripts/read.py", "text": "LABELS = ['blocked']\n"}]
+
+
+def test_an_output_field_shows_its_default_and_its_nested_fields(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "detailed", DETAILED_SKILL)
+
+    mode, gaps = detail_of(find_project(tmp_path), "detailed")["blocks"]["plan"]["fields"]
+
+    assert mode["default"] == "fast"
+    assert mode["children"] == []
+    assert [child["name"] for child in gaps["children"]] == ["name", "question"]
+    assert gaps["children"][1]["optional"] is True
+    assert gaps["children"][1]["description"] == "The question."
+
+
+def test_each_canvas_edge_has_its_target_condition_and_fallback(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "detailed", DETAILED_SKILL)
+
+    edges = detail_of(find_project(tmp_path), "detailed")["canvas"]["edges"]
+    read_edges = [edge for edge in edges if edge["source"] == "f0_read"]
+
+    assert [edge["to_block"] for edge in read_edges] == ["plan", "done"]
+    assert read_edges[0]["when"] == "steps.read.json.count > 0"
+    assert [edge["fallback"] for edge in read_edges] == [False, True]
+    assert read_edges[0]["choice"] is None

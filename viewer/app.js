@@ -650,6 +650,7 @@ async function drawGraph() {
   for (const edge of data.edges) {
     const path = svgNode.querySelector(`[id="${renderId}-${edge.id}"]`);
     const label = svgNode.querySelector(`g.label[data-id="${edge.id}"]`);
+    if (path) path.dataset.edge = edge.id; // for the exit cards of the panel
     if (isSkillScreen()) {
       if (label) addHint(label, edge.hint);
       if (path) addHint(path, edge.hint);
@@ -879,6 +880,10 @@ function markSelection() {
 }
 
 function drawPanel() {
+  // A redraw removes the exit card under the pointer before its mouseleave, so clear its highlight here.
+  for (const item of view.parts.layer.querySelectorAll(".is-hovered, .is-exit-target")) {
+    item.classList.remove("is-hovered", "is-exit-target");
+  }
   if (isSkillScreen()) {
     drawSkillPanel();
     return;
@@ -1270,6 +1275,10 @@ function blockSections(details) {
     parts.push(section(withHelp("h3", "Child skill", "skill"), element("p", "This block runs another skill and gets its outputs back.", "note"), link));
   }
   if (details.command) parts.push(section(withHelp("h3", "Command", "run"), element("pre", details.command.join(" "), "command")));
+  for (const file of details.script_files) {
+    const note = element("p", `The command runs ${file.path}. Change it in your code editor.`, "note");
+    parts.push(section("Script file", note, folded(element("pre", file.text), `${block}:script:${file.path}`)));
+  }
   if (details.instruction !== null) {
     const title = details.type === "end" ? "Report" : "Instruction";
     const source = details.instruction_file ? `From ${details.instruction_file}. ` : "";
@@ -1293,21 +1302,29 @@ function blockSections(details) {
   if (details.fields.length) parts.push(section(withHelp("h3", "Output: what the answer must hold", "output"), fieldList(details.fields)));
   if (details.inputs.length) parts.push(section(withHelp("h3", "Inputs to the child skill", "inputs"), valueList(details.inputs)));
   if (details.outputs.length) parts.push(section(withHelp("h3", "Outputs of the skill", "outputs"), valueList(details.outputs)));
-  if (details.exits.length) {
-    const list = element("ul");
-    for (const exit of details.exits) list.append(element("li", `→ ${exit.to}: ${exit.hint}`));
-    parts.push(section(withHelp("h3", "Where it can go", "next"), list));
-  }
+  if (details.exits.length) parts.push(section(withHelp("h3", "Where it can go", "next"), exitsOf(details.node)));
   return parts;
 }
 
+// One card per field: the name and its chips on the first line, the description below, then the nested fields.
 function fieldList(fields) {
   const list = element("ul", null, "fields");
   for (const field of fields) {
-    const item = element("li");
-    const type = `${field.type}${field.optional ? ", optional" : ""}${field.values ? `: ${field.values.join(" | ")}` : ""}`;
-    item.append(element("code", field.name), element("span", ` (${type})`, "note"));
-    if (field.description) item.append(document.createTextNode(` ${field.description}`));
+    const item = element("li", null, "field");
+    const head = element("div", null, "field-head");
+    // With the nested fields listed below, "object with a, b" says nothing more than "object".
+    const type = field.children.length ? field.type.replace(/ with .*$/, "") : field.type;
+    head.append(element("code", field.name, "field-name"), element("span", type, "chip"));
+    if (field.optional) head.append(element("span", "optional", "chip"));
+    if (field.default !== null) head.append(element("span", `default ${JSON.stringify(field.default)}`, "chip"));
+    item.append(head);
+    if (field.description) item.append(element("p", field.description, "field-description"));
+    if (field.values) {
+      const values = element("div", null, "field-values");
+      values.append(element("span", "One of", "note"), ...field.values.map((value) => element("code", String(value), "chip is-value")));
+      item.append(values);
+    }
+    if (field.children.length) item.append(fieldList(field.children));
     list.append(item);
   }
   return list;
@@ -1368,13 +1385,43 @@ function visitPicker(visits, chosen) {
   return section("Visits", picker);
 }
 
+// One card per edge out of a node: the target, a tag for when the run takes it, and the condition.
+// A hover lights up the edge and its target on the canvas, and a click opens the target.
 function exitsOf(node) {
-  const list = element("ul");
+  const list = element("div", null, "exits");
   for (const edge of view.detail.canvas.edges.filter((item) => item.source === node && item.kind !== "tasks")) {
-    const target = view.detail.canvas.nodes.find((item) => item.id === edge.target);
-    list.append(element("li", `→ ${target ? target.block : edge.target}: ${edge.hint}`));
+    const card = button(null, () => {
+      highlightExit(edge, false);
+      selectNode(edge.target);
+    }, "exit");
+    card.title = edge.hint;
+    const [tag, tagKind] = exitTag(edge);
+    const head = element("span", null, "exit-head");
+    head.append(element("span", "→", "exit-arrow"), element("strong", edge.to_block), element("span", tag, `chip is-${tagKind}`));
+    card.append(head);
+    if (edge.when) card.append(element("code", edge.when, "exit-condition"));
+    else if (edge.kind !== "next" || edge.fallback) card.append(element("span", edge.hint, "exit-text"));
+    card.addEventListener("mouseenter", () => highlightExit(edge, true));
+    card.addEventListener("mouseleave", () => highlightExit(edge, false));
+    list.append(card);
   }
   return list;
+}
+
+// The tag of an exit card, and its color class: when the run takes the edge, in one or two words.
+function exitTag(edge) {
+  if (edge.kind === "visit_cap") return ["visit cap", "visit-cap"];
+  if (edge.choice !== null) return [`choice "${edge.choice}"`, "choice"];
+  if (edge.when) return ["if", "if"];
+  if (edge.fallback) return ["otherwise", "otherwise"];
+  return ["always", "always"];
+}
+
+function highlightExit(edge, on) {
+  const { layer } = view.parts;
+  layer.querySelector(`path[data-edge="${CSS.escape(edge.id)}"]`)?.classList.toggle("is-hovered", on);
+  layer.querySelector(`g.label[data-id="${CSS.escape(edge.id)}"]`)?.classList.toggle("is-hovered", on);
+  layer.querySelector(`g.node[data-node="${CSS.escape(edge.target)}"]`)?.classList.toggle("is-exit-target", on);
 }
 
 function rowSections(row) {

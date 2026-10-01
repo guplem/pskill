@@ -5,6 +5,7 @@ with no run parts: no status, no current step, and no timeline.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -147,6 +148,7 @@ def block_details(skill: Skill, block: AnyBlock) -> dict[str, Any]:
         "fields": field_rows(block.output) if isinstance(block, TaskBlock | DecisionBlock | ParallelBlock) else [],
         "choices": [],
         "command": None,
+        "script_files": [],
         "inputs": [],
         "outputs": [],
         "child_skill": None,
@@ -156,6 +158,7 @@ def block_details(skill: Skill, block: AnyBlock) -> dict[str, Any]:
         details["choices"] = [{"choice": choice, "meaning": meaning} for choice, meaning in block.choices.items()]
     if isinstance(block, ScriptBlock):
         details["command"] = [str(part) for part in block.run]
+        details["script_files"] = script_files(skill, block)
     if isinstance(block, CallBlock):
         details["child_skill"] = block.skill
         details["inputs"] = value_rows(block.inputs)
@@ -208,16 +211,37 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
 
 
 def field_rows(fields: FieldMap) -> list[dict[str, Any]]:
+    """One row per field, with the rows of its nested fields: an object's properties, or an array's item properties."""
     return [
         {
             "name": name,
             "type": field_type_text(spec),
             "description": spec.description,
             "optional": spec.optional,
+            "default": spec.default,
             "values": list(spec.enum) if spec.enum is not None else None,
+            "children": field_rows(spec.items.properties if spec.items is not None else spec.properties),
         }
         for name, spec in fields.items()
     ]
+
+
+SKILL_FILE_PART = re.compile(r"^\{\{\s*skill\.dir\s*\}\}/(.+)$")
+
+
+def script_files(skill: Skill, block: ScriptBlock) -> list[dict[str, str]]:
+    """The files inside the skill folder that the command runs, with their text: they say what the command does."""
+    folder = skill.folder.resolve()
+    files = []
+    for part in block.run:
+        match = SKILL_FILE_PART.match(str(part).strip())
+        path = (folder / match.group(1)).resolve() if match else None
+        if path is None or not path.is_relative_to(folder) or not path.is_file():
+            continue
+        files.append(
+            {"path": path.relative_to(folder).as_posix(), "text": path.read_text(encoding="utf-8", errors="replace")}
+        )
+    return files
 
 
 def field_type_text(spec: FieldSpec) -> str:
