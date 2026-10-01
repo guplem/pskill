@@ -100,6 +100,8 @@ def test_a_block_shows_its_instruction_fields_and_exits(tmp_path: Path) -> None:
         "values": ["finished", "question"],
     }
     assert ["visits at most", "3"] in create_plan["facts"]
+    assert create_plan["type_meaning"] == "The agent does a piece of work and returns a typed answer."
+    assert create_plan["notes"] == "It runs at most 3 times."
     assert [exit["to"] for exit in create_plan["exits"]] == ["ask_user", "approve_plan", "stopped"]
     approve_plan = blocks["approve_plan"]
     assert approve_plan["instruction_file"] == "instructions/approve_plan.md"

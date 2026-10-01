@@ -529,6 +529,35 @@ pre {
   white-space: pre-line;
 }
 
+/* The type line of the panel head wraps as plain text: the icon and the "?" stay next to the words. */
+.panel-head > .with-help,
+.panel-head > .block-type {
+  display: block;
+  color: var(--muted);
+}
+
+.panel-head > .with-help > .block-type {
+  display: inline;
+}
+
+.panel-head .block-type > .block-icon-svg {
+  margin-right: 6px;
+  vertical-align: -3px;
+}
+
+.panel-head > .with-help > .help-button {
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+/* The block's own description: the ink color, so it stands apart from the muted type meaning above it. */
+.panel-description {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  white-space: pre-line;
+}
+
 .panel section {
   display: flex;
   flex-direction: column;

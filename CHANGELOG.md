@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The block description stands apart:** the side panel now puts the meaning of the block type on the type line, for example "script: The runner runs a command. No AI model takes part." The block's own description follows on its own line, in the ink color. The notes on who decides and on the limits stay muted below it. Before, the description and the type meaning were two muted lines that looked the same.
+
 ## 0.8.3 (2026-09-30)
 
 The viewer rings the node that the side panel shows.

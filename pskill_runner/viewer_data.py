@@ -137,9 +137,15 @@ def condition_text(condition: str) -> str:
 
 def node_hint(block: AnyBlock) -> str:
     """The block in plain words: its description, what its type does, and who decides or what it runs."""
-    type_name = block_type_name(block)
     lines = [block.description] if block.description else []
-    lines.append(BLOCK_TYPE_MEANINGS[type_name])
+    lines.append(BLOCK_TYPE_MEANINGS[block_type_name(block)])
+    notes = node_notes(block)
+    return "\n".join([*lines, notes] if notes else lines)
+
+
+def node_notes(block: AnyBlock) -> str:
+    """The lines of the hint after the type meaning: who decides, what it runs, and its limits."""
+    lines: list[str] = []
     if isinstance(block, DecisionBlock):
         human = block.decider == "human"
         lines.append(
@@ -635,6 +641,9 @@ def block_nodes(frames: list[CanvasFrame]) -> list[dict[str, Any]]:
             "block": block.id,
             "type": block_type_name(block),
             "hint": node_hint(block),
+            "description": block.description,
+            "type_meaning": BLOCK_TYPE_MEANINGS[block_type_name(block)],
+            "notes": node_notes(block),
             "kind": "block",
         }
         for index, frame in enumerate(frames)
