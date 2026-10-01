@@ -13,7 +13,7 @@ from typing import Any
 
 import pskill_runner
 from pskill_runner import __version__, claude_code, codex
-from pskill_runner.adapters import GENERIC, AdapterError, detect_harness, detect_hook_harness
+from pskill_runner.adapters import GENERIC, AdapterError, detect_harness, detect_hook_harness, detect_session_id
 from pskill_runner.answer_input import AnswerInputError, read_answer
 from pskill_runner.engine import (
     RunError,
@@ -143,16 +143,20 @@ def run_command(options: argparse.Namespace) -> int:
         return init_command(options.source)
     project = find_project(Path.cwd())
     harness = specific_harness()
+    session_id = detect_session_id(os.environ)
     if command == "start":
         return print_text(start_command(project, options))
     if command == "current":
-        return print_text(current_packet(project, options.run_id, harness))
+        return print_text(current_packet(project, options.run_id, harness, session_id))
     if command == "submit":
-        return print_text(submit_answer(project, options.run_id, read_answer(sys.stdin), options.task, harness=harness))
+        answer = read_answer(sys.stdin)
+        return print_text(
+            submit_answer(project, options.run_id, answer, options.task, harness=harness, session_id=session_id)
+        )
     if command == "pause":
         return print_text(pause_run(project, options.run_id))
     if command == "resume":
-        return print_text(resume_run(project, options.run_id, harness))
+        return print_text(resume_run(project, options.run_id, harness, session_id))
     if command == "cancel":
         return print_text(cancel_run(project, options.run_id))
     if command == "runs":
@@ -203,7 +207,8 @@ def start_command(project: Project, options: argparse.Namespace) -> str:
         inputs[name] = value
     harness = detect_harness(os.environ) if options.harness == "auto" else options.harness
     mode = options.mode or project.config.default_mode
-    _, packet = start_run(project, options.skill, inputs, mode=mode, harness=harness)
+    session_id = detect_session_id(os.environ)
+    _, packet = start_run(project, options.skill, inputs, mode=mode, harness=harness, session_id=session_id)
     return packet
 
 
@@ -331,7 +336,8 @@ def hook_command(event: str, harness: str) -> int:
         if event == "stop":
             if harness == "auto":
                 harness = detect_hook_harness(os.environ, hook_input)
-            stdout, exit_code = stop_hook_output(project, harness)
+            session_id = hook_input.get("session_id")
+            stdout, exit_code = stop_hook_output(project, harness, str(session_id) if session_id else None)
             sys.stdout.write(stdout)
             return exit_code
         sys.stdout.write(session_start_text(project))
@@ -349,8 +355,8 @@ def read_hook_input() -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def stop_hook_output(project: Project, harness: str) -> tuple[str, int]:
-    reason = stop_hook_reason(project, harness)
+def stop_hook_output(project: Project, harness: str, session_id: str | None = None) -> tuple[str, int]:
+    reason = stop_hook_reason(project, harness, session_id)
     if harness == "claude-code":
         return claude_code.stop_response(reason)
     if harness == "codex":

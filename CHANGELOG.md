@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+The Stop hook holds only the session that runs the skill.
+
+- **One session per run:** a run now records the session that owns it (`session_id` in `run.json`). The Stop hook keeps only that session working. Another session in the same folder stops freely: it no longer gets the "open block" message, it never works on the other session's run, and it never pauses it. Claude Code gives the id in `CLAUDE_CODE_SESSION_ID`, and Codex in `CODEX_THREAD_ID`.
+- **A run moves with you:** `start`, `current`, `submit`, and `resume` make the calling session the owner, and log `session_changed`. So after `/clear`, or in a new session, the first `pskill current` moves the run to that session. A parallel task's `submit --task` comes from a subagent, so it never changes the owner.
+- **Older runs and other apps:** a run from before 0.9.0 has no owner, and an app that gives no session id (`generic`) records none. Such a run holds every session of its app in the folder, as before.
+
 ## 0.8.7 (2026-10-01)
 
 See and edit the agents in the viewer, and follow links to them.

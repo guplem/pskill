@@ -2,7 +2,7 @@
 
 import pytest
 
-from pskill_runner.adapters import AdapterError, adapter_for, detect_harness, detect_hook_harness
+from pskill_runner.adapters import AdapterError, adapter_for, detect_harness, detect_hook_harness, detect_session_id
 
 
 def test_the_generic_adapter_asks_in_the_chat_and_has_no_subagents() -> None:
@@ -33,3 +33,14 @@ def test_a_hook_with_the_claude_project_folder_comes_from_claude_code() -> None:
 def test_a_hook_without_a_known_sign_uses_the_normal_detection() -> None:
     assert detect_hook_harness({}, {}) == "generic"
     assert detect_hook_harness({"CODEX_THREAD_ID": "t"}, {}) == "codex"
+
+
+def test_the_session_id_comes_from_the_variable_of_the_detected_app() -> None:
+    assert detect_session_id({"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "s1"}) == "s1"
+    assert detect_session_id({"CODEX_THREAD_ID": "019a-thread"}) == "019a-thread"
+
+
+def test_there_is_no_session_id_without_a_known_app() -> None:
+    assert detect_session_id({}) is None
+    assert detect_session_id({"CLAUDE_CODE_SESSION_ID": "s1"}) is None  # CLAUDECODE is missing
+    assert detect_session_id({"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": ""}) is None

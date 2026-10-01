@@ -87,7 +87,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 - **L1. Autonomous mode removes human gates.** In autonomous mode the agent takes every human decision, including "post publicly" or "close the issue". Then only the harness permission system protects outward actions. Say this clearly in the README.
 - **L2. The runner trusts the agent's claim that a human answered.**
 - **L3. Enforcement is soft without a Stop hook.** `pskill current` and the session-start message recover a run that the agent left.
-- **L4. The Stop hook binds by harness and checkout.** Two sessions of the same harness in the same folder share the hook. Separate checkouts (the user's `monorepo-clone-N` folders) do not conflict.
+- **L4. The Stop hook binds by harness, checkout, and session.** A run holds only the session that owns it, so two sessions in the same folder do not conflict. A harness that gives no session id (`generic`), and a run from before 0.9.0, hold every session of the harness in the checkout.
 - **L5. Instruction files are on disk.** The agent could read future blocks. This is not a security boundary.
 - **L7. Codex needs Full access.** Inside the Codex sandbox, `uv` cannot open its cache (outside the project) or reach PyPI. The Codex rule lets only plain runner commands, such as `start` and `current`, run outside the sandbox: Codex does not match the rule to the `submit` form with an answer on stdin (verified in #24). So the user runs Codex with Full access (`--sandbox danger-full-access`), or approves each `submit`. pskill never changes this setting. Full access also means that the runner's `script` blocks run without the sandbox.
 - **L6. No isolation without subagents.** With the `generic` adapter, parallel tasks run one by one in the main agent's context, so each task can see the earlier ones.
@@ -465,6 +465,7 @@ Set the mode with `start --mode interactive|autonomous` (default from config: `i
 - The session-start hook lists unfinished runs.
 - A run always uses its own copy of the skills in `runs/<id>/skills/` (D22).
 - `start`, `current`, `submit`, and `resume` detect the harness on every call. When it differs from `run.harness`, the runner updates `run.harness` and logs `harness_changed`. The Stop hook and the packet wording then follow the new harness.
+- The same commands read the session id of the calling app: `CLAUDE_CODE_SESSION_ID` in Claude Code, `CODEX_THREAD_ID` in Codex (VERIFY: that it equals the hook's `session_id`). When it differs from `run.session_id`, the runner updates it and logs `session_changed`. So the session that continues a run (after `/clear`, or in a new session) becomes its owner. A `submit --task` never changes the owner: a subagent sends it, and a subagent may have its own id.
 - `start` adds one line to its packet when other unfinished runs exist in this checkout. It still starts the new run.
 
 ### 7.7 File safety
@@ -553,7 +554,7 @@ class HarnessAdapter(Protocol):
 `sync` installs them for each target harness that supports them. The command is `uv run .pskill/pskill.py hook <event> --harness <name>`. `sync` finds its own entries by this command string, and never touches other hooks.
 
 - **Stop.**
-  - Look only at the newest `active` run for this harness in this checkout. If it exists, block with the reason: "pskill run <id> has an open block. Run `uv run .pskill/pskill.py current <id>`."
+  - Look only at the newest `active` run for this harness in this checkout that holds this session: its `session_id` equals the hook input's `session_id`, or one of the two is missing. If it exists, block with the reason: "pskill run <id> has an open block. Run `uv run .pskill/pskill.py current <id>`."
   - Never block the stop of a subagent. Claude Code sends subagent stops as a separate `SubagentStop` event, which pskill does not hook. VERIFY how Codex marks a subagent stop.
   - After 3 blocks in a row (config `stop_hook_max_blocks`) with no submission between them, allow the stop and pause the run with reason `agent_stopped`. This prevents an endless loop.
   - For any other case, allow the stop.
@@ -679,7 +680,7 @@ runs/<run-id>/
 
 `run.json` fields:
 - `schema_version`, `run_id`, `skill_id`, `skill_hash` (sha256 of the copied skill files)
-- `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `mode`, `inputs`
+- `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `session_id` (the owner session, or null), `mode`, `inputs`
 - `status`, `pause_reason`, `current` (`{frame, block, visit}`), `attempts`, `stop_blocks`
 - `created_at`, `updated_at`, `ended_at`, `outputs`
 
@@ -696,6 +697,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 | `script_ran` | `block`, `argv`, `exit_code`, `stdout`, `stderr` (each cut to 64 KiB), `duration_ms` |
 | `run_paused` / `run_resumed` | `reason` |
 | `harness_changed` | `from`, `to` |
+| `session_changed` | `from`, `to` |
 | `run_ended` | `status`, `outputs`, `duration_ms` |
 
 - `duration_ms` of an agent block runs from its packet to its valid submission. For human decisions it is mostly human time. The viewer shows it apart.
@@ -1311,7 +1313,7 @@ Each of these was in an earlier draft. Each one added complexity for little user
 | `on_error` per block | Retries (global, or the block's own `retries`), then pause, then `resume` |
 | `ok_exit_codes` | Exit 0 plus JSON output |
 | Child runs with their own ids and folders | One run with a call stack |
-| A UserPromptSubmit hook, and binding by session id | Two hooks, bound by harness and checkout (L4) |
+| A UserPromptSubmit hook | Two hooks, bound by harness, checkout, and session (L4) |
 | A managed block inside `AGENTS.md` | `AUTHORING.md`, and one line in the README that tells users to point to it |
 | `--format json`, `show`, `graph`, `schema`, `retry` commands | The viewer, `current`, and `resume` |
 | Real scripts and real child calls in skill tests | Mocks; each skill has its own tests |

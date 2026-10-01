@@ -68,6 +68,22 @@ def detect_harness(environment: Mapping[str, str]) -> str:
     return GENERIC.name
 
 
+def detect_session_id(environment: Mapping[str, str]) -> str | None:
+    """The id of the app session that runs this command, or None when the app is unknown.
+
+    Claude Code sets CLAUDE_CODE_SESSION_ID for the commands of its Bash tool, with the same value as
+    the `session_id` of its hook input: https://code.claude.com/docs/en/env-vars
+    Codex sets CODEX_THREAD_ID for the commands of the agent (codex-rs/core/src/exec_env.rs), and its
+    hook input has a `session_id` of the same thread id type (codex-rs/hooks/src/types.rs). VERIFY.
+    """
+    harness = detect_harness(environment)
+    if harness == CLAUDE_CODE.name:
+        return environment.get("CLAUDE_CODE_SESSION_ID") or None
+    if harness == CODEX.name:
+        return environment.get("CODEX_THREAD_ID") or None
+    return None
+
+
 def detect_hook_harness(environment: Mapping[str, str], hook_input: Mapping[str, object]) -> str:
     """Guess the app that runs a hook from a shared hooks file, from the signs that each app documents.
 
