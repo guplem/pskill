@@ -511,7 +511,7 @@ Additions by block type:
 - **Decision with choices:** the Return section lists each choice and its meaning.
 - **Human decision, interactive:** "Ask the user and wait. Submit the user's answer with `"$answered_by": "human"`. Do not decide for the user." The adapter adds the wording for its question tool (section 9).
 - **Human decision, autonomous:** "This run is autonomous. Decide as the user would, from the goal, this session, and the project. Explain why in `rationale`."
-- **Parallel with subagents:** the packet lists every task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with its full prompt (goal, instruction, return format, its own submit command with `--task <n>`). It says: "Spawn one subagent per task, all at once. Give each one exactly its prompt. When all have finished, run `pskill current <run>`."
+- **Parallel with subagents:** the packet lists every task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with its full prompt (goal, instruction, return format, its own submit command with `--task <n>`). It says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each one exactly its prompt. When all have finished, run `pskill current <run>`."
 - **Parallel without subagents:** the packet gives one task at a time, like a normal block.
 - **Final packet:** the status, the rendered `report`, the outputs, and "The run is finished."
 
