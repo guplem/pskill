@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -768,8 +769,8 @@ class Run:
             name=task.get("name"),
         )
 
-    def parallel_packet(self, block: ParallelBlock, errors: list[str]) -> str:
-        """All open tasks for subagents, or the next open task for the main agent."""
+    def parallel_packet(self, block: ParallelBlock, errors: list[str], show_goal: bool, show_rules: bool) -> str:
+        """All open tasks for subagents (each task prompt has the goal), or the next open task for the main agent."""
         open_indexes = self.open_task_indexes()
         if self.adapter.can_spawn_subagents:
             tasks = [self.task_prompt(block, index) for index in open_indexes]
@@ -777,16 +778,24 @@ class Run:
             return text
         next_task = self.task_prompt(block, open_indexes[0])
         instruction = "\n\n".join(part for part in (next_task.agent_text, next_task.instruction) if part)
-        return render_agent_packet(self.base_packet(block, errors, instruction, task_index=next_task.index))
+        packet = self.base_packet(block, errors, instruction, task_index=next_task.index)
+        return render_agent_packet(replace(packet, show_goal=show_goal, show_rules=show_rules))
 
     # --- packets -------------------------------------------------------------------------------
 
-    def issue_packet(self, new_block: bool) -> str:
-        """Print the packet of the current agent block, and start its clock."""
+    def issue_packet(self, new_block: bool, reentry: bool = False) -> str:
+        """Print the packet of the current agent block, and start its clock.
+
+        The first packet of a child skill shows the child's goal once. A re-entry (`resume`) shows the
+        goal and the rules, because the session may not have read the stub.
+        """
         block = self.current_block()
         self.info["status"] = "waiting_for_human" if self.asks_the_human(block) else "active"
         self.info["packet_issued_at"] = timestamp(utc_now())
-        text = self.agent_packet(errors=[])
+        enters_child = len(self.state["frames"]) > 1 and not self.frame.get("goal_shown", False)
+        if enters_child:
+            self.frame["goal_shown"] = True
+        text = self.agent_packet(errors=[], show_goal=enters_child or reentry, show_rules=reentry)
         if new_block:
             self.info["attempts"] = 0
             self.log_block_started(block, packet=text, task=self.sequential_task_index(block))
@@ -798,15 +807,16 @@ class Run:
             return self.open_task_indexes()[0]
         return None
 
-    def agent_packet(self, errors: list[str]) -> str:
+    def agent_packet(self, errors: list[str], show_goal: bool = False, show_rules: bool = False) -> str:
         block = self.current_block()
         if isinstance(block, ParallelBlock):
-            return self.parallel_packet(block, errors)
+            return self.parallel_packet(block, errors, show_goal, show_rules)
         if not isinstance(block, TaskBlock | DecisionBlock):
             raise RunError(f"The block {block.id!r} does not need the agent.")
         skill = self.skill_of(self.frame)
         instruction = self.rendered(skill.instruction_text(block.instruction), f"The instruction of {block.id!r}")
-        return render_agent_packet(self.base_packet(block, errors, instruction))
+        packet = self.base_packet(block, errors, instruction)
+        return render_agent_packet(replace(packet, show_goal=show_goal, show_rules=show_rules))
 
     def base_packet(
         self, block: AgentBlock, errors: list[str], instruction: str = "", task_index: int | None = None
@@ -837,8 +847,8 @@ class Run:
 
     def current_text(self) -> str:
         status = self.info["status"]
-        if status in ACTIVE_STATUSES:
-            return self.guarded(lambda: self.agent_packet(errors=[]))
+        if status in ACTIVE_STATUSES:  # a re-entry: a new session may not have read the stub
+            return self.guarded(lambda: self.agent_packet(errors=[], show_goal=True, show_rules=True))
         if status == "paused":
             return self.pause_text()
         return render_final_packet(
@@ -875,7 +885,7 @@ class Run:
         self.log("run_resumed", reason="resumed_by_user")
         block = self.current_block()
         if isinstance(block, TaskBlock | DecisionBlock | ParallelBlock):
-            return self.guarded(lambda: self.issue_packet(new_block=False))
+            return self.guarded(lambda: self.issue_packet(new_block=False, reentry=True))
         self.info["status"] = "active"
         return self.guarded(self.advance)  # a script or a call: run it again
 

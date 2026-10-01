@@ -45,7 +45,10 @@ def render_stub(skill: Skill) -> str:
     start_command = f"{RUNNER} start {skill.id} --harness auto {input_options}".rstrip()
     body = [
         GENERATED_MARKER,
-        f"Source: `.pskill/skills/{skill.id}/`. This is a programmatic skill: the pskill runner controls its steps.",
+        f"Source: `.pskill/skills/{skill.id}/`. This is a programmatic skill: the pskill runner gives you its steps,",
+        "one at a time.",
+        "",
+        f"Goal: {' '.join(skill.goal.split())}",
         "",
         "1. Map the request to the inputs:" if input_lines else "1. This skill has no inputs.",
         *input_lines,
@@ -53,7 +56,11 @@ def render_stub(skill: Skill) -> str:
         "   If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,",
         "   in the same literal form that the runner's packets show for `submit`.",
         "   Add `--mode autonomous` only when the user asked for no questions.",
-        "3. Follow each packet that the runner prints until it says the run is finished.",
+        "3. The runner prints one step. Do only that step, then run the submit command at its end.",
+        "   The runner checks your answer and prints the next step.",
+        "4. Repeat step 3 until the runner says the run is finished. Never skip a step, and never stop before the end.",
+        "   If you cannot do a step, submit only the line `$cannot_complete: <reason>`.",
+        f"5. If the user asks to stop, run: `{RUNNER} pause <run-id>`. Each step names its run id.",
     ]
     return "---\n" + "\n".join(frontmatter) + "\n---\n" + "\n".join(body) + "\n"
 

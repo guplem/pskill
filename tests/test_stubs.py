@@ -28,6 +28,18 @@ def test_a_stub_has_the_frontmatter_and_the_start_command(tmp_path: Path) -> Non
     assert "--mode autonomous" in stub
 
 
+def test_a_stub_holds_the_goal_and_the_loop_rules_once(tmp_path: Path) -> None:
+    skill = load_skill(make_project(tmp_path).skills_folder / "plan-work")
+
+    stub = render_stub(skill)
+
+    assert "Goal: Produce a plan that the user approved.\n" in stub
+    assert "Do only that step, then run the submit command at its end." in stub
+    assert "never stop before the end" in stub
+    assert "`$cannot_complete: <reason>`" in stub
+    assert "uv run .pskill/pskill.py pause <run-id>" in stub
+
+
 def test_a_manual_skill_stub_forbids_model_invocation(tmp_path: Path) -> None:
     skill = load_skill(
         make_project(tmp_path, PLAN_SKILL.replace("goal:", "invocation: manual\ngoal:")).skills_folder / "plan-work"

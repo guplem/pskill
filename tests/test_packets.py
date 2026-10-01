@@ -51,13 +51,22 @@ DECISION_PACKET = replace(
 )
 
 
-def test_the_packet_shows_the_header_goal_and_instruction() -> None:
+def test_a_step_shows_only_the_header_the_instruction_and_the_return() -> None:
     text = render_agent_packet(PLAN_PACKET)
 
     assert text.startswith("## pskill · plan-work · create_plan (visit 2)\nRun r-20260927-1432-ab12 · interactive\n")
-    assert "### Goal\nProduce a plan that the user approved.\n" in text
     assert "### Instruction\nWrite a plan for the login page.\n" in text
+    assert "### Return" in text
+    assert "### Goal" not in text
+    assert "### Rules" not in text
     assert "### Errors" not in text
+
+
+def test_a_packet_can_show_the_goal() -> None:
+    text = render_agent_packet(replace(PLAN_PACKET, show_goal=True))
+
+    assert "### Goal\nProduce a plan that the user approved.\n" in text
+    assert "### Rules" not in text
 
 
 def test_the_return_section_is_one_submit_command_with_an_annotated_example() -> None:
@@ -71,7 +80,7 @@ def test_the_return_section_is_one_submit_command_with_an_annotated_example() ->
 
 
 def test_the_rules_name_the_escape_and_the_pause_command() -> None:
-    text = render_agent_packet(PLAN_PACKET)
+    text = render_agent_packet(replace(PLAN_PACKET, show_rules=True))
 
     assert "- Do only this block. The runner gives you the next one." in text
     assert "`$cannot_complete: <reason>`" in text

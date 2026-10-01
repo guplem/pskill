@@ -59,6 +59,7 @@ class Frame(TypedDict):
     arrival_reason: str | None
     tasks: list[ParallelTask] | None  # the tasks of the current parallel block, if any
     started_at: str
+    goal_shown: bool  # a child skill's first packet showed its goal; absent in runs before 0.10.0
 
 
 class RunState(TypedDict):
@@ -79,4 +80,5 @@ def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str) -> Frame:
         arrival_reason=None,
         tasks=None,
         started_at=started_at,
+        goal_shown=False,
     )

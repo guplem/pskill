@@ -39,6 +39,9 @@ class AgentPacket:
     question_wording: str
     task_index: int | None = None  # set for one task of a parallel block
     subagent_wording: str = ""  # how this harness spawns subagents, for parallel packets
+    # The stub gives the goal and the rules once. A packet repeats them only where the agent never saw them.
+    show_goal: bool = False  # the first packet of a child skill, and `current` and `resume`
+    show_rules: bool = False  # `current` and `resume`: a new session may not have read the stub
 
     @property
     def asks_the_human(self) -> bool:
@@ -46,18 +49,18 @@ class AgentPacket:
 
 
 def render_agent_packet(packet: AgentPacket) -> str:
-    sections = [
-        header(packet),
-        f"### Goal\n{packet.goal.strip()}",
-        f"### Instruction\n{packet.instruction.strip()}",
-    ]
+    sections = [header(packet)]
+    if packet.show_goal:
+        sections.append(f"### Goal\n{packet.goal.strip()}")
+    sections.append(f"### Instruction\n{packet.instruction.strip()}")
     if packet.errors:
         listed = "\n".join(f"- {error}" for error in packet.errors)
         sections.append(f"### Errors\nYour last answer was rejected. Fix these problems and submit again:\n{listed}")
     if packet.decider is not None:
         sections.append(decision_section(packet))
     sections.append(return_section(packet))
-    sections.append(rules_section(packet))
+    if packet.show_rules:
+        sections.append(rules_section(packet))
     return "\n\n".join(sections) + "\n"
 
 

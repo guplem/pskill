@@ -366,3 +366,16 @@ def test_a_task_submission_never_changes_the_owner_session(tmp_path: Path) -> No
     submit_answer(project, run_id, "wrong: []\n", task=1, session_id="subagent-session")
 
     assert read_run_info(project, run_id)["session_id"] == "main-session"
+
+
+def test_the_first_packet_of_a_child_skill_shows_its_goal_once(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"parent": PARENT_SKILL, "child": CHILD_SKILL})
+    run_id, first = start_run(project, "parent", {}, mode="interactive", harness="generic")
+
+    child_packet = submit_answer(project, run_id, "text: Hello from the parent.\n")
+    retry = submit_answer(project, run_id, "wrong_field: x\n")
+
+    assert "### Goal" not in first
+    assert "### Goal\nGreet the person by name." in child_packet
+    assert "### Errors" in retry
+    assert "### Goal" not in retry

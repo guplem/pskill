@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+The stub gives the goal and the rules once, and each step shows only what to do.
+
+- **The goal and the rules live in the stub:** the generated `SKILL.md` of a skill now starts with the skill's goal. It then says how to work: do only the step that the runner prints, submit with the command at its end, repeat until the run is finished, `$cannot_complete` when a step is impossible, and `pause` when the user asks to stop.
+- **Shorter steps:** a packet now has only its header, its instruction, and its submit command. Before, every packet repeated the goal and the rules.
+- **Where the goal still shows:**
+  - a subagent's task prompt, because a subagent never sees the stub;
+  - the first packet of a child skill, which has its own goal;
+  - `pskill current` and `pskill resume`, with the rules too, for a new session or after `/clear` or compaction.
+- **Run `pskill sync` after the update** to get the new stubs. The session-start hook does it for you.
+
 ## 0.9.1 (2026-10-01)
 
 The session-start hook no longer lists the runs.
