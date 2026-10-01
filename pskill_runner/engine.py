@@ -95,6 +95,7 @@ def start_run(
     executor: InlineExecutor | None = None,
     runs_folder: Path | None = None,
     allow_internal: bool = False,
+    session_id: str | None = None,
 ) -> tuple[str, str]:
     """Create a run and return its id and its first packet.
 
@@ -123,6 +124,7 @@ def start_run(
         repo_dirty=repo_dirty,
         runner_version=pskill_runner.__version__,
         harness=adapter_for(harness).name,
+        session_id=session_id,
         mode=mode,
         inputs=inputs,
         status="active",
@@ -154,12 +156,15 @@ def start_run(
     return run_id, text
 
 
-def current_packet(project: Project, run_id: str | None, harness: str | None = None) -> str:
-    """Print the current packet again, worded for the calling harness. Only a harness change is recorded."""
+def current_packet(
+    project: Project, run_id: str | None, harness: str | None = None, session_id: str | None = None
+) -> str:
+    """Print the current packet again, worded for the calling harness. Only a harness or session change is recorded."""
     resolved_run_id = resolve_run_id(project, run_id)
     with run_lock(run_folder(project, resolved_run_id)):
         run = Run.load(project, resolved_run_id)
         run.use_harness(harness)
+        run.use_session(session_id)
         text = run.current_text()
         run.save()
     return text
@@ -173,11 +178,14 @@ def submit_answer(
     executor: InlineExecutor | None = None,
     runs_folder: Path | None = None,
     harness: str | None = None,
+    session_id: str | None = None,
 ) -> str:
     folder = run_folder(project, run_id, runs_folder)
     with run_lock(folder):
         run = Run.load(project, run_id, executor, runs_folder)
         run.use_harness(harness)
+        if task is None:  # a task answer comes from a subagent, which may have its own session id
+            run.use_session(session_id)
         text = run.submit(answer_text, task)
         run.save()
     return text
@@ -192,10 +200,11 @@ def pause_run(project: Project, run_id: str) -> str:
     return text
 
 
-def resume_run(project: Project, run_id: str, harness: str | None = None) -> str:
+def resume_run(project: Project, run_id: str, harness: str | None = None, session_id: str | None = None) -> str:
     with run_lock(run_folder(project, run_id)):
         run = Run.load(project, run_id)
         run.use_harness(harness)
+        run.use_session(session_id)
         run.require_status(("paused",), "resume")
         text = run.resume()
         run.save()
@@ -435,6 +444,13 @@ class Run:
         self.adapter = adapter_for(harness)
         self.log("harness_changed", **{"from": self.info["harness"], "to": harness})
         self.info["harness"] = harness
+
+    def use_session(self, session_id: str | None) -> None:
+        """The session that runs a command owns the run, so the Stop hook holds only that session."""
+        if session_id is None or session_id == self.info.get("session_id"):
+            return
+        self.log("session_changed", **{"from": self.info.get("session_id"), "to": session_id})
+        self.info["session_id"] = session_id
 
     def log(self, event_type: str, **fields: Any) -> None:
         append_event(self.folder, event_type, frame=">".join(self.chain()), **fields)

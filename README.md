@@ -47,7 +47,7 @@ uv run .pskill/pskill.py update
 
 - **A small "signpost" file per skill** (`.claude/skills/<skill>/SKILL.md` and `.agents/skills/<skill>/SKILL.md`). Agents discover skills through these files. Each one tells the agent to start the runner. The real skill stays in `.pskill/skills/`.
 - **Two hooks** (small commands that your agent app runs by itself at certain moments):
-  - **When the agent tries to finish its reply:** if a step of a run is still open, the hook sends the agent a message: "a pskill step is still open, continue it". So the agent keeps working instead of stopping halfway. If the agent still tries to stop 3 times in a row without sending an answer, pskill lets it stop and pauses the run. You can continue that run later.
+  - **When the agent tries to finish its reply:** if a step of a run that this session started is still open, the hook sends the agent a message: "a pskill step is still open, continue it". So the agent keeps working instead of stopping halfway. If the agent still tries to stop 3 times in a row without sending an answer, pskill lets it stop and pauses the run. You can continue that run later.
   - **When you open a new session:** the hook lists your unfinished runs, so the agent can continue them.
 - **A permission rule**, so your agent app does not ask your permission every time the agent talks to the runner. It allows only the runner command (`uv run .pskill/pskill.py ...`), nothing else.
 
@@ -91,7 +91,7 @@ Read [`AUTHORING.md`](AUTHORING.md): the six kinds of steps, a complete example,
 - **Autonomous mode means no questions to you.** With `--mode autonomous`, the agent also makes the decisions that normally need you, such as "post this publicly" or "close this issue". Only your agent app's own permission settings then protect you.
 - **pskill trusts the agent when it says that you answered a question.**
 - **Without hooks, the agent can stop halfway.** Find the run with `runs --open`, then continue it with `current <run>`.
-- **Two sessions of the same agent app in the same folder share the hooks.** Keep one session per folder, or use a separate clone per session.
+- **In other agent apps, two sessions in the same folder share the hooks.** Claude Code and Codex tell pskill which session runs a skill, so the hook holds only that session. Other apps do not: keep one session per folder there.
 - **The agent could read the later steps of a skill.** They are plain files on disk. This does not matter for normal use, but it is not a security barrier.
 - **Without helper agents, parallel tasks share one context.** In apps without subagents, the agent does the tasks one after another, so each task can see the earlier ones.
 - **Codex needs Full access.** Codex's sandbox (the safety area that limits what commands can do) stops the runner from sending answers, because the runner needs files outside your project and the internet. Choose "Full access" in Codex's permissions menu, or start Codex with `codex --sandbox danger-full-access`. Full access turns off the sandbox for every command of the agent, not only for pskill. If you keep the sandbox, Codex asks you to approve each answer.

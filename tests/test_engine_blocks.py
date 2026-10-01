@@ -349,3 +349,20 @@ def test_a_long_task_name_is_one_short_line(tmp_path: Path) -> None:
     name = (read_run_state(project, run_id)["frames"][0]["tasks"] or [])[0]["name"] or ""
     assert name.startswith("Check a.md xxx") and "\n" not in name
     assert len(name) == 60 and name.endswith("…")
+
+
+def test_a_task_submission_never_changes_the_owner_session(tmp_path: Path) -> None:
+    """A parallel task comes from a subagent, which may have its own session id."""
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts carefully."})
+    run_id, _ = start_run(
+        project,
+        "fanout",
+        {"files": ["a.md", "b.md"]},
+        mode="interactive",
+        harness="subagents-for-tests",
+        session_id="main-session",
+    )
+
+    submit_answer(project, run_id, "wrong: []\n", task=1, session_id="subagent-session")
+
+    assert read_run_info(project, run_id)["session_id"] == "main-session"

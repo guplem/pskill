@@ -15,12 +15,15 @@ from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 ENTRY_SCRIPT = Path(__file__).resolve().parent.parent / "pskill.py"
 
 
-HARNESS_VARIABLES = ("CLAUDECODE", "MSYSTEM")
+HARNESS_VARIABLES = ("CLAUDECODE", "MSYSTEM", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID")
 
 
-def run_pskill(project_root: Path, *arguments: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+def run_pskill(
+    project_root: Path, *arguments: str, stdin: str | None = None, extra_environment: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run the entry script like an agent would, with no harness detected from the test's own shell."""
     environment = {name: value for name, value in os.environ.items() if name not in HARNESS_VARIABLES}
+    environment.update(extra_environment or {})
     return subprocess.run(
         [sys.executable, str(ENTRY_SCRIPT), *arguments],
         cwd=project_root,
@@ -376,3 +379,17 @@ def test_a_shared_hook_detects_codex_from_the_turn_id_in_its_input(tmp_path: Pat
 
     assert result.returncode == 0, result.stderr
     assert '"decision": "block"' in result.stdout
+
+
+def test_the_stop_hook_holds_only_the_claude_session_that_runs_the_skill(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    session_a = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "session-a"}
+    started = run_pskill(root, "start", "plan-work", "--input", "topic=x", extra_environment=session_a)
+    run_id = run_id_of(started.stdout)
+
+    other = run_pskill(root, "hook", "stop", "--harness", "claude-code", stdin='{"session_id": "session-b"}')
+    owner = run_pskill(root, "hook", "stop", "--harness", "claude-code", stdin='{"session_id": "session-a"}')
+
+    assert other.returncode == 0, other.stderr
+    assert other.stdout == ""
+    assert f"pskill run {run_id} has an open block" in owner.stdout
