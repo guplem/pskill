@@ -2,6 +2,10 @@
 
 **Run agent skills as programs, not as long text.** A normal skill is a text file that asks your coding agent (Claude Code, Codex, and others) to follow some steps. A pskill skill is a map of steps, and a small program (the **runner**) gives the agent one step at a time. The agent cannot skip a step or change the order.
 
+![The implement-issue skill in the pskill viewer: its steps as a graph, and the details of one step](docs/viewer-implement-issue.png)
+
+*The example skill `implement-issue` in the viewer. Each box is one step, and the arrows show where each step can go next.*
+
 ## Why
 
 Agents often skip a step of a long skill, forget a value, or jump ahead. With pskill, the runner keeps the order and the values. The agent only does the current step.
