@@ -10,6 +10,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `pskill_runner/` | The runner package. One module per concern (table below). |
 | `viewer/` | The viewer page: plain HTML, CSS, and JavaScript, no build step. It only draws what `viewer_data.py` returns. |
 | `launchers/` | Double-click launchers for the viewer (Windows, macOS, Linux). |
+| `docs/` | Images for the README, such as the viewer screenshot. |
 | `tests/` | The pytest suite. One test file per module. |
 | `SPEC.md` | The implementation specification. |
 | `README.md`, `AUTHORING.md`, `CHANGELOG.md` | For users; for agents that write skills (vendored); the release notes. |
