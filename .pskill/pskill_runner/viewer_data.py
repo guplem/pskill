@@ -936,6 +936,7 @@ def new_timeline_row(event: dict[str, Any]) -> dict[str, Any]:
         "visit": event["visit"],
         "task": event.get("task"),
         "task_names": event.get("task_names"),
+        "skipped_tasks": event.get("skipped_tasks") or [],
         "from": event.get("from"),
         "reason": event.get("reason"),
         "packet": event.get("packet"),

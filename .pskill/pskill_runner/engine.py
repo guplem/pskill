@@ -36,6 +36,7 @@ from pskill_runner.run_records import (
     ParallelTask,
     RunInfo,
     RunState,
+    SkippedTask,
     new_frame,
 )
 from pskill_runner.run_store import (
@@ -620,6 +621,9 @@ class Run:
         task_names = [task.get("name") for task in self.frame["tasks"] or []]
         if isinstance(block, ParallelBlock) and any(task_names):
             fields["task_names"] = task_names  # the viewer names the tasks of finished runs from this
+        skipped_tasks = self.frame.get("skipped_tasks")
+        if isinstance(block, ParallelBlock) and skipped_tasks:
+            fields["skipped_tasks"] = skipped_tasks
         self.log("block_started", **fields)
 
     # --- end blocks ---------------------------------------------------------------------------
@@ -712,12 +716,14 @@ class Run:
     # --- parallel blocks ----------------------------------------------------------------------
 
     def start_parallel(self, block: ParallelBlock) -> bool:
-        """Create the tasks. Return False when the list is empty (the block then completes at once)."""
+        """Create the tasks. Return False when no item runs (the block then completes at once)."""
         items = self.computed(block.for_each, f"The for_each of {block.id!r}")
         if not isinstance(items, list):
             raise RunnerStop(f"The for_each of {block.id!r} must give a list, not {type(items).__name__}.")
+        items = self.items_that_run(block, items)
         if not items:
             self.log_block_started(block, packet=None)
+            self.frame["skipped_tasks"] = None
             self.complete_block(block, {"results": []}, decided_by="runner", duration_ms=0)
             return False
         self.frame["tasks"] = [
@@ -731,6 +737,28 @@ class Run:
             for item in items
         ]
         return True
+
+    def items_that_run(self, block: ParallelBlock, items: list[Any]) -> list[Any]:
+        """The items of a fixed `for_each` list whose `when` is true, without their `when` key.
+
+        `items` is the computed list, so each `when` already holds its result. The skipped items go to the
+        frame, so that `block_started` can say which tasks did not run, and why.
+        """
+        if not isinstance(block.for_each, list):
+            return items  # A list computed during the run: its items are data, and a `when` key is plain data.
+        kept: list[Any] = []
+        skipped: list[SkippedTask] = []
+        for written, item in zip(block.for_each, items, strict=True):
+            if not (isinstance(written, dict) and "when" in written):
+                kept.append(item)
+                continue
+            item_without_when = {key: value for key, value in item.items() if key != "when"}
+            if item["when"]:
+                kept.append(item_without_when)
+            else:
+                skipped.append(SkippedTask(name=self.task_name(block, item_without_when), when=str(written["when"])))
+        self.frame["skipped_tasks"] = skipped
+        return kept
 
     def task_name(self, block: ParallelBlock, item: Any) -> str | None:
         """The task's name from `task_name`, on one short line. A name that fails or is empty is no name:
@@ -972,6 +1000,7 @@ class Run:
             return self.issue_packet_for_next_task(block)
         results = [task["output"] for task in tasks]
         self.frame["tasks"] = None
+        self.frame["skipped_tasks"] = None
         self.complete_block(block, {"results": results}, decided_by="agent", duration_ms=duration_ms)
         next_text = self.advance()
         if self.adapter.can_spawn_subagents:

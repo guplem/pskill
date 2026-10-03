@@ -100,6 +100,12 @@ blocks:
 - Field types: `string`, `integer`, `number`, `boolean`, `array` (with `items`), `object` (with `properties`). A field is required unless `optional: true`.
 - A `parallel` block may name `agent: <name>`: the text of `.pskill/agents/<name>.md` then heads each task's prompt.
 - A `parallel` block may set `task_name`, a `{{ }}` value per item, to name each task in the packet and the viewer. Without a name, a task shows as "task 0". When a block of the main agent builds the list, add an optional `name` field to its items and set `task_name: "{{ item.name }}"`.
+- In a `for_each` written as a YAML list, an item may have a `when`: the item starts a task only when its `when` is true. The task's `item` has no `when` key. The viewer lists the skipped items with their condition. Use it for a fixed set of subagents where each one runs only when it is needed:
+  ```yaml
+  for_each:
+    - {name: docs, brief: "Find stale docs."}
+    - {name: api, brief: "Check the API rules.", when: "{{ steps.read.json.paths | select('matches', '^api/') | list }}"}
+  ```
 - A `script` gives `steps.<id>.exit_code`, `.stdout`, and `.stderr`, plus `.json` with `parse: json`.
 - A failed block tries again `retries` times (2 by default, set in `.pskill/config.yaml`), then the run pauses. A `task`, `decision`, `parallel`, or `script` block can set its own `retries: 0` (no second try) or more. A `script` can set its own `timeout_s: 60` (300 by default).
 
@@ -146,6 +152,7 @@ blocks:
 - A value from a block that has not run is missing. You can compare it (the result is false) or replace it: `{{ steps.x.value | default('none') }}`. Printing a missing value fails the run on purpose.
 - Put parentheses around a filter inside a comparison: `{{ (steps.review.outputs.findings | length) > 0 }}`.
 - `{{ text | to_file }}` writes the text to a file and gives its path. Use it for long script arguments.
+- `matches` tests text against a regular expression, anywhere in the text: `{{ path is matches('^api/') }}`, or `{{ paths | select('matches', '[.]ts$') | list }}`. Anchor the pattern with `^` and `$`.
 
 ## Writing instructions
 

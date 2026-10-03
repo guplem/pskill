@@ -101,3 +101,11 @@ def test_to_file_writes_the_text_and_returns_its_path(tmp_path: Path) -> None:
 
     assert Path(path).read_text(encoding="utf-8") == "long body"
     assert Path(path).parent == tmp_path / "files"
+
+
+def test_matches_tests_text_against_a_regular_expression() -> None:
+    paths = {"steps": {"read": {"paths": ["api/src/a.ts", "docs/b.md", "api/c.md"]}}}
+
+    assert compute("{{ steps.read.paths | select('matches', '^api/.*[.]ts$') | list }}", paths) == ["api/src/a.ts"]
+    assert compute("{{ 'docs/b.md' is matches('[.]md$') }}", paths) is True
+    assert compute("{{ 'docs/b.md' is matches('^api/') }}", paths) is False

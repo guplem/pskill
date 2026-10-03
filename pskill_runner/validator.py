@@ -121,6 +121,8 @@ def block_problems(skill: Skill, block: AnyBlock) -> list[Problem]:
         problems += end_problems(skill, location, block)
     else:
         problems += edge_problems(skill, location, block)
+    if isinstance(block, ParallelBlock):
+        problems += item_when_problems(location, block)
     output = block_output(block)
     if output is not None:
         problems += field_description_problems(location, "the output field", output)
@@ -179,6 +181,18 @@ def edge_problems(skill: Skill, location: str, block: AnyBlock) -> list[Problem]
     return problems
 
 
+def item_when_problems(location: str, block: ParallelBlock) -> list[Problem]:
+    """Each `when` of a fixed `for_each` list follows the same rule as an edge's `when`."""
+    if not isinstance(block.for_each, list):
+        return []
+    return [
+        error(location, "a when must be exactly one {{ ... }}")
+        for item in block.for_each
+        if isinstance(item, dict) and "when" in item
+        if not (isinstance(item["when"], str) and is_single_expression(item["when"]))
+    ]
+
+
 def edge_lists(block: AnyBlock) -> list[tuple[str, list[Edge]]]:
     """Each list in which the first matching edge wins, with a prefix that names its choice."""
     if isinstance(block, EndBlock):
@@ -208,6 +222,17 @@ def string_values(values: list[object]) -> list[str]:
     return [value for value in values if isinstance(value, str)]
 
 
+def nested_strings(value: object) -> list[str]:
+    """Every string inside a value, at any depth: a fixed `for_each` list holds them in its items."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [text for item in value for text in nested_strings(item)]
+    if isinstance(value, dict):
+        return [text for item in value.values() for text in nested_strings(item)]
+    return []
+
+
 def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Problem]) -> list[str]:
     """Every text of a block that may contain {{ }}. A missing instruction file is reported in problems."""
     texts = [edge.when for edge in block_edges(block) if edge.when is not None]
@@ -218,7 +243,7 @@ def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Pro
     if isinstance(block, CallBlock):
         texts += string_values(list(block.inputs.values()))
     if isinstance(block, ParallelBlock):
-        texts += string_values([block.for_each, block.agent, block.task_name])
+        texts += nested_strings(block.for_each) + string_values([block.agent, block.task_name])
     prose = prose_value(block)
     if prose is not None:
         if prose.endswith(".md") and not (skill.folder / prose).is_file():
