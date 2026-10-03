@@ -379,3 +379,62 @@ def test_the_first_packet_of_a_child_skill_shows_its_goal_once(tmp_path: Path) -
     assert "### Goal\nGreet the person by name." in child_packet
     assert "### Errors" in retry
     assert "### Goal" not in retry
+
+
+PICKED_PARALLEL_SKILL = """\
+schema: pskill/v1
+id: picked
+description: Runs only the reviewers that the change needs.
+goal: Review the change.
+inputs:
+  paths: {type: array, items: {type: string}, description: "The changed paths."}
+outputs:
+  count: {type: integer, description: "How many reviews ran."}
+entry: review
+blocks:
+  review:
+    type: parallel
+    for_each:
+      - {name: always}
+      - {name: api, when: "{{ inputs.paths | select('matches', '^api/') | list }}"}
+      - {name: docs, when: "{{ inputs.paths | select('matches', '^docs/') | list }}"}
+    task_name: "{{ item.name }}"
+    instruction: "Review as {{ item.name }}."
+    output:
+      ok: {type: boolean, description: "True when the review is done."}
+    next: done
+  done:
+    type: end
+    status: succeeded
+    outputs: {count: "{{ steps.review.results | length }}"}
+"""
+
+
+def test_a_parallel_item_runs_only_when_its_when_is_true(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"picked": PICKED_PARALLEL_SKILL})
+
+    run_id, packet = start_run(
+        project, "picked", {"paths": ["api/a.ts"]}, mode="interactive", harness="subagents-for-tests"
+    )
+
+    assert "#### Task 0 · always\n" in packet and "#### Task 1 · api\n" in packet
+    assert "docs" not in packet
+    tasks = read_run_state(project, run_id)["frames"][0]["tasks"] or []
+    assert [task["item"] for task in tasks] == [{"name": "always"}, {"name": "api"}]
+    started = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_started"]
+    assert started[-1]["skipped_tasks"] == [
+        {"name": "docs", "when": "{{ inputs.paths | select('matches', '^docs/') | list }}"}
+    ]
+
+
+def test_a_parallel_block_whose_items_are_all_skipped_completes_at_once(tmp_path: Path) -> None:
+    skill_yaml = PICKED_PARALLEL_SKILL.replace("      - {name: always}\n", "")
+    project = make_project(tmp_path, {"picked": skill_yaml})
+
+    run_id, packet = start_run(project, "picked", {"paths": ["sdk/a.py"]}, mode="interactive", harness="generic")
+
+    assert "finished with status succeeded" in packet
+    assert read_run_info(project, run_id)["outputs"] == {"count": 0}
+    events = read_events(project.runs_folder / run_id)
+    started = next(event for event in events if event["type"] == "block_started" and event["block"] == "review")
+    assert [task["name"] for task in started["skipped_tasks"]] == ["api", "docs"]

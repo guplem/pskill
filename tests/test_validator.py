@@ -297,3 +297,19 @@ def test_references_in_a_task_name_are_checked(tmp_path: Path) -> None:
     )
 
     assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(tmp_path, named)
+
+
+def test_a_parallel_item_when_must_be_one_expression(tmp_path: Path) -> None:
+    picked = CALLER_SKILL.replace(
+        "      - {agent: ghost, focus: docs}\n", '      - {agent: scout, focus: docs, when: "yes {{ true }}"}\n'
+    )
+
+    assert "blocks.research: a when must be exactly one {{ ... }}" in catalog_problems(tmp_path, picked)
+
+
+def test_references_inside_a_fixed_for_each_list_are_checked(tmp_path: Path) -> None:
+    picked = CALLER_SKILL.replace(
+        "      - {agent: ghost, focus: docs}\n", '      - {agent: scout, focus: docs, when: "{{ steps.nowhere.x }}"}\n'
+    )
+
+    assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(tmp_path, picked)

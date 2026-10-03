@@ -316,6 +316,7 @@ fact_check:
 ```
 
 - Each item becomes one task. `item` is the current list element in the templates.
+- **A `when` per item.** In a `for_each` written as a YAML list, an item may have a `when` (exactly one `{{ }}`, like an edge's). The item starts a task only when its `when` is true, and the task's `item` has no `when` key. This keeps one way to list tasks: a fixed list, where each subagent says when it is needed. The `block_started` event lists the skipped items (section 10.3), and the viewer shows them. In a list computed during the run, a `when` key is plain data.
 - **`agent`** names a file `.pskill/agents/<name>.md`. The file is the subagent's role and rules, in Markdown. The runner puts its text at the top of the task prompt. The harness then spawns a plain subagent, so the same agent works on every harness. With no `agent`, the task gets a plain subagent with only its instruction.
 - **`task_name`** is one `{{ }}` value, computed once per item, that names the task. The packet heads the task with `#### Task <n> · <name>`, and the viewer labels the task's node and chip with it. The runner puts the name on one line and cuts it to 60 characters. A name that is missing, empty, or fails to compute is no name: the task shows as `task <n>`, and the run goes on. When the main agent builds the list, give each item an optional `name` field in that block's `output`, and set `task_name: "{{ item.name }}"`.
 - pskill agents are only reusable prompt text. pskill never reads harness agent files (`.claude/agents/`, `.codex/agents/`), and `sync` never writes them. The main agent spawns a plain subagent (in Claude: `general-purpose`) and gives it the prompt that the runner built. This keeps agents versioned with the skills, so they cannot drift apart.
@@ -399,6 +400,7 @@ done:
   - Implement this as a subclass of Jinja's `ChainableUndefined` that raises on `__str__` and `__iter__`.
   - The validator still rejects references to blocks or inputs that do not exist (section 11).
 - Put parentheses around a filter inside a comparison: `(inputs.issue | int(0)) > 0`.
+- **One extra test: `matches`.** `{{ text is matches(pattern) }}` is true when the regular expression matches anywhere in the text (`re.search`). With `select`, it keeps the matching items of a list: `{{ paths | select('matches', '^api/') | list }}`.
 - **One extra filter: `to_file`.** It writes a text to `runs/<id>/files/<n>.txt` and returns the path. Use it for long script arguments (`--body-file "{{ steps.plan.plan | to_file }}"`), because Windows limits a command line to about 32,000 characters.
 - There are no variables and no assignments. `steps` and `history` hold all the state. This is on purpose (section 18).
 
@@ -701,7 +703,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 | type | Extra fields |
 |---|---|
 | `run_started` | `skill_id`, `skill_hash`, `inputs`, `mode`, `harness`, `runner_version` |
-| `block_started` | `block`, `block_type`, `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null) |
+| `block_started` | `block`, `block_type`, `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null), `skipped_tasks?` (a parallel block: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3) |
 | `submission_rejected` | `block`, `task?`, `errors`, `raw` |
 | `block_completed` | `block`, `task?`, `output`, `decided_by` (`agent`, `human`, `agent_autonomous`, `runner`), `duration_ms` |
 | `script_ran` | `block`, `argv`, `exit_code`, `stdout`, `stderr` (each cut to 64 KiB), `duration_ms` |
@@ -725,8 +727,8 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 5. A block is unreachable.
 6. A non-`end` block has no `next`.
 7. A choice map does not match `choices` one to one.
-8. A `{{ }}` does not compile, or a `when` is not exactly one `{{ ... }}`.
-9. A reference to an unknown input, `steps` block, or `history` block.
+8. A `{{ }}` does not compile, or a `when` (of an edge, or of an item of a fixed `for_each` list) is not exactly one `{{ ... }}`.
+9. A reference to an unknown input, `steps` block, or `history` block. The strings inside the items of a fixed `for_each` list count too.
 10. An `instruction` or `report` value ends in `.md`, but the file is missing.
 11. A top-level field of `inputs`, `outputs`, or a block `output` has no `description`.
 12. An `agent` names a file that does not exist in `.pskill/agents/`. The validator checks plain names and the items of a fixed `for_each` list. An agent name computed from run data is checked at run time, and a missing file fails the block.

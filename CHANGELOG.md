@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0 (2026-10-03)
+
+A parallel block can run each of its fixed tasks only when it is needed.
+
+- **A `when` per item:** in a `for_each` written as a YAML list, an item may have a `when`. The item starts a task only when its `when` is true. A skill can now list its subagents in `skill.yaml`, each with the condition that picks it, instead of a script that builds the list.
+- **Skipped items are visible:** the `block_started` event lists the skipped items with their condition (`skipped_tasks`, run schema version 3), and the viewer shows them in a "Skipped" section of the block.
+- **The `matches` test:** `{{ path is matches('^api/') }}` tests text against a regular expression. With `select`, it keeps the matching items of a list.
+- **The validator checks inside fixed lists:** it now checks the `{{ }}` values inside the items of a fixed `for_each` list, and it requires each item's `when` to be exactly one `{{ ... }}`.
+
 ## 0.10.1 (2026-10-01)
 
 The parallel packet asks for a fresh context in words.

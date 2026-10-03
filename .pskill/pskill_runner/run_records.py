@@ -2,7 +2,7 @@
 
 from typing import Any, TypedDict
 
-SCHEMA_VERSION = 2  # 2: parallel tasks have a name
+SCHEMA_VERSION = 3  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
 
 ACTIVE_STATUSES = ("active", "waiting_for_human")
 UNFINISHED_STATUSES = ("active", "waiting_for_human", "paused")
@@ -46,6 +46,13 @@ class ParallelTask(TypedDict):
     attempts: int
 
 
+class SkippedTask(TypedDict):
+    """One item of a fixed `for_each` list whose `when` was false, so it started no task."""
+
+    name: str | None  # from the block's `task_name`
+    when: str  # the condition, as written in skill.yaml
+
+
 class Frame(TypedDict):
     """One skill on the call stack. A `call` block pushes a frame; the child's end block pops it."""
 
@@ -58,6 +65,7 @@ class Frame(TypedDict):
     arrived_from: str | None
     arrival_reason: str | None
     tasks: list[ParallelTask] | None  # the tasks of the current parallel block, if any
+    skipped_tasks: list[SkippedTask] | None  # its items whose `when` was false; absent in runs before 0.11.0
     started_at: str
     goal_shown: bool  # a child skill's first packet showed its goal; absent in runs before 0.10.0
 
@@ -79,6 +87,7 @@ def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str) -> Frame:
         arrived_from=None,
         arrival_reason=None,
         tasks=None,
+        skipped_tasks=None,
         started_at=started_at,
         goal_shown=False,
     )

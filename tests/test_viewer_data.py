@@ -22,6 +22,7 @@ from tests.test_engine_blocks import (
     NAMED_PARALLEL_SKILL,
     PARALLEL_SKILL,
     PARENT_SKILL,
+    PICKED_PARALLEL_SKILL,
     SCRIPT_SKILL,
     adapter_with_subagents,  # noqa: F401 (an autouse fixture: the harness "subagents-for-tests")
 )
@@ -194,6 +195,7 @@ def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "failing", FAILING_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "loop-parent", LOOP_PARENT_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "fanout", PARALLEL_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "picked", PICKED_PARALLEL_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "long-condition", LONG_CONDITION_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "fanout-twice", FANOUT_TWICE_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "fanout-caller", FANOUT_CALLER_SKILL)
@@ -980,3 +982,12 @@ def test_each_node_sends_its_description_type_meaning_and_notes_apart(tmp_path: 
     assert work["type_meaning"] == "The agent does a piece of work and returns a typed answer."
     assert create_plan["description"] is None
     assert create_plan["notes"] == "It runs at most 3 times."
+
+
+def test_a_parallel_row_lists_the_items_that_its_when_skipped(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "picked", {"paths": ["api/a.ts"]}, mode="interactive", harness="subagents-for-tests")
+
+    (row,) = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "review"]
+
+    assert row["skipped_tasks"] == [{"name": "docs", "when": "{{ inputs.paths | select('matches', '^docs/') | list }}"}]

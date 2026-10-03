@@ -52,6 +52,11 @@ def to_file(context: Context, text: str) -> str:
     return str(path)
 
 
+def matches(text: Any, pattern: str) -> bool:
+    """True when the regular expression `pattern` matches anywhere in the text. Use `^` and `$` to anchor it."""
+    return re.search(pattern, str(text)) is not None
+
+
 class PskillEnvironment(SandboxedEnvironment):
     """The Jinja environment of pskill.
 
@@ -67,6 +72,7 @@ class PskillEnvironment(SandboxedEnvironment):
 
 ENVIRONMENT = PskillEnvironment(undefined=MissingValue, keep_trailing_newline=True, autoescape=False)
 ENVIRONMENT.filters["to_file"] = to_file
+ENVIRONMENT.tests["matches"] = matches
 
 
 def is_single_expression(value: str) -> bool:

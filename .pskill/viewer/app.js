@@ -1569,6 +1569,7 @@ function rowSections(row) {
   if (row.block_type === "script") return [...parts, ...scriptSections(row)];
   if (row.packet) parts.push(section(row.input_title, folded(markdown(row.packet), `${row.seq}:input`)));
   if (row.tasks.length) parts.push(tasksSection(row));
+  if (row.skipped_tasks.length) parts.push(skippedSection(row));
   // The answers of a parallel block's tasks show with their task; the rest shows here.
   const listed = new Set(row.tasks.map((task) => task.task));
   const answers = row.submissions.filter((submission) => submission.task === null || !listed.has(submission.task));
@@ -1616,6 +1617,17 @@ function tasksSection(row) {
   const chosen = row.tasks.find((task) => task.task === selected);
   const detail = chosen ? taskDetail(chosen, row.seq) : element("p", "Click a task to see its prompt, its answers, and its output.", "note");
   return section(`Tasks · ${row.tasks.length}`, element("p", summary, "note"), chips, detail);
+}
+
+function skippedSection(row) {
+  const list = element("ul");
+  for (const skipped of row.skipped_tasks) {
+    const item = element("li");
+    item.append(element("strong", skipped.name ?? "An unnamed item"), " was skipped: ", element("code", skipped.when), " was false.");
+    list.append(item);
+  }
+  const note = element("p", "These items of the for_each list started no task, because their when was false.", "note");
+  return section(`Skipped · ${row.skipped_tasks.length}`, note, list);
 }
 
 function taskDetail(task, seq) {
