@@ -35,7 +35,9 @@ CLAUDE_CODE = HarnessAdapter(
     ),
     can_spawn_subagents=True,
     subagent_wording=(
-        "Use the Agent tool with `subagent_type: general-purpose`: one Agent call per task, all in one message."
+        "Use the Agent tool with `subagent_type: general-purpose` and `run_in_background: false`: one Agent call "
+        "per task, all in one message. The calls run in parallel, and your turn waits until every subagent has "
+        "finished."
     ),
 )
 

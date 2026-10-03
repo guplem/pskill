@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.0 (2026-10-03)
+
+A parallel block no longer needs manual work from the main agent.
+
+- **One-line subagent prompts:** the packet of a parallel block gives each open task one line: work in the project folder, run `pskill task <run> <n>`, and do what it prints. The main agent no longer copies long prompts by hand, and `current` stays short. The same line restarts a stalled task.
+- **The `task` command:** `pskill task <run> <n>` prints the full prompt of one open task, with the folder to work in.
+- **Claude Code waits for its subagents:** the packet asks for `run_in_background: false` on each Agent call. The calls still run in parallel, and the main turn ends only when every subagent has finished, so the Stop hook no longer pauses the run while the subagents work.
+- **No lost answers:** when the Stop hook paused a run (reason `agent_stopped`), `submit --task` still records a task's answer. `resume` then completes the parallel block if every task has its answer.
+- **The viewer keeps the full prompts:** the `block_started` event of a parallel block logs each task's full prompt (`task_prompts`, run schema version 4), and the viewer shows it. Older runs still show theirs.
+
 ## 0.11.2 (2026-10-03)
 
 The viewer shows which pskill version it runs.

@@ -53,7 +53,10 @@ OUTPUT_TITLES = {
     "call": "Output: the child skill's outputs",
     "end": "Output: the skill's outputs",
 }
-TASK_HEADING = re.compile(r"^#### Task (\d+)(?: · [^\n]*)?\n(?=You are a subagent of a pskill run\.)", re.MULTILINE)
+# A packet before schema version 4 holds each task's full prompt; a later one holds a one-line prompt.
+TASK_HEADING = re.compile(
+    r"^#### Task (\d+)(?: · [^\n]*)?\n(?=You are a subagent of (?:a pskill run\.|pskill run ))", re.MULTILINE
+)
 TASK_TOTAL = re.compile(r"^\d+ of (\d+) tasks are still open\.$", re.MULTILINE)
 TASKS_PER_ROW = 4
 TASK_NODE_HINT = "One task of this parallel block. One subagent (or the agent) does it and answers on its own."
@@ -754,6 +757,8 @@ def task_packets(packet: str | None) -> dict[int, str]:
     if total is None:
         return {}
     headings = [match for match in TASK_HEADING.finditer(text) if int(match[1]) < int(total[1])]
+    if not headings:
+        return {}
     ends = [match.start() for match in headings[1:]] + [len(text)]
     return {int(match[1]): text[match.end() : end].strip() for match, end in zip(headings, ends, strict=True)}
 
@@ -819,8 +824,10 @@ def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
         packets: dict[int, str] = {}
         names: list[str | None] = next((row["task_names"] for row in reversed(group) if row["task_names"]), [])
         for row in group:
-            if row["task"] is None:
-                packets.update(task_packets(row["packet"]))  # with subagents: one packet lists every open task
+            if row["task"] is None and row["task_prompts"]:
+                packets.update(enumerate(row["task_prompts"]))  # with subagents: the full prompt of each task
+            elif row["task"] is None:
+                packets.update(task_packets(row["packet"]))  # a run before schema version 4: the packet holds them
             elif row["packet"]:
                 packets[row["task"]] = row["packet"]  # one by one: the row's packet is its task's prompt
         live_count = live[2] if live is not None and key == last_key and live[:2] == (key[0], key[2]) else 0
@@ -936,6 +943,7 @@ def new_timeline_row(event: dict[str, Any]) -> dict[str, Any]:
         "visit": event["visit"],
         "task": event.get("task"),
         "task_names": event.get("task_names"),
+        "task_prompts": event.get("task_prompts"),
         "skipped_tasks": event.get("skipped_tasks") or [],
         "from": event.get("from"),
         "reason": event.get("reason"),

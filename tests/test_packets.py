@@ -10,6 +10,7 @@ from pskill_runner.packets import (
     render_final_packet,
     render_parallel_packet,
     render_pause_packet,
+    task_prompt_text,
 )
 
 PLAN_PACKET = AgentPacket(
@@ -168,25 +169,38 @@ def test_a_task_packet_submits_with_its_task_number() -> None:
     assert "uv run .pskill/pskill.py submit r-20260927-1432-ab12 --task 3 <<'PSKILL'" in text
 
 
-def test_the_parallel_packet_lists_one_full_prompt_per_task() -> None:
+def test_the_parallel_packet_gives_each_open_task_a_one_line_prompt() -> None:
     fields = parse_field_map({"wrong": {"type": "array", "items": {"type": "string"}, "description": "Wrong claims."}})
     tasks = [
         TaskPrompt(index=0, agent_text="You check facts.", instruction="Check a.md.", return_fields=fields),
         TaskPrompt(index=2, agent_text=None, instruction="Check c.md.", return_fields=fields),
     ]
+    packet = replace(PLAN_PACKET, work_folder="/work/project")
 
-    text = render_parallel_packet(PLAN_PACKET, tasks, total_tasks=3)
+    text = render_parallel_packet(packet, tasks, total_tasks=3)
 
     assert text.startswith("## pskill · plan-work · create_plan (visit 2)")
-    assert (
-        "Spawn one subagent per task below, all at once, each with a fresh context (none of this conversation)." in text
-    )
     assert "2 of 3 tasks are still open." in text
     assert "#### Task 0\n" in text and "#### Task 2\n" in text and "#### Task 1\n" not in text
-    assert "You check facts.\n" in text
-    assert "Goal: Produce a plan that the user approved." in text
-    assert "submit r-20260927-1432-ab12 --task 2 <<'PSKILL'" in text
+    assert (
+        "You are a subagent of pskill run r-20260927-1432-ab12. In the folder `/work/project`, run "
+        "`uv run .pskill/pskill.py task r-20260927-1432-ab12 2`, and do what it prints." in text
+    )
+    assert "Check a.md." not in text and "You check facts." not in text and "<<'PSKILL'" not in text
     assert "uv run .pskill/pskill.py current r-20260927-1432-ab12" in text
+
+
+def test_a_task_prompt_has_the_work_folder_the_role_the_task_and_its_submit_command() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=2, agent_text="You check facts.", instruction="Check c.md.", return_fields=fields)
+
+    text = task_prompt_text(replace(PLAN_PACKET, work_folder="/work/project"), task)
+
+    assert "Work in the folder `/work/project`." in text
+    assert "You check facts." in text
+    assert "Goal: Produce a plan that the user approved." in text
+    assert "Check c.md." in text
+    assert "submit r-20260927-1432-ab12 --task 2 <<'PSKILL'" in text
 
 
 def test_the_parallel_packet_names_the_harness_spawn_tool() -> None:
@@ -203,4 +217,4 @@ def test_a_named_task_shows_its_name_in_its_heading() -> None:
 
     text = render_parallel_packet(PLAN_PACKET, tasks, total_tasks=1)
 
-    assert "#### Task 0 · security\nYou are a subagent of a pskill run." in text
+    assert "#### Task 0 · security\nYou are a subagent of pskill run" in text

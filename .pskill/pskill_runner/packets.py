@@ -39,6 +39,7 @@ class AgentPacket:
     question_wording: str
     task_index: int | None = None  # set for one task of a parallel block
     subagent_wording: str = ""  # how this harness spawns subagents, for parallel packets
+    work_folder: str = ""  # the project root, where every subagent of a parallel block works
     # The stub gives the goal and the rules once. A packet repeats them only where the agent never saw them.
     show_goal: bool = False  # the first packet of a child skill, and `current` and `resume`
     show_rules: bool = False  # `current` and `resume`: a new session may not have read the stub
@@ -123,25 +124,42 @@ class TaskPrompt:
 
 
 def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], total_tasks: int) -> str:
-    """The packet of a parallel block when the harness can spawn subagents: one prompt per open task."""
+    """The packet of a parallel block when the harness can spawn subagents: a one-line prompt per open task.
+
+    The subagent reads its full prompt with `pskill task`, so the main agent copies one short line per task.
+    The same line restarts a task whose subagent stalled.
+    """
     lines = [
         header(packet),
         "",
         "### Parallel tasks",
         "Spawn one subagent per task below, all at once, each with a fresh context (none of this conversation).",
-        "Give each subagent exactly its prompt.",
+        "Give each subagent exactly the one-line prompt of its task.",
         *([packet.subagent_wording] if packet.subagent_wording else []),
         f"{len(open_tasks)} of {total_tasks} tasks are still open.",
         f"When every subagent has finished, run: {packet.runner_command} current {packet.run_id}",
     ]
     for task in open_tasks:
         name = f" · {task.name}" if task.name else ""
-        lines += ["", f"#### Task {task.index}{name}", task_prompt_text(packet, task)]
+        lines += ["", f"#### Task {task.index}{name}", task_line(packet, task.index)]
     return "\n".join(lines) + "\n"
 
 
+def task_line(packet: AgentPacket, index: int) -> str:
+    """The one-line prompt of a subagent: read the full prompt of its task, then do it."""
+    command = f"{packet.runner_command} task {packet.run_id} {index}"
+    return (
+        f"You are a subagent of pskill run {packet.run_id}. In the folder `{packet.work_folder}`, run "
+        f"`{command}`, and do what it prints."
+    )
+
+
 def task_prompt_text(packet: AgentPacket, task: TaskPrompt) -> str:
-    parts = ["You are a subagent of a pskill run. Do only this task, then submit its answer."]
+    """The full prompt of one task, which `pskill task` prints for its subagent."""
+    parts = [
+        "You are a subagent of a pskill run. Do only this task, then submit its answer.",
+        f"Work in the folder `{packet.work_folder}`.",
+    ]
     if task.agent_text:
         parts.append(task.agent_text.strip())
     parts.append(f"Goal: {packet.goal.strip()}")

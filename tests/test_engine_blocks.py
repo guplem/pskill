@@ -6,7 +6,18 @@ from pathlib import Path
 import pytest
 
 from pskill_runner.adapters import ADAPTERS, HarnessAdapter
-from pskill_runner.engine import current_packet, read_run_info, read_run_state, start_run, submit_answer
+from pskill_runner.engine import (
+    RunError,
+    current_packet,
+    pause_run,
+    read_run_info,
+    read_run_state,
+    register_stop_attempt,
+    resume_run,
+    start_run,
+    submit_answer,
+    task_packet,
+)
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import read_events
 from tests.skill_files import write_skill
@@ -196,9 +207,8 @@ def test_parallel_with_subagents_lists_every_task_and_waits_for_all(tmp_path: Pa
 
     assert "Spawn one subagent per task" in packet
     assert "#### Task 0" in packet and "#### Task 1" in packet
-    assert "You check facts carefully." in packet
-    assert "Check every claim in b.md." in packet
-    assert "submit " + run_id + " --task 1" in packet
+    assert f"task {run_id} 1`" in packet
+    assert "Check every claim in b.md." not in packet
 
     waiting = submit_answer(project, run_id, "wrong:\n  - The sky is green.\n", task=1)
     assert "1 of 2 tasks are done" in waiting
@@ -438,3 +448,59 @@ def test_a_parallel_block_whose_items_are_all_skipped_completes_at_once(tmp_path
     events = read_events(project.runs_folder / run_id)
     started = next(event for event in events if event["type"] == "block_started" and event["block"] == "review")
     assert [task["name"] for task in started["skipped_tasks"]] == ["api", "docs"]
+
+
+def test_the_task_command_gives_the_full_prompt_of_one_open_task(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts carefully."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+
+    prompt = task_packet(project, run_id, 1)
+
+    assert f"Work in the folder `{project.root.as_posix()}`." in prompt
+    assert "You check facts carefully." in prompt
+    assert "Check every claim in b.md." in prompt
+    assert f"submit {run_id} --task 1" in prompt
+
+
+def test_the_task_command_refuses_a_task_that_already_has_an_answer(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    with pytest.raises(RunError, match=r"Task 0 .* already has an answer"):
+        task_packet(project, run_id, 0)
+
+
+def stop_until_paused(project: Project, run_id: str) -> None:
+    while register_stop_attempt(project, run_id):
+        pass
+
+
+def test_a_run_paused_by_stop_attempts_still_records_task_answers(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    stop_until_paused(project, run_id)
+    assert read_run_info(project, run_id)["pause_reason"] == "agent_stopped"
+
+    first = submit_answer(project, run_id, "wrong: [x]\n", task=1)
+    last = submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    assert "Task 1 is recorded" in first and "Task 0 is recorded" in last
+    assert read_run_info(project, run_id)["status"] == "paused"  # only resume advances
+    assert "finished with status succeeded" in resume_run(project, run_id)
+    assert read_run_info(project, run_id)["outputs"] == {"wrong_count": 1}
+
+
+def test_a_run_paused_by_the_user_takes_no_task_answer(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
+    pause_run(project, run_id)
+
+    with pytest.raises(RunError, match="resume"):
+        submit_answer(project, run_id, "wrong: []\n", task=0)

@@ -13,6 +13,7 @@ from pskill_runner.viewer_data import (
     run_detail,
     runs_overview,
     split_choice_reason,
+    task_packets,
     task_row_sizes,
     timeline_rows,
 )
@@ -991,3 +992,16 @@ def test_a_parallel_row_lists_the_items_that_its_when_skipped(tmp_path: Path) ->
     (row,) = [row for row in detail_of(project, run_id)["timeline"] if row["block"] == "review"]
 
     assert row["skipped_tasks"] == [{"name": "docs", "when": "{{ inputs.paths | select('matches', '^docs/') | list }}"}]
+
+
+def test_a_packet_from_before_schema_version_4_still_gives_each_task_its_full_prompt() -> None:
+    packet = (
+        "## pskill · fanout · check (visit 1)\n\n### Parallel tasks\n2 of 2 tasks are still open.\n\n"
+        "#### Task 0\nYou are a subagent of a pskill run. Do only this task.\n\nCheck a.md.\n\n"
+        "#### Task 1\nYou are a subagent of a pskill run. Do only this task.\n\nCheck b.md.\n"
+    )
+
+    prompts = task_packets(packet)
+
+    assert sorted(prompts) == [0, 1]
+    assert prompts[1].endswith("Check b.md.")
