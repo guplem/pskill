@@ -1,7 +1,8 @@
 """The skill screen of the viewer (SPEC.md section 14): every skill, and one skill's graph without a run.
 
-It reads the skills in `.pskill/skills/`, never a run's copy. The canvas is the run canvas of one frame,
-with no run parts: no status, no current step, and no timeline.
+It reads the skills in `.pskill/skills/`, never a run's copy. The canvas is the run canvas with no run parts
+(no status, no current step, and no timeline): the skill, and each child skill that a call block runs, in its
+own frame next to the call block.
 """
 
 import json
@@ -85,16 +86,24 @@ def skill_detail(project: Project, skill_id: str) -> dict[str, Any] | None:
     try:
         skill = load_skill(folder)
     except SkillLoadError as error:
-        return {"skill": {"id": skill_id}, "canvas": None, "blocks": {}, "problems": [], "error": error.problems}
+        return {
+            "skill": {"id": skill_id},
+            "canvas": None,
+            "blocks": {},
+            "child_blocks": {},
+            "problems": [],
+            "error": error.problems,
+        }
     catalog = load_catalog(project.skills_folder, project.agents_folder)
     raw_blocks = load_skill_yaml((folder / SKILL_FILE_NAME).read_text(encoding="utf-8"))["blocks"]
     problems = [
         {"level": problem.level, "location": problem.location, "message": problem.message}
         for problem in validate_skill(skill, catalog)
     ]
+    frames = skill_frames(skill, catalog.skills)
     return {
         "skill": skill_facts(skill),
-        "canvas": skill_canvas(skill),
+        "canvas": skill_canvas(frames),
         "blocks": {
             block.id: {
                 **block_details(skill, block, catalog.agent_names),
@@ -102,6 +111,7 @@ def skill_detail(project: Project, skill_id: str) -> dict[str, Any] | None:
             }
             for block in skill.blocks.values()
         },
+        "child_blocks": child_block_details(frames, catalog.agent_names),
         "problems": problems,
         "error": None,
     }
@@ -118,10 +128,27 @@ def skill_facts(skill: Skill) -> dict[str, Any]:
     }
 
 
-def skill_canvas(skill: Skill) -> dict[str, Any]:
-    """The run canvas of one frame: every block and every edge, and nothing that a run adds."""
+def skill_frames(skill: Skill, skills: dict[str, Skill]) -> list[CanvasFrame]:
+    """The skill, then one frame per call block of each frame: its child skill, and that child's own children.
+
+    A child that does not load (it is not in `skills`) gets no frame. A call back into a skill of its own chain
+    gets none either, so a call cycle (which `pskill validate` reports) cannot loop forever.
+    """
     frames = [CanvasFrame(skill, parent=None, called_by=None)]
-    edges = number_edges(frame_edges(0, frames[0]))
+
+    def add_children(parent: int, chain: frozenset[str]) -> None:
+        for block in frames[parent].skill.blocks.values():
+            if isinstance(block, CallBlock) and block.skill in skills and block.skill not in chain:
+                frames.append(CanvasFrame(skills[block.skill], parent=parent, called_by=block.id))
+                add_children(len(frames) - 1, chain | {block.skill})
+
+    add_children(0, frozenset({skill.id}))
+    return frames
+
+
+def skill_canvas(frames: list[CanvasFrame]) -> dict[str, Any]:
+    """The run canvas with every frame: every block and every edge, and nothing that a run adds."""
+    edges = number_edges([edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame)])
     nodes = block_nodes(frames)
     return {
         "template": canvas_template(frames, edges, {}),
@@ -135,14 +162,29 @@ def skill_canvas(skill: Skill) -> dict[str, Any]:
 # --- the side panel: one block's details ---------------------------------------------------------
 
 
-def block_details(skill: Skill, block: AnyBlock, agent_names: set[str]) -> dict[str, Any]:
+def child_block_details(frames: list[CanvasFrame], agent_names: set[str]) -> dict[str, dict[str, Any]]:
+    """The details of each block of a child frame, by node id: a child block can share a name with a parent block."""
+    return {
+        node_id(index, block.id): {
+            **block_details(frame.skill, block, agent_names, index),
+            "skill_id": frame.skill.id,
+            "called_by": frame.called_by,
+        }
+        for index, frame in enumerate(frames)
+        if index > 0
+        for block in frame.skill.blocks.values()
+    }
+
+
+def block_details(skill: Skill, block: AnyBlock, agent_names: set[str], frame: int = 0) -> dict[str, Any]:
     """What the side panel shows for one block: its facts, its prose, its fields, and its exits.
 
-    `agents` names each agent file that the block uses and that exists, so the panel can link to it.
+    `agents` names each agent file that the block uses and that exists, so the panel can link to it. `frame`
+    is the canvas frame of the block: 0 for the skill itself, more for a child skill.
     """
     instruction_value = block.report if isinstance(block, EndBlock) else getattr(block, "instruction", None)
     details: dict[str, Any] = {
-        "node": node_id(0, block.id),
+        "node": node_id(frame, block.id),
         "type": block_type_name(block),
         "description": block.description,
         "hint": node_hint(block),
@@ -160,7 +202,7 @@ def block_details(skill: Skill, block: AnyBlock, agent_names: set[str]) -> dict[
         "child_skill": None,
         "agents": [],
         "for_each_items": [],
-        "exits": [{"to": edge.to_block, "label": edge.text, "hint": edge.hint} for edge in block_edges(0, block)],
+        "exits": [{"to": edge.to_block, "label": edge.text, "hint": edge.hint} for edge in block_edges(frame, block)],
     }
     if isinstance(block, DecisionBlock) and block.choices:
         details["choices"] = [{"choice": choice, "meaning": meaning} for choice, meaning in block.choices.items()]

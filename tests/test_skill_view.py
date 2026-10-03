@@ -262,6 +262,39 @@ def test_a_computed_for_each_shows_its_expression_and_no_cards(tmp_path: Path) -
     assert check["for_each_items"] == []
 
 
+def test_a_call_block_shows_its_child_skill_in_a_frame(tmp_path: Path) -> None:
+    detail = detail_of(make_project(tmp_path), "parent")
+    canvas = detail["canvas"]
+
+    assert '  subgraph f1 ["child · called by child"]' in canvas["template"]
+    child_nodes = [node["id"] for node in canvas["nodes"] if node["frame"] == 1]
+    assert child_nodes == ["f1_greet", "f1_done"]
+    assert {"source": "f0_child", "target": "f1_greet", "kind": "call"}.items() <= next(
+        edge for edge in canvas["edges"] if edge["kind"] == "call"
+    ).items()
+
+
+def test_a_block_of_a_child_skill_has_its_own_details_by_node(tmp_path: Path) -> None:
+    detail = detail_of(make_project(tmp_path), "parent")
+
+    greet = detail["child_blocks"]["f1_greet"]
+
+    assert (greet["skill_id"], greet["called_by"], greet["node"]) == ("child", "child", "f1_greet")
+    assert "Greet {{ inputs.name }}" in greet["instruction"]
+    assert [exit_["to"] for exit_ in greet["exits"]] == ["done"]
+    assert detail["blocks"]["greet"]["node"] == "f0_greet"
+
+
+def test_a_call_to_a_skill_that_does_not_load_draws_no_frame(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    (project.skills_folder / "child" / "skill.yaml").write_text("schema: pskill/v1\nid: child\n", encoding="utf-8")
+
+    detail = detail_of(project, "parent")
+
+    assert "subgraph f1" not in detail["canvas"]["template"]
+    assert detail["child_blocks"] == {}
+
+
 DETAILED_SKILL = """\
 schema: pskill/v1
 id: detailed

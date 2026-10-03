@@ -447,6 +447,11 @@ pre {
   ry: 14px;
 }
 
+/* A child skill's frame is dashed; a parallel block's task frame stays solid. */
+.layer .cluster:not([id$="_TASKS"]) rect {
+  stroke-dasharray: 7 5;
+}
+
 .layer .cluster-label,
 .layer .cluster-label span,
 .layer .cluster-label p {

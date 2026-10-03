@@ -1065,8 +1065,13 @@ function drawPanel() {
 // --- the skill screen: the side panel --------------------------------------------------------------
 
 function drawSkillPanel() {
-  const details = view.detail.blocks[view.selectedNode ? blockOfNode(view.selectedNode) : ""];
-  if (view.editing && details) {
+  const node = view.selectedNode;
+  // A block of a child skill has its details by node: its name can be the name of a block of this skill.
+  const child = node ? view.detail.child_blocks?.[node] : undefined;
+  const details = child ?? view.detail.blocks[node ? blockOfNode(node) : ""];
+  if (child) {
+    view.parts.panel.replaceChildren(childSkillNote(child), ...blockSections(child));
+  } else if (view.editing && details) {
     view.parts.panel.replaceChildren(editForm(details));
   } else if (details) {
     view.parts.panel.replaceChildren(...blockSections(details));
@@ -1076,6 +1081,13 @@ function drawSkillPanel() {
       view.parts.panel.append(element("p", "Click a block to edit it, or add a block in the top bar.", "note"));
     }
   }
+}
+
+// A block of a child skill shows here read-only. Its own skill screen can edit it.
+function childSkillNote(details) {
+  const note = element("p", `A block of the child skill ${details.skill_id}, which the call block ${details.called_by} runs. `, "note");
+  note.append(entityLink(`Open ${details.skill_id}`, skillHref(details.skill_id)));
+  return note;
 }
 
 // --- the skill screen: the editor ----------------------------------------------------------------
