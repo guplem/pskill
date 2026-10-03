@@ -1150,6 +1150,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 
 | Endpoint | Returns |
 |---|---|
+| `GET /api/version` | The version of the runner that serves the viewer. The Runs, Skills, and Agents screens show it at the bottom left. |
 | `GET /api/runs?skill=` | Run rows, plus one summary row per skill: runs, success rate, median duration. |
 | `GET /api/runs/<id>` | `run.json`, the canvas, the timeline rows, and the current state. |
 | `GET /api/skills` | One row per skill in `.pskill/skills/`: description, invocation, block count, run count, and the load error of a skill that does not load. |

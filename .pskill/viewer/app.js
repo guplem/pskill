@@ -75,6 +75,7 @@ const INVOCATION_MEANING = {
 
 const app = document.getElementById("app");
 const view = {
+  version: null, // the pskill version that serves this viewer
   screen: null,
   skillId: null,
   editing: false,
@@ -324,7 +325,7 @@ function drawRuns(overview) {
   if (overview.summaries.length) page.append(summaries);
   page.append(runs.length ? cards : element("p", "No runs here yet.", "note"));
   app.className = "";
-  app.replaceChildren(topbar(), page);
+  app.replaceChildren(topbar(), page, ...versionNote());
 }
 
 // --- the skills page ----------------------------------------------------------------------------
@@ -351,7 +352,12 @@ async function showSkills() {
     );
   }
   app.className = "";
-  app.replaceChildren(topbar(), page);
+  app.replaceChildren(topbar(), page, ...versionNote());
+}
+
+// The pskill version at the foot of the list screens (runs, skills, agents), or nothing when it is unknown.
+function versionNote() {
+  return view.version ? [element("p", `pskill ${view.version}`, "version-note")] : [];
 }
 
 function skillCards(skills) {
@@ -399,7 +405,7 @@ async function showAgents() {
     overview.agents.length ? cards : element("p", "This project has no agents yet.", "note"),
   );
   app.className = "";
-  app.replaceChildren(topbar(), page);
+  app.replaceChildren(topbar(), page, ...versionNote());
 }
 
 async function showAgent(name) {
@@ -2008,4 +2014,9 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "ArrowRight") setStep(view.step + 1);
   else if (event.key === "ArrowLeft") setStep(view.step - 1);
 });
-render();
+fetchJson("/api/version")
+  .then((info) => {
+    view.version = info.version;
+  })
+  .catch(() => {}) // an older server has no version: the screens show none
+  .finally(render);

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.2 (2026-10-03)
+
+The viewer shows which pskill version it runs.
+
+- **Version at a glance:** the Runs, Skills, and Agents screens show the version of the runner that serves the viewer, such as "pskill 0.11.2", at the bottom left. A new route, `GET /api/version`, gives it.
+
 ## 0.11.1 (2026-10-03)
 
 The skill screen shows a fixed `for_each` list as one card per item.
