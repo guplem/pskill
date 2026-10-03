@@ -393,3 +393,15 @@ def test_the_stop_hook_holds_only_the_claude_session_that_runs_the_skill(tmp_pat
     assert other.returncode == 0, other.stderr
     assert other.stdout == ""
     assert f"pskill run {run_id} has an open block" in owner.stdout
+
+
+def test_task_prints_the_full_prompt_of_one_parallel_task(tmp_path: Path) -> None:
+    root = tmp_path
+    write_skill(root / ".pskill" / "skills", "spell", SPELL_SKILL)
+    run_id = run_id_of(run_pskill(root, "start", "spell").stdout)
+
+    task = run_pskill(root, "task", run_id, "1")
+
+    assert task.returncode == 0, task.stderr
+    assert "Give the last letter of tide." in task.stdout
+    assert f"submit {run_id} --task 1" in task.stdout

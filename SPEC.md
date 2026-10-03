@@ -440,6 +440,7 @@ done:
 - **No answer.** When stdin is a terminal, or no data arrives within 10 s, `submit` fails at once with the correct command form. It never hangs.
 - **Parsing.** Read the answer with PyYAML's `BaseLoader`, so every value arrives as text. Then convert each field to its declared type from the block's output schema: `integer`, `number`, `boolean` (only `true` or `false`), arrays and objects field by field. So `choice: no` stays the text `no`, and `question: 1.10` stays `1.10`. A value that does not convert is a validation error that names the field.
 - **Parallel tasks:** each subagent runs `submit <run> --task <n>` with its own answer. The reply only says that the task is recorded, also for the last task: the main agent reads the next block with `current`.
+- **A task answer while the run is paused:** when the Stop hook paused the run (reason `agent_stopped`), `submit --task` still records a valid task answer, so a subagent that was still working loses nothing. It only records: `resume` advances, and it completes a parallel block whose tasks all have answers. Any other pause still refuses every answer.
 - **Reserved keys**, removed before validation:
   - `$answered_by`: `human` or `agent`. Required for human decisions in interactive mode.
   - `$cannot_complete`: a reason text. The agent declares that it cannot do the block. This counts as a failed attempt. It is the agent's only escape.
@@ -513,7 +514,7 @@ Additions by block type:
 - **Decision with choices:** the Return section lists each choice and its meaning.
 - **Human decision, interactive:** "Ask the user and wait. Submit the user's answer with `"$answered_by": "human"`. Do not decide for the user." The adapter adds the wording for its question tool (section 9).
 - **Human decision, autonomous:** "This run is autonomous. Decide as the user would, from the goal, this session, and the project. Explain why in `rationale`."
-- **Parallel with subagents:** the packet lists every task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with its full prompt (goal, instruction, return format, its own submit command with `--task <n>`). It says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each one exactly its prompt. When all have finished, run `pskill current <run>`."
+- **Parallel with subagents:** the packet lists every open task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with a one-line prompt: "You are a subagent of pskill run <run>. In the folder `<project root>`, run `pskill task <run> <n>`, and do what it prints." `pskill task` prints the task's full prompt: the work folder, the agent role, the goal, the instruction, the return format, and its own submit command with `--task <n>`. The packet says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each subagent exactly the one-line prompt of its task. When every subagent has finished, run `pskill current <run>`." The same line restarts a task whose subagent stalled. Changed in 0.12.0: before, the packet held every full prompt, which the main agent copied by hand.
 - **Parallel without subagents:** the packet gives one task at a time, like a normal block.
 - **Final packet:** the status, the rendered `report`, the outputs, and "The run is finished."
 
@@ -540,7 +541,7 @@ class HarnessAdapter(Protocol):
 | Stub folder | `.claude/skills/` | `.agents/skills/` | `.agents/skills/` |
 | Stop hook | `Stop`; pskill answers with `hookSpecificOutput.additionalContext` (non-error feedback that keeps Claude working; Claude Code also caps continuations at 8) | `Stop` in `.codex/hooks.json`; pskill answers with `{"decision": "block", "reason": ...}` (Codex needs JSON on stdout) | none |
 | Session-start hook | `SessionStart` with matcher `startup\|resume\|clear\|compact`; its plain stdout becomes context | `SessionStart`; its plain stdout becomes context | none |
-| Subagents | Agent tool with `subagent_type: general-purpose` | `spawn_agent`, then `wait_agent` | no (one by one) |
+| Subagents | Agent tool with `subagent_type: general-purpose` and `run_in_background: false` (the turn waits for every subagent; the calls still run in parallel) | `spawn_agent`, then `wait_agent` | no (one by one) |
 | Question tool | `AskUserQuestion` (2-4 options; above 4, use a plain question) | plain question | plain question |
 
 - An adapter that cannot VERIFY a capability uses the `generic` behavior for it.
@@ -703,7 +704,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 | type | Extra fields |
 |---|---|
 | `run_started` | `skill_id`, `skill_hash`, `inputs`, `mode`, `harness`, `runner_version` |
-| `block_started` | `block`, `block_type`, `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null), `skipped_tasks?` (a parallel block: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3) |
+| `block_started` | `block`, `block_type`, `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null), `skipped_tasks?` (a parallel block: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a parallel block with subagents: the full prompt of each task, which the viewer shows; since schema version 4) |
 | `submission_rejected` | `block`, `task?`, `errors`, `raw` |
 | `block_completed` | `block`, `task?`, `output`, `decided_by` (`agent`, `human`, `agent_autonomous`, `runner`), `duration_ms` |
 | `script_ran` | `block`, `argv`, `exit_code`, `stdout`, `stderr` (each cut to 64 KiB), `duration_ms` |
@@ -1236,6 +1237,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `list` | Skills: id, invocation, description. |
 | `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h]` | Validate the skill (errors 1 to 16 only; a stale stub never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. |
 | `current [<run>]` | Print the current packet. No state change. |
+| `task <run> <n>` | Print the full prompt of task `<n>` of the current parallel block. A subagent runs it first. No state change. |
 | `submit <run> [--task <n>]` | Read the answer (YAML) from stdin, validate it, advance, and print the next packet. One call per block. |
 | `pause <run>` / `resume <run>` / `cancel <run>` | Lifecycle control. |
 | `runs [--open]` | List runs. |

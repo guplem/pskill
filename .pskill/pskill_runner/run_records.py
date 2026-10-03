@@ -2,7 +2,8 @@
 
 from typing import Any, TypedDict
 
-SCHEMA_VERSION = 3  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
+SCHEMA_VERSION = 4  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
+# 4: a parallel block with subagents logs the full prompt of each task (`task_prompts`).
 
 ACTIVE_STATUSES = ("active", "waiting_for_human")
 UNFINISHED_STATUSES = ("active", "waiting_for_human", "paused")

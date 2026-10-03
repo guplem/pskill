@@ -61,6 +61,7 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 | `start <skill> --input name=value` | Start a skill. Add `--mode autonomous` so the agent decides alone, with no questions. |
 | `runs --open` | List the unfinished runs. |
 | `current <run>` | Show the current step of a run. |
+| `task <run> <n>` | Show the full prompt of one parallel task. A subagent runs this first. |
 | `pause <run>`, `resume <run>`, `cancel <run>` | Pause, continue, or stop a run. A run survives when you close the session. |
 | `view` | Open the viewer in your browser (below). |
 | `validate` | Check the skills for mistakes. |

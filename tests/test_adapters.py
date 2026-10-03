@@ -44,3 +44,10 @@ def test_there_is_no_session_id_without_a_known_app() -> None:
     assert detect_session_id({}) is None
     assert detect_session_id({"CLAUDE_CODE_SESSION_ID": "s1"}) is None  # CLAUDECODE is missing
     assert detect_session_id({"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": ""}) is None
+
+
+def test_claude_code_runs_parallel_subagents_in_the_foreground_so_the_turn_waits_for_them() -> None:
+    wording = adapter_for("claude-code").subagent_wording
+
+    assert "`run_in_background: false`" in wording
+    assert "all in one message" in wording
