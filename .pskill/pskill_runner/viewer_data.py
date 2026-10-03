@@ -324,7 +324,7 @@ def frame_edges(index: int, frame: CanvasFrame) -> list[CanvasEdge]:
                     fallback=edge.when is None and len(frame.skill.entry) > 1,
                 )
             )
-    elif frame.called_by is not None:
+    elif frame.called_by is not None:  # pragma: no branch - a child frame always has its call block
         caller = node_id(frame.parent, frame.called_by)
         hint = f"The call block {frame.called_by} runs the skill {frame.skill.id}, which starts here."
         for target in dict.fromkeys(edge.to for edge in frame.skill.entry):
@@ -828,7 +828,7 @@ def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
                 packets.update(enumerate(row["task_prompts"]))  # with subagents: the full prompt of each task
             elif row["task"] is None:
                 packets.update(task_packets(row["packet"]))  # a run before schema version 4: the packet holds them
-            elif row["packet"]:
+            elif row["packet"]:  # pragma: no branch - a one-by-one task row always has its packet
                 packets[row["task"]] = row["packet"]  # one by one: the row's packet is its task's prompt
         live_count = live[2] if live is not None and key == last_key and live[:2] == (key[0], key[2]) else 0
         # A rejected answer can name a task that does not exist, so only accepted answers and task rows count.
@@ -896,7 +896,7 @@ def timeline_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             script_run = {key: event.get(key) for key in SCRIPT_FIELDS}
             script_run["parsed"] = parsed_json(event.get("stdout"))
             row_for_event["script_runs"].append(script_run)
-        elif event["type"] == "block_completed":
+        elif event["type"] == "block_completed":  # pragma: no branch - the last event type that has a block
             record_completion(row_for_event, event)
     return rows
 

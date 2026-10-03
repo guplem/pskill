@@ -40,6 +40,15 @@ def test_a_project_without_an_agents_folder_has_no_agents(tmp_path: Path) -> Non
     assert agents_overview(find_project(tmp_path)) == {"agents": []}
 
 
+def test_an_agent_with_no_text_has_an_empty_summary(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    (project.agents_folder / "unused.md").write_text("\n  \n", encoding="utf-8")
+
+    agents = agents_overview(project)["agents"]
+
+    assert agents[1] == {"name": "unused", "summary": "", "used_by": []}
+
+
 def test_the_agent_screen_has_the_text_and_the_blocks_that_use_it(tmp_path: Path) -> None:
     project = make_project(tmp_path)
 

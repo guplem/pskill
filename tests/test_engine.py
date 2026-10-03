@@ -1,5 +1,6 @@
 """Tests for pskill_runner.engine: running a skill block by block."""
 
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -12,9 +13,11 @@ from pskill_runner.engine import (
     pause_run,
     read_run_info,
     read_run_state,
+    register_stop_attempt,
     resume_run,
     start_run,
     submit_answer,
+    task_packet,
 )
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import read_events
@@ -380,3 +383,187 @@ def test_a_plain_choice_target_still_records_the_choice(tmp_path: Path) -> None:
 
     assert read_run_info(project, run_id)["outputs"] == {"fixed": 0}
     assert read_run_state(project, run_id)["frames"][0]["arrival_reason"] == "choice stop"
+
+
+def test_current_without_a_run_id_fails_when_every_run_is_finished(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    cancel_run(project, start(project))
+
+    with pytest.raises(RunError, match="There is no unfinished run"):
+        current_packet(project, None)
+
+
+def test_a_command_on_an_unknown_run_fails(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    with pytest.raises(RunError, match="There is no run 'r-unknown'"):
+        pause_run(project, "r-unknown")
+
+
+def test_start_rejects_an_unknown_skill(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    with pytest.raises(RunError, match="There is no skill 'nothing-here'"):
+        start(project, "nothing-here")
+
+
+def test_start_rejects_a_skill_that_does_not_load(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "broken", "schema: pskill/v1\nblocks: [\n")
+
+    with pytest.raises(RunError, match="The skill 'broken' is invalid"):
+        start(project, "broken")
+
+
+def test_a_run_records_the_git_commit_and_the_uncommitted_changes(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    git = ["git", "-C", str(tmp_path), "-c", "user.name=Test", "-c", "user.email=test@example.com"]
+    subprocess.run(["git", "init", "--quiet", str(tmp_path)], check=True)
+    subprocess.run(
+        [*git, "-c", "commit.gpgsign=false", "commit", "--quiet", "--allow-empty", "-m", "First"], check=True
+    )
+    head = subprocess.run([*git, "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True)
+
+    info = read_run_info(project, start(project))
+
+    assert info["repo_commit"] == head.stdout.strip()
+    assert info["repo_dirty"] is True  # the skill files are not committed
+
+
+def test_a_run_outside_git_records_no_commit(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    info = read_run_info(project, start(project))
+
+    assert (info["repo_commit"], info["repo_dirty"]) == (None, None)
+
+
+def test_a_visit_cap_without_on_max_visits_pauses_the_run(tmp_path: Path) -> None:
+    project = make_project(tmp_path, skill_yaml=PLAN_SKILL.replace("    on_max_visits: stopped\n", ""))
+    run_id = start(project)
+
+    for _ in range(3):
+        submit_answer(project, run_id, QUESTION_PLAN)
+        packet = submit_answer(project, run_id, "answer: Postgres.\n$answered_by: human\n")
+
+    info = read_run_info(project, run_id)
+    assert (info["status"], info["pause_reason"]) == ("paused", "runner_error")
+    assert "The block 'create_plan' reached its visit cap (3)." in packet
+
+
+def test_a_run_that_matched_no_entry_edge_cannot_resume(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "entry: create_plan", "entry:\n  - when: \"{{ inputs.topic == 'nothing' }}\"\n    to: create_plan"
+    )
+    project = make_project(tmp_path, skill_yaml=skill_yaml)
+    run_id, packet = start_run(project, "plan-work", {"topic": "the login page"}, mode="interactive", harness="generic")
+
+    assert "is paused at block (none) (runner_error)" in packet
+    with pytest.raises(RunError, match="The run has no current block"):
+        resume_run(project, run_id)
+
+
+def test_a_condition_that_fails_pauses_the_run(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("steps.create_plan.status == 'question'", "steps.create_plan.question | length > 0")
+    project = make_project(tmp_path, skill_yaml=skill_yaml)
+    run_id = start(project)
+
+    packet = submit_answer(project, run_id, FINISHED_PLAN)  # no question: the condition reads a missing value
+
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+    assert "The condition '{{ steps.create_plan.question | length > 0 }}' failed" in packet
+
+
+SMALL_SKILL_WITH_NOTE = SMALL_SKILL.replace(
+    '      text: {type: string, description: "The greeting."}\n',
+    '      text: {type: string, description: "The greeting."}\n'
+    '      note: {type: string, optional: true, description: "A note."}\n',
+)
+
+
+def test_an_end_output_that_fails_to_compute_pauses_the_run(tmp_path: Path) -> None:
+    skill_yaml = SMALL_SKILL_WITH_NOTE.replace(
+        '{greeting: "{{ steps.greet.text }}"}', '{greeting: "{{ steps.greet.note }}"}'
+    )
+    project = make_project(tmp_path, "small", skill_yaml)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+
+    packet = submit_answer(project, run_id, "text: Hello, Ada!\n")
+
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+    assert "The end block 'done' failed" in packet and "the value is missing" in packet
+
+
+def test_a_report_that_fails_to_render_pauses_the_run(tmp_path: Path) -> None:
+    skill_yaml = SMALL_SKILL_WITH_NOTE.replace(
+        "Tell the user: {{ steps.greet.text }}", "Tell the user: {{ steps.greet.note }}"
+    )
+    project = make_project(tmp_path, "small", skill_yaml)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+
+    packet = submit_answer(project, run_id, "text: Hello, Ada!\n")
+
+    info = read_run_info(project, run_id)
+    assert (info["status"], info["pause_reason"], info["outputs"]) == ("paused", "runner_error", None)
+    assert "The report failed" in packet
+
+
+def test_an_end_output_of_the_wrong_type_pauses_the_run(tmp_path: Path) -> None:
+    skill_yaml = SMALL_SKILL.replace(
+        'greeting: {type: string, description: "The greeting."}',
+        'greeting: {type: integer, description: "The greeting."}',
+    )
+    project = make_project(tmp_path, "small", skill_yaml)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+
+    packet = submit_answer(project, run_id, "text: Hello, Ada!\n")
+
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+    assert "The end block 'done' gives invalid outputs: " in packet
+
+
+def test_current_on_a_paused_run_prints_the_pause_text(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    pause_run(project, run_id)
+
+    packet = current_packet(project, run_id)
+
+    assert "is paused at block create_plan (paused_by_user)" in packet
+    assert read_run_info(project, run_id)["status"] == "paused"
+
+
+def test_the_task_command_refuses_a_block_without_tasks(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    with pytest.raises(RunError, match="The block 'create_plan' has no tasks"):
+        task_packet(project, run_id, 0)
+
+
+def test_a_task_number_on_a_block_without_tasks_is_refused(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    with pytest.raises(RunError, match="has no tasks, so `--task` does not apply"):
+        submit_answer(project, run_id, FINISHED_PLAN, task=0)
+    assert read_run_info(project, run_id)["current_block"] == "create_plan"
+
+
+def test_a_task_number_is_refused_while_stop_attempts_pause_a_block_without_tasks(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    while register_stop_attempt(project, run_id):
+        pass
+
+    with pytest.raises(RunError, match="has no tasks, so `--task` does not apply"):
+        submit_answer(project, run_id, FINISHED_PLAN, task=0)
+
+
+def test_an_answer_that_is_not_yaml_is_rejected(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    packet = submit_answer(project, run_id, "status: [finished\n")
+
+    assert "- The answer is not valid YAML: " in packet.split("### Errors")[1]
+    assert read_run_info(project, run_id)["attempts"] == 1

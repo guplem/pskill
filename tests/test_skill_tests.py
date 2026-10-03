@@ -3,6 +3,9 @@
 import textwrap
 from pathlib import Path
 
+import pytest
+
+from pskill_runner import skill_tests
 from pskill_runner.project import Project, find_project
 from pskill_runner.skill_tests import run_skill_tests
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
@@ -197,3 +200,82 @@ def test_other_broken_yaml_gets_no_hint(tmp_path: Path) -> None:
     [result] = run_skill_tests(project, "plan-work")
 
     assert result.problem is not None and "Hint" not in result.problem
+
+
+def test_a_skill_without_a_tests_folder_has_no_cases(tmp_path: Path) -> None:
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {})
+
+    assert run_skill_tests(project, "plan-work") == []
+
+
+def test_a_call_without_a_recorded_result_fails_the_case(tmp_path: Path) -> None:
+    case = "name: no call result\nanswers:\n  greet:\n    - {text: Hi.}\n"
+    project = project_with(tmp_path, "parent", PARENT_SKILL, {"missing": case}, child=CHILD_SKILL)
+
+    [result] = run_skill_tests(project, "parent")
+
+    assert result.problem == "the call block 'child' ran, but the case has no recorded result for it"
+
+
+def test_a_case_file_that_is_not_a_mapping_is_reported(tmp_path: Path) -> None:
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"listed": "- name: listed\n"})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert result.problem == "the case file must be a mapping, such as 'name: my case'"
+
+
+def test_broken_yaml_without_a_question_mark_gets_no_hint(tmp_path: Path) -> None:
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"broken": "name: {a: b}: c\n"})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert result.problem is not None
+    assert result.problem.startswith("the case file is not valid YAML:")
+    assert "Hint" not in result.problem
+
+
+def test_a_run_that_needs_more_answers_than_the_limit_stops_where_it_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(skill_tests, "MAX_SUBMISSIONS", 1)
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": APPROVED_CASE})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert (
+        result.problem
+        == "path: expected [create_plan, ask_user, create_plan, approve_plan, done], got [create_plan, ask_user]"
+    )
+
+
+def test_a_missing_ordered_subsequence_fails_with_the_path(tmp_path: Path) -> None:
+    case = APPROVED_CASE.replace(
+        "path: [create_plan, ask_user, create_plan, approve_plan, done]", "path_contains: [done, ask_user]"
+    )
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": case})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert result.problem == (
+        "path_contains: [done, ask_user] is not in order in the path "
+        "[create_plan, ask_user, create_plan, approve_plan, done]"
+    )
+
+
+def test_a_wrong_status_fails_with_the_difference(tmp_path: Path) -> None:
+    case = APPROVED_CASE.replace("  status: succeeded\n", "  status: cancelled\n")
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": case})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert result.problem == "status: expected cancelled, got succeeded"
+
+
+def test_a_wrong_output_fails_with_the_difference(tmp_path: Path) -> None:
+    case = APPROVED_CASE.replace("outputs: {result: approved}", "outputs: {result: stopped}")
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"approved": case})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert result.problem == "outputs.result: expected 'stopped', got 'approved'"

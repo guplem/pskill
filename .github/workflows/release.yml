@@ -21,7 +21,7 @@ jobs:
       - name: Install the dev environment
         run: uv sync --locked
       - name: Test
-        run: uv run pytest
+        run: uv run pytest --cov
       - name: Check that the tag matches the runner version
         run: test "$GITHUB_REF_NAME" = "v$(uv run python -c 'import pskill_runner; print(pskill_runner.__version__)')"
       - name: Build the release archive

@@ -231,3 +231,94 @@ def test_a_parallel_step_names_its_tasks(tmp_path: Path) -> None:
     markdown = export_skill(find_project(tmp_path), "fanout")["fanout/SKILL.md"].decode("utf-8")
 
     assert f"Name each task: {plain_text('Check {{ item }}')}." in markdown
+
+
+ROLES_SKILL = """\
+schema: pskill/v1
+id: roles
+description: Notes the files, then reviews and checks each one.
+goal: Review every file.
+inputs:
+  files: {type: array, items: {type: string}, description: "The documents."}
+entry: note
+blocks:
+  note:
+    type: task
+    instruction: "Note the files."
+    output: {}
+    next: review
+  review:
+    type: parallel
+    for_each: "{{ inputs.files }}"
+    agent: "{{ item }}"
+    instruction: "Review {{ item }}."
+    output:
+      ok: {type: boolean, description: "True when the file is fine."}
+    next: check
+  check:
+    type: parallel
+    for_each: "{{ inputs.files }}"
+    instruction: "Check {{ item }}."
+    output:
+      ok: {type: boolean, description: "True when the file is fine."}
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def roles_export(tmp_path: Path) -> dict[str, bytes]:
+    write_skill(tmp_path / ".pskill" / "skills", "roles", ROLES_SKILL)
+    return export_skill(find_project(tmp_path), "roles")
+
+
+def test_a_step_with_no_fields_writes_down_that_it_is_done(tmp_path: Path) -> None:
+    markdown = roles_export(tmp_path)["roles/SKILL.md"].decode("utf-8")
+
+    assert "Note the files.\n\n**Write down:** that this step is done." in markdown
+
+
+def test_a_skill_without_outputs_has_no_outputs_section(tmp_path: Path) -> None:
+    markdown = roles_export(tmp_path)["roles/SKILL.md"].decode("utf-8")
+
+    assert "## Outputs" not in markdown
+    assert "## Inputs" in markdown
+
+
+def test_a_computed_agent_over_a_computed_list_names_the_role_file_by_its_value(tmp_path: Path) -> None:
+    files = roles_export(tmp_path)
+    markdown = files["roles/SKILL.md"].decode("utf-8")
+
+    assert "Give each subagent a role first: the file `subagents/<name>.md`, where the name is `item`." in markdown
+    assert list(files) == ["roles/SKILL.md"]
+
+
+def test_a_parallel_step_without_an_agent_gives_no_role(tmp_path: Path) -> None:
+    markdown = roles_export(tmp_path)["roles/SKILL.md"].decode("utf-8")
+    check_step = markdown.split("## Step 3: `check`", 1)[1].split("## Step", 1)[0]
+
+    assert "Check `item`." in check_step
+    assert "role" not in check_step
+
+
+def test_a_missing_agent_file_is_left_out_of_the_export(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "fanout", PARALLEL_SKILL)
+
+    files = export_skill(find_project(tmp_path), "fanout")
+
+    assert list(files) == ["fanout/SKILL.md"]
+    assert "`subagents/checker.md`" in files["fanout/SKILL.md"].decode("utf-8")
+
+
+def test_a_skill_that_does_not_load_cannot_be_exported(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "broken", "schema: pskill/v1\nid: broken\n")
+
+    with pytest.raises(ExportError, match=r"The skill 'broken' does not load: .*description"):
+        export_skill(find_project(tmp_path), "broken")
+
+
+def test_an_elif_tag_reads_as_else_when() -> None:
+    text = "{% if a %}one{% elif b %}two{% else %}three{% endif %}"
+
+    assert plain_text(text) == "(only when `a`:) one(else, when `b`:) two(otherwise:) three(end)"

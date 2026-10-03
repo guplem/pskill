@@ -109,3 +109,13 @@ def test_matches_tests_text_against_a_regular_expression() -> None:
     assert compute("{{ steps.read.paths | select('matches', '^api/.*[.]ts$') | list }}", paths) == ["api/src/a.ts"]
     assert compute("{{ 'docs/b.md' is matches('[.]md$') }}", paths) is True
     assert compute("{{ 'docs/b.md' is matches('^api/') }}", paths) is False
+
+
+def test_the_length_of_a_missing_value_fails() -> None:
+    with pytest.raises(ComputedValueError, match=r"steps.nothing.list.*missing"):
+        compute("{{ steps.nothing.list | length }}", CONTEXT)
+
+
+def test_a_single_expression_that_does_not_compile_fails() -> None:
+    with pytest.raises(ComputedValueError, match=r"^'\{\{ steps.plan.status == \}\}': "):
+        compute("{{ steps.plan.status == }}", CONTEXT)

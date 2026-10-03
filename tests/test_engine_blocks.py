@@ -2,9 +2,11 @@
 
 import threading
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from pskill_runner import engine
 from pskill_runner.adapters import ADAPTERS, HarnessAdapter
 from pskill_runner.engine import (
     RunError,
@@ -18,6 +20,7 @@ from pskill_runner.engine import (
     submit_answer,
     task_packet,
 )
+from pskill_runner.inline_executor import CallResult, ScriptResult
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import read_events
 from tests.skill_files import write_skill
@@ -504,3 +507,247 @@ def test_a_run_paused_by_the_user_takes_no_task_answer(tmp_path: Path) -> None:
 
     with pytest.raises(RunError, match="resume"):
         submit_answer(project, run_id, "wrong: []\n", task=0)
+
+
+def test_a_text_script_keeps_its_output_as_text(tmp_path: Path) -> None:
+    text_script = (
+        SCRIPT_SKILL.replace(
+            "\"import json; print(json.dumps({'files': ['a.md', 'b.md']}))\"", "\"print('a.md b.md c.md')\""
+        )
+        .replace("    parse: json\n", "")
+        .replace("steps.list_files.json.files", "steps.list_files.stdout.split()")
+    )
+    project = make_project(tmp_path, {"scripted": text_script})
+
+    run_id, packet = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+
+    assert "finished with status succeeded" in packet
+    assert read_run_info(project, run_id)["outputs"] == {"count": 3}
+    step = read_run_state(project, run_id)["frames"][0]["steps"]["list_files"]
+    assert step == {"exit_code": 0, "stdout": "a.md b.md c.md\n", "stderr": ""}
+
+
+FAILS_ON_THE_FIRST_RUN = (
+    "import pathlib, sys; marker = pathlib.Path('ran-once'); ran = marker.exists(); marker.touch(); "
+    "sys.exit(0 if ran else 3)"
+)
+
+
+def test_resume_runs_a_failed_script_again(tmp_path: Path) -> None:
+    skill_yaml = (
+        SCRIPT_SKILL.replace(
+            "\"import json; print(json.dumps({'files': ['a.md', 'b.md']}))\"", f'"{FAILS_ON_THE_FIRST_RUN}"'
+        )
+        .replace("    parse: json\n", "    retries: 0\n")
+        .replace("steps.list_files.json.files | length", "steps.list_files.exit_code")
+    )
+    project = make_project(tmp_path, {"scripted": skill_yaml})
+    run_id, first = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    assert "exit code 3" in first
+
+    resumed = resume_run(project, run_id)
+
+    assert "finished with status succeeded" in resumed
+    assert read_run_info(project, run_id)["outputs"] == {"count": 0}
+    script_runs = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
+    assert [event["exit_code"] for event in script_runs] == [3, 0]
+
+
+TWICE_SKILL = """\
+schema: pskill/v1
+id: twice
+description: Calls the same child two times.
+goal: Get two greetings.
+outputs:
+  greeting: {type: string, description: "The second greeting."}
+entry: first
+blocks:
+  first:
+    type: call
+    skill: child
+    inputs: {name: Ada}
+    next: second
+  second:
+    type: call
+    skill: child
+    inputs: {name: Grace}
+    next: done
+  done:
+    type: end
+    status: succeeded
+    outputs: {greeting: "{{ steps.second.outputs.greeting }}"}
+"""
+
+
+def test_a_skill_that_calls_one_child_twice_copies_the_child_once(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"twice": TWICE_SKILL, "child": CHILD_SKILL})
+    run_id, first = start_run(project, "twice", {}, mode="interactive", harness="generic")
+
+    second = submit_answer(project, run_id, "text: Hello, Ada!\n")
+    final = submit_answer(project, run_id, "text: Hello, Grace!\n")
+
+    assert "Greet Ada." in first and "Greet Grace." in second
+    assert "finished with status succeeded" in final
+    assert read_run_info(project, run_id)["outputs"] == {"greeting": "Hello, Grace!"}
+    assert sorted(path.name for path in (project.runs_folder / run_id / "skills").iterdir()) == ["child", "twice"]
+
+
+class ReadyChildResults:
+    """An executor that answers every call with a ready result, as `pskill test` does."""
+
+    def run_script(
+        self, block_id: str, argv: list[str], cwd: Path, env: dict[str, str], timeout_s: int
+    ) -> ScriptResult:
+        raise AssertionError("This test runs no script.")
+
+    def call_result(self, block_id: str, skill_id: str, inputs: dict[str, Any]) -> CallResult | None:
+        return CallResult(status="succeeded", outputs={"greeting": f"Ready hello to {inputs['name']}."})
+
+
+def test_a_ready_call_result_completes_the_call_without_the_child(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"parent": PARENT_SKILL, "child": CHILD_SKILL})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+
+    final = submit_answer(project, run_id, "text: Hello from the parent.\n", executor=ReadyChildResults())
+
+    assert "finished with status succeeded" in final
+    assert read_run_info(project, run_id)["outputs"] == {"greeting": "Ready hello to Ada."}
+    frames = {event["frame"] for event in read_events(project.runs_folder / run_id)}
+    assert frames == {"parent"}  # the child skill never ran
+
+
+def test_call_inputs_of_the_wrong_type_pause_the_run(tmp_path: Path) -> None:
+    parent = PARENT_SKILL.replace("inputs: {name: Ada}", 'inputs: {name: "{{ 42 }}"}')
+    project = make_project(tmp_path, {"parent": parent, "child": CHILD_SKILL})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+
+    packet = submit_answer(project, run_id, "text: Hello from the parent.\n")
+
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+    assert "The inputs of 'child' are invalid: " in packet
+    assert len(read_run_state(project, run_id)["frames"]) == 1
+
+
+def test_a_for_each_that_gives_no_list_pauses_the_run(tmp_path: Path) -> None:
+    skill_yaml = PARALLEL_SKILL.replace('for_each: "{{ inputs.files }}"', 'for_each: "{{ inputs.files | length }}"')
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="generic")
+
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+    assert "The for_each of 'check' must give a list, not int." in packet
+
+
+def test_a_missing_agent_file_pauses_the_run(tmp_path: Path) -> None:
+    skill_yaml = PARALLEL_SKILL.replace("agent: checker", "agent: \"{{ 'checker' }}\"")
+    project = make_project(tmp_path, {"fanout": skill_yaml})
+
+    run_id, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="generic")
+
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+    assert "There is no agent file 'checker.md' in .pskill/agents/." in packet
+
+
+LOOPING_SKILL = """\
+schema: pskill/v1
+id: looping
+description: Two empty parallel blocks that go to each other.
+goal: Never reach an agent block.
+inputs:
+  files: {type: array, items: {type: string}, description: "The documents."}
+entry: first
+blocks:
+  first:
+    type: parallel
+    for_each: "{{ inputs.files }}"
+    instruction: "Check {{ item }}."
+    output:
+      ok: {type: boolean, description: "True when done."}
+    next: second
+  second:
+    type: parallel
+    for_each: "{{ inputs.files }}"
+    instruction: "Check {{ item }} again."
+    output:
+      ok: {type: boolean, description: "True when done."}
+    next:
+      - when: "{{ inputs.files }}"
+        to: done
+      - to: first
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_too_many_runner_blocks_in_a_row_pause_the_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(engine, "INLINE_BLOCK_LIMIT", 10)
+    project = make_project(tmp_path, {"looping": LOOPING_SKILL})
+
+    run_id, packet = start_run(project, "looping", {"files": []}, mode="interactive", harness="generic")
+
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+    assert "More than 10 runner blocks ran without an agent block." in packet
+    assert read_run_state(project, run_id)["frames"][0]["visits"] == {"first": 6, "second": 5}
+
+
+def test_the_task_command_still_serves_a_run_paused_by_stop_attempts(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts carefully."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    stop_until_paused(project, run_id)
+
+    prompt = task_packet(project, run_id, 1)
+
+    assert "Check every claim in b.md." in prompt
+    assert read_run_info(project, run_id)["status"] == "paused"
+
+
+def test_the_task_command_refuses_a_task_number_out_of_range(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+
+    with pytest.raises(RunError, match=r"The block 'check' has no task 5 \(tasks 0 to 1\)\."):
+        task_packet(project, run_id, 5)
+
+
+def test_an_invalid_task_answer_counts_against_that_task_only(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic")
+
+    packet = submit_answer(project, run_id, "wrong: not a list\n", task=1)
+
+    assert "### Errors" in packet
+    rejected = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "submission_rejected"]
+    assert [event["task"] for event in rejected] == [1]
+    tasks = read_run_state(project, run_id)["frames"][0]["tasks"] or []
+    assert [(task["output"], task["attempts"]) for task in tasks] == [(None, 0), (None, 1)]
+    assert read_run_info(project, run_id)["attempts"] == 0
+
+
+def test_an_invalid_task_answer_is_not_recorded_while_stop_attempts_pause_the_run(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    stop_until_paused(project, run_id)
+
+    text = submit_answer(project, run_id, "wrong: not a list\n", task=0)
+
+    assert text.startswith("Task 0 is not recorded. Fix these problems and submit again:\n- ")
+    assert (read_run_state(project, run_id)["frames"][0]["tasks"] or [])[0]["output"] is None
+
+
+def test_a_rejected_task_answer_tells_the_subagent_what_to_fix(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+
+    reply = submit_answer(project, run_id, "wrong: 3\n", task=1)
+
+    assert reply.startswith("Task 1 is not recorded. Fix these problems and submit again:\n- wrong")
+    assert read_run_info(project, run_id)["status"] == "active"

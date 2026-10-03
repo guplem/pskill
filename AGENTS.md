@@ -54,16 +54,17 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | Task | Command |
 |---|---|
 | Install the dev environment | `uv sync` |
-| Run the tests | `uv run pytest` |
+| Run the tests | `uv run pytest` (add `--cov` for the coverage report and its 100% gate) |
 | Lint and format | `uv run ruff check .` and `uv run ruff format .` |
 | Type check | `uv run mypy` |
 | Run the runner | `uv run pskill.py <command>` |
-| Run every CI check, as CI does | `uv run ruff format --check . && uv run ruff check . && uv run mypy && uv run pytest && uv run pskill.py validate && uv run pskill.py test` |
+| Run every CI check, as CI does | `uv run ruff format --check . && uv run ruff check . && uv run mypy && uv run pytest --cov && uv run pskill.py validate && uv run pskill.py test` |
 
 CI (`.github/workflows/pull-request-checks.yml`) runs those checks on Windows, macOS, and Linux with Python 3.11. The ruleset on `main` requires the jobs `checks (ubuntu-latest)`, `checks (windows-latest)`, and `checks (macos-latest)`.
 
 ## Rules
 
+- **Full coverage.** `uv run pytest --cov` fails below 100% of lines and branches. Test every new line. Mark a line that no input can reach with `# pragma: no cover` (or `no branch`) and its reason; never to skip a hard case.
 - **Red-green, always.** Write the failing test first, run it, and see it fail for the expected reason. Then write the least code that passes. Commit the test with its code.
 - **Simplicity first.** Code must be easy to read for a junior developer: small functions, descriptive names, explicit types, no clever tricks.
 - **This repository vendors its own runner** into `.pskill/` (the test bed). After any change to `pskill.py` or `pskill_runner/`, run `uv run pskill.py update --from .`; a test fails until the copy matches. Never edit `.pskill/pskill.py` or `.pskill/pskill_runner/` by hand.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.1 (2026-10-04)
+
+Every line and branch of the runner is tested, and CI keeps it that way.
+
+- **Full coverage:** 156 new tests bring the runner to 100% of lines and branches. `uv run pytest --cov` (CI and the release workflow) fails below 100%. A line that no input can reach carries `# pragma: no cover` with its reason. The CLI now has tests that call it in-process too, so its coverage counts.
+- **A rejected task answer says what to fix:** with subagents, a task answer that fails its checks now gets "Task N is not recorded. Fix these problems and submit again", with the problems. Before, the subagent got the task list back with no reason.
+- **The skill editor refuses `{ }` blocks:** when `skill.yaml` writes `blocks:` as a `{ }` mapping, the editor now says to put one block per line. Before, a change saved nothing and gave no error.
+
 ## 0.13.0 (2026-10-04)
 
 The skill screen shows each child skill inside its parent.

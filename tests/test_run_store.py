@@ -10,7 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from pskill_runner import run_store
 from pskill_runner.run_store import (
+    RunLockTimeout,
     append_event,
     copy_skill_snapshot,
     folder_hash,
@@ -121,3 +123,16 @@ def test_run_lock_waits_while_windows_still_removes_the_old_lock(
         assert (tmp_path / ".lock").exists()
 
     assert len(calls) == 2
+
+
+def test_run_lock_gives_up_while_another_command_holds_a_fresh_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    held_lock = tmp_path / ".lock"
+    held_lock.write_text("", encoding="utf-8")
+    monkeypatch.setattr(run_store, "LOCK_WAIT_S", 0.2)
+
+    with pytest.raises(RunLockTimeout, match=f"The run {tmp_path.name} is busy"), run_lock(tmp_path):
+        pass
+
+    assert held_lock.exists()  # the lock of the other command stays

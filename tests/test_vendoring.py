@@ -175,3 +175,38 @@ def test_vendoring_keeps_the_executable_bit_of_the_launchers(tmp_path: Path) -> 
     init_project(project_root, source)
 
     assert os.access(project_root / ".pskill" / "launchers" / "view.sh", os.X_OK)
+
+
+def test_a_folder_without_the_runner_is_not_a_source(tmp_path: Path) -> None:
+    source = make_source(tmp_path)
+    (source / "pskill.py").unlink()
+
+    with pytest.raises(VendoringError, match="is not a pskill source"):
+        vendored_file_map(source)
+
+
+def test_update_needs_a_project_with_the_vendored_record(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    (project_root / ".pskill").mkdir(parents=True)
+
+    with pytest.raises(VendoringError, match="VENDORED is missing"):
+        update_project(project_root, make_source(tmp_path), force=False)
+
+
+def test_update_refuses_the_project_folder_as_its_own_source(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    init_project(project_root, make_source(tmp_path))
+
+    with pytest.raises(VendoringError, match="The source and the target are the same folder"):
+        update_project(project_root, project_root / ".pskill", force=False)
+
+
+def test_init_keeps_an_existing_config_file(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    (project_root / ".pskill").mkdir(parents=True)
+    (project_root / ".pskill" / "config.yaml").write_text("retries: 5\n", encoding="utf-8")
+
+    init_project(project_root, make_source(tmp_path))
+
+    assert (project_root / ".pskill" / "config.yaml").read_text(encoding="utf-8") == "retries: 5\n"

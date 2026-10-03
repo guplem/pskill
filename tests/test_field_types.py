@@ -2,6 +2,8 @@
 
 from typing import Any
 
+import pytest
+
 from pskill_runner.field_types import FieldSpec, check_answer, check_typed_values, parse_field_map
 
 PLAN_FIELDS = parse_field_map(
@@ -124,3 +126,60 @@ def test_check_typed_values_reports_wrong_types_unknown_names_and_enum_values() 
         "result: 'bad' is not one of: ok",
         "extra: this output is not declared",
     ]
+
+
+def test_check_answer_reports_a_value_of_the_wrong_shape() -> None:
+    fields = parse_field_map(
+        {
+            "tags": {"type": "array", "items": {"type": "string"}, "description": "d"},
+            "place": {"type": "object", "properties": {"file": {"type": "string"}}, "description": "d"},
+            "name": {"type": "string", "description": "d"},
+        }
+    )
+
+    value, errors = check_answer({"tags": "a", "place": "a.py", "name": ["a", "b"]}, fields)
+
+    assert value == {"tags": None, "place": None, "name": None}
+    assert errors == [
+        "tags: must be a list ('- item' lines)",
+        "place: must be a group of 'field: value' lines",
+        "name: must be a single value, not a list or a group",
+    ]
+
+
+def test_check_answer_converts_numbers_and_false_and_names_what_does_not_convert() -> None:
+    fields = parse_field_map(
+        {
+            "count": {"type": "number", "description": "d"},
+            "ratio": {"type": "number", "description": "d"},
+            "done": {"type": "boolean", "description": "d"},
+        }
+    )
+
+    good_value, good_errors = check_answer({"count": "7", "ratio": "2.5", "done": "False"}, fields)
+    _, bad_errors = check_answer({"count": "seven", "ratio": "1", "done": "no"}, fields)
+
+    assert good_errors == []
+    assert good_value == {"count": 7, "ratio": 2.5, "done": False}
+    assert bad_errors == ["count: 'seven' is not a number", "done: 'no' is not true or false"]
+
+
+def test_check_answer_refuses_a_field_type_that_does_not_exist() -> None:
+    with pytest.raises(ValueError, match="Unknown field type: date"):
+        check_answer({"when": "today"}, {"when": FieldSpec(type="date")})
+
+
+def test_check_typed_values_checks_the_declared_fields_of_a_group() -> None:
+    fields = parse_field_map(
+        {
+            "place": {
+                "type": "object",
+                "properties": {"file": {"type": "string"}, "line": {"type": "integer"}},
+                "description": "d",
+            }
+        }
+    )
+
+    errors = check_typed_values({"place": {"file": "a.py", "line": "7", "note": 1}}, fields)
+
+    assert errors == ["place.line: '7' is not an integer"]

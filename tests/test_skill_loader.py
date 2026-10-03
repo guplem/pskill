@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from pskill_runner.field_types import FieldSpec
-from pskill_runner.skill_loader import SkillLoadError, load_skill
+from pskill_runner.skill_loader import SkillLoadError, build_block, load_catalog, load_skill
 from pskill_runner.skill_model import CallBlock, DecisionBlock, Edge, EndBlock, ParallelBlock, ScriptBlock, TaskBlock
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
@@ -204,3 +204,55 @@ def test_a_parallel_block_can_name_its_tasks(tmp_path: Path) -> None:
 
     assert isinstance(parallel, ParallelBlock)
     assert parallel.task_name == "{{ item }}"
+
+
+def test_a_missing_skill_file_is_reported(tmp_path: Path) -> None:
+    with pytest.raises(SkillLoadError) as raised:
+        load_skill(tmp_path / "plan-work")
+
+    assert raised.value.problems[0].startswith("skill.yaml cannot be read:")
+
+
+def test_a_skill_file_that_is_not_a_mapping_is_reported(tmp_path: Path) -> None:
+    with pytest.raises(SkillLoadError) as raised:
+        load_skill(write_skill(tmp_path, "plan-work", "- schema: pskill/v1\n"))
+
+    assert raised.value.problems == ["skill.yaml must be a mapping of keys, such as 'id: my-skill'"]
+
+
+def test_top_level_problems_are_reported_before_any_block_check(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("id: plan-work\n", "").replace(
+        "    type: end\n    status: succeeded", "    type: x"
+    )
+
+    with pytest.raises(SkillLoadError) as raised:
+        load_skill(write_skill(tmp_path, "plan-work", skill_yaml, PLAN_SKILL_FILES))
+
+    assert raised.value.problems == ["skill.yaml: 'id' is a required property"]
+
+
+def test_build_block_refuses_an_unknown_block_type() -> None:
+    with pytest.raises(ValueError, match="Unknown block type: finish"):
+        build_block("done", {"type": "finish"})
+
+
+def test_the_catalog_keeps_only_the_valid_skills_and_lists_the_agents(tmp_path: Path) -> None:
+    skills_folder = tmp_path / "skills"
+    write_skill(skills_folder, "plan-work", PLAN_SKILL, PLAN_SKILL_FILES)
+    write_skill(skills_folder, "broken", "id: broken\n")
+    (skills_folder / "notes").mkdir()
+    agents_folder = tmp_path / "agents"
+    agents_folder.mkdir()
+    (agents_folder / "scout.md").write_text("You find code.", encoding="utf-8")
+
+    catalog = load_catalog(skills_folder, agents_folder)
+
+    assert list(catalog.skills) == ["plan-work"]
+    assert catalog.agent_names == {"scout"}
+
+
+def test_the_catalog_of_a_project_without_skills_or_agents_is_empty(tmp_path: Path) -> None:
+    catalog = load_catalog(tmp_path / "skills", tmp_path / "agents")
+
+    assert catalog.skills == {}
+    assert catalog.agent_names == set()

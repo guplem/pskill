@@ -63,3 +63,14 @@ def test_the_old_harnesses_setting_names_its_replacements(tmp_path: Path) -> Non
 def test_an_unknown_app_in_permissions_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(ProjectError, match="unknown app 'vim' in permissions"):
         find_project(make_project(tmp_path, "permissions: [vim]\n"))
+
+
+def test_a_config_that_is_not_a_mapping_is_an_error(tmp_path: Path) -> None:
+    with pytest.raises(ProjectError, match="must be a mapping of settings"):
+        find_project(make_project(tmp_path, "- retries: 2\n"))
+
+
+def test_known_apps_in_permissions_are_kept(tmp_path: Path) -> None:
+    config = find_project(make_project(tmp_path, "permissions: [codex, claude-code]\n")).config
+
+    assert config.permissions == ["codex", "claude-code"]

@@ -9,6 +9,7 @@ from pskill_runner.engine import start_run, submit_answer
 from pskill_runner.project import Project, find_project
 from pskill_runner.skill_model import ScriptBlock
 from pskill_runner.viewer_data import (
+    format_duration,
     node_hint,
     run_detail,
     runs_overview,
@@ -450,6 +451,19 @@ def test_a_child_without_its_skill_copy_gets_no_node(tmp_path: Path) -> None:
     assert detail["canvas"]["current"] is None
 
 
+def test_a_child_whose_skill_copy_does_not_load_gets_no_node(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello.\n")
+    (project.runs_folder / run_id / "skills" / "child" / "skill.yaml").write_text("id: child\n", encoding="utf-8")
+
+    detail = detail_of(project, run_id)
+
+    assert detail["timeline"][-1]["node"] is None
+    assert "f0_child" in detail["canvas"]["template"]
+    assert "f1_greet" not in detail["canvas"]["template"]
+
+
 def test_rows_get_their_texts_even_without_a_canvas(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
@@ -792,6 +806,17 @@ def test_a_live_one_by_one_block_counts_its_tasks_from_the_run_state(tmp_path: P
     assert [task["state"] for task in rows[-1]["tasks"]] == ["done", "open", "open"]
 
 
+def test_a_parallel_block_with_no_items_has_a_row_with_no_tasks(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "fanout", {"files": []}, mode="interactive", harness="generic")
+
+    row = check_row_of(project, run_id)
+
+    assert row["tasks"] == []
+    assert row["output"] == {"results": []}
+    assert row["label"].endswith(" · 0 tasks")
+
+
 def test_a_rejected_answer_one_by_one_stays_with_its_task(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic")
@@ -1005,3 +1030,16 @@ def test_a_packet_from_before_schema_version_4_still_gives_each_task_its_full_pr
 
     assert sorted(prompts) == [0, 1]
     assert prompts[1].endswith("Check b.md.")
+
+
+def test_a_packet_without_subagent_prompts_gives_no_task_prompts() -> None:
+    headings_without_prompts = "2 of 2 tasks are still open.\n\n#### Task 0\nCheck a.md.\n\n#### Task 1\nCheck b.md.\n"
+
+    assert task_packets(headings_without_prompts) == {}
+    assert task_packets("#### Task 0\nYou are a subagent of a pskill run. Do only this task.\n") == {}
+
+
+def test_a_duration_reads_in_milliseconds_seconds_or_minutes() -> None:
+    assert format_duration(999) == "999 ms"
+    assert format_duration(1500) == "2 s"
+    assert format_duration(61_000) == "1 min 01 s"

@@ -1,6 +1,6 @@
 [project]
 name = "pskill"
-version = "0.13.0"
+version = "0.13.1"
 description = "Portable programmatic skills: run agent skills as typed YAML graphs, one block at a time."
 readme = "README.md"
 license = "MIT"
@@ -17,6 +17,7 @@ dependencies = [
 dev = [
     "mypy>=1.11",
     "pytest>=8",
+    "pytest-cov>=7.1.0",
     "ruff>=0.6",
     "types-jsonschema",
     "types-pyyaml",
@@ -29,6 +30,17 @@ package = false
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+
+# `uv run pytest --cov` (CI) measures lines and branches and fails below 100%. A line that no input can reach
+# carries `# pragma: no cover` (or `no branch`) with its reason; nothing else may be left out.
+[tool.coverage.run]
+source = ["pskill_runner"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true
 
 [tool.ruff]
 line-length = 120

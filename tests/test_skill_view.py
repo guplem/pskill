@@ -380,3 +380,55 @@ def test_a_missing_agent_file_is_not_named_as_a_link(tmp_path: Path) -> None:
     detail = skill_detail(find_project(tmp_path), "fanout") or {}
 
     assert detail["blocks"]["check"]["agents"] == []
+
+
+def test_a_project_without_a_skills_folder_has_no_skills(tmp_path: Path) -> None:
+    (tmp_path / ".pskill").mkdir()
+
+    assert skills_overview(find_project(tmp_path)) == {"skills": []}
+
+
+LIMITS_SKILL = """\
+schema: pskill/v1
+id: limits
+description: A script with limits, then a fixed list of plain items.
+goal: Show every limit of a block.
+entry: list_files
+blocks:
+  list_files:
+    type: script
+    run: [git, status]
+    timeout_s: 30
+    retries: 2
+    next: check
+  check:
+    type: parallel
+    for_each: [a.md, b.md]
+    instruction: "Check {{ item }}."
+    output:
+      ok: {type: boolean, description: "True when the file is fine."}
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_a_script_block_shows_its_timeout_and_its_retries(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "limits", LIMITS_SKILL)
+
+    list_files = detail_of(find_project(tmp_path), "limits")["blocks"]["list_files"]
+
+    assert list_files["facts"] == [["parse", "text"], ["timeout", "30 s"], ["retries", "2"]]
+
+
+def test_a_fixed_list_of_plain_items_shows_one_card_per_item(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "limits", LIMITS_SKILL)
+
+    check = detail_of(find_project(tmp_path), "limits")["blocks"]["check"]
+
+    assert check["facts"] == [["for each", "a fixed list of 2 items"]]
+    assert check["for_each_items"] == [
+        {"fields": [["item", "a.md"]], "when": None},
+        {"fields": [["item", "b.md"]], "when": None},
+    ]

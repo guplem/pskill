@@ -3,6 +3,7 @@
 import difflib
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -265,3 +266,117 @@ def test_a_task_name_goes_after_the_agent(tmp_path: Path) -> None:
 
     block_lines = skill_text(project).split("\n  fan:\n", 1)[1].splitlines()
     assert block_lines.index('    task_name: "{{ item }}"') == block_lines.index("    agent: checker") + 1
+
+
+def test_a_new_block_needs_a_known_type(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    before = skill_text(project)
+
+    with pytest.raises(EditError, match="'loop' is not a block type"):
+        add_block(project, "plan-work", "new_step", "loop")
+
+    assert skill_text(project) == before
+
+
+def test_deleting_a_middle_block_keeps_the_blocks_after_it(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    add_block(project, "plan-work", "extra", "end")
+    add_block(project, "plan-work", "last", "end")
+    before = skill_text(project)
+
+    delete_block(project, "plan-work", "extra")
+
+    assert skill_text(project) == before.replace("  extra:\n    type: end\n    status: succeeded\n\n", "")
+    assert list(load_skill(project.skills_folder / "plan-work").blocks)[-2:] == ["stopped", "last"]
+
+
+def test_a_skill_that_does_not_load_cannot_lose_a_block(tmp_path: Path) -> None:
+    project = make_project(tmp_path, PLAN_SKILL.replace("goal: Produce a plan that the user approved.\n", ""))
+    before = skill_text(project)
+
+    with pytest.raises(EditError, match="goal"):
+        delete_block(project, "plan-work", "stopped")
+
+    assert skill_text(project) == before
+
+
+def test_a_new_last_key_goes_at_the_end_of_its_block(tmp_path: Path) -> None:
+    done_lines = '    outputs: {result: approved}\n    report: "Tell the user the plan is approved."\n'
+    project = make_project(tmp_path, PLAN_SKILL.replace(done_lines, "\n"))
+    before = skill_text(project)
+
+    update_block(project, "plan-work", "done", {"report": "Tell the user."})
+    update_block(project, "plan-work", "stopped", {"report": "Say why."})
+
+    after = skill_text(project)
+    assert changed_lines(before, after) == ["+    report: Tell the user.", "+    report: Say why."]
+    assert "    status: succeeded\n    report: Tell the user.\n\n  stopped:\n" in after  # the blank line stays below
+    assert after.endswith("    outputs: {result: stopped}\n    report: Say why.\n")
+
+
+def test_an_instruction_text_needs_an_instruction_file(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    before = skill_text(project)
+
+    with pytest.raises(EditError, match="no instruction file"):
+        update_block(project, "plan-work", "ask_user", {"instruction_text": "Ask."})
+
+    assert skill_text(project) == before
+
+
+def test_an_instruction_file_outside_the_skill_folder_is_refused(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    before = skill_text(project)
+
+    with pytest.raises(EditError, match="outside the skill folder"):
+        update_block(project, "plan-work", "ask_user", {"instruction": "../outside.md", "instruction_text": "Ask."})
+
+    assert not (project.skills_folder / "outside.md").exists()
+    assert skill_text(project) == before
+
+
+def test_an_unknown_block_cannot_be_changed(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    with pytest.raises(EditError, match="no block 'missing'"):
+        update_block(project, "plan-work", "missing", {"description": "x"})
+
+
+def test_a_block_that_is_not_a_mapping_cannot_be_changed(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "  stopped:\n    type: end\n    status: cancelled\n    outputs: {result: stopped}\n", "  stopped: cancelled\n"
+    )
+    project = make_project(tmp_path, skill_yaml)
+
+    with pytest.raises(EditError, match=r"blocks[.]stopped is not a mapping"):
+        update_block(project, "plan-work", "stopped", {"description": "x"})
+
+
+BRACED_BLOCKS_SKILL = """\
+schema: pskill/v1
+id: plan-work
+description: Plans the work.
+goal: Plan the work.
+entry: work
+blocks: {work: {type: task, instruction: Work., next: done,
+  output: {done: {type: boolean, description: "True."}}},
+  done: {type: end, status: succeeded}}
+"""
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        lambda project: update_block(project, "plan-work", "work", {"description": "Do the work"}),
+        lambda project: add_block(project, "plan-work", "extra", "task"),
+        lambda project: delete_block(project, "plan-work", "done"),
+    ],
+    ids=["update", "add", "delete"],
+)
+def test_blocks_written_as_a_braced_mapping_are_refused_and_the_file_stays(tmp_path: Path, edit: Any) -> None:
+    project = make_project(tmp_path, BRACED_BLOCKS_SKILL)
+
+    with pytest.raises(EditError, match="one block per line"):
+        edit(project)
+
+    assert skill_text(project) == BRACED_BLOCKS_SKILL
