@@ -313,3 +313,80 @@ def test_references_inside_a_fixed_for_each_list_are_checked(tmp_path: Path) -> 
     )
 
     assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(tmp_path, picked)
+
+
+def test_a_choice_map_without_choices_is_an_error(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    next: create_plan\n", "    next: {again: create_plan}\n")
+
+    assert "blocks.ask_user: a choice map in next needs choices" in messages(
+        problems_for(tmp_path, skill_yaml), "error"
+    )
+
+
+def test_choices_without_a_choice_map_are_an_error(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("next: {approve: done, stop: stopped}", "next: done")
+
+    assert "blocks.approve_plan: a decision with choices needs a choice map in next" in messages(
+        problems_for(tmp_path, skill_yaml), "error"
+    )
+
+
+def test_numbers_inside_a_fixed_for_each_list_are_skipped(tmp_path: Path) -> None:
+    picked = CALLER_SKILL.replace(
+        "      - {agent: ghost, focus: docs}\n", '      - {agent: scout, focus: "{{ steps.nowhere.x }}", depth: 2}\n'
+    )
+
+    assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(tmp_path, picked)
+
+
+def test_a_call_cycle_is_found_past_a_call_to_an_unknown_skill(tmp_path: Path) -> None:
+    callee_with_two_calls = CALLEE_SKILL.replace(
+        "entry: done\nblocks:\n",
+        "entry: nowhere\nblocks:\n"
+        "  nowhere:\n    type: call\n    skill: nobody\n    next: back\n"
+        "  back:\n    type: call\n    skill: caller\n    next: done\n",
+    )
+
+    errors = catalog_problems(tmp_path, callee_yaml=callee_with_two_calls)
+
+    assert "blocks.child: the call to 'callee' makes a cycle (caller > callee > caller)" in errors
+
+
+def test_a_call_to_a_skill_that_calls_an_unknown_skill_is_no_cycle(tmp_path: Path) -> None:
+    callee_with_a_dead_end = CALLEE_SKILL.replace(
+        "entry: done\nblocks:\n",
+        "entry: nowhere\nblocks:\n  nowhere:\n    type: call\n    skill: nobody\n    next: done\n",
+    )
+
+    errors = catalog_problems(tmp_path, callee_yaml=callee_with_a_dead_end)
+
+    assert not any("cycle" in error for error in errors)
+
+
+def agent_file_errors(errors: list[str]) -> list[str]:
+    return [error for error in errors if "agent file" in error]
+
+
+def test_a_parallel_block_without_an_agent_needs_no_agent_file(tmp_path: Path) -> None:
+    without_agent = CALLER_SKILL.replace('    agent: "{{ item.agent }}"\n', "")
+
+    assert agent_file_errors(catalog_problems(tmp_path, without_agent)) == []
+
+
+def test_agent_names_from_a_computed_list_are_left_to_the_run(tmp_path: Path) -> None:
+    computed_list = CALLER_SKILL.replace(
+        "    for_each:\n      - {agent: scout, focus: code}\n      - {agent: ghost, focus: docs}\n",
+        "    for_each: \"{{ [{'agent': 'ghost', 'focus': 'docs'}] }}\"\n",
+    )
+
+    assert agent_file_errors(catalog_problems(tmp_path, computed_list)) == []
+
+
+def test_an_item_without_an_agent_name_is_skipped_by_the_agent_file_check(tmp_path: Path) -> None:
+    with_nameless_item = CALLER_SKILL.replace(
+        "      - {agent: ghost, focus: docs}\n", "      - {agent: ghost, focus: docs}\n      - {focus: tests}\n"
+    )
+
+    assert agent_file_errors(catalog_problems(tmp_path, with_nameless_item)) == [
+        "blocks.research: there is no agent file 'ghost.md' in .pskill/agents/"
+    ]

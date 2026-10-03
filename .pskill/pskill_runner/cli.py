@@ -182,7 +182,7 @@ def run_command(options: argparse.Namespace) -> int:
         port = project.config.viewer_port if options.port is None else options.port
         serve_viewer(project, running_copy_root() / "viewer", port, open_browser=not options.no_open)
         return EXIT_OK
-    raise RunError(f"Unknown command {command!r}.")
+    raise RunError(f"Unknown command {command!r}.")  # pragma: no cover - argparse accepts only the commands above
 
 
 def specific_harness() -> str | None:

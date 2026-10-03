@@ -218,3 +218,54 @@ def test_a_named_task_shows_its_name_in_its_heading() -> None:
     text = render_parallel_packet(PLAN_PACKET, tasks, total_tasks=1)
 
     assert "#### Task 0 · security\nYou are a subagent of pskill run" in text
+
+
+def test_a_group_gets_a_nested_example_and_a_list_of_empty_groups_gets_braces() -> None:
+    fields = parse_field_map(
+        {
+            "place": {
+                "type": "object",
+                "description": "Where.",
+                "properties": {"file": {"type": "string"}, "line": {"type": "integer"}},
+            },
+            "marks": {"type": "array", "description": "Marks.", "items": {"type": "object"}},
+        }
+    )
+
+    text = render_agent_packet(replace(PLAN_PACKET, return_fields=fields))
+
+    assert (
+        "place:  # required, group: Where.\n  file: ...\n  line: 0\nmarks:  # required, list: Marks.\n  - {}\n" in text
+    )
+
+
+def test_an_agent_decision_lists_the_choices_without_asking_the_user() -> None:
+    text = render_agent_packet(replace(DECISION_PACKET, decider="agent"))
+
+    assert "### Decision\nThe choices:\n- approve: Accept the plan.\n- stop: Stop without a plan.\n\n### Return" in text
+    assert "$answered_by" not in text
+
+
+def test_a_task_prompt_without_an_agent_goes_from_the_folder_to_the_goal() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
+
+    text = task_prompt_text(replace(PLAN_PACKET, work_folder="/work/project"), task)
+
+    assert "Work in the folder `/work/project`.\n\nGoal: Produce a plan that the user approved." in text
+
+
+def test_the_final_packet_without_a_report_or_outputs_only_says_it_is_finished() -> None:
+    text = render_final_packet("r-1", "plan-work", "cancelled", None, {})
+
+    assert text == (
+        "## pskill · plan-work · finished\nRun r-1 finished with status cancelled.\n\n"
+        "The run is finished. No more pskill commands are needed.\n"
+    )
+
+
+def test_the_pause_packet_without_an_error_has_no_error_section() -> None:
+    text = render_pause_packet("r-1", "plan-work", "create_plan", "paused_by_user", None, "uv run pskill.py")
+
+    assert "### Error" not in text
+    assert "Run r-1 is paused at block create_plan (paused_by_user).\n\n### Next\n" in text

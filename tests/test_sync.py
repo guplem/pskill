@@ -1,10 +1,13 @@
 """Tests for pskill_runner.sync: where sync writes the hooks and the permission rules."""
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
-from pskill_runner import claude_code, codex
+import pytest
+
+from pskill_runner import claude_code, codex, sync
 from pskill_runner.hook_settings import SHARED_HOOKS
 from pskill_runner.project import Project, find_project
 from pskill_runner.sync import sync_project
@@ -99,3 +102,43 @@ def test_permissions_decide_only_the_permission_rules(tmp_path: Path) -> None:
     assert hook_commands(claude_settings, "Stop") == [first_command(claude_code.PSKILL_HOOKS, "Stop")]
     assert not (tmp_path / CODEX_RULES).exists()
     assert hook_commands(read_json(tmp_path / CODEX_HOOKS), "Stop") == [first_command(codex.PSKILL_HOOKS, "Stop")]
+
+
+def fake_sync_process(
+    monkeypatch: pytest.MonkeyPatch, returncode: int, stdout: str, stderr: str = ""
+) -> list[list[str]]:
+    """Replace the `uv run` process with a recorded result. Return the list that collects each command."""
+    commands: list[list[str]] = []
+
+    def run_recorded(command: list[str], **options: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, returncode, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(subprocess, "run", run_recorded)
+    return commands
+
+
+def test_the_sync_after_an_update_runs_the_vendored_runner_and_returns_its_lines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = make_project(tmp_path)
+    commands = fake_sync_process(monkeypatch, 0, ".claude/settings.json was updated\n\nEverything is up to date.\n")
+
+    lines, worked = sync.sync_with_the_vendored_runner(project)
+
+    assert commands == [["uv", "run", str(tmp_path / ".pskill" / "pskill.py"), "sync"]]
+    assert lines == [".claude/settings.json was updated"]
+    assert worked
+
+
+def test_a_failed_sync_after_an_update_tells_how_to_run_it_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_sync_process(monkeypatch, 1, "", stderr="ModuleNotFoundError: jinja2\n")
+
+    lines, worked = sync.sync_with_the_vendored_runner(make_project(tmp_path))
+
+    assert lines == [
+        "The sync after the update failed. Run `uv run .pskill/pskill.py sync`. ModuleNotFoundError: jinja2"
+    ]
+    assert not worked

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from pskill_runner import claude_code, codex
-from pskill_runner.hook_settings import SHARED_HOOKS
+from pskill_runner.hook_settings import SHARED_HOOKS, SettingsError, read_json_settings
 
 FAKE_RUNNER = "import sys\nprint('ran:', ' '.join(sys.argv[1:]))\n"
 HOOKS = [
@@ -77,3 +77,11 @@ def test_a_hook_command_reads_the_same_in_bash_powershell_and_cmd(
         inner = command.split('"', 1)[1].rsplit('"', 1)[0]
         # Inside the one double-quoted argument: nothing that bash, PowerShell, or cmd would change.
         assert not any(character in inner for character in '$`\\"%!^')
+
+
+def test_a_settings_file_that_holds_no_json_object_is_refused(tmp_path: Path) -> None:
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text('["not", "an", "object"]', encoding="utf-8")
+
+    with pytest.raises(SettingsError, match="must hold a JSON object"):
+        read_json_settings(settings_path)

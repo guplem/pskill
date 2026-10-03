@@ -7,6 +7,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import webbrowser
 import zipfile
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
@@ -15,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from pskill_runner import __version__
+from pskill_runner import __version__, viewer_server
 from pskill_runner.engine import start_run
 from pskill_runner.project import Project, find_project
 from pskill_runner.viewer_server import make_server
@@ -305,3 +306,80 @@ def test_an_agent_edit_from_another_page_is_refused(server: ThreadingHTTPServer,
 
     assert status == 403
     assert (project.agents_folder / "checker.md").read_text(encoding="utf-8") == "You check facts.\n"
+
+
+def test_a_post_to_an_unknown_path_is_not_found(server: ThreadingHTTPServer) -> None:
+    status, body = post(server, "/api/skills/plan-work/rename", DESCRIPTION_CHANGE)
+
+    assert status == 404
+    assert body == {"error": "There is no such endpoint."}
+
+
+def test_an_edit_without_an_action_is_a_bad_request(server: ThreadingHTTPServer, project: Project) -> None:
+    before = (project.skills_folder / "plan-work" / "skill.yaml").read_text(encoding="utf-8")
+
+    status, body = post(server, "/api/skills/plan-work/edit", {"block": "done"})
+
+    assert status == 400
+    assert body == {"error": ["The request is not a valid edit: 'action'"]}
+    assert (project.skills_folder / "plan-work" / "skill.yaml").read_text(encoding="utf-8") == before
+
+
+def test_the_edit_endpoint_adds_a_block(server: ThreadingHTTPServer) -> None:
+    status, body = post(server, "/api/skills/plan-work/edit", {"action": "add", "block": "extra", "type": "end"})
+
+    assert status == 200
+    assert body["blocks"]["extra"]["type"] == "end"
+
+
+def test_an_edit_with_an_unknown_action_is_refused(server: ThreadingHTTPServer) -> None:
+    status, body = post(server, "/api/skills/plan-work/edit", {"action": "rename", "block": "done"})
+
+    assert status == 400
+    assert body == {"error": ["Unknown action 'rename': use update, add, or delete."]}
+
+
+def record_servers(monkeypatch: pytest.MonkeyPatch) -> list[ThreadingHTTPServer]:
+    """Make `serve_viewer` use a real server on a free port, and keep it for the test to look at."""
+    servers: list[ThreadingHTTPServer] = []
+
+    def make_recorded_server(project: Project, viewer_folder: Path, port: int) -> ThreadingHTTPServer:
+        servers.append(make_server(project, viewer_folder, 0))
+        return servers[-1]
+
+    monkeypatch.setattr(viewer_server, "make_server", make_recorded_server)
+    return servers
+
+
+def test_the_viewer_opens_the_browser_and_stops_on_ctrl_c(
+    project: Project, viewer_folder: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    servers = record_servers(monkeypatch)
+    opened_urls: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", opened_urls.append)
+
+    def press_ctrl_c(self: ThreadingHTTPServer) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(ThreadingHTTPServer, "serve_forever", press_ctrl_c)
+
+    viewer_server.serve_viewer(project, viewer_folder, port=7777, open_browser=True)
+
+    url = f"http://127.0.0.1:{servers[0].server_address[1]}/"
+    assert opened_urls == [url]
+    assert capsys.readouterr().out == f"pskill viewer: {url} (press Ctrl+C to stop)\n"
+    assert servers[0].socket.fileno() == -1  # the server closed its socket
+
+
+def test_the_viewer_without_a_browser_opens_nothing_and_closes_its_server(
+    project: Project, viewer_folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    servers = record_servers(monkeypatch)
+    opened_urls: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", opened_urls.append)
+    monkeypatch.setattr(ThreadingHTTPServer, "serve_forever", lambda self: None)
+
+    viewer_server.serve_viewer(project, viewer_folder, port=7777, open_browser=False)
+
+    assert opened_urls == []
+    assert servers[0].socket.fileno() == -1

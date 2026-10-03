@@ -13,6 +13,18 @@ def test_read_answer_returns_the_piped_text() -> None:
     assert read_answer(io.StringIO("status: finished\n"), timeout_s=1) == "status: finished\n"
 
 
+class TerminalStream(io.StringIO):
+    """A stream that says it is a terminal, as stdin is when nothing is piped in."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+def test_a_terminal_is_refused_without_reading_it() -> None:
+    with pytest.raises(AnswerInputError, match="No answer on stdin"):
+        read_answer(TerminalStream("status: finished\n"), timeout_s=1)
+
+
 def test_an_empty_answer_is_an_error() -> None:
     with pytest.raises(AnswerInputError, match="No answer"):
         read_answer(io.StringIO(""), timeout_s=1)

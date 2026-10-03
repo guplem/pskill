@@ -195,7 +195,7 @@ def item_when_problems(location: str, block: ParallelBlock) -> list[Problem]:
 
 def edge_lists(block: AnyBlock) -> list[tuple[str, list[Edge]]]:
     """Each list in which the first matching edge wins, with a prefix that names its choice."""
-    if isinstance(block, EndBlock):
+    if isinstance(block, EndBlock):  # pragma: no cover - edge_problems skips end blocks; this narrows the type
         return []
     if isinstance(block.next, dict):
         return [(f"the choice {choice!r}: ", edges) for choice, edges in block.next.items()]

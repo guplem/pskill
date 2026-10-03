@@ -85,6 +85,7 @@ def update_block(project: Project, skill_id: str, block_id: str, values: dict[st
     folder = skill_folder(project, skill_id)
     text = read_skill_text(folder)
     document = round_trip_yaml().load(text)
+    require_one_block_per_line(document)
     block = existing_block(document, block_id)
     allowed = COMMON_KEYS + EDITABLE_KEYS.get(str(block.get("type")), ())
     unknown = sorted(key for key in values if key not in allowed and key != INSTRUCTION_TEXT)
@@ -111,6 +112,7 @@ def add_block(project: Project, skill_id: str, block_id: str, block_type: str) -
     folder = skill_folder(project, skill_id)
     text = read_skill_text(folder)
     document = round_trip_yaml().load(text)
+    require_one_block_per_line(document)
     if not re.match(BLOCK_ID_PATTERN, block_id):
         raise EditError([f"{block_id!r} is not a block id: use lower-case letters, digits, and _"])
     if block_id in document["blocks"]:
@@ -134,6 +136,7 @@ def delete_block(project: Project, skill_id: str, block_id: str) -> None:
     folder = skill_folder(project, skill_id)
     text = read_skill_text(folder)
     document = round_trip_yaml().load(text)
+    require_one_block_per_line(document)
     existing_block(document, block_id)
     users = blocks_that_lead_to(folder, block_id)
     if users:
@@ -204,7 +207,7 @@ def splice_block(text: str, document: CommentedMap, block_id: str) -> str:
     comments_above = lines[starts[block_id] : key_line]
     # The blank lines and comment lines after the block belong to the space between blocks: keep them.
     lines_after: list[str] = []
-    for line in reversed(lines[starts[block_id] : stop]):
+    for line in reversed(lines[starts[block_id] : stop]):  # pragma: no branch - a block always has its key line
         if line.strip() and not is_comment_line(line):
             break
         lines_after.insert(0, line)
@@ -322,6 +325,18 @@ def skill_folder(project: Project, skill_id: str) -> Path:
 def read_skill_text(folder: Path) -> str:
     """The text with "\n" line ends. `write_text_atomic` writes the line ends that the file had."""
     return (folder / SKILL_FILE_NAME).read_text(encoding="utf-8")
+
+
+def require_one_block_per_line(document: CommentedMap) -> None:
+    """The editor finds a block by its lines, so `blocks:` written as a { } mapping cannot work."""
+    blocks = document.get("blocks")
+    if isinstance(blocks, CommentedMap) and blocks.fa.flow_style():
+        raise EditError(
+            [
+                "skill.yaml writes `blocks:` as a { } mapping. The editor needs one block per line: "
+                "change it in your code editor first."
+            ]
+        )
 
 
 def existing_block(document: CommentedMap, block_id: str) -> CommentedMap:

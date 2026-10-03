@@ -161,3 +161,15 @@ def test_the_session_that_continues_a_run_becomes_its_owner(tmp_path: Path) -> N
     assert stop_hook_reason(project, "claude-code", session_id="session-a") is None
     assert stop_hook_reason(project, "claude-code", session_id="session-b") is not None
     assert "session_changed" in [event["type"] for event in read_events(run_folder(project, run_id))]
+
+
+def test_session_start_reports_a_stub_that_it_cannot_write(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    hand_written = tmp_path / ".claude" / "skills" / "plan-work" / "SKILL.md"
+    hand_written.parent.mkdir(parents=True)
+    hand_written.write_text("My own plan-work skill.\n", encoding="utf-8")
+
+    text = session_start_text(project)
+
+    assert text.startswith("pskill: ") and "is a hand-written file with the name of a pskill stub" in text
+    assert hand_written.read_text(encoding="utf-8") == "My own plan-work skill.\n"

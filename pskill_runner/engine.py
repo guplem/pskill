@@ -401,8 +401,14 @@ def load_json_text(text: str) -> Any:
     return json.loads(text)
 
 
+def task_not_recorded(task: int, errors: list[str]) -> str:
+    """The reply to a task answer that fails its checks: the subagent fixes it and submits again."""
+    listed = "\n".join(f"- {error}" for error in errors)
+    return f"Task {task} is not recorded. Fix these problems and submit again:\n{listed}\n"
+
+
 def elapsed_ms_since(timestamp_text: str | None) -> int:
-    if timestamp_text is None:
+    if timestamp_text is None:  # pragma: no cover - every agent block sets packet_issued_at first
         return 0
     return int((utc_now() - parse_timestamp(timestamp_text)).total_seconds() * 1000)
 
@@ -576,7 +582,7 @@ class Run:
 
     def follow_edges(self, block: AnyBlock, value: dict[str, Any]) -> None:
         """Go to the next block after a completed block."""
-        if isinstance(block, EndBlock):
+        if isinstance(block, EndBlock):  # pragma: no cover - finish() ends a skill; no end block completes
             raise RunError("An end block has no next block.")
         if isinstance(block, DecisionBlock) and isinstance(block.next, dict):
             choice = value["choice"]
@@ -856,7 +862,9 @@ class Run:
         block = self.current_block()
         if isinstance(block, ParallelBlock):
             return self.parallel_packet(block, errors, show_goal, show_rules)
-        if not isinstance(block, TaskBlock | DecisionBlock):
+        if not isinstance(
+            block, TaskBlock | DecisionBlock
+        ):  # pragma: no cover - an active run waits only at an agent block
             raise RunError(f"The block {block.id!r} does not need the agent.")
         skill = self.skill_of(self.frame)
         instruction = self.rendered(skill.instruction_text(block.instruction), f"The instruction of {block.id!r}")
@@ -968,7 +976,7 @@ class Run:
             return self.record_task_while_paused(answer_text, task)
         self.require_status(ACTIVE_STATUSES, "take an answer (run `pskill resume` first)")
         block = self.current_block()
-        if not isinstance(block, TaskBlock | DecisionBlock | ParallelBlock):
+        if not isinstance(block, TaskBlock | DecisionBlock | ParallelBlock):  # pragma: no cover - same: an agent block
             raise RunError(f"The block {block.id!r} does not take an answer.")
         if task is not None and not isinstance(block, ParallelBlock):
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
@@ -998,8 +1006,7 @@ class Run:
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
         answer, _, errors = self.read_answer(answer_text, block)
         if errors:
-            listed = "\n".join(f"- {error}" for error in errors)
-            return f"Task {task} is not recorded. Fix these problems and submit again:\n{listed}\n"
+            return task_not_recorded(task, errors)
         self.record_task(block, task, answer)
         tasks = self.frame["tasks"] or []
         done = len(tasks) - len(self.open_task_indexes())
@@ -1033,6 +1040,8 @@ class Run:
         self.log("submission_rejected", block=self.frame["current_block"], task=task, errors=errors, raw=answer_text)
         if attempts > self.retries_of(self.current_block()):
             return self.pause("block_failed", "\n".join(errors))
+        if task is not None and self.adapter.can_spawn_subagents:
+            return task_not_recorded(task, errors)  # the subagent gets its own errors, not the main agent's packet
         return self.guarded(lambda: self.agent_packet(errors=errors))
 
     def accept(
