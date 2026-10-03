@@ -1155,7 +1155,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 | `GET /api/runs?skill=` | Run rows, plus one summary row per skill: runs, success rate, median duration. |
 | `GET /api/runs/<id>` | `run.json`, the canvas, the timeline rows, and the current state. |
 | `GET /api/skills` | One row per skill in `.pskill/skills/`: description, invocation, block count, run count, and the load error of a skill that does not load. |
-| `GET /api/skills/<id>` | The skill's facts, its canvas (one frame, no run parts), the details of each block, and the `pskill validate` problems, or the load error. |
+| `GET /api/skills/<id>` | The skill's facts, its canvas (its frame and one frame per child skill, no run parts), the details of each block, the details of each child block by node id, and the `pskill validate` problems, or the load error. |
 | `GET /api/skills/<id>/export` | The skill as plain Markdown skills, in a zip file (section 14.1). |
 | `POST /api/skills/<id>/edit` | The skill editor's one write: update, add, or delete a block (section 14.2). Returns the new skill detail, or the problems. |
 | `GET /api/agents` | One row per agent in `.pskill/agents/`: its name, its first line, and the skills that use it. |
@@ -1185,6 +1185,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 3. **Skills.** One card per skill in `.pskill/skills/`, also a skill with no runs, with its description, block count, and run count. A skill that does not load shows its error. The `internal` skills come last, in their own section.
 4. **Skill.** One skill's graph without a run, read from `.pskill/skills/` (never from a run copy). `skill_view.py` builds it.
    - The same canvas as the run screen, with every block and every edge, and no run parts: no status, no current step, no timeline, and no replay bar. Every node has the same plain style.
+   - **Child skills:** each call block's child skill shows in a dashed frame next to it, joined by a dotted edge, as on the run screen. A child that calls another skill nests the same way. A child that does not load, or a call back into a skill of its own chain, gets no frame. A click on a block of a child frame shows its details read-only, with a link to the child skill's own screen, where it can be edited. The panel finds a child block by its node id, because its name can be the name of a block of the parent.
    - The side panel with nothing selected: the goal, the inputs and outputs, and the `pskill validate` problems.
    - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A name that leads to another screen is a link with an arrow: the child skill of a call block, and the agent of a parallel block (one link per agent of a fixed `for_each` list). An agent name computed from run data has no link.
    - A script block also shows the text of each file inside its skill folder that its command runs as `{{ skill.dir }}/<path>`.
