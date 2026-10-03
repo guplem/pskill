@@ -1403,6 +1403,7 @@ function blockSections(details) {
     links.append(...listedAgents.map((name) => entityLink(name, agentHref(name))));
     parts.push(section(withHelp("h3", "Agents", "agent"), links));
   }
+  if (details.for_each_items.length) parts.push(forEachItems(details));
   if (details.command) parts.push(section(withHelp("h3", "Command", "run"), element("pre", details.command.join(" "), "command")));
   for (const file of details.script_files) {
     const note = element("p", `The command runs ${file.path}. Change it in your code editor.`, "note");
@@ -1433,6 +1434,38 @@ function blockSections(details) {
   if (details.outputs.length) parts.push(section(withHelp("h3", "Outputs of the skill", "outputs"), valueList(details.outputs)));
   if (details.exits.length) parts.push(section(withHelp("h3", "Where it can go", "next"), exitsOf(details.node)));
   return parts;
+}
+
+// One card per item of a fixed for_each list: its name as the title, its other fields, then its when apart.
+function forEachItems(details) {
+  const list = element("ul", null, "fields");
+  details.for_each_items.forEach((item, index) => {
+    const card = element("li", null, "field");
+    const name = item.fields.find(([key]) => key === "name");
+    const head = element("div", null, "field-head");
+    head.append(element("code", name ? name[1] : `item ${index}`, "field-name"));
+    if (item.when) head.append(element("span", "only when needed", "chip"));
+    card.append(head);
+    const rest = item.fields.filter(([key]) => key !== "name");
+    if (rest.length) {
+      const facts = element("dl", null, "facts");
+      for (const [key, value] of rest) {
+        const definition = element("dd");
+        if (key === "agent" && details.agents.includes(value)) definition.append(entityLink(value, agentHref(value)));
+        else definition.textContent = value;
+        facts.append(element("dt", key), definition);
+      }
+      card.append(facts);
+    }
+    if (item.when) {
+      const when = element("div", null, "item-when");
+      when.append(element("span", "Runs only when", "note"), element("code", item.when));
+      card.append(when);
+    }
+    list.append(card);
+  });
+  const note = element("p", "Each item starts one task. An item with a when starts it only when its when is true.", "note");
+  return section(withHelp("h3", `Items · ${details.for_each_items.length}`, "for_each"), note, list);
 }
 
 // One card per field: the name and its chips on the first line, the description below, then the nested fields.

@@ -159,12 +159,14 @@ def block_details(skill: Skill, block: AnyBlock, agent_names: set[str]) -> dict[
         "outputs": [],
         "child_skill": None,
         "agents": [],
+        "for_each_items": [],
         "exits": [{"to": edge.to_block, "label": edge.text, "hint": edge.hint} for edge in block_edges(0, block)],
     }
     if isinstance(block, DecisionBlock) and block.choices:
         details["choices"] = [{"choice": choice, "meaning": meaning} for choice, meaning in block.choices.items()]
     if isinstance(block, ParallelBlock):
         details["agents"] = [name for name in dict.fromkeys(agent_names_used(block)) if name in agent_names]
+        details["for_each_items"] = for_each_items(block.for_each)
     if isinstance(block, ScriptBlock):
         details["command"] = [str(part) for part in block.run]
         details["script_files"] = script_files(skill, block)
@@ -199,7 +201,7 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
     if isinstance(block, DecisionBlock):
         facts.append(["decider", block.decider])
     if isinstance(block, ParallelBlock):
-        facts.append(["for each", value_text(block.for_each)])
+        facts.append(["for each", for_each_summary(block.for_each)])
         if block.agent is not None:
             facts.append(["agent", block.agent])
         if block.task_name is not None:
@@ -217,6 +219,30 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
     if isinstance(block, RetryableBlock) and block.retries is not None:
         facts.append(["retries", str(block.retries)])
     return facts
+
+
+def for_each_summary(for_each: Any) -> str:
+    """A computed list as its expression, a fixed list as its size: the panel shows its items one by one."""
+    if not isinstance(for_each, list):
+        return value_text(for_each)
+    summary = f"a fixed list of {len(for_each)} item{'' if len(for_each) == 1 else 's'}"
+    conditional = sum(1 for item in for_each if isinstance(item, dict) and "when" in item)
+    return f"{summary}, {conditional} with a when" if conditional else summary
+
+
+def for_each_items(for_each: Any) -> list[dict[str, Any]]:
+    """One card per item of a fixed list: its fields as text, and its `when` apart. A computed list has none."""
+    if not isinstance(for_each, list):
+        return []
+    return [for_each_item(item) for item in for_each]
+
+
+def for_each_item(item: Any) -> dict[str, Any]:
+    if not isinstance(item, dict):
+        return {"fields": [["item", value_text(item)]], "when": None}
+    fields = [[str(key), value_text(value)] for key, value in item.items() if key != "when"]
+    when = item.get("when")
+    return {"fields": fields, "when": None if when is None else value_text(when)}
 
 
 def field_rows(fields: FieldMap) -> list[dict[str, Any]]:

@@ -7,7 +7,13 @@ from pskill_runner.engine import start_run
 from pskill_runner.project import Project, find_project
 from pskill_runner.skill_view import skill_detail, skills_overview
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_engine_blocks import CHILD_SKILL, NAMED_PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
+from tests.test_engine_blocks import (
+    CHILD_SKILL,
+    NAMED_PARALLEL_SKILL,
+    PARENT_SKILL,
+    PICKED_PARALLEL_SKILL,
+    SCRIPT_SKILL,
+)
 
 
 def make_project(tmp_path: Path) -> Project:
@@ -230,6 +236,30 @@ def test_a_parallel_block_shows_its_task_name(tmp_path: Path) -> None:
 
     assert ["task name", "Check {{ item }}"] in check["facts"]
     assert "task_name" in check["editable"]["keys"]
+
+
+def test_a_fixed_for_each_list_shows_one_card_per_item(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "picked", PICKED_PARALLEL_SKILL)
+    detail = skill_detail(find_project(tmp_path), "picked") or {}
+
+    review = detail["blocks"]["review"]
+
+    assert ["for each", "a fixed list of 3 items, 2 with a when"] in review["facts"]
+    assert review["for_each_items"][0] == {"fields": [["name", "always"]], "when": None}
+    assert review["for_each_items"][1] == {
+        "fields": [["name", "api"]],
+        "when": "{{ inputs.paths | select('matches', '^api/') | list }}",
+    }
+
+
+def test_a_computed_for_each_shows_its_expression_and_no_cards(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "fanout", NAMED_PARALLEL_SKILL)
+    detail = skill_detail(find_project(tmp_path), "fanout") or {}
+
+    check = detail["blocks"]["check"]
+
+    assert ["for each", "{{ inputs.files }}"] in check["facts"]
+    assert check["for_each_items"] == []
 
 
 DETAILED_SKILL = """\
