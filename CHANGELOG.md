@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.0 (2026-10-04)
+
+The skill screen shows each child skill inside its parent.
+
+- **Child skills in frames:** each call block's child skill shows in a dashed frame next to it, joined by a dotted edge, as on the run screen. A child that calls another skill nests the same way. The run screen's child frames are dashed too.
+- **Read-only child blocks:** a click on a block of a child frame shows its details, with a link to open the child skill, where it can be edited. A child block that shares its name with a parent block shows its own details.
+
 ## 0.12.0 (2026-10-03)
 
 A parallel block no longer needs manual work from the main agent.
