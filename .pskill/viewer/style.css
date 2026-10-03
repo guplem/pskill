@@ -1117,6 +1117,21 @@ a.tool {
   font-weight: 700;
 }
 
+.field .facts {
+  margin-top: 6px;
+}
+
+.item-when {
+  margin-top: 6px;
+}
+
+.item-when code {
+  display: block;
+  margin-top: 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .field-description {
   margin: 4px 0 0;
   color: var(--ink);
