@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
+from pskill_runner import __version__
 from pskill_runner.agent_view import AgentEditError, agent_detail, agents_overview, save_agent
 from pskill_runner.project import Project
 from pskill_runner.skill_editor import EditError, add_block, delete_block, update_block
@@ -43,7 +44,9 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = unquote(urlparse(self.path).path)
-        if path == "/api/runs":
+        if path == "/api/version":
+            self.send_json(HTTPStatus.OK, {"version": __version__})
+        elif path == "/api/runs":
             self.send_json(HTTPStatus.OK, runs_overview(self.project))
         elif path.startswith("/api/runs/"):
             detail = run_detail(self.project, path.removeprefix("/api/runs/"))

@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+from pskill_runner import __version__
 from pskill_runner.engine import start_run
 from pskill_runner.project import Project, find_project
 from pskill_runner.viewer_server import make_server
@@ -104,6 +105,13 @@ def test_the_skills_endpoint_lists_every_skill(server: ThreadingHTTPServer) -> N
 
     assert (status, content_type) == (200, "application/json; charset=utf-8")
     assert [skill["skill_id"] for skill in json.loads(body)["skills"]] == ["plan-work"]
+
+
+def test_the_version_endpoint_returns_the_running_version(server: ThreadingHTTPServer) -> None:
+    status, _, body = get(server, "/api/version")
+
+    assert status == 200
+    assert json.loads(body) == {"version": __version__}
 
 
 def test_the_skill_endpoint_returns_one_skill(server: ThreadingHTTPServer) -> None:
