@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1 (2026-10-03)
+
+The skill screen shows a fixed `for_each` list as one card per item.
+
+- **Readable items:** a fixed `for_each` list no longer shows as one line of JSON. The fact line says its size ("a fixed list of 9 items, 2 with a when"), and an "Items" section shows one card per item: its name, its other fields, and its `when` apart, under "Runs only when". An agent in an item links to its agent screen.
+
 ## 0.11.0 (2026-10-03)
 
 A parallel block can run each of its fixed tasks only when it is needed.
