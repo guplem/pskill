@@ -1,10 +1,10 @@
 {
-  "version": "0.18.0",
+  "version": "0.19.0",
   "source": ".",
   "files": {
     "pskill.py": "sha256:fc6daf6c197452a1096ffa812125533026d2cf6c25e0f0e6b58c490b57c6ed79",
     "AUTHORING.md": "sha256:57edabdefe1cad058beda3d02a930c58ff41680c32010b51e9cac35b01597328",
-    "pskill_runner/__init__.py": "sha256:83be0ff5ac0cf05233ad468751407286d7e8a57eac42caac34c5be8f3b8b89ab",
+    "pskill_runner/__init__.py": "sha256:46da4aefccba2eee152c0e7d0b915f85f268ddfea3c286b78c9b1fe48a8fd3c7",
     "pskill_runner/adapters.py": "sha256:83cd68f918f5b7386d7525c114f9d4ba462cd9103774da64e5d4dc851de3953a",
     "pskill_runner/agent_view.py": "sha256:1cde5c41977a5c0a99a1e359b95e5af4f6c078c25ac672b51bcee55da894c35f",
     "pskill_runner/answer_input.py": "sha256:2127461987aaba501b657379d5c1dacb1bfb87f1b596af27e7f32d6208ae4999",
@@ -37,10 +37,10 @@
     "pskill_runner/viewer_data.py": "sha256:ba5be28259b88e5bb38b8f112b641632895a72444a30b360b8032a546bb25d92",
     "pskill_runner/viewer_server.py": "sha256:4d6bfbcb5773ab67e15884ea7f54e075b09c7b773afaf9bf54c01b7044d01be9",
     "pskill_runner/yaml_loading.py": "sha256:22c2c28eb5f2311edd8f53ab42dc1464ab7b01b5a672b8b57887ad2d4aaa3457",
-    "viewer/app.js": "sha256:4eb02ba2c4803708cc9f67fa0086ac198101986e4715b5f546f65027ae96c183",
+    "viewer/app.js": "sha256:8dfe94015326f55226b3dc50d32f03e3be371f63218842a3210c1cafc1b2df00",
     "viewer/field_help.js": "sha256:910c2f8253c1394ed648befe0ff49cb666f70023664c6aa1e97e99dfacfd67df",
     "viewer/index.html": "sha256:cf94c6e56a0f788130e80e5ec3cf12c82a0e5d7aa6a474b7631b161b22703295",
-    "viewer/style.css": "sha256:0d383dec381dd96404192941c35665fdb16d5b5d604b0525f26e79855528ce01",
+    "viewer/style.css": "sha256:cf9bf76cefe0a4f0c43782ebe307eb6efb45537f7b640335e1670f93d1ac4f37",
     "launchers/view.cmd": "sha256:57916157302cc8026731ef8b51a34cf637059a98285875ba3787177d43691848",
     "launchers/view.command": "sha256:21364e319172774a95c2f8461e9bf46ad5912eae96b31c44020d24de01ce1ead",
     "launchers/view.sh": "sha256:ad6ebf8e4cca8419ef877f5b1bcd0898ec75e8d099e76206a076919c37d03120"

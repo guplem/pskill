@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.19.0 (2026-10-04)
+
+The child skills start collapsed, behind a real switch.
+
+- **Collapsed by default:** the skill screen opens with each child skill as one node, for a quick look at the flow. Turn the switch off to see every child skill.
+- **An on and off switch:** "Collapse sub-skills" is now a switch with a sliding knob, blue when on, instead of a button.
+- **A fresh default:** the viewer keeps only a choice to expand, under a new name, so a choice saved before 0.19.0 does not hide the new default.
+
 ## 0.18.0 (2026-10-04)
 
 A call block's node names its child skill.
