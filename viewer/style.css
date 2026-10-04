@@ -152,6 +152,66 @@ pre {
   color: var(--surface);
 }
 
+/* An on and off switch in the top bar: when it is on, the track turns blue and the knob moves right. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 4px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.switch[hidden] {
+  display: none;
+}
+
+.switch:hover,
+.switch[aria-checked="true"] {
+  color: var(--ink);
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--done);
+  outline-offset: 2px;
+}
+
+.switch-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--ghost);
+  transition: background 0.15s;
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  transition: transform 0.15s;
+}
+
+.switch[aria-checked="true"] .switch-track {
+  background: var(--done);
+}
+
+.switch[aria-checked="true"] .switch-track::after {
+  transform: translateX(14px);
+}
+
 .run-picker {
   font: inherit;
   font-weight: 600;
