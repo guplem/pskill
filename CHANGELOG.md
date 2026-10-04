@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0 (2026-10-04)
+
+On the skill screen, a call block is the frame of its child skill.
+
+- **The frame takes the call block's place:** the call block is no longer a node next to its child's frame. The edges into the call block end at the frame, and its exits leave from the frame, as one flow. A child's own call blocks are frames inside its frame.
+- **A titled frame:** the call block's name sits at the top left of the frame, with `call: <child skill>` below it.
+- **Click the frame for the call block:** a click on the frame's title or empty area selects the call block, for its details, its exits, and the editor. A click on a block inside the frame still shows that block.
+
 ## 0.13.1 (2026-10-04)
 
 Every line and branch of the runner is tested, and CI keeps it that way.

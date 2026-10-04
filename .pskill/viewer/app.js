@@ -733,6 +733,7 @@ async function drawGraph() {
   const state = stepState();
   let source = data.template;
   for (const node of data.nodes) source = source.replace(node.token, () => state.labels[node.id] || data.labels[node.id]);
+  for (const frame of data.frames || []) source = source.replace(frame.token, () => data.labels[frame.id]);
   await document.fonts.ready; // Mermaid measures the labels, so the fonts must be there first
   const renderId = `canvas-${++view.renderCount}`;
   window.mermaid.initialize({
@@ -792,7 +793,9 @@ async function drawGraph() {
   }
   markSelection();
   for (const cluster of svgNode.querySelectorAll("g.cluster")) {
-    addHint(cluster, cluster.id.endsWith("_TASKS") ? TASK_FRAME_HINT : CHILD_SKILL_HINT);
+    const frame = (data.frames || []).find((item) => cluster.id.endsWith(`-${item.id}`));
+    if (frame) wireCallFrame(cluster, frame);
+    else addHint(cluster, cluster.id.endsWith("_TASKS") ? TASK_FRAME_HINT : CHILD_SKILL_HINT);
   }
   view.parts.note.textContent = `Drag to move · wheel to zoom · click a ${isSkillScreen() ? "block" : "step"} to see it`;
   if (!view.fitted) {
@@ -808,6 +811,23 @@ async function drawGraph() {
   } else {
     applyTransform();
   }
+}
+
+// On the skill screen, a call block is the frame of its child skill: the frame stands for the call block.
+// Its title moves to the top left, and a click on the title or on the frame's empty area selects the call block.
+function wireCallFrame(cluster, frame) {
+  cluster.dataset.node = frame.node;
+  cluster.classList.add("is-call-frame");
+  const nodeInfo = view.detail.canvas.nodes.find((item) => item.id === frame.node);
+  addHint(cluster, `${nodeInfo.hint}\n\nThe frame holds the child skill. Click the frame to see the call block.`);
+  cluster.addEventListener("click", () => view.dragEnded || selectNode(frame.node));
+  const rect = cluster.querySelector(":scope > rect");
+  const label = cluster.querySelector(":scope > .cluster-label");
+  if (!rect || !label) return;
+  label.setAttribute("transform", `translate(${rect.x.baseVal.value + 14}, ${rect.y.baseVal.value + 10})`);
+  // Mermaid sized the title box for a centered title: give it the frame's width, so the skill name is not cut.
+  const box = label.querySelector("foreignObject");
+  if (box) box.setAttribute("width", String(Math.max(box.width.baseVal.value, rect.width.baseVal.value - 28)));
 }
 
 function drawStepList() {
@@ -1002,7 +1022,7 @@ function markSelection() {
   const taskNode = view.detail?.canvas?.nodes.find(
     (item) => item.kind === "task" && item.parent === node && item.task === view.selectedTask,
   )?.id;
-  for (const item of view.parts.canvas.querySelectorAll("g.node, .step-card")) {
+  for (const item of view.parts.canvas.querySelectorAll("g.node, g.cluster, .step-card")) {
     item.classList.toggle("is-selected", Boolean(node) && [node, taskNode].includes(item.dataset.node));
   }
 }
@@ -1601,7 +1621,8 @@ function highlightExit(edge, on) {
   const { layer } = view.parts;
   layer.querySelector(`path[data-edge="${CSS.escape(edge.id)}"]`)?.classList.toggle("is-hovered", on);
   layer.querySelector(`g.label[data-id="${CSS.escape(edge.id)}"]`)?.classList.toggle("is-hovered", on);
-  layer.querySelector(`g.node[data-node="${CSS.escape(edge.target)}"]`)?.classList.toggle("is-exit-target", on);
+  const target = CSS.escape(edge.target);
+  layer.querySelector(`g.node[data-node="${target}"], g.cluster[data-node="${target}"]`)?.classList.toggle("is-exit-target", on);
 }
 
 function rowSections(row) {

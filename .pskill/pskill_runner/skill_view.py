@@ -1,8 +1,8 @@
 """The skill screen of the viewer (SPEC.md section 14): every skill, and one skill's graph without a run.
 
 It reads the skills in `.pskill/skills/`, never a run's copy. The canvas is the run canvas with no run parts
-(no status, no current step, and no timeline): the skill, and each child skill that a call block runs, in its
-own frame next to the call block.
+(no status, no current step, and no timeline), with one change: each call block is drawn as the frame of its
+child skill, in the call block's place, and a child's own call blocks are frames inside that frame.
 """
 
 import json
@@ -30,14 +30,17 @@ from pskill_runner.skill_schema import is_skill_id
 from pskill_runner.validator import agent_names_used, validate_skill
 from pskill_runner.viewer_data import (
     BLOCK_TYPE_MEANINGS,
+    DOTTED_EDGE_KINDS,
     START_NODE,
+    CanvasEdge,
     CanvasFrame,
     block_edges,
     block_nodes,
     block_type_name,
     canvas_edge_rows,
-    canvas_template,
     frame_edges,
+    label_token,
+    mermaid_text,
     node_hint,
     node_id,
     node_label,
@@ -146,17 +149,74 @@ def skill_frames(skill: Skill, skills: dict[str, Skill]) -> list[CanvasFrame]:
     return frames
 
 
-def skill_canvas(frames: list[CanvasFrame]) -> dict[str, Any]:
-    """The run canvas with every frame: every block and every edge, and nothing that a run adds."""
-    edges = number_edges([edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame)])
-    nodes = block_nodes(frames)
+def frame_id(index: int) -> str:
+    return f"f{index}"
+
+
+def call_frames(frames: list[CanvasFrame]) -> dict[str, int]:
+    """The call node that each child frame takes the place of, with the frame's index."""
     return {
-        "template": canvas_template(frames, edges, {}),
+        node_id(frame.parent, frame.called_by): index
+        for index, frame in enumerate(frames)
+        if frame.parent is not None and frame.called_by is not None
+    }
+
+
+def skill_canvas(frames: list[CanvasFrame]) -> dict[str, Any]:
+    """Every block and every edge, and nothing that a run adds. A call block is the frame of its child skill.
+
+    The edges keep the call block's node as their end, so the panel lists its exits; only the template and
+    the edge ids use the frame. The call edge (from the call block to its child's entry) goes, because the
+    frame holds the child.
+    """
+    calls = call_frames(frames)
+    drawn_as = {node: frame_id(index) for node, index in calls.items()}
+    edges = [edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame) if edge.kind != "call"]
+    number_edges(edges, drawn_as)
+    nodes = block_nodes(frames)
+    labels = {node["id"]: node_label(node["block"], [node["type"]], []) for node in nodes}
+    for index in calls.values():
+        frame = frames[index]
+        labels[frame_id(index)] = f"<b>{frame.called_by}</b><br/>call: {mermaid_text(frame.skill.id)}"
+    return {
+        "template": skill_template(frames, edges, calls, drawn_as),
         "start": START_NODE,
-        "labels": {node["id"]: node_label(node["block"], [node["type"]], []) for node in nodes},
+        "labels": labels,
         "nodes": nodes,
+        "frames": [
+            {"id": frame_id(index), "node": node, "token": label_token(frame_id(index))}
+            for node, index in calls.items()
+        ],
         "edges": canvas_edge_rows(edges),
     }
+
+
+def skill_template(
+    frames: list[CanvasFrame], edges: list[CanvasEdge], calls: dict[str, int], drawn_as: dict[str, str]
+) -> str:
+    """The Mermaid template: the skill's blocks, with each call block replaced by its child's frame."""
+
+    def frame_lines(index: int, indent: str) -> list[str]:
+        lines = []
+        for block_id in frames[index].skill.blocks:
+            node = node_id(index, block_id)
+            child = calls.get(node)
+            if child is None:
+                lines.append(f'{indent}{node}["{label_token(node)}"]')
+            else:
+                lines.append(f'{indent}subgraph {frame_id(child)} ["{label_token(frame_id(child))}"]')
+                lines += frame_lines(child, indent + "  ")
+                lines.append(f"{indent}end")
+        return lines
+
+    # A small start dot: Mermaid 12 gives a labeled circle a fixed radius of about 90 px.
+    lines = ["flowchart TD", f"  {START_NODE}@{{ shape: sm-circ }}", *frame_lines(0, "  ")]
+    for edge in edges:
+        arrow = "-.->" if edge.kind in DOTTED_EDGE_KINDS else "-->"
+        label = f'|"{edge.label}"|' if edge.label is not None else ""
+        source, target = drawn_as.get(edge.source, edge.source), drawn_as.get(edge.target, edge.target)
+        lines.append(f"  {source} {arrow}{label} {target}")
+    return "\n".join(lines) + "\n"
 
 
 # --- the side panel: one block's details ---------------------------------------------------------
