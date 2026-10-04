@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.22.0 (2026-10-04)
 
 A project commits one small runner file instead of the whole runner.
 
