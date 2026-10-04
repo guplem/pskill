@@ -1,5 +1,6 @@
 """Contract tests for the static viewer files and the launchers (their logic lives in viewer_data.py)."""
 
+import json
 import re
 import subprocess
 import sys
@@ -20,6 +21,20 @@ def test_the_page_loads_mermaid_from_a_pinned_cdn_version_with_an_integrity_hash
     assert re.search(r'src="https://cdn\.jsdelivr\.net/npm/mermaid@\d+\.\d+\.\d+/dist/mermaid\.min\.js"', index)
     assert 'integrity="sha384-' in index
     assert 'crossorigin="anonymous"' in index
+
+
+def test_the_page_maps_the_elk_layout_to_a_pinned_cdn_version_with_a_hash_per_file() -> None:
+    index = (VIEWER / "index.html").read_text(encoding="utf-8")
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    import_map = json.loads(index.split('<script type="importmap">', 1)[1].split("</script>", 1)[0])
+
+    entry = import_map["imports"]["mermaid-layout-elk"]
+    assert re.fullmatch(r"https://cdn\.jsdelivr\.net/npm/@mermaid-js/layout-elk@\d+\.\d+\.\d+/dist/[\w.-]+\.mjs", entry)
+    assert entry in import_map["integrity"]
+    assert all(value.startswith("sha384-") for value in import_map["integrity"].values())
+    assert 'import("mermaid-layout-elk")' in script
+    assert '() => "dagre"' in script  # without ELK, Mermaid's own layout draws the graph
+    assert '"elk.layered.priority.straightness"' in script  # the main line stays straight
 
 
 def test_the_page_loads_its_two_fonts_from_google_fonts_with_system_fonts_as_the_fallback() -> None:

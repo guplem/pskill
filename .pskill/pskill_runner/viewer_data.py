@@ -334,6 +334,88 @@ def frame_edges(index: int, frame: CanvasFrame) -> list[CanvasEdge]:
     return edges
 
 
+def next_targets(block: AnyBlock) -> list[str]:
+    """The blocks that a block's next edges or choices lead to, in file order, without its visit-cap edge."""
+    if isinstance(block, EndBlock):
+        return []
+    next_edges = block.next
+    if isinstance(next_edges, dict):
+        next_edges = [edge for choice_edges in next_edges.values() for edge in choice_edges]
+    return list(dict.fromkeys(edge.to for edge in next_edges))
+
+
+def main_line(skill: Skill) -> list[str]:
+    """The blocks of the skill's usual way to a succeeded end, in order: the layout draws them in a straight line.
+
+    It is the longest way from the entry to a succeeded end that never goes back to an earlier block, without
+    each block that the way can skip (its previous block also leads straight to its next one). So a loop, a
+    retry, or an optional question stays off the line. A skill with no way to a succeeded end has no line.
+    """
+    successors = {
+        block_id: [target for target in next_targets(block) if target in skill.blocks]
+        for block_id, block in skill.blocks.items()
+    }
+    entry = [target for target in dict.fromkeys(edge.to for edge in skill.entry) if target in skill.blocks]
+    forward: dict[str, list[str]] = {block_id: [] for block_id in skill.blocks}
+    on_way: dict[str, bool] = {}  # True while the depth-first walk is inside the block
+
+    def walk(block_id: str) -> None:
+        on_way[block_id] = True
+        for target in successors[block_id]:
+            if on_way.get(target):
+                continue  # a loop back to an earlier block
+            forward[block_id].append(target)
+            if target not in on_way:
+                walk(target)
+        on_way[block_id] = False
+
+    for start in entry:
+        if start not in on_way:
+            walk(start)
+    longest: dict[str, list[str] | None] = {}
+
+    def longest_from(block_id: str) -> list[str] | None:
+        if block_id not in longest:
+            block = skill.blocks[block_id]
+            if isinstance(block, EndBlock):
+                longest[block_id] = [block_id] if block.status == "succeeded" else None
+            else:
+                ways = [way for target in forward[block_id] if (way := longest_from(target)) is not None]
+                longest[block_id] = [block_id, *max(ways, key=len)] if ways else None
+        return longest[block_id]
+
+    ways = [way for start in entry if (way := longest_from(start)) is not None]
+    line = max(ways, key=len) if ways else []
+    skipped = True
+    while skipped:
+        skipped = False
+        for index in range(len(line) - 1):
+            before = successors[line[index - 1]] if index > 0 else entry
+            if line[index + 1] in before:
+                del line[index]
+                skipped = True
+                break
+    return line
+
+
+def main_line_edges(frames: list[CanvasFrame], edges: list[CanvasEdge]) -> list[str]:
+    """The ids of the edges along each frame's main line: the entry edge to its first block, then block to block."""
+    steps: dict[str, int] = {}
+    for index, frame in enumerate(frames):
+        for step, block_id in enumerate(main_line(frame.skill)):
+            steps[node_id(index, block_id)] = step
+    return [
+        edge.id
+        for edge in edges
+        if edge.target in steps
+        and (
+            steps[edge.target] == 0
+            if edge.kind == "entry"
+            else edge.kind in ("next", "choice") and steps.get(edge.source, -2) + 1 == steps[edge.target]
+        )
+    ]
+
+
 def number_edges(edges: list[CanvasEdge], drawn_as: dict[str, str] | None = None) -> list[CanvasEdge]:
     """Give each edge the DOM id that Mermaid gives it: `L_<source>_<target>_<n>`.
 
@@ -655,6 +737,7 @@ def run_canvas(
         "nodes": nodes,
         "edges": canvas_edge_rows(edges),
         "current": current_step(info, annotated),
+        "main_edges": main_line_edges(frames, edges),
     }
     return canvas, annotated
 

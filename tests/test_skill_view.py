@@ -291,6 +291,8 @@ def test_a_call_block_is_drawn_as_the_frame_of_its_child_skill(tmp_path: Path) -
     assert [edge["id"] for edge in leaving] == ["L_f1_f0_done_0", "L_f1_f0_failed_0"]
     assert canvas["frames"] == [{"id": "f1", "node": "f0_child", "token": "@@f1@@"}]
     assert canvas["labels"]["f1"] == "<b>child</b><br/>call: child"
+    # The main line goes through the frame, and on inside it.
+    assert canvas["main_edges"] == ["L_start_f0_greet_0", "L_f0_greet_f1_0", "L_f1_f0_done_0", "L_f1_greet_f1_done_0"]
 
 
 def test_a_child_that_calls_a_skill_holds_that_frame_inside_its_own(tmp_path: Path) -> None:

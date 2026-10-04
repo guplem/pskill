@@ -1102,6 +1102,20 @@ a.tool {
   stroke-dasharray: 3 3 !important;
 }
 
+/* The main line: the usual way to a succeeded end (main_line in viewer_data.py). Its edges are thicker,
+   and on the skill screen the side branches step back. */
+.layer path.flowchart-link.is-main {
+  stroke-width: 3px !important;
+}
+
+.layer.is-skill path.flowchart-link:not(.is-main):not(.is-hovered) {
+  opacity: 0.5;
+}
+
+.layer.is-skill g.label.is-side:not(.is-hovered) {
+  opacity: 0.75;
+}
+
 .problems,
 /* Fields and exits: one card per item, so that the name, the chips, and the text read apart. */
 .fields,

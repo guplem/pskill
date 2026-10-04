@@ -736,11 +736,16 @@ async function drawGraph() {
   let source = data.template;
   for (const node of data.nodes) source = source.replace(node.token, () => state.labels[node.id] || data.labels[node.id]);
   for (const frame of data.frames || []) source = source.replace(frame.token, () => data.labels[frame.id]);
+  const mainEdges = new Set(data.main_edges);
+  const layout = await loadElkLayout();
+  straightEdges = mainEdges;
   await document.fonts.ready; // Mermaid measures the labels, so the fonts must be there first
   const renderId = `canvas-${++view.renderCount}`;
   window.mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
+    layout,
+    elk: { nodePlacementStrategy: "NETWORK_SIMPLEX" }, // the placement that reads each edge's straightness
     theme: "base",
     themeVariables: { fontFamily: "Manrope, system-ui, sans-serif", fontSize: "13px" },
     flowchart: { htmlLabels: true, curve: "basis", nodeSpacing: 34, rankSpacing: 46, padding: 14 },
@@ -782,6 +787,8 @@ async function drawGraph() {
     const path = svgNode.querySelector(`[id="${renderId}-${edge.id}"]`);
     const label = svgNode.querySelector(`g.label[data-id="${edge.id}"]`);
     if (path) path.dataset.edge = edge.id; // for the exit cards of the panel
+    path?.classList.toggle("is-main", mainEdges.has(edge.id));
+    label?.classList.toggle("is-side", !mainEdges.has(edge.id));
     const references = referencedNodes(edge.when, edge.source); // the blocks that the edge's condition reads
     for (const part of references.length ? [label, path] : []) {
       part?.addEventListener("mouseenter", () => highlightReferences(references, true));
@@ -818,6 +825,34 @@ async function drawGraph() {
   } else {
     applyTransform();
   }
+}
+
+// ELK (index.html maps "mermaid-layout-elk" to its pinned files) lays the graph out top to bottom. Each
+// main-line edge asks it to stay straight, so the usual way to a succeeded end is one straight column.
+// It resolves to the layout name for Mermaid: Mermaid's own "dagre" when ELK does not load (offline).
+const STRAIGHT_EDGE = { "elk.layered.priority.straightness": 100, "elk.layered.priority.direction": 100 };
+let straightEdges = new Set(); // the main-line edges of the graph that Mermaid lays out next
+let elkLayout = null;
+
+function loadElkLayout() {
+  elkLayout ??= import("mermaid-layout-elk").then(
+    (module) => {
+      const elk = module.default.find((layout) => layout.name === "elk");
+      // Mermaid's ELK adapter copies each edge's fields into ELK, layoutOptions included.
+      const loader = async () => {
+        const engine = await elk.loader();
+        const render = (data, ...rest) => {
+          for (const edge of data.edges) if (straightEdges.has(edge.id)) edge.layoutOptions = STRAIGHT_EDGE;
+          return engine.render(data, ...rest);
+        };
+        return { ...engine, render };
+      };
+      window.mermaid.registerLayoutLoaders([{ name: "elk-main-line", loader, algorithm: "elk.layered" }]);
+      return "elk-main-line";
+    },
+    () => "dagre",
+  );
+  return elkLayout;
 }
 
 // On the skill screen, a call block is the frame of its child skill: the frame stands for the call block.

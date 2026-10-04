@@ -40,6 +40,7 @@ from pskill_runner.viewer_data import (
     canvas_edge_rows,
     frame_edges,
     label_token,
+    main_line_edges,
     mermaid_text,
     node_hint,
     node_id,
@@ -188,6 +189,7 @@ def skill_canvas(frames: list[CanvasFrame]) -> dict[str, Any]:
             for node, index in calls.items()
         ],
         "edges": canvas_edge_rows(edges),
+        "main_edges": main_line_edges(frames, edges),
     }
 
 
