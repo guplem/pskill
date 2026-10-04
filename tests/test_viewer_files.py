@@ -1,4 +1,4 @@
-"""Contract tests for the static viewer files and the launchers (their logic lives in viewer_data.py)."""
+"""Contract tests for the static viewer files (their logic lives in viewer_data.py)."""
 
 import json
 import re
@@ -7,8 +7,8 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from pskill_runner.release import release_file_map
 from pskill_runner.skill_schema import BLOCK_SCHEMAS
-from pskill_runner.vendoring import vendored_file_map
 from pskill_runner.viewer_data import BLOCK_TYPE_MEANINGS
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
@@ -85,16 +85,10 @@ def test_every_block_type_has_an_icon() -> None:
         assert f"\n  {block_type}: [" in icons
 
 
-def test_the_launchers_start_the_viewer_from_the_folder_above_them() -> None:
-    for name in ("view.cmd", "view.command", "view.sh"):
-        launcher = (REPOSITORY_ROOT / "launchers" / name).read_text(encoding="utf-8")
-        assert "uv run pskill.py view" in launcher
+def test_the_viewer_is_in_the_release() -> None:
+    files = release_file_map(REPOSITORY_ROOT)
 
-
-def test_the_viewer_and_the_launchers_are_vendored() -> None:
-    files = vendored_file_map(REPOSITORY_ROOT)
-
-    assert {"viewer/index.html", "viewer/app.js", "viewer/style.css", "launchers/view.cmd"} <= set(files)
+    assert {"viewer/index.html", "viewer/app.js", "viewer/style.css"} <= set(files)
 
 
 def test_the_view_command_serves_the_viewer_until_stopped(tmp_path: Path) -> None:

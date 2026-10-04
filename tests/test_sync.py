@@ -118,13 +118,13 @@ def fake_sync_process(
     return commands
 
 
-def test_the_sync_after_an_update_runs_the_vendored_runner_and_returns_its_lines(
+def test_the_sync_after_an_update_runs_the_installed_runner_and_returns_its_lines(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = make_project(tmp_path)
     commands = fake_sync_process(monkeypatch, 0, ".claude/settings.json was updated\n\nEverything is up to date.\n")
 
-    lines, worked = sync.sync_with_the_vendored_runner(project)
+    lines, worked = sync.sync_with_the_installed_runner(project)
 
     assert commands == [["uv", "run", str(tmp_path / ".pskill" / "pskill.py"), "sync"]]
     assert lines == [".claude/settings.json was updated"]
@@ -136,7 +136,7 @@ def test_a_failed_sync_after_an_update_tells_how_to_run_it_again(
 ) -> None:
     fake_sync_process(monkeypatch, 1, "", stderr="ModuleNotFoundError: jinja2\n")
 
-    lines, worked = sync.sync_with_the_vendored_runner(make_project(tmp_path))
+    lines, worked = sync.sync_with_the_installed_runner(make_project(tmp_path))
 
     assert lines == [
         "The sync after the update failed. Run `uv run .pskill/pskill.py sync`. ModuleNotFoundError: jinja2"

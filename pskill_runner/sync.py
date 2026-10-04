@@ -54,10 +54,12 @@ def permission_changes(project: Project, check_only: bool) -> list[str]:
     return changed
 
 
-def sync_with_the_vendored_runner(project: Project) -> tuple[list[str], bool]:
-    """Run `sync` in a new process, with the runner in `.pskill/`. Return its lines, and whether it worked.
+def sync_with_the_installed_runner(project: Project) -> tuple[list[str], bool]:
+    """Run `sync` in a new process, with the runner that `.pskill/pskill.py` pins.
 
-    `update` needs this: it replaces the runner files, but its own process still runs the old code.
+    Return its lines, and whether it worked.
+
+    `update` needs this: it moves the pin, but its own process still runs the old code.
     `uv run` also installs the dependencies that the new version declares.
     """
     entry_script = project.pskill_folder / "pskill.py"

@@ -9,11 +9,10 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `pskill.py` | Entry script. Holds the PEP 723 dependency block, then calls `pskill_runner.cli.main`. |
 | `pskill_runner/` | The runner package. One module per concern (table below). |
 | `viewer/` | The viewer page: plain HTML, CSS, and JavaScript, no build step. It only draws what `viewer_data.py` returns. |
-| `launchers/` | Double-click launchers for the viewer (Windows, macOS, Linux). |
 | `docs/` | Images for the README, such as the viewer screenshot. |
 | `tests/` | The pytest suite. One test file per module. |
 | `SPEC.md` | The implementation specification. |
-| `README.md`, `AUTHORING.md`, `CHANGELOG.md` | For users; for agents that write skills (vendored); the release notes. |
+| `README.md`, `AUTHORING.md`, `CHANGELOG.md` | For users; for agents that write skills (`pskill authoring` prints it); the release notes. |
 | `.pskill/skills/`, `.pskill/agents/` | The proof skills and their pskill agents. They run on this repository's own issues and pull requests (the test bed). |
 
 ## Runner modules
@@ -40,7 +39,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `claude_code.py` | Claude Code's `.claude/settings.json` entries (hooks, permission rule) and hook output. |
 | `codex.py` | Codex's `.codex/hooks.json` hooks, `.codex/rules/pskill.rules`, and hook output. |
 | `hooks.py` | The Stop and session-start hook logic, for every harness. |
-| `vendoring.py` | `pskill init` and `pskill update`: copy the runner into a project, with file hashes. |
+| `install.py` | `pskill init` and `pskill update`: the pinned entry script, the user's runner cache, and the few project files. |
 | `release.py` | The release archive `pskill.zip`, and unpacking an archive given to `init` or `update`. |
 | `viewer_data.py` | Everything the viewer shows: the run canvas (one Mermaid template, child skills included), timeline rows with their node and edges, summaries. |
 | `skill_view.py` | The skill screen of the viewer: the skills list, and one skill's canvas and block details, with no run. |
@@ -67,7 +66,7 @@ CI (`.github/workflows/pull-request-checks.yml`) runs those checks on Windows, m
 - **Full coverage.** `uv run pytest --cov` fails below 100% of lines and branches. Test every new line. Mark a line that no input can reach with `# pragma: no cover` (or `no branch`) and its reason; never to skip a hard case.
 - **Red-green, always.** Write the failing test first, run it, and see it fail for the expected reason. Then write the least code that passes. Commit the test with its code.
 - **Simplicity first.** Code must be easy to read for a junior developer: small functions, descriptive names, explicit types, no clever tricks.
-- **This repository vendors its own runner** into `.pskill/` (the test bed). After any change to `pskill.py` or `pskill_runner/`, run `uv run pskill.py update --from .`; a test fails until the copy matches. Never edit `.pskill/pskill.py` or `.pskill/pskill_runner/` by hand.
+- **`.pskill/pskill.py` runs this checkout** (the dev pin), so the test bed always uses the current code. After a change to the root `pskill.py`, run `uv run pskill.py update --from .`; a test fails until the copy matches. Never edit `.pskill/pskill.py` by hand.
 - **Dependencies live in two places.** Keep the PEP 723 block in `pskill.py` equal to `[project].dependencies` in `pyproject.toml`. A test checks this.
 - **Branch and pull request.** Branch from `main`, open one pull request per issue, and close the issue from it. CI must be green on Windows, macOS, and Linux before a merge.
 

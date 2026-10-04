@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+A project commits one small runner file instead of the whole runner.
+
+- **One pinned file:** `.pskill/pskill.py` now names one release: its version, its download link, and its sha256. The first call on a computer downloads that release once into a cache for the user, checks the sha256, and runs it. Later calls need no network. The runner code, the viewer, `VENDORED`, and `AUTHORING.md` no longer go into the project.
+- **`init` creates only what a project needs:** `.pskill/pskill.py`, `config.yaml`, `.gitignore` (`runs/`), and `skills/`, plus the files that `sync` writes. It no longer adds a line to `.gitattributes`.
+- **`update` moves the pin:** one changed line in `.pskill/pskill.py`. Teammates get the new version on their next run. `--force` is gone, because there are no runner files to protect.
+- **New command `authoring`:** it prints the guide for writing skills.
+- **Removed:** the double-click launchers. Run `uv run .pskill/pskill.py view`.
+- **To move a project from 0.21 or older:** run `uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py update` once in the project. It pins the latest release and deletes the old runner files (`VENDORED`, `pskill_runner/`, `viewer/`, `launchers/`, `AUTHORING.md`). Running the old `update` twice does the same.
+
 ## 0.21.0 (2026-10-04)
 
 A stub tells the agent which inputs to ask for, and which to leave out.

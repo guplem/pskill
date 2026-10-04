@@ -28,16 +28,16 @@ from pskill_runner.engine import (
 )
 from pskill_runner.hook_settings import SettingsError
 from pskill_runner.hooks import session_start_text, stop_hook_reason
+from pskill_runner.install import InstallError, init_project, update_project
 from pskill_runner.project import Project, ProjectError, find_project
-from pskill_runner.release import is_archive_source, release_url, unpack_archive
+from pskill_runner.release import release_url
 from pskill_runner.run_records import UNFINISHED_STATUSES
 from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
 from pskill_runner.skill_model import SkillCatalog
 from pskill_runner.skill_tests import run_skill_tests
 from pskill_runner.stubs import StubError, sync_stubs
-from pskill_runner.sync import sync_project, sync_with_the_vendored_runner
+from pskill_runner.sync import sync_project, sync_with_the_installed_runner
 from pskill_runner.validator import Problem, validate_skill
-from pskill_runner.vendoring import VendoringError, init_project, update_project
 from pskill_runner.viewer_server import serve_viewer
 from pskill_runner.yaml_loading import load_answer_yaml
 
@@ -46,7 +46,7 @@ EXIT_USAGE_ERROR = 1
 EXIT_VALIDATION_ERROR = 2
 EXIT_INTERNAL_ERROR = 3
 
-USER_ERRORS = (RunError, ProjectError, AnswerInputError, AdapterError, VendoringError, SettingsError, StubError)
+USER_ERRORS = (RunError, ProjectError, AnswerInputError, AdapterError, InstallError, SettingsError, StubError)
 HOOK_INPUT_TIMEOUT_S = 2.0
 
 
@@ -94,16 +94,17 @@ def build_parser() -> argparse.ArgumentParser:
     sync = commands.add_parser("sync", help="Write the skill stubs and the harness hooks and permission rule.")
     sync.add_argument("--check", action="store_true", help="Only report what is out of date.")
 
-    init = commands.add_parser("init", help="Create .pskill/ in the current folder and vendor the runner.")
-    init.add_argument(
-        "--from", dest="source", help="A pskill checkout, a .pskill folder, or a release .zip (file or URL)."
+    init = commands.add_parser("init", help="Create .pskill/ in the current folder, pinned to a runner release.")
+    init.add_argument("--from", dest="source", help="A release .zip (file or URL). Default: the latest release.")
+
+    update = commands.add_parser("update", help="Pin .pskill/pskill.py to another runner release.")
+    update.add_argument(
+        "--from",
+        dest="source",
+        help="A release .zip (file or URL), or `.` in the pskill repository. Default: the latest release.",
     )
 
-    update = commands.add_parser("update", help="Replace the vendored runner with another version.")
-    update.add_argument(
-        "--from", dest="source", help="A pskill checkout, a .pskill folder, or a release .zip. Default: latest release."
-    )
-    update.add_argument("--force", action="store_true", help="Overwrite vendored files that were edited by hand.")
+    commands.add_parser("authoring", help="Print the guide for writing skills (AUTHORING.md).")
 
     view = commands.add_parser("view", help="Open the viewer (runs and skills) in the browser.")
     view.add_argument("--port", type=int, help="Default: viewer_port from config.yaml. 0 picks a free port.")
@@ -146,6 +147,8 @@ def run_command(options: argparse.Namespace) -> int:
         return hook_command(options.event, options.harness)
     if command == "init":
         return init_command(options.source)
+    if command == "authoring":
+        return print_text((running_copy_root() / "AUTHORING.md").read_text(encoding="utf-8"))
     project = find_project(Path.cwd())
     harness = specific_harness()
     session_id = detect_session_id(os.environ)
@@ -177,7 +180,7 @@ def run_command(options: argparse.Namespace) -> int:
     if command == "sync":
         return sync_command(project, options.check)
     if command == "update":
-        return update_command(project, options.source, options.force)
+        return update_command(project, options.source)
     if command == "view":
         port = project.config.viewer_port if options.port is None else options.port
         serve_viewer(project, running_copy_root() / "viewer", port, open_browser=not options.no_open)
@@ -311,26 +314,21 @@ def sync_command(project: Project, check_only: bool) -> int:
 
 
 def running_copy_root() -> Path:
-    """The folder of the runner that runs this command: a pskill checkout or a project's .pskill/."""
+    """The folder of the runner that runs this command: a pskill checkout, or a release in the user's cache."""
     return Path(pskill_runner.__file__).resolve().parent.parent
-
-
-def source_folder(source: str) -> Path:
-    """A folder with the vendored files: the given folder, or an unpacked release archive."""
-    return unpack_archive(source) if is_archive_source(source) else Path(source).resolve()
 
 
 def init_command(source: str | None) -> int:
     project_root = Path.cwd()
-    lines = init_project(project_root, source_folder(source) if source else running_copy_root())
+    lines = init_project(project_root, source or release_url())
     lines += sync_project(find_project(project_root), check_only=False)
     lines.append("Next: add a skill in .pskill/skills/<id>/, then run `uv run .pskill/pskill.py sync`.")
     return print_text("\n".join(lines))
 
 
-def update_command(project: Project, source: str | None, force: bool) -> int:
-    lines = update_project(project.root, source_folder(source or release_url()), force)
-    sync_lines, synced = sync_with_the_vendored_runner(project)
+def update_command(project: Project, source: str | None) -> int:
+    lines = update_project(project.root, source or release_url())
+    sync_lines, synced = sync_with_the_installed_runner(project)
     print_text("\n".join(lines + sync_lines))
     return EXIT_OK if synced else EXIT_INTERNAL_ERROR
 

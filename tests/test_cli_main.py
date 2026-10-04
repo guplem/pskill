@@ -14,9 +14,9 @@ import pytest
 
 from pskill_runner import cli
 from pskill_runner.engine import read_run_info
+from pskill_runner.install import CACHE_VARIABLE
 from pskill_runner.project import Project, find_project
-from pskill_runner.release import build_release_archive
-from pskill_runner.vendoring import vendored_file_map
+from pskill_runner.release import build_release_archive, release_file_map
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
@@ -496,77 +496,83 @@ def make_empty_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return project_root
 
 
-def test_init_without_from_vendors_the_runner_that_runs_the_command(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.fixture
+def release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A local release archive as the latest release, and a runner cache for this test only."""
+    archive = build_release_archive(REPOSITORY_ROOT, tmp_path / "release" / "pskill.zip")
+    monkeypatch.setenv("PSKILL_RELEASE_URL", archive.as_uri())
+    monkeypatch.setenv(CACHE_VARIABLE, str(tmp_path / "cache"))
+    return archive
+
+
+def test_init_without_from_pins_the_latest_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], release: Path
 ) -> None:
     project_root = make_empty_folder(tmp_path, monkeypatch)
 
     exit_code = run_cli(monkeypatch, "init")
 
     assert exit_code == cli.EXIT_OK
-    assert (project_root / ".pskill" / "pskill_runner" / "cli.py").is_file()
+    assert release.as_uri() in (project_root / ".pskill" / "pskill.py").read_text(encoding="utf-8")
     assert (project_root / ".claude" / "settings.json").is_file()
     assert capsys.readouterr().out.endswith(
         "Next: add a skill in .pskill/skills/<id>/, then run `uv run .pskill/pskill.py sync`.\n"
     )
 
 
-def test_init_from_a_folder_vendors_that_folder(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_init_from_a_folder_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], release: Path
 ) -> None:
     project_root = make_empty_folder(tmp_path, monkeypatch)
 
     exit_code = run_cli(monkeypatch, "init", "--from", str(REPOSITORY_ROOT))
 
-    assert exit_code == cli.EXIT_OK
-    assert (project_root / ".pskill" / "pskill.py").is_file()
-
-
-def test_init_from_a_release_archive_unpacks_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    archive = build_release_archive(REPOSITORY_ROOT, tmp_path / "pskill.zip")
-    project_root = make_empty_folder(tmp_path, monkeypatch)
-
-    exit_code = run_cli(monkeypatch, "init", "--from", str(archive))
-
-    assert exit_code == cli.EXIT_OK
-    assert (project_root / ".pskill" / "pskill_runner" / "engine.py").is_file()
+    assert exit_code == cli.EXIT_USAGE_ERROR
+    assert "is not a pskill release" in capsys.readouterr().err
+    assert not (project_root / ".pskill" / "pskill.py").exists()
 
 
 def test_update_without_from_takes_the_release_url(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], release: Path
 ) -> None:
-    archive = build_release_archive(REPOSITORY_ROOT, tmp_path / "pskill.zip")
     make_empty_folder(tmp_path, monkeypatch)
     run_cli(monkeypatch, "init")
     capsys.readouterr()
-    monkeypatch.setenv("PSKILL_RELEASE_URL", archive.as_uri())
 
     exit_code = run_cli(monkeypatch, "update")
 
     assert exit_code == cli.EXIT_OK
-    assert "Vendored pskill" in capsys.readouterr().out
+    assert "Updated pskill from" in capsys.readouterr().out
 
 
 def test_update_exits_with_code_3_when_the_sync_after_it_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], release: Path
 ) -> None:
     broken_version = tmp_path / "broken-version"
-    for relative_path, source in vendored_file_map(REPOSITORY_ROOT).items():
+    for relative_path, source in release_file_map(REPOSITORY_ROOT).items():
         (broken_version / relative_path).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, broken_version / relative_path)
-    (broken_version / "pskill.py").write_text("raise SystemExit('this runner is broken')\n", encoding="utf-8")
+    (broken_version / "pskill_runner" / "cli.py").write_text("raise SystemExit('this runner is broken')\n")
+    broken_release = build_release_archive(broken_version, tmp_path / "broken.zip")
     make_empty_folder(tmp_path, monkeypatch)
     run_cli(monkeypatch, "init")
     capsys.readouterr()
 
-    exit_code = run_cli(monkeypatch, "update", "--from", str(broken_version))
+    exit_code = run_cli(monkeypatch, "update", "--from", str(broken_release))
 
     assert exit_code == cli.EXIT_INTERNAL_ERROR
     output = capsys.readouterr().out
     assert "The sync after the update failed." in output
     assert "this runner is broken" in output
+
+
+def test_authoring_prints_the_guide_for_writing_skills(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = run_cli(monkeypatch, "authoring")
+
+    assert exit_code == cli.EXIT_OK
+    assert "## A complete example" in capsys.readouterr().out
 
 
 # --- view -----------------------------------------------------------------------------------------
