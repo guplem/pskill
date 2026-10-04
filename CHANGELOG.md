@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.21.0 (2026-10-04)
+
+A stub tells the agent which inputs to ask for, and which to leave out.
+
+- **Ask before the start:** when a skill has a required input, its stub tells the agent to ask the user for each one that the request does not give, before it runs `start`.
+- **Only the required inputs in the start command:** the agent adds an optional input only when the request gives it, so it never invents a value.
+- **Defaults in the stub:** each input shows its default, for example `(boolean, optional, default: true)`.
+- **Run `pskill sync`** after the update: the stubs change.
+
 ## 0.20.0 (2026-10-04)
 
 A script gets its data one way: its `input`, on stdin.

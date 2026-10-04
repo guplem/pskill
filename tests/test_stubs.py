@@ -28,6 +28,51 @@ def test_a_stub_has_the_frontmatter_and_the_start_command(tmp_path: Path) -> Non
     assert "--mode autonomous" in stub
 
 
+TOPIC_INPUT = '  topic: {type: string, description: "What to plan."}\n'
+OPTIONAL_INPUTS_SKILL = PLAN_SKILL.replace(
+    TOPIC_INPUT,
+    TOPIC_INPUT
+    + '  depth: {type: integer, optional: true, default: 2, description: "How deep."}\n'
+    + '  notes: {type: string, optional: true, description: "Extra notes."}\n',
+)
+
+
+def test_a_stub_tells_the_agent_to_ask_for_a_missing_required_input(tmp_path: Path) -> None:
+    skill = load_skill(make_project(tmp_path).skills_folder / "plan-work")
+
+    stub = render_stub(skill)
+
+    assert "   Ask the user for each required input that the request does not give, before you run `start`.\n" in stub
+
+
+def test_a_skill_with_only_optional_inputs_asks_for_nothing(tmp_path: Path) -> None:
+    only_optional = PLAN_SKILL.replace(TOPIC_INPUT, TOPIC_INPUT.replace("string,", "string, optional: true,"))
+    skill = load_skill(make_project(tmp_path, only_optional).skills_folder / "plan-work")
+
+    stub = render_stub(skill)
+
+    assert "Ask the user" not in stub
+    assert "start plan-work --harness auto`" in stub
+
+
+def test_an_optional_input_shows_its_default(tmp_path: Path) -> None:
+    skill = load_skill(make_project(tmp_path, OPTIONAL_INPUTS_SKILL).skills_folder / "plan-work")
+
+    stub = render_stub(skill)
+
+    assert "- `depth` (integer, optional, default: 2): How deep." in stub
+    assert "- `notes` (string, optional): Extra notes." in stub
+
+
+def test_the_start_command_names_only_the_required_inputs(tmp_path: Path) -> None:
+    skill = load_skill(make_project(tmp_path, OPTIONAL_INPUTS_SKILL).skills_folder / "plan-work")
+
+    stub = render_stub(skill)
+
+    assert "Run: `uv run .pskill/pskill.py start plan-work --harness auto --input topic=<value>`\n" in stub
+    assert "   Add `--input <name>=<value>` for each optional input that the request gives.\n" in stub
+
+
 def test_a_stub_holds_the_goal_and_the_loop_rules_once(tmp_path: Path) -> None:
     skill = load_skill(make_project(tmp_path).skills_folder / "plan-work")
 

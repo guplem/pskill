@@ -1,10 +1,10 @@
 {
-  "version": "0.20.0",
+  "version": "0.21.0",
   "source": ".",
   "files": {
     "pskill.py": "sha256:fc6daf6c197452a1096ffa812125533026d2cf6c25e0f0e6b58c490b57c6ed79",
-    "AUTHORING.md": "sha256:29feabe582a8d3feb0c59fc9ce0444bde40bd53f3551ec0d839f7b1295404e61",
-    "pskill_runner/__init__.py": "sha256:dc81d4ce0888e3175ffb7588ea3fe8787ff55d56a9d4039ca4d49a2be8d4727b",
+    "AUTHORING.md": "sha256:31a87a5e35b97eba270381620a28989cdaa6e895daebd912eb07a7f717302eb0",
+    "pskill_runner/__init__.py": "sha256:295170bdd56ae533fb6d4cb45a2092b1105c3d54f7f80f18b931f309b0fceaf7",
     "pskill_runner/adapters.py": "sha256:83cd68f918f5b7386d7525c114f9d4ba462cd9103774da64e5d4dc851de3953a",
     "pskill_runner/agent_view.py": "sha256:1cde5c41977a5c0a99a1e359b95e5af4f6c078c25ac672b51bcee55da894c35f",
     "pskill_runner/answer_input.py": "sha256:2127461987aaba501b657379d5c1dacb1bfb87f1b596af27e7f32d6208ae4999",
@@ -30,7 +30,7 @@
     "pskill_runner/skill_schema.py": "sha256:cf8112c8be25553b7542be8ce566befd2afb356cff7efbee571bcb86d55500ed",
     "pskill_runner/skill_tests.py": "sha256:26f09a5bae2989b6a873ccd294be4a12d395a5d8f48f4f9ba3a84f6e42324a03",
     "pskill_runner/skill_view.py": "sha256:416627f60b918f5569affae291dd4565716b7140cc30878fca01b57bf0d10b71",
-    "pskill_runner/stubs.py": "sha256:bc7b3f322b6e1d0cae28e12963f54860cb84fdba95a0ccec15bb2d4ff48adc48",
+    "pskill_runner/stubs.py": "sha256:7cd50b018c2cb1b0d1dcf8f3e60dfd1ee5efadd5cc49c92c23ddf16b451602a1",
     "pskill_runner/sync.py": "sha256:8a5a4ab4afc517f680d367a0ae0ea90ce4a7a8e6c7553e81347a807740202139",
     "pskill_runner/validator.py": "sha256:a54a8424edadac4cd8a3a50e9fb8eb7714e847e3e71945a8ba71aeb7c447b326",
     "pskill_runner/vendoring.py": "sha256:329f56b475b1675d65107931b9e923b5641c721cb22b778ebe0316b2ad110485",

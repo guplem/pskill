@@ -9,6 +9,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from pskill_runner.field_types import FieldSpec
 from pskill_runner.project import Project
 from pskill_runner.skill_model import Skill, SkillCatalog
 
@@ -33,15 +34,26 @@ class StubChange:
     skill: str  # the stub's skill id (the name of its folder)
 
 
+def input_facts(spec: FieldSpec) -> str:
+    """The type of an input, and whether it is optional, with its default: "integer, optional, default: 2"."""
+    facts = [spec.type]
+    if spec.optional:
+        facts.append("optional")
+    if spec.default is not None:
+        facts.append(f"default: {json.dumps(spec.default)}")
+    return ", ".join(facts)
+
+
 def render_stub(skill: Skill) -> str:
     frontmatter = [f"name: {skill.id}", f"description: {json.dumps(' '.join(skill.description.split()))}"]
     if skill.invocation == "manual":
         frontmatter.append("disable-model-invocation: true")
     input_lines = [
-        f"   - `{name}` ({spec.type}{', optional' if spec.optional else ''}): {spec.description or ''}".rstrip()
-        for name, spec in skill.inputs.items()
+        f"   - `{name}` ({input_facts(spec)}): {spec.description or ''}".rstrip() for name, spec in skill.inputs.items()
     ]
-    input_options = " ".join(f"--input {name}=<value>" for name in skill.inputs)
+    required_inputs = [name for name, spec in skill.inputs.items() if not spec.optional]
+    has_optional_inputs = len(required_inputs) < len(skill.inputs)
+    input_options = " ".join(f"--input {name}=<value>" for name in required_inputs)
     start_command = f"{RUNNER} start {skill.id} --harness auto {input_options}".rstrip()
     body = [
         GENERATED_MARKER,
@@ -52,7 +64,17 @@ def render_stub(skill: Skill) -> str:
         "",
         "1. Map the request to the inputs:" if input_lines else "1. This skill has no inputs.",
         *input_lines,
+        *(
+            ["   Ask the user for each required input that the request does not give, before you run `start`."]
+            if required_inputs
+            else []
+        ),
         f"2. Run: `{start_command}`",
+        *(
+            ["   Add `--input <name>=<value>` for each optional input that the request gives."]
+            if has_optional_inputs
+            else []
+        ),
         "   If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,",
         "   in the same literal form that the runner's packets show for `submit`.",
         "   Add `--mode autonomous` only when the user asked for no questions.",
