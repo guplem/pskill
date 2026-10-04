@@ -759,7 +759,7 @@ async function drawGraph() {
     elk: { nodePlacementStrategy: "NETWORK_SIMPLEX" }, // the placement that reads each edge's straightness
     theme: "base",
     themeVariables: { fontFamily: "Manrope, system-ui, sans-serif", fontSize: "13px" },
-    flowchart: { htmlLabels: true, curve: "basis", nodeSpacing: 34, rankSpacing: 46, padding: 14 },
+    flowchart: { htmlLabels: true, curve: "basis", nodeSpacing: 34, rankSpacing: 46, padding: 14, wrappingWidth: 320 },
   });
   try {
     const { svg } = await window.mermaid.render(renderId, source);

@@ -396,6 +396,10 @@ def test_a_child_skill_is_a_subgraph_linked_from_its_call_block(tmp_path: Path) 
     child_row = detail["timeline"][-1]
     assert child_row["node"] == "f1_greet"
     assert child_row["edge"] == "L_f0_child_f1_greet_0"
+    # A call block's node names the child skill that it runs, before and after its step.
+    assert detail["canvas"]["labels"]["f0_child"].endswith("<b>child</b><br/>call: child")
+    call_row = next(row for row in detail["timeline"] if row["node"] == "f0_child")
+    assert call_row["summary"].startswith("call: child")
 
 
 def test_each_node_has_a_hint_that_explains_its_block(tmp_path: Path) -> None:

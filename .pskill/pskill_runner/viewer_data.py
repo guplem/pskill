@@ -121,6 +121,11 @@ def block_type_name(block: AnyBlock) -> str:
     return type(block).__name__.removesuffix("Block").lower()
 
 
+def block_type_text(block: AnyBlock) -> str:
+    """The type line of a node: the type, and for a call block the child skill that it runs."""
+    return f"call: {block.skill}" if isinstance(block, CallBlock) else block_type_name(block)
+
+
 def mermaid_text(text: str) -> str:
     """Text that is safe inside a quoted Mermaid label."""
     for character, entity in (('"', "#quot;"), ("'", "#39;"), ("<", "#lt;"), (">", "#gt;")):
@@ -526,9 +531,9 @@ def row_outcome(row: dict[str, Any]) -> str | None:
     return None
 
 
-def row_details(row: dict[str, Any], rejected: int) -> tuple[list[str], list[str]]:
+def row_details(row: dict[str, Any], rejected: int, type_text: str) -> tuple[list[str], list[str]]:
     """The plain details of a node after a row (type, duration, outcome) and its badges (visit, rejected)."""
-    details = [str(row["block_type"])]
+    details = [type_text]
     if row["duration_ms"] is not None:
         details.append(format_duration(int(row["duration_ms"])))
     outcome = row_outcome(row)
@@ -612,8 +617,10 @@ def annotate_rows(
         rejected_per_block[key] = rejected_per_block.get(key, 0) + sum(
             1 for submission in row["submissions"] if not submission["accepted"]
         )
-        details, badges = row_details(row, rejected_per_block[key])
         block = frames[frame].skill.blocks.get(row["block"]) if frame is not None else None
+        details, badges = row_details(
+            row, rejected_per_block[key], block_type_text(block) if block else str(row["block_type"])
+        )
         edge = arrival_edge(row, frame, edges) if frame is not None else None
         called_by = frames[frame].called_by if frame is not None else None
         node = node_id(frame, row["block"]) if frame is not None else None
@@ -710,7 +717,7 @@ def run_canvas(
     edges = number_edges(edges + task_frame_edges(task_counts))
     annotated = annotate_rows(rows, row_frames, frames, edges, info["mode"])
     nodes = block_nodes(frames)
-    labels = {node["id"]: node_label(node["block"], [node["type"]], []) for node in nodes}
+    labels = {node["id"]: node_label(node["block"], [node["type_text"]], []) for node in nodes}
     for (index, block_id), count in task_counts.items():
         parent = node_id(index, block_id)
         for task in range(count):
@@ -752,6 +759,7 @@ def block_nodes(frames: list[CanvasFrame]) -> list[dict[str, Any]]:
             "skill_id": frame.skill.id,
             "block": block.id,
             "type": block_type_name(block),
+            "type_text": block_type_text(block),
             "hint": node_hint(block),
             "description": block.description,
             "type_meaning": BLOCK_TYPE_MEANINGS[block_type_name(block)],

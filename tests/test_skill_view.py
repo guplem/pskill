@@ -301,6 +301,7 @@ def test_the_collapsed_canvas_draws_a_call_block_as_one_node(tmp_path: Path) -> 
     template = canvas["template"]
 
     assert '  f0_child["@@f0_child@@"]\n' in template
+    assert canvas["labels"]["f0_child"].endswith("<b>child</b><br/>call: child")  # the node names its child skill
     assert "subgraph" not in template
     assert "  f0_greet --> f0_child\n" in template
     assert canvas["frames"] == []
