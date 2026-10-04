@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.0 (2026-10-04)
+
+The skill screen can collapse its child skills.
+
+- **Collapse sub-skills:** a toggle next to the zoom controls draws each call block as one node, without its child skill's frame. It helps to see the flow of a skill with many child skills. Turn it off to see every child skill again.
+- **The selection follows:** when a block inside a child skill is selected, collapsing selects its call block instead.
+- **The choice stays:** the viewer remembers it on the next visit. A skill with no child skill shows no toggle.
+
 ## 0.16.0 (2026-10-04)
 
 The graph in the viewer is easier to follow.
