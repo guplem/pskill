@@ -7,10 +7,16 @@ from typing import Any
 
 from pskill_runner.engine import start_run, submit_answer
 from pskill_runner.project import Project, find_project
+from pskill_runner.skill_loader import load_skill
 from pskill_runner.skill_model import ScriptBlock
 from pskill_runner.viewer_data import (
+    CanvasFrame,
     format_duration,
+    frame_edges,
+    main_line,
+    main_line_edges,
     node_hint,
+    number_edges,
     run_detail,
     runs_overview,
     split_choice_reason,
@@ -188,6 +194,90 @@ blocks:
 """
 
 
+MAIN_LINE_SKILL = """\
+schema: pskill/v1
+id: main-line
+description: A plan, a build, and a check, with loops and detours.
+goal: Build the thing.
+inputs:
+  issue: {type: integer, optional: true, description: The issue number.}
+entry:
+  - when: "{{ inputs.issue is defined }}"
+    to: read
+  - to: plan
+blocks:
+  read:
+    type: task
+    instruction: Read the issue.
+    output: {text: {type: string, description: The issue text.}}
+    next: plan
+  plan:
+    type: task
+    instruction: Plan the work.
+    output: {question: {type: string, optional: true, description: A question for the user.}}
+    max_visits: 3
+    on_max_visits: done
+    next:
+      - when: "{{ steps.plan.question is defined }}"
+        to: ask
+      - to: build
+  ask:
+    type: decision
+    decider: human
+    instruction: Answer the question.
+    next: plan
+  build:
+    type: task
+    instruction: Build it.
+    output: {risky: {type: boolean, description: Whether the change is risky.}}
+    next:
+      - when: "{{ steps.build.risky }}"
+        to: review
+      - to: check
+  review:
+    type: task
+    instruction: Review the change.
+    output: {notes: {type: string, description: The review notes.}}
+    next: check
+  check:
+    type: decision
+    decider: agent
+    instruction: Check the build.
+    choices: {retry: Build again., ok: It works., give_up: Stop.}
+    next: {retry: build, ok: done, give_up: failed}
+  done:
+    type: end
+    status: succeeded
+  failed:
+    type: end
+    status: failed
+"""
+
+# The loader keeps a target that is not a block (pskill validate reports it): the main line ignores it.
+NO_SUCCESS_SKILL = """\
+schema: pskill/v1
+id: no-success
+description: Every way ends in a failure.
+goal: Try.
+entry:
+  - when: "{{ false }}"
+    to: ghost
+  - to: work
+blocks:
+  work:
+    type: task
+    instruction: Work.
+    output: {text: {type: string, description: The result.}}
+    next:
+      - when: "{{ false }}"
+        to: ghost
+      - to: stop
+  stop:
+    type: end
+    status: failed
+"""
+
+
 def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "plan-work", PLAN_SKILL, PLAN_SKILL_FILES)
     write_skill(tmp_path / ".pskill" / "skills", "scripted", SCRIPT_SKILL)
@@ -252,6 +342,44 @@ def test_the_canvas_has_one_node_per_block_and_labeled_edges(tmp_path: Path) -> 
     edge_ids = [edge["id"] for edge in canvas["edges"]]
     assert "L_start_f0_create_plan_0" in edge_ids
     assert "L_f0_create_plan_f0_stopped_0" in edge_ids
+
+
+def test_the_main_line_skips_the_loops_and_the_detours(tmp_path: Path) -> None:
+    skill = load_skill(write_skill(tmp_path, "main-line", MAIN_LINE_SKILL))
+
+    # The longest way is read, plan, build, review, check, done. The entry also leads straight to plan,
+    # and build straight to check, so read and review are detours. The loops back to plan and build stay off.
+    assert main_line(skill) == ["plan", "build", "check", "done"]
+
+
+def test_a_skill_with_no_way_to_a_succeeded_end_has_no_main_line(tmp_path: Path) -> None:
+    skill = load_skill(write_skill(tmp_path, "no-success", NO_SUCCESS_SKILL))
+
+    assert main_line(skill) == []
+
+
+def test_the_main_line_edges_are_the_entry_edge_and_each_step_to_the_next(tmp_path: Path) -> None:
+    skill = load_skill(write_skill(tmp_path, "main-line", MAIN_LINE_SKILL))
+    frames = [CanvasFrame(skill, parent=None, called_by=None)]
+    edges = number_edges(frame_edges(0, frames[0]))
+
+    # Not main: the loop from ask back to plan (the first step), and the visit cap from plan to done.
+    assert main_line_edges(frames, edges) == [
+        "L_start_f0_plan_0",
+        "L_f0_plan_f0_build_0",
+        "L_f0_build_f0_check_0",
+        "L_f0_check_f0_done_0",
+    ]
+
+
+def test_the_run_canvas_names_the_main_line_edges(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+
+    canvas = detail_of(project, run_id)["canvas"]
+
+    assert "L_start_f0_create_plan_0" in canvas["main_edges"]
+    assert "L_f0_create_plan_f0_ask_user_0" not in canvas["main_edges"]
 
 
 def test_a_child_skill_is_a_subgraph_linked_from_its_call_block(tmp_path: Path) -> None:

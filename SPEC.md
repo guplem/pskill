@@ -1142,9 +1142,11 @@ The three proof skills together must exercise every runtime feature. pytest fixt
   - a hint in plain words for each node (the block's `description`, what its type does, who decides) and each edge (when the run takes it, with the whole condition). The page shows them as hover tooltips.
   - the current step and its state (now, waiting for the user, or failed),
   - the summary numbers.
+  - the main line of each frame: the usual way to a succeeded end. It is the longest way from the entry to a succeeded end that never goes back to an earlier block, without each block that the way can skip (its previous block also leads straight to its next one). The canvas lists the ids of the edges along it.
 
   The front end only draws them. For the replay, it adds up the rows up to the chosen step. It has no build step: plain HTML, CSS, and JavaScript.
 - **Mermaid comes from a CDN.** `index.html` loads one exact, pinned version from jsDelivr (`https://cdn.jsdelivr.net/npm/mermaid@<version>/dist/mermaid.min.js`), with a Subresource Integrity hash.
+- **ELK lays the graph out.** Mermaid's `@mermaid-js/layout-elk` package draws the graph top to bottom. It comes from jsDelivr too: an import map in `index.html` pins its version, with a hash for each of its files. Each main-line edge asks ELK to stay straight (`elk.layered.priority.straightness`), so the main line is one straight column, and the side branches go beside it. Main-line edges are thicker; on the skill screen, the other edges are lighter. When ELK does not load, Mermaid's own layout draws the graph.
 - **Fonts:** Manrope and IBM Plex Mono from Google Fonts. The page falls back to the system fonts when they do not load.
 - **Offline:** the canvas shows "Graph unavailable offline (Mermaid did not load)" and the steps (or, on the skill screen, the blocks) as a list of cards in the node style. The side panel, the replay bar, and the Runs, Skills, and Agents screens still work, because they do not need Mermaid.
 - While the open run is unfinished, the page polls every second.

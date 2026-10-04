@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.16.0 (2026-10-04)
+
+The graph in the viewer is easier to follow.
+
+- **A straight main line:** the usual way to a succeeded end is one straight column, from the start to the end. The side branches (failures, loops, optional questions) go beside it. The viewer finds the main line by itself: the longest way to a succeeded end that never loops back, without the detours that it can skip.
+- **Top to bottom everywhere:** the ELK layout engine now draws the graph, so a child skill's frame flows top to bottom too, and the edges have right angles.
+- **The main line stands out:** its edges are thicker. On the skill screen, the side branches are lighter.
+- **ELK loads on demand:** the viewer loads ELK from the CDN the first time it draws a graph, pinned with a hash per file. When ELK does not load, the graph keeps the old layout.
+
 ## 0.15.0 (2026-10-04)
 
 The viewer shows which blocks a value reads, and the panel can close.
