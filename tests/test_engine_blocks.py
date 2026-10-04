@@ -1,5 +1,6 @@
 """Tests for running script, call, and parallel blocks."""
 
+import json
 import threading
 from pathlib import Path
 from typing import Any
@@ -183,6 +184,93 @@ def test_a_script_with_bad_json_fails(tmp_path: Path) -> None:
 
     assert read_run_info(project, run_id)["status"] == "paused"
     assert "not valid JSON" in packet
+
+
+STDIN_SKILL = """\
+schema: pskill/v1
+id: piped
+description: Gives a script its input on stdin.
+goal: Hand data to a script.
+inputs:
+  pr: {type: integer, description: "The pull request."}
+  body: {type: string, description: "A text."}
+outputs:
+  received: {type: string, description: "What the script printed."}
+entry: read_input
+blocks:
+  read_input:
+    type: script
+    run: [python, -c, "import sys; print(sys.stdin.read())"]
+    input: {pr: "{{ inputs.pr }}", labels: [bug, "{{ inputs.body | length }}"]}
+    next: done
+  done:
+    type: end
+    status: succeeded
+    outputs: {received: "{{ steps.read_input.stdout }}"}
+"""
+
+
+def script_output(tmp_path: Path, skill_yaml: str, body: str = "hello") -> str:
+    project = make_project(tmp_path, {"piped": skill_yaml})
+    run_id, _ = start_run(project, "piped", {"pr": "7", "body": body}, mode="interactive", harness="generic")
+    outputs = read_run_info(project, run_id)["outputs"]
+    assert outputs is not None
+    return str(outputs["received"])
+
+
+def test_a_script_reads_a_mapping_input_as_one_json_object_on_stdin(tmp_path: Path) -> None:
+    assert json.loads(script_output(tmp_path, STDIN_SKILL)) == {"pr": 7, "labels": ["bug", 5]}
+
+
+def test_a_script_reads_a_text_input_as_it_is(tmp_path: Path) -> None:
+    skill_yaml = STDIN_SKILL.replace(
+        '{pr: "{{ inputs.pr }}", labels: [bug, "{{ inputs.body | length }}"]}', '"{{ inputs.body }}"'
+    )
+
+    assert script_output(tmp_path, skill_yaml, body="line one\nline two") == "line one\nline two\n"
+
+
+def test_a_long_input_is_not_limited_by_the_command_line(tmp_path: Path) -> None:
+    skill_yaml = STDIN_SKILL.replace("print(sys.stdin.read())", "print(len(sys.stdin.read()))").replace(
+        '{pr: "{{ inputs.pr }}", labels: [bug, "{{ inputs.body | length }}"]}', '"{{ inputs.body }}"'
+    )
+
+    assert script_output(tmp_path, skill_yaml, body="x" * 100_000) == "100000\n"
+
+
+def test_a_script_reads_its_input_as_utf_8_on_every_system(tmp_path: Path) -> None:
+    skill_yaml = STDIN_SKILL.replace(
+        "print(sys.stdin.read())", "print(sys.stdin.read() == 'caf\\\\u00e9 \\\\U0001f440')"
+    ).replace('{pr: "{{ inputs.pr }}", labels: [bug, "{{ inputs.body | length }}"]}', '"{{ inputs.body }}"')
+
+    assert script_output(tmp_path, skill_yaml, body="café \U0001f440") == "True\n"
+
+
+def test_a_script_without_input_reads_an_empty_stdin(tmp_path: Path) -> None:
+    skill_yaml = STDIN_SKILL.replace("print(sys.stdin.read())", "print(repr(sys.stdin.read()))").replace(
+        '    input: {pr: "{{ inputs.pr }}", labels: [bug, "{{ inputs.body | length }}"]}\n', ""
+    )
+
+    assert script_output(tmp_path, skill_yaml) == "''\n"
+
+
+def test_a_script_gets_no_copy_of_the_run_state(tmp_path: Path) -> None:
+    skill_yaml = STDIN_SKILL.replace("print(sys.stdin.read())", "import os; print('PSKILL_STATE_FILE' in os.environ)")
+    project = make_project(tmp_path, {"piped": skill_yaml})
+
+    run_id, _ = start_run(project, "piped", {"pr": "7", "body": "hello"}, mode="interactive", harness="generic")
+
+    assert read_run_info(project, run_id)["outputs"] == {"received": "False\n"}
+    assert not (project.runs_folder / run_id / "script-state.json").exists()
+
+
+def test_the_trace_records_the_input_that_a_script_got(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"piped": STDIN_SKILL})
+
+    run_id, _ = start_run(project, "piped", {"pr": "7", "body": "hello"}, mode="interactive", harness="generic")
+
+    script_run = next(event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran")
+    assert script_run["input"] == {"pr": 7, "labels": ["bug", 5]}
 
 
 def test_a_call_runs_the_child_and_returns_its_status_and_outputs(tmp_path: Path) -> None:
@@ -596,7 +684,13 @@ class ReadyChildResults:
     """An executor that answers every call with a ready result, as `pskill test` does."""
 
     def run_script(
-        self, block_id: str, argv: list[str], cwd: Path, env: dict[str, str], timeout_s: int
+        self,
+        block_id: str,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        timeout_s: int,
+        stdin_text: str | None = None,
     ) -> ScriptResult:
         raise AssertionError("This test runs no script.")
 

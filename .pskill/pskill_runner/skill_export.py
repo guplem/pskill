@@ -187,7 +187,7 @@ def block_body(skill: Skill, block: AnyBlock, default_retries: int) -> list[str]
     if isinstance(block, ParallelBlock):
         return parallel_body(skill, block)
     if isinstance(block, ScriptBlock):
-        return script_body(skill, block, default_retries)
+        return script_body(block, default_retries)
     if isinstance(block, CallBlock):
         return call_body(block)
     return end_body(skill, block)
@@ -240,18 +240,16 @@ def parallel_body(skill: Skill, block: ParallelBlock) -> list[str]:
     return lines
 
 
-def script_body(skill: Skill, block: ScriptBlock, default_retries: int) -> list[str]:
+def script_body(block: ScriptBlock, default_retries: int) -> list[str]:
     lines = ["Run this command:", f"`{command_text(block.run)}`"]
     produced = [f"- `{block.id}.stdout`: what the command printed.", f"- `{block.id}.exit_code`: its exit code."]
+    if isinstance(block.input, dict):
+        values = "\n".join(f"- `{name}`: {plain_value(value)}" for name, value in block.input.items())
+        lines.append("Send it this JSON object on its standard input:\n\n" + values)
+    elif block.input is not None:
+        lines.append(f"Send it this text on its standard input: {plain_value(block.input)}")
     if block.parse == "json":
         lines.append(f"The command prints JSON: write it down as `{block.id}.json`.")
-    if reads_state_file(skill, block):
-        lines.append(
-            "This command reads the values written down so far from a JSON file. Before you run it, write a "
-            "JSON file with two keys: `inputs` (the inputs of this skill) and `steps` (for each earlier step, "
-            "by its name, the values that you wrote down). Then set the environment variable "
-            "`PSKILL_STATE_FILE` to the path of that file."
-        )
     retries = block.retries if block.retries is not None else default_retries
     if retries == 0:
         lines.append("If the command fails, stop and tell the user why.")
@@ -282,24 +280,6 @@ def end_body(skill: Skill, block: EndBlock) -> list[str]:
     if block.report is not None:
         lines.append(f"Tell the user: {plain_text(prose(skill, block.report))}")
     return lines
-
-
-def reads_state_file(skill: Skill, block: ScriptBlock) -> bool:
-    """Whether a script of the skill that this command runs reads `PSKILL_STATE_FILE`."""
-    scripts_folder = skill.folder / SCRIPTS_FOLDER
-    for part in block.run:
-        match = re.search(rf"{SCRIPTS_FOLDER}/([\w./-]+)", str(part))
-        script = scripts_folder / match[1] if match else None
-        if (
-            script is not None
-            and script.is_file()
-            and "PSKILL_STATE_FILE" in script.read_text(encoding="utf-8", errors="replace")
-        ):
-            return True
-    return False
-
-
-# --- edges and visit caps -------------------------------------------------------------------------
 
 
 def next_lines(skill: Skill, block: AnyBlock, numbers: dict[str, int]) -> str:
@@ -407,9 +387,6 @@ def value_in_place(text: str, match: re.Match[str]) -> str:
 
 
 def value_words(expression: str) -> str:
-    if expression.endswith("to_file"):
-        inner = expression.rsplit("|", 1)[0].strip()
-        return f"`<the path of a new file that holds {plain_expression(inner)}>`"
     return f"`{plain_expression(expression)}`"
 
 

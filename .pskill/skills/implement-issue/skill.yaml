@@ -117,7 +117,8 @@ blocks:
   publish_plan:
     type: script
     description: Post the plan on the issue
-    run: [gh, issue, comment, "{{ steps.read_issue.json.number }}", --body-file, "{{ steps.create_plan.plan | to_file }}"]
+    run: [gh, issue, comment, "{{ steps.read_issue.json.number }}", --body-file, "-"]
+    input: "{{ steps.create_plan.plan }}"
     next: implement
 
   implement:

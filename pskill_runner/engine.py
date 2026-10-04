@@ -401,6 +401,11 @@ def load_json_text(text: str) -> Any:
     return json.loads(text)
 
 
+def stdin_text_of(script_input: Any) -> str:
+    """What a script reads on stdin: a text as it is, any other value as JSON."""
+    return script_input if isinstance(script_input, str) else json.dumps(script_input)
+
+
 def task_not_recorded(task: int, errors: list[str]) -> str:
     """The reply to a task answer that fails its checks: the subagent fixes it and submits again."""
     listed = "\n".join(f"- {error}" for error in errors)
@@ -706,17 +711,19 @@ class Run:
         """Run a script, with retries. Return the pause text on failure, or None on success."""
         self.log_block_started(block, packet=None)
         argv = [str(part) for part in self.computed(block.run, f"The command of {block.id!r}")]
-        state_file = self.folder / "script-state.json"
-        write_json_atomic(state_file, self.frame)
-        env = {**os.environ, "PSKILL_RUN_DIR": str(self.folder), "PSKILL_STATE_FILE": str(state_file)}
+        script_input = self.computed(block.input, f"The input of {block.id!r}")
+        stdin_text = None if script_input is None else stdin_text_of(script_input)
+        # A Python script reads stdin and writes stdout as UTF-8 on every system, as the runner does.
+        env = {**os.environ, "PSKILL_RUN_DIR": str(self.folder), "PYTHONIOENCODING": "utf-8"}
         problem = None
         timeout_s = block.timeout_s if block.timeout_s is not None else self.project.config.script_timeout_s
         for _ in range(self.retries_of(block) + 1):
-            result = self.executor.run_script(block.id, argv, self.project.root, env, timeout_s)
+            result = self.executor.run_script(block.id, argv, self.project.root, env, timeout_s, stdin_text)
             self.log(
                 "script_ran",
                 block=block.id,
                 argv=argv,
+                input=script_input,
                 exit_code=result.exit_code,
                 stdout=result.stdout,
                 stderr=result.stderr,

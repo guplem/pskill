@@ -32,6 +32,7 @@ from tests.test_engine_blocks import (
     PARENT_SKILL,
     PICKED_PARALLEL_SKILL,
     SCRIPT_SKILL,
+    STDIN_SKILL,
     adapter_with_subagents,  # noqa: F401 (an autouse fixture: the harness "subagents-for-tests")
 )
 
@@ -1175,3 +1176,13 @@ def test_a_duration_reads_in_milliseconds_seconds_or_minutes() -> None:
     assert format_duration(999) == "999 ms"
     assert format_duration(1500) == "2 s"
     assert format_duration(61_000) == "1 min 01 s"
+
+
+def test_the_run_detail_shows_the_input_that_a_script_got(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    write_skill(project.skills_folder, "piped", STDIN_SKILL)
+    run_id, _ = start_run(project, "piped", {"pr": "7", "body": "hello"}, mode="interactive", harness="generic")
+
+    script_run = detail_of(project, run_id)["timeline"][0]["script_runs"][0]
+
+    assert script_run["input"] == {"pr": 7, "labels": ["bug", 5]}

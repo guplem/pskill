@@ -1,6 +1,5 @@
 """Tests for pskill_runner.computed_values."""
 
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -94,13 +93,9 @@ def test_find_references_lists_the_names_used_per_namespace() -> None:
     assert find_references(text) == {("history", "ask_user"), ("steps", "plan"), ("inputs", "issue")}
 
 
-def test_to_file_writes_the_text_and_returns_its_path(tmp_path: Path) -> None:
-    context = {**CONTEXT, "run": {"dir": str(tmp_path)}}
-
-    path = compute("{{ 'long body' | to_file }}", context)
-
-    assert Path(path).read_text(encoding="utf-8") == "long body"
-    assert Path(path).parent == tmp_path / "files"
+def test_to_file_is_gone_because_scripts_read_long_values_on_stdin() -> None:
+    with pytest.raises(ComputedValueError, match="to_file"):
+        compute("{{ 'long body' | to_file }}", CONTEXT)
 
 
 def test_matches_tests_text_against_a_regular_expression() -> None:

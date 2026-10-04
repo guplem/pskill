@@ -137,6 +137,7 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
         ["run", "next"],
         {
             "run": {"type": "array", "minItems": 1, "items": {"type": ["string", "number", "boolean"]}},
+            "input": {},
             "parse": {"enum": ["text", "json"]},
             "next": {"$ref": "#/$defs/edges"},
             "timeout_s": {"type": "integer", "minimum": 1},

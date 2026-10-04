@@ -107,6 +107,15 @@ blocks:
     - {name: api, brief: "Check the API rules.", when: "{{ steps.read.json.paths | select('matches', '^api/') | list }}"}
   ```
 - A `script` gives `steps.<id>.exit_code`, `.stdout`, and `.stderr`, plus `.json` with `parse: json`.
+- A `script` gets its data only through `input`, on stdin: a mapping goes as one JSON object, a text as it is. Stdin has no length limit. A Python script reads `json.load(sys.stdin)` and prints JSON:
+  ```yaml
+  verify:
+    type: script
+    run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]
+    input: {pr: "{{ inputs.pr }}", findings: "{{ steps.review.findings }}"}
+    parse: json
+    next: report
+  ```
 - A failed block tries again `retries` times (2 by default, set in `.pskill/config.yaml`), then the run pauses. A `task`, `decision`, `parallel`, or `script` block can set its own `retries: 0` (no second try) or more. A `script` can set its own `timeout_s: 60` (300 by default).
 
 ## Edges and loops
@@ -151,7 +160,6 @@ blocks:
 - Names you can read: `inputs`, `steps.<block>` (the latest output), `history.<block>` (every output in this run of the skill, oldest first), `run` (`id`, `mode`, `harness`, `dir`), `skill` (`id`, `dir`), and `item` inside a parallel block.
 - A value from a block that has not run is missing. You can compare it (the result is false) or replace it: `{{ steps.x.value | default('none') }}`. Printing a missing value fails the run on purpose.
 - Put parentheses around a filter inside a comparison: `{{ (steps.review.outputs.findings | length) > 0 }}`.
-- `{{ text | to_file }}` writes the text to a file and gives its path. Use it for long script arguments.
 - `matches` tests text against a regular expression, anywhere in the text: `{{ path is matches('^api/') }}`, or `{{ paths | select('matches', '[.]ts$') | list }}`. Anchor the pattern with `^` and `$`.
 
 ## Writing instructions

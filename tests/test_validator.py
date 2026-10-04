@@ -252,6 +252,15 @@ def test_references_in_script_arguments_and_call_inputs_are_checked(tmp_path: Pa
     assert "blocks.child: 'steps.fetched' is not a block" in errors
 
 
+def test_references_in_a_script_input_are_checked(tmp_path: Path) -> None:
+    caller_yaml = CALLER_SKILL.replace(
+        'run: [echo, "{{ steps.research.results }}"]',
+        'run: [echo]\n    input: {results: "{{ steps.researched.results }}"}',
+    )
+
+    assert "blocks.fetch: 'steps.researched' is not a block" in catalog_problems(tmp_path, caller_yaml)
+
+
 def test_parallel_output_fields_need_a_description(tmp_path: Path) -> None:
     errors = catalog_problems(tmp_path, CALLER_SKILL.replace(', description: "What you found."', ""))
 

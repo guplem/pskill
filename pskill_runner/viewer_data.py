@@ -23,7 +23,7 @@ from pskill_runner.skill_model import AnyBlock, CallBlock, DecisionBlock, EndBlo
 FINISHED_STATUSES = ("succeeded", "failed", "cancelled")
 FAILED_PAUSE_REASONS = ("block_failed", "runner_error")
 EDGE_LABEL_LIMIT = 60
-SCRIPT_FIELDS = ("argv", "exit_code", "stdout", "stderr", "duration_ms", "problem")
+SCRIPT_FIELDS = ("argv", "input", "exit_code", "stdout", "stderr", "duration_ms", "problem")
 START_NODE = "start"
 DOTTED_EDGE_KINDS = ("visit_cap", "call")
 BLOCK_TYPE_MEANINGS = {

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.20.0 (2026-10-04)
+
+A script gets its data one way: its `input`, on stdin.
+
+- **`input` on a script block:** the runner computes it and writes it to the script's stdin. A mapping goes as one JSON object, and a text goes as it is. Stdin has no length limit, so a long value fits. Without `input`, the script reads an empty stdin.
+- **UTF-8 on every system:** a Python script reads stdin and writes stdout as UTF-8, also on Windows.
+- **The viewer shows the input:** a script block shows its `input`, and a script run shows what it read on stdin.
+- **Removed: the `to_file` filter.** Give the value through `input` instead. For a command that takes a file, such as `gh issue comment --body-file`, pass `-` and give the text as `input`.
+- **Removed: `PSKILL_STATE_FILE`.** A script no longer reads a copy of the whole run state. Name each value that it needs in its `input`.
+
 ## 0.19.0 (2026-10-04)
 
 The child skills start collapsed, behind a real switch.

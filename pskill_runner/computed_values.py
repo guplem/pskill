@@ -11,11 +11,9 @@ Rules:
 """
 
 import re
-from pathlib import Path
 from typing import Any, NoReturn
 
-from jinja2 import ChainableUndefined, TemplateSyntaxError, UndefinedError, nodes, pass_context
-from jinja2.runtime import Context
+from jinja2 import ChainableUndefined, TemplateSyntaxError, UndefinedError, nodes
 from jinja2.sandbox import SandboxedEnvironment
 
 SINGLE_EXPRESSION = re.compile(r"^\s*\{\{(?P<expression>(?:(?!\{\{|\}\}).)*)\}\}\s*$", re.DOTALL)
@@ -42,16 +40,6 @@ class MissingValue(ChainableUndefined):
         self._fail_as_missing()
 
 
-@pass_context
-def to_file(context: Context, text: str) -> str:
-    """Write a text to the run's `files/` folder and return the path. Use it for long script arguments."""
-    files_folder = Path(context["run"]["dir"]) / "files"
-    files_folder.mkdir(parents=True, exist_ok=True)
-    path = files_folder / f"{len(list(files_folder.iterdir())) + 1}.txt"
-    path.write_text(str(text), encoding="utf-8", newline="\n")
-    return str(path)
-
-
 def matches(text: Any, pattern: str) -> bool:
     """True when the regular expression `pattern` matches anywhere in the text. Use `^` and `$` to anchor it."""
     return re.search(pattern, str(text)) is not None
@@ -71,7 +59,6 @@ class PskillEnvironment(SandboxedEnvironment):
 
 
 ENVIRONMENT = PskillEnvironment(undefined=MissingValue, keep_trailing_newline=True, autoescape=False)
-ENVIRONMENT.filters["to_file"] = to_file
 ENVIRONMENT.tests["matches"] = matches
 
 

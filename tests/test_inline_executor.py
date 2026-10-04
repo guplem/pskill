@@ -22,3 +22,19 @@ def test_a_command_that_does_not_exist_is_a_problem_not_a_crash(tmp_path: Path) 
 
     assert result.exit_code is None
     assert result.problem == "the command 'pskill-no-such-command' was not found"
+
+
+def test_a_command_reads_the_given_text_on_stdin(tmp_path: Path) -> None:
+    argv = [sys.executable, "-c", "import sys; print(sys.stdin.read().upper())"]
+
+    result = RealExecutor().run_script("check", argv, tmp_path, dict(os.environ), timeout_s=30, stdin_text="hello")
+
+    assert result.stdout == "HELLO\n"
+
+
+def test_a_command_without_stdin_text_reads_an_empty_stdin(tmp_path: Path) -> None:
+    argv = [sys.executable, "-c", "import sys; print(repr(sys.stdin.read()))"]
+
+    result = RealExecutor().run_script("check", argv, tmp_path, dict(os.environ), timeout_s=30)
+
+    assert result.stdout == "''\n"

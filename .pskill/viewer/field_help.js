@@ -251,15 +251,35 @@ export const FIELD_HELP = {
     details: [
       "Required on `script` blocks. The runner runs it, never the agent, so it costs no tokens and gives the same result every time.",
       "It is a list of arguments, not a shell line: pipes and `&&` do not work. The runner computes each `{{ }}` argument, then runs the list. This prevents shell injection.",
-      "The command runs in the project root. It gets the environment variables `PSKILL_RUN_DIR` and `PSKILL_STATE_FILE`.",
+      "The command runs in the project root. It gets the environment variable `PSKILL_RUN_DIR`.",
       "Put real logic in the skill's `scripts/` folder, and call it. A non-zero exit code is a failure.",
-      "For a long argument, use `{{ text | to_file }}`: it writes the text to a file and gives its path.",
+      "Give the script its data through `input`, not through arguments: arguments have a length limit.",
     ],
     examples: [
       { caption: "A command", code: "list_files:\n  type: script\n  run: [git, ls-files]\n  next: check_names" },
       {
         caption: "A script of the skill",
-        code: 'verify:\n  type: script\n  run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py", "{{ steps.review.body | to_file }}"]\n  parse: json\n  next: report',
+        code: 'verify:\n  type: script\n  run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]\n  input: {findings: "{{ steps.review.findings }}"}\n  parse: json\n  next: report',
+      },
+    ],
+  },
+  input: {
+    title: "input (script stdin)",
+    short: "The data that the script reads on stdin. The only way to give a script data.",
+    details: [
+      "Optional, on `script` blocks. The runner computes its `{{ }}` values, then writes it to the script's stdin.",
+      "A mapping (or any other value that is not text) goes as one JSON object. A text goes as it is.",
+      "Stdin has no length limit, so a long value fits. Without `input`, the script reads an empty stdin.",
+      "A Python script reads it with `json.load(sys.stdin)`, and prints its result as JSON on stdout.",
+    ],
+    examples: [
+      {
+        caption: "JSON for a script of the skill",
+        code: 'input: {pr: "{{ inputs.pr }}", findings: "{{ steps.review.findings }}"}',
+      },
+      {
+        caption: "A text for a command that reads stdin",
+        code: 'run: [gh, issue, comment, "{{ inputs.issue }}", --body-file, "-"]\ninput: "{{ steps.write.comment }}"',
       },
     ],
   },

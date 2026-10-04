@@ -77,10 +77,12 @@ class ParallelBlock(RetryableBlock):
 class ScriptBlock(RetryableBlock):
     """A command that the runner executes itself, with no shell and no LLM.
 
+    `input` is what the script reads on stdin: a text as it is, any other value as JSON.
     `timeout_s` overrides the global `script_timeout_s` in `config.yaml`.
     """
 
     run: list[Any]
+    input: Any = None
     parse: str = "text"
     timeout_s: int | None = None
     next: list[Edge]

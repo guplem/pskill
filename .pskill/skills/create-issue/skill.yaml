@@ -106,8 +106,8 @@ blocks:
   create:
     type: script
     description: Create the issue on GitHub
-    run: [gh, issue, create, --title, "{{ steps.draft_issue.title }}", --body-file, "{{ steps.draft_issue.body | to_file }}",
-          --label, waiting-for-human-check]
+    run: [gh, issue, create, --title, "{{ steps.draft_issue.title }}", --body-file, "-", --label, waiting-for-human-check]
+    input: "{{ steps.draft_issue.body }}"
     next: created
 
   created:
