@@ -31,9 +31,9 @@ In the main folder of your project, run:
 uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init
 ```
 
-This creates a `.pskill/` folder. Commit it to git, so your whole team uses the same version. Do not edit the files of the runner by hand.
+This creates a small `.pskill/` folder. Commit it to git. Its file `pskill.py` names the pskill version. The first time someone runs it, it downloads that version once, so your teammates install nothing.
 
-To update pskill later:
+To move to the newest version later (this changes one line in `.pskill/pskill.py`):
 
 ```bash
 uv run .pskill/pskill.py update
@@ -68,11 +68,11 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 | `test` | Run the skills' test cases with recorded answers. No AI model runs. |
 | `sync` | Update the small skill files, the hooks, and the permission rule. |
 
-**The viewer** shows each skill as a graph of steps, and each run as the path that it took. Click a step to see its details. You can edit skills and agents there, and replay a run step by step. You can also open it with a double-click on a file in `.pskill/launchers/`.
+**The viewer** shows each skill as a graph of steps, and each run as the path that it took. Click a step to see its details. You can edit skills and agents there, and replay a run step by step.
 
 ## Write a skill
 
-Read [`AUTHORING.md`](AUTHORING.md). The skills in [`.pskill/skills/`](.pskill/skills/) are working examples.
+Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`. The skills in [`.pskill/skills/`](.pskill/skills/) are working examples.
 
 ## Which agent apps work
 

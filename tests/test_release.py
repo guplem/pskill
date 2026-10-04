@@ -1,5 +1,6 @@
 """Tests for the release archive and the one-command install (SPEC.md milestone M6)."""
 
+import io
 import os
 import runpy
 import shutil
@@ -10,15 +11,18 @@ from pathlib import Path
 
 import pytest
 
+from pskill_runner import __version__
+from pskill_runner.install import CACHE_VARIABLE, read_pin
 from pskill_runner.release import (
     DEFAULT_RELEASE_URL,
     RELEASE_URL_VARIABLE,
+    ReleaseError,
     build_release_archive,
-    is_archive_source,
+    read_release,
+    release_file_map,
     release_url,
-    unpack_archive,
+    release_version,
 )
-from pskill_runner.vendoring import vendored_file_map
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
@@ -40,24 +44,40 @@ def run_python(script: Path, *arguments: str, cwd: Path, extra_environment: dict
     return result.stdout
 
 
-def test_the_archive_holds_exactly_the_vendored_files(tmp_path: Path) -> None:
+def zip_bytes(files: dict[str, str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, text in files.items():
+            archive.writestr(name, text)
+    return buffer.getvalue()
+
+
+def test_the_archive_holds_the_runner_the_viewer_and_the_guide(tmp_path: Path) -> None:
     archive = build_release_archive(REPOSITORY_ROOT, tmp_path / "pskill.zip")
 
     with zipfile.ZipFile(archive) as opened:
         names = set(opened.namelist())
-    assert names == set(vendored_file_map(REPOSITORY_ROOT))
-    assert "pskill.py" in names and "viewer/index.html" in names
+    assert names == set(release_file_map(REPOSITORY_ROOT))
+    assert {"pskill.py", "AUTHORING.md", "pskill_runner/cli.py", "viewer/index.html"} <= names
+    assert not any("__pycache__" in name for name in names)
 
 
-def test_init_from_the_archive_installs_a_working_runner(tmp_path: Path) -> None:
+def test_a_folder_without_the_runner_is_not_a_source(tmp_path: Path) -> None:
+    with pytest.raises(ReleaseError, match="not a pskill source"):
+        release_file_map(tmp_path)
+
+
+def test_init_from_the_archive_installs_a_working_pinned_runner(tmp_path: Path) -> None:
     archive = build_release_archive(REPOSITORY_ROOT, tmp_path / "pskill.zip")
     project_root = tmp_path / "project"
     project_root.mkdir()
+    cache = {CACHE_VARIABLE: str(tmp_path / "cache")}
 
-    run_python(REPOSITORY_ROOT / "pskill.py", "init", "--from", str(archive), cwd=project_root)
+    run_python(REPOSITORY_ROOT / "pskill.py", "init", "--from", str(archive), cwd=project_root, extra_environment=cache)
 
-    assert (project_root / ".pskill" / "pskill_runner" / "engine.py").is_file()
-    assert "pskill" in run_python(project_root / ".pskill" / "pskill.py", "--version", cwd=project_root)
+    assert not (project_root / ".pskill" / "pskill_runner").exists()
+    version = run_python(project_root / ".pskill" / "pskill.py", "--version", cwd=project_root, extra_environment=cache)
+    assert version.strip() == f"pskill {__version__}"
 
 
 def test_the_entry_script_alone_downloads_the_release_and_installs_it(tmp_path: Path) -> None:
@@ -68,11 +88,13 @@ def test_the_entry_script_alone_downloads_the_release_and_installs_it(tmp_path: 
     lone_script = Path(shutil.copy(REPOSITORY_ROOT / "pskill.py", lone_script_folder))
     project_root = tmp_path / "project"
     project_root.mkdir()
+    environment = {RELEASE_URL_VARIABLE: archive.as_uri(), CACHE_VARIABLE: str(tmp_path / "cache")}
 
-    run_python(lone_script, "init", cwd=project_root, extra_environment={"PSKILL_RELEASE_URL": archive.as_uri()})
+    run_python(lone_script, "init", cwd=project_root, extra_environment=environment)
 
-    assert (project_root / ".pskill" / "pskill.py").is_file()
-    assert (project_root / ".pskill" / "viewer" / "index.html").is_file()
+    pin = read_pin((project_root / ".pskill" / "pskill.py").read_text(encoding="utf-8"))
+    assert pin.version == __version__
+    assert pin.url == archive.as_uri()
     assert (project_root / ".claude" / "skills" / "pskill" / "SKILL.md").is_file()
 
 
@@ -92,22 +114,27 @@ def test_the_release_url_is_the_latest_release_unless_the_variable_names_another
     assert release_url() == "https://example.com/pskill-1.0.zip"
 
 
-def test_an_archive_source_is_a_zip_file_or_a_url() -> None:
-    assert is_archive_source("dist/pskill.zip")
-    assert is_archive_source("https://example.com/download")
-    assert is_archive_source("file:///tmp/pskill")
-    assert not is_archive_source("../pskill")
-
-
-def test_unpack_archive_reads_a_local_file_and_a_file_url(tmp_path: Path) -> None:
+def test_a_release_is_read_from_a_path_or_a_file_url(tmp_path: Path) -> None:
     archive = build_release_archive(REPOSITORY_ROOT, tmp_path / "pskill.zip")
 
-    for source in (str(archive), archive.as_uri()):
-        unpacked = unpack_archive(source)
+    assert read_release(str(archive)) == archive.read_bytes()
+    assert read_release(archive.as_uri()) == archive.read_bytes()
 
-        assert unpacked.name == "pskill"
-        assert set(vendored_file_map(unpacked)) == set(vendored_file_map(REPOSITORY_ROOT))
-        shutil.rmtree(unpacked.parent)
+
+def test_the_version_comes_from_the_runner_inside_the_archive(tmp_path: Path) -> None:
+    archive = build_release_archive(REPOSITORY_ROOT, tmp_path / "pskill.zip")
+
+    assert release_version(archive.read_bytes()) == __version__
+
+
+@pytest.mark.parametrize(
+    "data",
+    [b"not a zip file", zip_bytes({"README.md": "hello"}), zip_bytes({"pskill_runner/__init__.py": "# empty\n"})],
+    ids=["not a zip", "no runner", "no version"],
+)
+def test_an_archive_without_a_runner_version_is_not_a_release(data: bytes) -> None:
+    with pytest.raises(ReleaseError, match="not a pskill release"):
+        release_version(data)
 
 
 # runpy warns that this test file has already imported the module. That is harmless here.
@@ -123,4 +150,4 @@ def test_running_the_module_builds_the_archive_at_the_given_path(
 
     assert capsys.readouterr().out.strip() == str(output_path)
     with zipfile.ZipFile(output_path) as opened:
-        assert set(opened.namelist()) == set(vendored_file_map(REPOSITORY_ROOT))
+        assert set(opened.namelist()) == set(release_file_map(REPOSITORY_ROOT))
