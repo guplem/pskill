@@ -8,7 +8,7 @@ const POLL_MS = 1000;
 const PLAY_MS = 700;
 const FOLD_LINE_LIMIT = 3;
 const PANEL_WIDTH_KEY = "pskill.panelWidth";
-const COLLAPSED_KEY = "pskill.collapseChildSkills";
+const EXPANDED_KEY = "pskill.expandChildSkills"; // only a choice to expand is kept: collapsed is the default
 const PANEL_MIN_WIDTH = 320;
 const CANVAS_MIN_WIDTH = 240;
 const READABLE_SCALE = 0.9;
@@ -182,6 +182,15 @@ function helpButton(field) {
   node.title = help.short;
   node.setAttribute("aria-label", `About ${help.title}`);
   return node;
+}
+
+// An on and off switch: a track with a knob, then its label. The role tells a screen reader what it is.
+function switchControl(text, on, onClick) {
+  const control = button(null, onClick, "switch");
+  control.setAttribute("role", "switch");
+  control.setAttribute("aria-checked", String(on));
+  control.append(element("span", null, "switch-track"), document.createTextNode(text));
+  return control;
 }
 
 // A heading or a label with its "?" button after the text.
@@ -572,8 +581,7 @@ function buildSkillScreen() {
   editToggle.setAttribute("aria-pressed", String(view.editing));
   editToggle.title = "Change the blocks and edges of this skill. Each save writes skill.yaml and keeps its comments.";
   addBar.hidden = !view.editing;
-  const collapseToggle = button("Collapse sub-skills", toggleChildSkills);
-  collapseToggle.setAttribute("aria-pressed", String(view.collapsed));
+  const collapseToggle = switchControl("Collapse sub-skills", view.collapsed, toggleChildSkills);
   collapseToggle.title = "Draw each child skill as one node, to see the main flow of a skill with many child skills.";
   bar.append(picker, status, element("span", null, "spacer"), addBar, editToggle, collapseToggle, ...zoomTools(zoomLabel));
   const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected block");
@@ -1013,15 +1021,15 @@ function savedPanelWidth() {
 
 function savedCollapsed() {
   try {
-    return localStorage.getItem(COLLAPSED_KEY) === "true";
+    return localStorage.getItem(EXPANDED_KEY) !== "true";
   } catch {
-    return false; // the browser blocks site data
+    return true; // the browser blocks site data
   }
 }
 
 function saveCollapsed(collapsed) {
   try {
-    localStorage.setItem(COLLAPSED_KEY, String(collapsed));
+    localStorage.setItem(EXPANDED_KEY, String(!collapsed));
   } catch {
     // the browser blocks site data: the choice lasts until the reload
   }
@@ -1032,7 +1040,7 @@ function saveCollapsed(collapsed) {
 function toggleChildSkills() {
   view.collapsed = !view.collapsed;
   saveCollapsed(view.collapsed);
-  view.parts.collapseToggle.setAttribute("aria-pressed", String(view.collapsed));
+  view.parts.collapseToggle.setAttribute("aria-checked", String(view.collapsed));
   if (view.collapsed && view.selectedNode) view.selectedNode = callBlockOnTop(view.selectedNode);
   view.fitted = false;
   drawPanel();
