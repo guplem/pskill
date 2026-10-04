@@ -8,6 +8,7 @@ const POLL_MS = 1000;
 const PLAY_MS = 700;
 const FOLD_LINE_LIMIT = 3;
 const PANEL_WIDTH_KEY = "pskill.panelWidth";
+const COLLAPSED_KEY = "pskill.collapseChildSkills";
 const PANEL_MIN_WIDTH = 320;
 const CANVAS_MIN_WIDTH = 240;
 const READABLE_SCALE = 0.9;
@@ -103,6 +104,7 @@ const view = {
   pollTimer: null,
   dragEnded: false,
   playTimer: null,
+  collapsed: savedCollapsed(), // the skill screen draws each child skill as its call block's node, not a frame
   parts: null,
 };
 
@@ -265,6 +267,11 @@ function agentHref(name) {
 
 function isSkillScreen() {
   return view.screen === "skill";
+}
+
+// The canvas that the screen draws: on the skill screen, with the child skills expanded or collapsed.
+function canvasData() {
+  return isSkillScreen() && view.collapsed ? view.detail?.collapsed_canvas : view.detail?.canvas;
 }
 
 // --- the runs page ----------------------------------------------------------------------------
@@ -565,14 +572,17 @@ function buildSkillScreen() {
   editToggle.setAttribute("aria-pressed", String(view.editing));
   editToggle.title = "Change the blocks and edges of this skill. Each save writes skill.yaml and keeps its comments.";
   addBar.hidden = !view.editing;
-  bar.append(picker, status, element("span", null, "spacer"), addBar, editToggle, ...zoomTools(zoomLabel));
+  const collapseToggle = button("Collapse sub-skills", toggleChildSkills);
+  collapseToggle.setAttribute("aria-pressed", String(view.collapsed));
+  collapseToggle.title = "Draw each child skill as one node, to see the main flow of a skill with many child skills.";
+  bar.append(picker, status, element("span", null, "spacer"), addBar, editToggle, collapseToggle, ...zoomTools(zoomLabel));
   const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected block");
   layer.classList.add("is-skill");
   const screen = element("div", null, "run-screen skill-screen");
   screen.append(bar, workspace);
   app.className = "";
   app.replaceChildren(screen);
-  view.parts = { picker, status, follow: null, zoomLabel, canvas, layer, note, panel, workspace };
+  view.parts = { picker, status, follow: null, zoomLabel, canvas, layer, note, panel, workspace, collapseToggle };
 }
 
 // The editor's "add a block" controls: a type, a new block id, and the button.
@@ -635,6 +645,7 @@ function drawSkillTopbar() {
     parts.push(exportLink);
   }
   status.replaceChildren(...parts);
+  view.parts.collapseToggle.hidden = !view.detail.canvas?.frames.length; // a skill with no child skill has nothing to collapse
 }
 
 function drawTopbar() {
@@ -682,7 +693,7 @@ function stepState() {
     }
   }
   const atEnd = view.step === rows().length - 1;
-  const current = view.detail.canvas && view.detail.canvas.current;
+  const current = canvasData()?.current;
   const stepNode = upToStep.length ? upToStep[upToStep.length - 1].node : null;
   const stepNodeState = atEnd ? (current ? current.state : "done") : "now";
   return { visited, taken, labels, taskStates, stepNode, stepNodeState };
@@ -698,10 +709,10 @@ function taskNodeState(nodeInfo, state) {
 
 function nodeState(node, state) {
   if (isSkillScreen()) return "plain";
-  const nodeInfo = view.detail.canvas?.nodes.find((item) => item.id === node);
+  const nodeInfo = canvasData()?.nodes.find((item) => item.id === node);
   if (nodeInfo && nodeInfo.kind === "task") return taskNodeState(nodeInfo, state);
   if (node === state.stepNode) return state.stepNodeState;
-  return state.visited.has(node) || node === view.detail.canvas?.start ? "done" : "unvisited";
+  return state.visited.has(node) || node === canvasData()?.start ? "done" : "unvisited";
 }
 
 // --- the run screen: the canvas ---------------------------------------------------------------
@@ -713,9 +724,9 @@ async function drawCanvas() {
   }
   view.rendering = true;
   try {
-    if (isSkillScreen() && !view.detail.canvas) {
+    if (isSkillScreen() && !canvasData()) {
       drawLoadError();
-    } else if (!window.mermaid || !view.detail.canvas) {
+    } else if (!window.mermaid || !canvasData()) {
       if (isSkillScreen()) drawBlockList();
       else drawStepList();
     } else {
@@ -731,7 +742,7 @@ async function drawCanvas() {
 }
 
 async function drawGraph() {
-  const { canvas: data } = view.detail;
+  const data = canvasData();
   const state = stepState();
   let source = data.template;
   for (const node of data.nodes) source = source.replace(node.token, () => state.labels[node.id] || data.labels[node.id]);
@@ -860,7 +871,7 @@ function loadElkLayout() {
 function wireCallFrame(cluster, frame) {
   cluster.dataset.node = frame.node;
   cluster.classList.add("is-call-frame");
-  const nodeInfo = view.detail.canvas.nodes.find((item) => item.id === frame.node);
+  const nodeInfo = canvasData().nodes.find((item) => item.id === frame.node);
   addHint(cluster, `${nodeInfo.hint}\n\nThe frame holds the child skill. Click the frame to see the call block.`);
   cluster.addEventListener("click", () => view.dragEnded || selectNode(frame.node));
   const rect = cluster.querySelector(":scope > rect");
@@ -1000,6 +1011,41 @@ function savedPanelWidth() {
   }
 }
 
+function savedCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === "true";
+  } catch {
+    return false; // the browser blocks site data
+  }
+}
+
+function saveCollapsed(collapsed) {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // the browser blocks site data: the choice lasts until the reload
+  }
+}
+
+// Collapse or expand the child skills. A block of a child skill that the panel shows gives way to the call
+// block that holds it, because a collapsed canvas has no node for it.
+function toggleChildSkills() {
+  view.collapsed = !view.collapsed;
+  saveCollapsed(view.collapsed);
+  view.parts.collapseToggle.setAttribute("aria-pressed", String(view.collapsed));
+  if (view.collapsed && view.selectedNode) view.selectedNode = callBlockOnTop(view.selectedNode);
+  view.fitted = false;
+  drawPanel();
+  drawCanvas();
+}
+
+// The block of the skill itself that holds a node: the node, or the call block at the top of its child frames.
+function callBlockOnTop(node) {
+  let frame;
+  while ((frame = view.detail.canvas.frames.find((item) => node.startsWith(`${item.id}_`)))) node = frame.node;
+  return node;
+}
+
 function savePanelWidth(width) {
   try {
     localStorage.setItem(PANEL_WIDTH_KEY, String(width));
@@ -1061,7 +1107,7 @@ function shownNode() {
 // Ring the shown node, and the task node of the shown task, on the canvas and in the offline card list.
 function markSelection() {
   const node = shownNode();
-  const taskNode = view.detail?.canvas?.nodes.find(
+  const taskNode = canvasData()?.nodes.find(
     (item) => item.kind === "task" && item.parent === node && item.task === view.selectedTask,
   )?.id;
   for (const item of view.parts.canvas.querySelectorAll("g.node, g.cluster, .step-card")) {
@@ -1104,7 +1150,7 @@ function drawRunPanel() {
       return;
     }
   }
-  const nodeInfo = view.detail.canvas && node ? view.detail.canvas.nodes.find((item) => item.id === node) : null;
+  const nodeInfo = canvasData() && node ? canvasData().nodes.find((item) => item.id === node) : null;
   const visits = rows()
     .map((row, index) => ({ row, index }))
     .filter((item) => item.row.node === node && item.index <= view.step);
@@ -1161,7 +1207,7 @@ function drawSkillPanel() {
 // A block of a child skill shows here read-only. Its own skill screen can edit it.
 function childSkillNote(details) {
   const note = element("p", `A block of the child skill ${details.skill_id}, which the call block `, "note");
-  const callNode = view.detail.canvas.frames.find((frame) => details.node.startsWith(`${frame.id}_`))?.node;
+  const callNode = canvasData().frames.find((frame) => details.node.startsWith(`${frame.id}_`))?.node;
   note.append(callNode ? blockRef(details.called_by, callNode, `The call block ${details.called_by}.`) : details.called_by, " runs. ");
   note.append(entityLink(`Open ${details.skill_id}`, skillHref(details.skill_id)));
   return note;
@@ -1437,7 +1483,7 @@ async function saveEdit(request, errorBox) {
 }
 
 function blockOfNode(node) {
-  return view.detail.canvas?.nodes.find((item) => item.id === node)?.block ?? "";
+  return canvasData()?.nodes.find((item) => item.id === node)?.block ?? "";
 }
 
 // Nothing selected: the skill itself, and what `pskill validate` says about it.
@@ -1649,7 +1695,7 @@ function visitPicker(visits, chosen) {
 // A hover lights up the edge and its target on the canvas, and a click opens the target.
 function exitsOf(node) {
   const list = element("div", null, "exits");
-  for (const edge of view.detail.canvas.edges.filter((item) => item.source === node && item.kind !== "tasks")) {
+  for (const edge of canvasData().edges.filter((item) => item.source === node && item.kind !== "tasks")) {
     const card = button(null, () => {
       highlightExit(edge, false);
       selectNode(edge.target);
@@ -1691,7 +1737,7 @@ function highlightExit(edge, on) {
 // With no `fromNode`, the frame is the skill itself.
 function nodeInFrameOf(fromNode, block) {
   const node = `${fromNode?.match(/^f\d+_/)?.[0] ?? "f0_"}${block}`;
-  return view.detail?.canvas?.nodes.some((item) => item.id === node) ? node : null;
+  return canvasData()?.nodes.some((item) => item.id === node) ? node : null;
 }
 
 // The nodes that a value reads through steps.<block> or history.<block>.
