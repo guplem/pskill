@@ -98,6 +98,7 @@ blocks:
 
 - Every top-level field of `inputs`, `outputs`, and each block `output` needs a `description`.
 - Field types: `string`, `integer`, `number`, `boolean`, `array` (with `items`), `object` (with `properties`). A field is required unless `optional: true`.
+- Make an input required only when the skill cannot start without it: the stub tells the agent to ask the user for each missing one. Give an optional input a `default` for the common case. A calling skill passes another value where it needs one.
 - A `parallel` block may name `agent: <name>`: the text of `.pskill/agents/<name>.md` then heads each task's prompt.
 - A `parallel` block may set `task_name`, a `{{ }}` value per item, to name each task in the packet and the viewer. Without a name, a task shows as "task 0". When a block of the main agent builds the list, add an optional `name` field to its items and set `task_name: "{{ item.name }}"`.
 - In a `for_each` written as a YAML list, an item may have a `when`: the item starts a task only when its `when` is true. The task's `item` has no `when` key. The viewer lists the skipped items with their condition. Use it for a fixed set of subagents where each one runs only when it is needed:

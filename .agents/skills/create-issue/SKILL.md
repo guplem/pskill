@@ -10,6 +10,7 @@ Goal: File one clear GitHub issue that the user approved, or reuse an existing i
 
 1. Map the request to the inputs:
    - `description` (string): What the issue is about, in the user's words.
+   Ask the user for each required input that the request does not give, before you run `start`.
 2. Run: `uv run .pskill/pskill.py start create-issue --harness auto --input description=<value>`
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,
    in the same literal form that the runner's packets show for `submit`.

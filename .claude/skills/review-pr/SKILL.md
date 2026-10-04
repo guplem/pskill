@@ -10,8 +10,10 @@ Goal: Find the real defects in the pull request, each backed by an exact quote f
 
 1. Map the request to the inputs:
    - `pr` (integer): Number of the pull request to review.
-   - `post_verdict` (boolean, optional): false: only return the findings, never post.
-2. Run: `uv run .pskill/pskill.py start review-pr --harness auto --input pr=<value> --input post_verdict=<value>`
+   - `post_verdict` (boolean, optional, default: true): false: only return the findings, never post.
+   Ask the user for each required input that the request does not give, before you run `start`.
+2. Run: `uv run .pskill/pskill.py start review-pr --harness auto --input pr=<value>`
+   Add `--input <name>=<value>` for each optional input that the request gives.
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,
    in the same literal form that the runner's packets show for `submit`.
    Add `--mode autonomous` only when the user asked for no questions.

@@ -605,7 +605,10 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
 
 1. Map the request to the inputs:
    - `issue` (string): issue number, or a text that describes new work.
+   - `unattended` (boolean, optional, default: false): true when the user wants no questions.
+   Ask the user for each required input that the request does not give, before you run `start`.
 2. Run: `uv run .pskill/pskill.py start implement-issue --harness auto --input issue=<value>`
+   Add `--input <name>=<value>` for each optional input that the request gives.
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin, in the same literal form as `submit`.
    Add `--mode autonomous` only when the user asked for no questions.
 3. The runner prints one step. Do only that step, then run the submit command at its end.
@@ -616,6 +619,7 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
 ```
 
 - The frontmatter follows the Agent Skills spec.
+- **Inputs:** each input shows its type, `optional`, and its `default`. The start command names only the required inputs, so the agent never invents a value for an optional one. When a skill has a required input, the stub tells the agent to ask the user for each one that the request does not give, before `start`. (Added in 0.21.0: before, the start command named every input, and the stub showed no default.)
 - `sync` overwrites and deletes only files that carry the generated marker. If a hand-written skill has the same name, `sync` stops with an error.
 - `sync` also writes one built-in stub, `pskill`: "Resume, inspect, pause, or cancel a pskill run. Use when the user mentions an unfinished skill run." Its body lists `runs`, `current`, `resume`, `pause`, `cancel`, and `view`.
 - Commit the stubs. `pskill validate` fails when a stub is out of date.

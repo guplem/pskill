@@ -10,6 +10,7 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
 
 1. Map the request to the inputs:
    - `issue` (string): Issue number, or a text that describes new work.
+   Ask the user for each required input that the request does not give, before you run `start`.
 2. Run: `uv run .pskill/pskill.py start implement-issue --harness auto --input issue=<value>`
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,
    in the same literal form that the runner's packets show for `submit`.
