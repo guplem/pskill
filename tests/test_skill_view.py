@@ -174,6 +174,7 @@ def test_a_skill_that_fails_to_load_shows_its_error_instead_of_a_graph(tmp_path:
     detail = detail_of(project, "broken")
 
     assert detail["canvas"] is None
+    assert detail["collapsed_canvas"] is None
     assert detail["blocks"] == {}
     assert any("description" in problem for problem in detail["error"])
 
@@ -293,6 +294,18 @@ def test_a_call_block_is_drawn_as_the_frame_of_its_child_skill(tmp_path: Path) -
     assert canvas["labels"]["f1"] == "<b>child</b><br/>call: child"
     # The main line goes through the frame, and on inside it.
     assert canvas["main_edges"] == ["L_start_f0_greet_0", "L_f0_greet_f1_0", "L_f1_f0_done_0", "L_f1_greet_f1_done_0"]
+
+
+def test_the_collapsed_canvas_draws_a_call_block_as_one_node(tmp_path: Path) -> None:
+    canvas = detail_of(make_project(tmp_path), "parent")["collapsed_canvas"]
+    template = canvas["template"]
+
+    assert '  f0_child["@@f0_child@@"]\n' in template
+    assert "subgraph" not in template
+    assert "  f0_greet --> f0_child\n" in template
+    assert canvas["frames"] == []
+    assert {node["id"] for node in canvas["nodes"]} == {"f0_greet", "f0_child", "f0_done", "f0_failed"}
+    assert canvas["main_edges"] == ["L_start_f0_greet_0", "L_f0_greet_f0_child_0", "L_f0_child_f0_done_0"]
 
 
 def test_a_child_that_calls_a_skill_holds_that_frame_inside_its_own(tmp_path: Path) -> None:

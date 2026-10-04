@@ -217,3 +217,11 @@ def test_a_block_reference_lights_up_its_block_on_the_canvas() -> None:
     assert "referencedNodes(edge.when, edge.source)" in script  # an edge of the canvas lights up what it reads
     assert ".layer g.cluster.is-referenced > rect {" in style  # a call frame lights up too
     assert "--ref:" in style
+
+
+def test_the_skill_screen_can_collapse_its_child_skills() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    assert 'button("Collapse sub-skills", toggleChildSkills)' in script
+    assert "view.detail?.collapsed_canvas" in script
+    assert "localStorage.getItem(COLLAPSED_KEY)" in script  # the choice stays, inside try and catch

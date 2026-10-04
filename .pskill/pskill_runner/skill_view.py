@@ -2,7 +2,8 @@
 
 It reads the skills in `.pskill/skills/`, never a run's copy. The canvas is the run canvas with no run parts
 (no status, no current step, and no timeline), with one change: each call block is drawn as the frame of its
-child skill, in the call block's place, and a child's own call blocks are frames inside that frame.
+child skill, in the call block's place, and a child's own call blocks are frames inside that frame. A second,
+collapsed canvas has only the skill's own blocks, with each call block as one node, for a quick look at the flow.
 """
 
 import json
@@ -93,6 +94,7 @@ def skill_detail(project: Project, skill_id: str) -> dict[str, Any] | None:
         return {
             "skill": {"id": skill_id},
             "canvas": None,
+            "collapsed_canvas": None,
             "blocks": {},
             "child_blocks": {},
             "problems": [],
@@ -108,6 +110,7 @@ def skill_detail(project: Project, skill_id: str) -> dict[str, Any] | None:
     return {
         "skill": skill_facts(skill),
         "canvas": skill_canvas(frames),
+        "collapsed_canvas": skill_canvas(frames[:1]),  # the toggle that collapses the child skills: no frames
         "blocks": {
             block.id: {
                 **block_details(skill, block, catalog.agent_names),
