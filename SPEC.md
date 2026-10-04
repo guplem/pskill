@@ -1162,7 +1162,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 | `GET /api/agents/<name>` | The agent's file path, its text, and each skill and parallel block that uses it. |
 | `POST /api/agents/<name>/edit` | The agent editor's one write: the new text of an existing agent file (`{"text": ...}`). Returns the new agent detail, or the problems. |
 
-**Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, and dashed grey for not visited. Taken edges are solid blue. Each block type has its own icon, drawn for pskill as inline SVG: on its node above the block name, and next to the type in the side panel. The page follows the system's dark mode.
+**Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, dashed grey for not visited, and teal for a block that the text under the pointer names. Taken edges are solid blue. Each block type has its own icon, drawn for pskill as inline SVG: on its node above the block name, and next to the type in the side panel. The page follows the system's dark mode.
 
 **Six screens:**
 1. **Runs.**
@@ -1180,6 +1180,8 @@ The three proof skills together must exercise every runtime feature. pytest fixt
      - the run state as a JSON tree.
 
      Long content shows its first 3 lines, with a button to show all of it. The panel builds Markdown and JSON trees from elements, never from HTML.
+
+     A close button at the panel's top right, or Escape, clears the selection: the panel shows the current step again. On the skill screen, it shows the skill again. On the run screen, "Arrived from" and "Went next to" name their blocks as references (see screen 4).
    - A link to the skill screen of the run's skill.
    - A replay bar: one mark per step, with rejected answers and human decisions marked. Drag it, press play, or use the left and right arrow keys, and the canvas and the panel show the run as it was at that step. At its end, it follows the live run. This is the step-through replay (D14).
 3. **Skills.** One card per skill in `.pskill/skills/`, also a skill with no runs, with its description, block count, and run count. A skill that does not load shows its error. The `internal` skills come last, in their own section.
@@ -1191,6 +1193,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
    - A script block also shows the text of each file inside its skill folder that its command runs as `{{ skill.dir }}/<path>`.
    - Each output field is a card: its name, its type, optional, its default, its allowed values, its description, and its nested fields.
    - Each exit is a card: the target block, a tag (if, otherwise, always, choice, or visit cap), and the whole condition. A hover on the card highlights its edge and its target on the canvas. A click opens the target.
+   - **References:** each `steps.<block>` and `history.<block>` in the panel (an instruction, a fact, a command, an input or output value, an item's `when`, an exit condition) is a teal reference to that block of the same frame. A hover lights up the block on the canvas, and a click opens it. A hover on an edge of the canvas lights up the blocks that its condition reads. A problem whose location is a block, and the call block that runs a child, are references too.
    - **Field help:** each field of a block (in the panel and in the editor), and the goal, inputs, and outputs of the skill, has a "?" button. Its tooltip says what the field is. A click opens a dialog with the details and YAML examples. `viewer/field_help.js` holds the texts; a test checks that every block field of the schema has one.
    - A skill that does not load shows its load error instead of a graph.
    - An "Export as Markdown" button downloads the export (section 14.1).

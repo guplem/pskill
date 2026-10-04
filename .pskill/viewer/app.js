@@ -72,6 +72,8 @@ const INVOCATION_MEANING = {
   manual: "Only the user starts it.",
   internal: "Only a call block of another skill starts it.",
 };
+// A value that reads the output of a block: steps.<block> (its latest output) or history.<block> (every output).
+const BLOCK_REFERENCE = /\b(steps|history)\.([a-z0-9_]+)(?:\.\w+)*/g;
 
 const app = document.getElementById("app");
 const view = {
@@ -780,6 +782,11 @@ async function drawGraph() {
     const path = svgNode.querySelector(`[id="${renderId}-${edge.id}"]`);
     const label = svgNode.querySelector(`g.label[data-id="${edge.id}"]`);
     if (path) path.dataset.edge = edge.id; // for the exit cards of the panel
+    const references = referencedNodes(edge.when, edge.source); // the blocks that the edge's condition reads
+    for (const part of references.length ? [label, path] : []) {
+      part?.addEventListener("mouseenter", () => highlightReferences(references, true));
+      part?.addEventListener("mouseleave", () => highlightReferences(references, false));
+    }
     if (isSkillScreen()) {
       if (label) addHint(label, edge.hint);
       if (path) addHint(path, edge.hint);
@@ -1028,14 +1035,27 @@ function markSelection() {
 }
 
 function drawPanel() {
-  // A redraw removes the exit card under the pointer before its mouseleave, so clear its highlight here.
-  for (const item of view.parts.layer.querySelectorAll(".is-hovered, .is-exit-target")) {
-    item.classList.remove("is-hovered", "is-exit-target");
+  // A redraw removes the card or the reference under the pointer before its mouseleave, so clear its highlight here.
+  for (const item of view.parts.canvas.querySelectorAll(".is-hovered, .is-exit-target, .is-referenced")) {
+    item.classList.remove("is-hovered", "is-exit-target", "is-referenced");
   }
-  if (isSkillScreen()) {
-    drawSkillPanel();
-    return;
-  }
+  if (isSkillScreen()) drawSkillPanel();
+  else drawRunPanel();
+  linkReferences(view.parts.panel, shownNode());
+  addCloseButton();
+}
+
+// The close button at the top right of the panel, while the user has a block or a step selected.
+// It clears the selection: the skill screen then shows the skill, and the run screen the current step.
+function addCloseButton() {
+  if (view.selectedNode === null && (isSkillScreen() || view.selectedRow === null)) return;
+  const close = button("×", () => selectNode(null), "panel-close");
+  close.title = isSkillScreen() ? "Close this block (Esc)" : "Close, and show the current step again (Esc)";
+  close.setAttribute("aria-label", close.title);
+  view.parts.panel.prepend(close);
+}
+
+function drawRunPanel() {
   const panel = view.parts.panel;
   const state = stepState();
   const node = view.selectedNode || (view.selectedRow === null ? state.stepNode : null);
@@ -1105,7 +1125,9 @@ function drawSkillPanel() {
 
 // A block of a child skill shows here read-only. Its own skill screen can edit it.
 function childSkillNote(details) {
-  const note = element("p", `A block of the child skill ${details.skill_id}, which the call block ${details.called_by} runs. `, "note");
+  const note = element("p", `A block of the child skill ${details.skill_id}, which the call block `, "note");
+  const callNode = view.detail.canvas.frames.find((frame) => details.node.startsWith(`${frame.id}_`))?.node;
+  note.append(callNode ? blockRef(details.called_by, callNode, `The call block ${details.called_by}.`) : details.called_by, " runs. ");
   note.append(entityLink(`Open ${details.skill_id}`, skillHref(details.skill_id)));
   return note;
 }
@@ -1408,7 +1430,10 @@ function problemsSection() {
   const list = element("ul", null, "problems");
   for (const problem of problems) {
     const item = element("li", null, `problem is-${problem.level}`);
-    item.append(element("strong", `${problem.level} `), document.createTextNode(`${problem.location}: ${problem.message}`));
+    const block = problem.location.match(/^blocks\.([a-z0-9_]+)/)?.[1];
+    const node = block ? nodeInFrameOf(null, block) : null;
+    const location = node ? blockRef(problem.location, node, `The block ${block}.`) : problem.location;
+    item.append(element("strong", `${problem.level} `), location, `: ${problem.message}`);
     list.append(item);
   }
   return section(`Checks · ${problems.length}`, list);
@@ -1625,18 +1650,80 @@ function highlightExit(edge, on) {
   layer.querySelector(`g.node[data-node="${target}"], g.cluster[data-node="${target}"]`)?.classList.toggle("is-exit-target", on);
 }
 
+// --- references: a text that names a block lights up that block on the canvas ----------------------
+
+// The node of a block in the canvas frame of `fromNode` (f<frame>_<block>), or null when the canvas has none.
+// With no `fromNode`, the frame is the skill itself.
+function nodeInFrameOf(fromNode, block) {
+  const node = `${fromNode?.match(/^f\d+_/)?.[0] ?? "f0_"}${block}`;
+  return view.detail?.canvas?.nodes.some((item) => item.id === node) ? node : null;
+}
+
+// The nodes that a value reads through steps.<block> or history.<block>.
+function referencedNodes(text, fromNode) {
+  return [...(text || "").matchAll(BLOCK_REFERENCE)].map((match) => nodeInFrameOf(fromNode, match[2])).filter(Boolean);
+}
+
+// Light up the nodes, or the call frames, on the canvas and in the offline card list.
+function highlightReferences(nodes, on) {
+  for (const node of nodes) {
+    for (const item of view.parts.canvas.querySelectorAll(`[data-node="${CSS.escape(node)}"]`)) {
+      item.classList.toggle("is-referenced", on);
+    }
+  }
+}
+
+// A block name in the panel: a hover lights up its node, and a click shows it.
+function blockRef(text, node, hint) {
+  const ref = element("span", text, "block-ref");
+  ref.title = `${hint}\nClick to see this ${isSkillScreen() ? "block" : "step"}.`;
+  ref.addEventListener("mouseenter", () => highlightReferences([node], true));
+  ref.addEventListener("mouseleave", () => highlightReferences([node], false));
+  ref.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation(); // inside an exit card, the click is for the named block, not for the exit
+    highlightReferences([node], false);
+    selectNode(node);
+  });
+  return ref;
+}
+
+// Turn each steps.<block> and history.<block> in the text of `root` into a block reference of the same frame.
+function linkReferences(root, fromNode) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const texts = [];
+  while (walker.nextNode()) texts.push(walker.currentNode);
+  for (const text of texts) {
+    if (text.parentElement.closest(".block-ref, textarea, select")) continue;
+    const parts = [];
+    let end = 0;
+    for (const match of text.data.matchAll(BLOCK_REFERENCE)) {
+      const node = nodeInFrameOf(fromNode, match[2]);
+      if (!node) continue;
+      const hint = match[1] === "steps" ? `The latest output of ${match[2]}.` : `Every output of ${match[2]}, oldest first.`;
+      parts.push(text.data.slice(end, match.index), blockRef(match[0], node, hint));
+      end = match.index + match[0].length;
+    }
+    if (parts.length) text.replaceWith(...parts, text.data.slice(end));
+  }
+}
+
 function rowSections(row) {
   const facts = element("dl", null, "facts");
-  const addFact = (name, value, hint) => {
+  // A fact that starts with a block name of the same frame: the name lights up that block on the canvas.
+  const addFact = (name, value, hint, block = null) => {
     const term = element("dt", name);
     term.title = hint;
-    facts.append(term, element("dd", value));
+    const definition = element("dd", value);
+    const node = block && row.node && value.startsWith(block) ? nodeInFrameOf(row.node, block) : null;
+    if (node) definition.replaceChildren(blockRef(block, node, `The step ${block}.`), value.slice(block.length));
+    facts.append(term, definition);
   };
-  addFact("Arrived from", row.arrival, "The step before this one, and the edge condition that led here.");
+  addFact("Arrived from", row.arrival, "The step before this one, and the edge condition that led here.", row.from);
   addFact("Started", formatTime(row.ts), "When the run entered this step.");
   addFact("Duration", row.duration_ms === null ? "not finished" : formatDuration(row.duration_ms), "From the start of this step to its accepted answer.");
   if (row.decided_by) addFact("Decided by", row.decided_by, "Who gave the accepted answer: the agent, a human, or the runner itself.");
-  if (row.left_by) addFact("Went next to", `${row.left_by.to}${row.left_by.label ? ` (${row.left_by.label})` : ""}`, "The step after this one, and the edge condition that led there.");
+  if (row.left_by) addFact("Went next to", `${row.left_by.to}${row.left_by.label ? ` (${row.left_by.label})` : ""}`, "The step after this one, and the edge condition that led there.", row.left_by.to);
   const parts = [facts];
   if (row.block_type === "script") return [...parts, ...scriptSections(row)];
   if (row.packet) parts.push(section(row.input_title, folded(markdown(row.packet), `${row.seq}:input`)));
@@ -2043,7 +2130,10 @@ window.addEventListener("hashchange", () => {
   render();
 });
 window.addEventListener("keydown", (event) => {
-  if (view.screen !== "run" || !view.parts || ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+  if (!view.parts || ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+  // Escape does what the panel's close button does. An open help dialog takes Escape for itself.
+  if (event.key === "Escape" && !document.querySelector("dialog[open]")) view.parts.panel.querySelector(".panel-close")?.click();
+  if (view.screen !== "run") return;
   if (event.key === "ArrowRight") setStep(view.step + 1);
   else if (event.key === "ArrowLeft") setStep(view.step - 1);
 });

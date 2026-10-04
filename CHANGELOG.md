@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.0 (2026-10-04)
+
+The viewer shows which blocks a value reads, and the panel can close.
+
+- **Close the panel's selection:** a × button at the top right of the side panel, or Escape, clears the selection. The skill screen then shows the skill, and the run screen the current step.
+- **See the block that a value reads:** each `steps.<block>` and `history.<block>` in the side panel is a teal reference. A hover lights up that block on the canvas, also a call block's frame, and a click opens it. This covers instructions, facts, commands, input and output values, item conditions, and exit conditions.
+- **More references:** a hover on an edge of the canvas lights up the blocks that its condition reads. A problem's block, the call block that runs a child, and the run screen's "Arrived from" and "Went next to" light up their blocks too.
+
 ## 0.14.0 (2026-10-04)
 
 On the skill screen, a call block is the frame of its child skill.
