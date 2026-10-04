@@ -1,4 +1,4 @@
-/* The pskill viewer. One color per meaning: done, now, waiting for you, a problem, not visited. */
+/* The pskill viewer. One color per meaning: done, now, waiting for you, a problem, not visited, referenced. */
 
 :root {
   --ground: #f4f5f7;
@@ -15,6 +15,8 @@
   --now-ink: #8c5406;
   --human: #7b4fd6;
   --human-bg: #f4eefe;
+  --ref: #0b8a78;
+  --ref-bg: #e2f5f2;
   --bad: #b42318;
   --bad-bg: #fde7e4;
   --ghost: #b8c0cc;
@@ -43,6 +45,8 @@
     --now-ink: #f5c26b;
     --human: #a98bf0;
     --human-bg: #231b38;
+    --ref: #3ccdb5;
+    --ref-bg: #10302b;
     --bad: #ff7a6b;
     --bad-bg: #3a1714;
     --ghost: #4a5361;
@@ -1263,6 +1267,74 @@ a.tool {
   stroke: var(--ink) !important;
   stroke-width: 3px !important;
   stroke-dasharray: none !important;
+}
+
+/* A block that the text under the pointer names: a steps or history value, an edge condition, or a problem. */
+.layer g.node.is-referenced rect,
+.layer g.node.is-referenced polygon,
+.layer g.node.is-referenced circle,
+.layer.is-skill g.node.is-referenced rect,
+.layer.is-skill g.node.is-referenced polygon,
+.layer.is-skill g.node.is-referenced circle,
+.layer g.cluster.is-referenced > rect {
+  stroke: var(--ref) !important;
+  stroke-width: 3px !important;
+  stroke-dasharray: none !important;
+}
+
+.layer g.node.is-referenced,
+.layer g.cluster.is-referenced > rect {
+  filter: drop-shadow(0 0 6px var(--ref));
+}
+
+.step-card.is-referenced {
+  outline: 2.5px solid var(--ref);
+  outline-offset: 2px;
+}
+
+.block-ref {
+  color: var(--ref);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.block-ref:hover {
+  background: var(--ref-bg);
+}
+
+/* The close button of the panel: it takes no room, and it stays at the top right while the panel scrolls. */
+.panel-close {
+  position: sticky;
+  top: 8px;
+  z-index: 2;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  width: 30px;
+  height: 30px;
+  margin: -8px -10px -38px 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  font: 400 20px/1 var(--font);
+  cursor: pointer;
+}
+
+.panel-close:hover,
+.panel-close:focus-visible {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+/* The title next to the close button keeps clear of it. */
+.panel-close + .panel-head,
+.panel-close + .panel-title,
+.panel-close + .note,
+.panel-close + .edit-form > .panel-head {
+  padding-right: 34px;
 }
 
 .problem.is-error strong {

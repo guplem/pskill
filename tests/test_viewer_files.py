@@ -182,3 +182,23 @@ def test_a_name_that_leads_to_another_skill_or_agent_is_a_link_with_an_arrow() -
 
     assert "function entityLink(" in script
     assert ".entity-link::after" in style
+
+
+def test_the_panel_has_a_close_button_and_escape_clears_the_selection() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    style = (VIEWER / "style.css").read_text(encoding="utf-8")
+
+    assert '() => selectNode(null), "panel-close")' in script
+    assert 'event.key === "Escape"' in script
+    assert ".panel-close {\n  position: sticky;" in style  # it stays reachable while the panel scrolls
+
+
+def test_a_block_reference_lights_up_its_block_on_the_canvas() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    style = (VIEWER / "style.css").read_text(encoding="utf-8")
+
+    assert r"const BLOCK_REFERENCE = /\b(steps|history)\." in script
+    assert "linkReferences(view.parts.panel, shownNode());" in script
+    assert "referencedNodes(edge.when, edge.source)" in script  # an edge of the canvas lights up what it reads
+    assert ".layer g.cluster.is-referenced > rect {" in style  # a call frame lights up too
+    assert "--ref:" in style
