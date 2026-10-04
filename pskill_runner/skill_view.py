@@ -178,7 +178,7 @@ def skill_canvas(frames: list[CanvasFrame]) -> dict[str, Any]:
     edges = [edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame) if edge.kind != "call"]
     number_edges(edges, drawn_as)
     nodes = block_nodes(frames)
-    labels = {node["id"]: node_label(node["block"], [node["type"]], []) for node in nodes}
+    labels = {node["id"]: node_label(node["block"], [node["type_text"]], []) for node in nodes}
     for index in calls.values():
         frame = frames[index]
         labels[frame_id(index)] = f"<b>{frame.called_by}</b><br/>call: {mermaid_text(frame.skill.id)}"

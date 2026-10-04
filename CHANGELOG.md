@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.18.0 (2026-10-04)
+
+A call block's node names its child skill.
+
+- **`call: <skill>` on the node:** below the block name, a call block's node shows the child skill that it runs, instead of only `call`. It shows on the skill screen with the child skills collapsed, and on the run screen, also after the step ran.
+- **One line:** node labels have more room before they wrap, so a long skill name stays on one line.
+
 ## 0.17.0 (2026-10-04)
 
 The skill screen can collapse its child skills.

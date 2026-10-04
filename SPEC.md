@@ -1164,7 +1164,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 | `GET /api/agents/<name>` | The agent's file path, its text, and each skill and parallel block that uses it. |
 | `POST /api/agents/<name>/edit` | The agent editor's one write: the new text of an existing agent file (`{"text": ...}`). Returns the new agent detail, or the problems. |
 
-**Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, dashed grey for not visited, and teal for a block that the text under the pointer names. Taken edges are solid blue. Each block type has its own icon, drawn for pskill as inline SVG: on its node above the block name, and next to the type in the side panel. The page follows the system's dark mode.
+**Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, dashed grey for not visited, and teal for a block that the text under the pointer names. Taken edges are solid blue. Each block type has its own icon, drawn for pskill as inline SVG: on its node above the block name, and next to the type in the side panel. Below the name, a node shows its type; a call block's node shows `call: <child skill>`, so the flow reads without a click. The page follows the system's dark mode.
 
 **Six screens:**
 1. **Runs.**
