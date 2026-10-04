@@ -452,6 +452,31 @@ pre {
   stroke-dasharray: 7 5;
 }
 
+/* A call block drawn as its child's frame: the whole frame selects it, and its title sits at the top left. */
+.layer g.cluster.is-call-frame {
+  cursor: pointer;
+}
+
+.layer g.cluster.is-call-frame.is-selected > rect,
+.layer g.cluster.is-call-frame.is-exit-target > rect {
+  stroke: var(--ink) !important;
+  stroke-width: 2.5px !important;
+}
+
+.layer g.cluster.is-call-frame > .cluster-label div,
+.layer g.cluster.is-call-frame > .cluster-label span,
+.layer g.cluster.is-call-frame > .cluster-label p {
+  text-align: left !important;
+  font-weight: 400 !important;
+  color: var(--muted) !important;
+}
+
+.layer g.cluster.is-call-frame > .cluster-label b {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
 .layer .cluster-label,
 .layer .cluster-label span,
 .layer .cluster-label p {

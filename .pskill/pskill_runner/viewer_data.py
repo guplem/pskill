@@ -334,17 +334,20 @@ def frame_edges(index: int, frame: CanvasFrame) -> list[CanvasEdge]:
     return edges
 
 
-def number_edges(edges: list[CanvasEdge]) -> list[CanvasEdge]:
+def number_edges(edges: list[CanvasEdge], drawn_as: dict[str, str] | None = None) -> list[CanvasEdge]:
     """Give each edge the DOM id that Mermaid gives it: `L_<source>_<target>_<n>`.
 
     Mermaid 12 numbers the first edge of a source and target pair 0, and each later one of that pair
-    one more than the count of edges before it: 0, 2, 3, ...
+    one more than the count of edges before it: 0, 2, 3, ... `drawn_as` names the nodes that the template
+    draws as something else (the skill screen draws a call block as the frame of its child skill).
     """
+    drawn = drawn_as or {}
     counts: dict[tuple[str, str], int] = {}
     for edge in edges:
-        count = counts.get((edge.source, edge.target), 0)
-        counts[(edge.source, edge.target)] = count + 1
-        edge.id = f"L_{edge.source}_{edge.target}_{0 if count == 0 else count + 1}"
+        pair = (drawn.get(edge.source, edge.source), drawn.get(edge.target, edge.target))
+        count = counts.get(pair, 0)
+        counts[pair] = count + 1
+        edge.id = f"L_{pair[0]}_{pair[1]}_{0 if count == 0 else count + 1}"
     return edges
 
 

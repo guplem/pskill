@@ -262,16 +262,47 @@ def test_a_computed_for_each_shows_its_expression_and_no_cards(tmp_path: Path) -
     assert check["for_each_items"] == []
 
 
-def test_a_call_block_shows_its_child_skill_in_a_frame(tmp_path: Path) -> None:
-    detail = detail_of(make_project(tmp_path), "parent")
-    canvas = detail["canvas"]
+GRAND_SKILL = """\
+schema: pskill/v1
+id: grand
+description: Calls the parent.
+goal: Run the parent.
+entry: run_parent
+blocks:
+  run_parent:
+    type: call
+    skill: parent
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
 
-    assert '  subgraph f1 ["child · called by child"]' in canvas["template"]
-    child_nodes = [node["id"] for node in canvas["nodes"] if node["frame"] == 1]
-    assert child_nodes == ["f1_greet", "f1_done"]
-    assert {"source": "f0_child", "target": "f1_greet", "kind": "call"}.items() <= next(
-        edge for edge in canvas["edges"] if edge["kind"] == "call"
-    ).items()
+
+def test_a_call_block_is_drawn_as_the_frame_of_its_child_skill(tmp_path: Path) -> None:
+    canvas = detail_of(make_project(tmp_path), "parent")["canvas"]
+    template = canvas["template"]
+
+    assert '  subgraph f1 ["@@f1@@"]\n    f1_greet["@@f1_greet@@"]\n    f1_done["@@f1_done@@"]\n  end\n' in template
+    assert "f0_child[" not in template
+    assert "  f0_greet --> f1\n" in template
+    assert all(edge["kind"] != "call" for edge in canvas["edges"])
+    leaving = [edge for edge in canvas["edges"] if edge["source"] == "f0_child"]
+    assert [edge["id"] for edge in leaving] == ["L_f1_f0_done_0", "L_f1_f0_failed_0"]
+    assert canvas["frames"] == [{"id": "f1", "node": "f0_child", "token": "@@f1@@"}]
+    assert canvas["labels"]["f1"] == "<b>child</b><br/>call: child"
+
+
+def test_a_child_that_calls_a_skill_holds_that_frame_inside_its_own(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    write_skill(project.skills_folder, "grand", GRAND_SKILL)
+
+    canvas = detail_of(project, "grand")["canvas"]
+
+    nested = '    subgraph f2 ["@@f2@@"]\n      f2_greet["@@f2_greet@@"]\n      f2_done["@@f2_done@@"]\n    end\n'
+    assert '  subgraph f1 ["@@f1@@"]\n    f1_greet["@@f1_greet@@"]\n' + nested in canvas["template"]
+    assert canvas["frames"][1] == {"id": "f2", "node": "f1_child", "token": "@@f2@@"}
+    assert canvas["labels"]["f1"] == "<b>run_parent</b><br/>call: parent"
 
 
 def test_a_block_of_a_child_skill_has_its_own_details_by_node(tmp_path: Path) -> None:
