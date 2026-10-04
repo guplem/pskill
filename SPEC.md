@@ -334,12 +334,23 @@ read_issue:
   run: [gh, issue, view, "{{ inputs.issue }}", --json, "number,title,body,labels"]
   parse: json            # text (default) | json
   next: check_applies
+
+verify_quotes:
+  type: script
+  run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]
+  input: {pr: "{{ inputs.pr }}", findings: "{{ steps.triage.findings }}"}   # optional: what the script reads on stdin
+  parse: json
+  next: report
 ```
 
 - **The runner executes the script, never the agent.** It costs no agent tool call and no tokens, and it gives the same result every time.
 - `run` is an argument list. The runner computes each element, converts it to text, and runs the list with no shell. This prevents shell injection and removes shell differences between operating systems.
 - Put real logic in `scripts/` as Python or Node, and call it: `[uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]`.
-- The working directory is the project root. The environment adds `PSKILL_RUN_DIR` and `PSKILL_STATE_FILE` (a JSON copy of the current state).
+- **A script gets its data through `input`, on stdin.** The runner computes `input`, then writes it to the script's stdin: a text as it is, and any other value (usually a mapping) as one JSON object. Stdin has no length limit; a command line has one (about 32,000 characters on Windows). Without `input`, stdin is empty.
+- So a script has one way in and one way out. A Python script reads `json.load(sys.stdin)` and prints `json.dumps(result)`. It never reads the run state by itself: the skill names every value that the script gets.
+- `run` names the command and its fixed options. A command that reads a text on stdin, such as `gh issue comment --body-file -`, takes that text as its `input`.
+- The working directory is the project root. The environment adds `PSKILL_RUN_DIR` (the run folder) and `PYTHONIOENCODING=utf-8`, so a Python script reads and writes UTF-8 on every system, as the runner does.
+- Changed in 0.20.0: before, a long value went to a script as a file path (the `to_file` filter), and a script could read a copy of the whole run state (`PSKILL_STATE_FILE`).
 - Output: `steps.<id>.stdout`, and `steps.<id>.json` with `parse: json`.
 - A non-zero exit code, a timeout (config `script_timeout_s`, default 300, or the block's own `timeout_s: <seconds>`), or bad JSON is a block failure. A script that wants to report a normal "no" result exits 0 and prints JSON.
 
@@ -401,7 +412,6 @@ done:
   - The validator still rejects references to blocks or inputs that do not exist (section 11).
 - Put parentheses around a filter inside a comparison: `(inputs.issue | int(0)) > 0`.
 - **One extra test: `matches`.** `{{ text is matches(pattern) }}` is true when the regular expression matches anywhere in the text (`re.search`). With `select`, it keeps the matching items of a list: `{{ paths | select('matches', '^api/') | list }}`.
-- **One extra filter: `to_file`.** It writes a text to `runs/<id>/files/<n>.txt` and returns the path. Use it for long script arguments (`--body-file "{{ steps.plan.plan | to_file }}"`), because Windows limits a command line to about 32,000 characters.
 - There are no variables and no assignments. `steps` and `history` hold all the state. This is on purpose (section 18).
 
 ### 7.2 Run statuses
@@ -687,8 +697,7 @@ runs/<run-id>/
 ├── state.json     # the call stack: per frame, skill id, inputs, steps, history, visits
 ├── events.jsonl   # the trace
 ├── skills/        # copies of every skill that this run can reach through calls
-├── agents/        # copies of every pskill agent in `.pskill/agents/`
-└── files/         # files made by to_file
+└── agents/        # copies of every pskill agent in `.pskill/agents/`
 ```
 
 `run.json` fields:
@@ -707,7 +716,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 | `block_started` | `block`, `block_type`, `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null), `skipped_tasks?` (a parallel block: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a parallel block with subagents: the full prompt of each task, which the viewer shows; since schema version 4) |
 | `submission_rejected` | `block`, `task?`, `errors`, `raw` |
 | `block_completed` | `block`, `task?`, `output`, `decided_by` (`agent`, `human`, `agent_autonomous`, `runner`), `duration_ms` |
-| `script_ran` | `block`, `argv`, `exit_code`, `stdout`, `stderr` (each cut to 64 KiB), `duration_ms` |
+| `script_ran` | `block`, `argv`, `input` (what the script read on stdin, or null; since schema version 5), `exit_code`, `stdout`, `stderr` (each cut to 64 KiB), `duration_ms` |
 | `run_paused` / `run_resumed` | `reason` |
 | `harness_changed` | `from`, `to` |
 | `session_changed` | `from`, `to` |
@@ -899,7 +908,8 @@ blocks:
 
   publish_plan:
     type: script
-    run: [gh, issue, comment, "{{ steps.read_issue.json.number }}", --body-file, "{{ steps.create_plan.plan | to_file }}"]
+    run: [gh, issue, comment, "{{ steps.read_issue.json.number }}", --body-file, "-"]
+    input: "{{ steps.create_plan.plan }}"   # gh reads the comment on stdin
     next: implement
 
   implement:
@@ -1020,8 +1030,9 @@ blocks:
 
   verify_quotes:
     type: script                                    # "no quote, no finding", checked by code
-    run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py", "{{ inputs.pr }}"]
-    parse: json                                     # reads PSKILL_STATE_FILE; prints {"findings": [...kept]}
+    run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]
+    input: {pr: "{{ inputs.pr }}", findings: "{{ steps.triage.findings }}"}
+    parse: json                                     # prints {"findings": [...kept]}
     next:
       - when: "{{ inputs.post_verdict }}"
         to: confirm_post
@@ -1077,7 +1088,7 @@ Outputs: `issue_number` (integer, optional, because the `cancelled` end has none
    - `edit` goes back to `draft_issue`, which has `max_visits: 5`.
    - `cancel` goes to the end `cancelled`.
 9. `create` (script):
-   `[gh, issue, create, --title, "{{ steps.draft_issue.title }}", --body-file, "{{ steps.draft_issue.body | to_file }}"]`.
+   `[gh, issue, create, --title, "{{ steps.draft_issue.title }}", --body-file, "-"]`, with `input: "{{ steps.draft_issue.body }}"`.
 10. The end `created`, with output `issue_number: "{{ steps.create.stdout.strip().split('/')[-1] | int }}"`.
 
 The template's `--autonomous` flag disappears. `implement-issue` calls `create-issue` in its own mode.
@@ -1104,7 +1115,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 | `max_visits` with and without `on_max_visits` | `implement-issue.review`; `create-issue.assess_clarity` |
 | `history` | `implement-issue.create_plan` reads `history.ask_user` |
 | Conditional `entry` | `implement-issue` |
-| `to_file` | `implement-issue.publish_plan`, `create-issue.create` |
+| A script's `input` on stdin, as JSON and as text | `review-pr.verify_quotes`; `implement-issue.publish_plan`, `create-issue.create` |
 | `succeeded` and `cancelled` ends | all three |
 | `autonomous` mode | test cases below |
 | `$cannot_complete`, retries, then pause | test cases below |
@@ -1217,7 +1228,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 - **Block types:** a human decision asks the user, a script is a command that the agent runs, a parallel block uses subagents or does the items one by one, and an end step names its status, outputs, and report.
 - **Files:** the zip holds `<skill>/SKILL.md`, the skill's `scripts/`, and each pskill agent that it uses as `<skill>/subagents/<name>.md`. (Not `agents/`: Codex reads `agents/openai.yaml` there.)
 - **Child skills:** each child skill of a call block is exported as its own folder in the same zip. The call step tells the agent to follow it, then to come back.
-- **The run state file:** a script that reads `PSKILL_STATE_FILE` gets a note: write a JSON file with `inputs` and `steps`, and set the variable to its path.
+- **Script input:** a script step with an `input` tells the agent what to send on the command's standard input: each field of the JSON object, or the text.
 
 ### 14.2 The skill editor
 
@@ -1312,7 +1323,7 @@ Each milestone starts with the listed failing tests and ends with green CI on th
 | # | Milestone | First red tests | Done when |
 |---|---|---|---|
 | M1 | Core engine | Load a skill; reject an unknown block type; `task` then `end`; a choice map picks the edge; a condition list picks the first match; an invalid submission is rejected with errors; a YAML answer with `choice: no` and a multi-line `plan` converts by schema; `submit` with no stdin fails in under 10 s; retries run out and the run pauses; `max_visits` redirects; `history` keeps every visit | A 5-block fixture skill runs to the end with `start` and `submit`. |
-| M2 | All blocks + tests | A `script` result lands in `steps`; a failing script pauses; `to_file` writes a file; a `call` runs the child and returns `status` and `outputs`; a child cannot read the caller's steps; `parallel` completes only after all tasks; one-by-one mode; the lock holds under concurrent submits; the `pskill test` answer queue and path check | The three proof skills validate, and all their test cases pass. |
+| M2 | All blocks + tests | A `script` result lands in `steps`; a failing script pauses; a script reads its `input` on stdin; a `call` runs the child and returns `status` and `outputs`; a child cannot read the caller's steps; `parallel` completes only after all tasks; one-by-one mode; the lock holds under concurrent submits; the `pskill test` answer queue and path check | The three proof skills validate, and all their test cases pass. |
 | M3 | Claude Code | The stub text; `sync` is idempotent; `sync` keeps foreign hooks, foreign permission rules, and hand-written skills; `sync` adds the one allow rule; the Stop hook blocks an `active` run and gives up after 3 blocks; the session-start hook rewrites a stale stub, skips a broken skill with a warning, and lists open runs; `init` and `update` with a hash check | In the `guplem/pskill` repository, `implement-issue` runs in real Claude Code from trigger to end on a real issue. An early stop gets blocked. A new session resumes the run. |
 | M4 | Codex + generic check | Codex: detection, `.codex/hooks.json` merge that keeps foreign hooks, Stop and session-start responses from fixtures, subagent wording, the `agents/openai.yaml` sidecar for `manual` skills. Generic: an unknown environment falls back to `generic`; its packets name no harness tool | In the same repository, `implement-issue` runs in real Codex from trigger to end, with an early stop blocked. A manual run in Gemini CLI or Cursor through `generic` also reaches the end. The trace shows the right harness each time. |
 | M5 | Viewer | Canvas marks; the page still shows the steps when Mermaid fails to load; timeline rows; summary numbers; the API returns 404 for an unknown run; the server binds only to 127.0.0.1 | A live run updates within 2 s. A finished run can be stepped through. |
@@ -1347,6 +1358,8 @@ Each of these was in an earlier draft. Each one added complexity for little user
 | Mermaid copied into every project (about 3 MB) | A pinned CDN copy; the viewer works without the graph when offline |
 | A hook that runs `sync` after each file edit, and git hooks | The session-start hook refreshes stubs; `AUTHORING.md` tells the agent to run `sync` after an edit; CI fails on a stale stub |
 | An analytics screen | A summary row on the Runs screen |
+| The `to_file` filter (a long value as a file path in a script argument) | A script's `input`, on stdin |
+| `PSKILL_STATE_FILE` (a script reads a copy of the whole run state) | A script's `input`: the skill names each value that the script gets |
 
 ### 18.1 Backlog: future issues
 

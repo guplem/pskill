@@ -256,3 +256,14 @@ def test_the_catalog_of_a_project_without_skills_or_agents_is_empty(tmp_path: Pa
 
     assert catalog.skills == {}
     assert catalog.agent_names == set()
+
+
+def test_a_script_input_is_loaded_and_has_none_by_default(tmp_path: Path) -> None:
+    skill_yaml = ALL_BLOCKS_SKILL.replace("    parse: json\n", '    parse: json\n    input: {pr: "{{ skill.id }}"}\n')
+
+    with_input = load_skill(write_skill(tmp_path / "a", "all-blocks", skill_yaml)).blocks["list_docs"]
+    without_input = load_skill(write_skill(tmp_path / "b", "all-blocks", ALL_BLOCKS_SKILL)).blocks["list_docs"]
+
+    assert isinstance(with_input, ScriptBlock) and isinstance(without_input, ScriptBlock)
+    assert with_input.input == {"pr": "{{ skill.id }}"}
+    assert without_input.input is None

@@ -13,6 +13,7 @@ from tests.test_engine_blocks import (
     PARENT_SKILL,
     PICKED_PARALLEL_SKILL,
     SCRIPT_SKILL,
+    STDIN_SKILL,
 )
 
 
@@ -479,3 +480,13 @@ def test_a_fixed_list_of_plain_items_shows_one_card_per_item(tmp_path: Path) -> 
         {"fields": [["item", "a.md"]], "when": None},
         {"fields": [["item", "b.md"]], "when": None},
     ]
+
+
+def test_a_script_block_shows_its_input(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    write_skill(project.skills_folder, "piped", STDIN_SKILL)
+
+    blocks = detail_of(project, "piped")["blocks"]
+
+    assert blocks["read_input"]["input"] == '{"pr": "{{ inputs.pr }}", "labels": ["bug", "{{ inputs.body | length }}"]}'
+    assert detail_of(project, "scripted")["blocks"]["list_files"]["input"] is None

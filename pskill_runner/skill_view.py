@@ -276,6 +276,7 @@ def block_details(skill: Skill, block: AnyBlock, agent_names: set[str], frame: i
         details["for_each_items"] = for_each_items(block.for_each)
     if isinstance(block, ScriptBlock):
         details["command"] = [str(part) for part in block.run]
+        details["input"] = None if block.input is None else value_text(block.input)
         details["script_files"] = script_files(skill, block)
     if isinstance(block, CallBlock):
         details["child_skill"] = block.skill

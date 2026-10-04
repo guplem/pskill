@@ -239,7 +239,7 @@ def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Pro
     if isinstance(block, EndBlock):
         texts += string_values(list(block.outputs.values()))
     if isinstance(block, ScriptBlock):
-        texts += string_values(block.run)
+        texts += string_values(block.run) + nested_strings(block.input)
     if isinstance(block, CallBlock):
         texts += string_values(list(block.inputs.values()))
     if isinstance(block, ParallelBlock):

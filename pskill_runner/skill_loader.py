@@ -145,6 +145,7 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
         return ScriptBlock(
             **retryable,
             run=raw["run"],
+            input=raw.get("input"),
             parse=raw.get("parse", "text"),
             timeout_s=raw.get("timeout_s"),
             next=parse_edges(raw["next"]),

@@ -32,9 +32,15 @@ class CallResult:
 
 class InlineExecutor(Protocol):
     def run_script(
-        self, block_id: str, argv: list[str], cwd: Path, env: dict[str, str], timeout_s: int
+        self,
+        block_id: str,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        timeout_s: int,
+        stdin_text: str | None = None,
     ) -> ScriptResult:
-        """Run one command."""
+        """Run one command. It reads `stdin_text` on stdin, or an empty stdin when there is none."""
         ...
 
     def call_result(self, block_id: str, skill_id: str, inputs: dict[str, Any]) -> CallResult | None:
@@ -46,7 +52,13 @@ class RealExecutor:
     """Runs real commands and real child skills."""
 
     def run_script(
-        self, block_id: str, argv: list[str], cwd: Path, env: dict[str, str], timeout_s: int
+        self,
+        block_id: str,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        timeout_s: int,
+        stdin_text: str | None = None,
     ) -> ScriptResult:
         started = time.monotonic()
         # On Windows, a bare name such as "gh" or "npx" must be resolved to "gh.exe" or "npx.cmd" first.
@@ -56,6 +68,7 @@ class RealExecutor:
                 [program, *argv[1:]],
                 cwd=cwd,
                 env=env,
+                input=stdin_text or "",
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

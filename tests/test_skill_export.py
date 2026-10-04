@@ -29,7 +29,8 @@ entry: verify
 blocks:
   verify:
     type: script
-    run: [uv, run, "{{ skill.dir }}/scripts/verify.py", "{{ inputs.pr }}"]
+    run: [uv, run, "{{ skill.dir }}/scripts/verify.py"]
+    input: {pr: "{{ inputs.pr }}", quotes: [a, b]}
     parse: json
     retries: 0
     next: done
@@ -51,7 +52,7 @@ def make_project(tmp_path: Path) -> Project:
         skills_folder,
         "checker",
         STATE_SKILL,
-        {"scripts/verify.py": "import os\nprint(open(os.environ['PSKILL_STATE_FILE']).read())\n"},
+        {"scripts/verify.py": "import json, sys\nprint(json.load(sys.stdin))\n"},
     )
     agents_folder = tmp_path / ".pskill" / "agents"
     agents_folder.mkdir(parents=True)
@@ -129,15 +130,28 @@ def test_a_choice_with_an_edge_list_names_each_condition(tmp_path: Path) -> None
     assert "- If the choice is `fix`, and no condition above matches: go to step 2 (`done`)." in markdown
 
 
-def test_a_script_step_names_its_command_its_files_and_the_state_file(tmp_path: Path) -> None:
+def test_a_script_step_names_its_command_its_input_and_its_files(tmp_path: Path) -> None:
     files = export_skill(make_project(tmp_path), "checker")
     markdown = files["checker/SKILL.md"].decode("utf-8")
 
-    assert "`uv run <this skill's folder>/scripts/verify.py <inputs.pr>`" in markdown
+    assert "`uv run <this skill's folder>/scripts/verify.py`" in markdown
+    sent_input = '- `pr`: `inputs.pr`\n- `quotes`: `["a", "b"]`'
+    assert f"Send it this JSON object on its standard input:\n\n{sent_input}" in markdown
     assert "The command prints JSON: write it down as `verify.json`." in markdown
-    assert "PSKILL_STATE_FILE" in markdown
     assert "If the command fails, stop and tell the user why." in markdown
-    assert files["checker/scripts/verify.py"].startswith(b"import os")
+    assert files["checker/scripts/verify.py"].startswith(b"import json")
+
+
+def test_a_script_step_with_a_text_input_sends_that_text(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    skill_yaml = STATE_SKILL.replace(
+        'input: {pr: "{{ inputs.pr }}", quotes: [a, b]}', 'input: "Pull request {{ inputs.pr }}"'
+    )
+    write_skill(project.skills_folder, "checker", skill_yaml)
+
+    markdown = export_skill(project, "checker")["checker/SKILL.md"].decode("utf-8")
+
+    assert "Send it this text on its standard input: Pull request `inputs.pr`" in markdown
 
 
 def test_a_parallel_step_uses_subagents_and_ships_the_agent_role(tmp_path: Path) -> None:

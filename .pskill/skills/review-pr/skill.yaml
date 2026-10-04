@@ -64,7 +64,8 @@ blocks:
   verify_quotes:
     type: script
     description: Check each quote against the diff
-    run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py", "{{ inputs.pr }}"]
+    run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]
+    input: {pr: "{{ inputs.pr }}", findings: "{{ steps.triage.findings }}"}
     parse: json
     next:
       - when: "{{ inputs.post_verdict }}"

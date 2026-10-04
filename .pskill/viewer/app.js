@@ -1557,6 +1557,7 @@ function blockSections(details) {
   }
   if (details.for_each_items.length) parts.push(forEachItems(details));
   if (details.command) parts.push(section(withHelp("h3", "Command", "run"), element("pre", details.command.join(" "), "command")));
+  if (details.input != null) parts.push(section(withHelp("h3", "Input (stdin)", "input"), element("pre", details.input, "command")));
   for (const file of details.script_files) {
     const note = element("p", `The command runs ${file.path}. Change it in your code editor.`, "note");
     parts.push(section("Script file", note, folded(element("pre", file.text), `${block}:script:${file.path}`)));
@@ -1831,6 +1832,10 @@ function scriptSections(row) {
   for (const [index, script] of row.script_runs.entries()) {
     const key = `${row.seq}:script${index}`;
     parts.push(section(row.input_title, element("pre", `$ ${script.argv.join(" ")}`, "command")));
+    if (script.input != null) {
+      const sent = typeof script.input === "string" ? element("pre", script.input) : folded(jsonTree(script.input, `${key}:input`), `${key}:input`);
+      parts.push(section("Stdin", sent));
+    }
     const result = [element("p", `Exit code ${script.exit_code ?? "-"} · ${formatDuration(script.duration_ms)}`, "note")];
     if (script.parsed !== null) {
       result.push(folded(jsonTree(script.parsed, `${key}:parsed`), `${key}:parsed`));

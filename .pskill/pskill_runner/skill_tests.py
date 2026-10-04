@@ -43,7 +43,13 @@ class RecordedExecutor:
         self.calls = {block_id: list(results) for block_id, results in calls.items()}
 
     def run_script(
-        self, block_id: str, argv: list[str], cwd: Path, env: dict[str, str], timeout_s: int
+        self,
+        block_id: str,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        timeout_s: int,
+        stdin_text: str | None = None,
     ) -> ScriptResult:
         results = self.scripts.get(block_id)
         if not results:
