@@ -4,7 +4,7 @@
 
 The viewer has a tab icon, and links to GitHub.
 
-- **A tab icon:** a blue tile with a line of steps: done, now (orange), and to do. It shows in the browser tab, for `pskill view` and for the hosted viewer.
+- **A tab icon:** a bold "p" in the viewer's colors: the ink of the logo, with one teal step in its corner. In dark mode the tile turns light, like the viewer. It shows in the browser tab, for `pskill view` and for the hosted viewer.
 - **The logo leads to GitHub:** "pskill" at the top left opens the repository in a new tab.
 - **The version leads to its notes:** the version at the bottom left opens its release on GitHub.
 - **The docs link https://guplem.github.io/pskill/:** it stays valid without the custom domain.
