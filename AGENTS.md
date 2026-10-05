@@ -41,6 +41,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `hooks.py` | The Stop and session-start hook logic, for every harness. |
 | `install.py` | `pskill init` and `pskill update`: the pinned entry script, the user's runner cache, and the few project files. |
 | `release.py` | The release archive `pskill.zip`, and unpacking an archive given to `init` or `update`. |
+| `release_plan.py` | On a merge to `main`: the tag to create for the version, and its release notes from `CHANGELOG.md`. |
 | `viewer_data.py` | Everything the viewer shows: the run canvas (one Mermaid template, child skills included), timeline rows with their node and edges, summaries. |
 | `skill_view.py` | The skill screen of the viewer: the skills list, and one skill's canvas and block details, with no run. |
 | `agent_view.py` | The agent screens of the viewer: the agents list, one agent's text and users, and saving its text. |
@@ -75,8 +76,10 @@ CI (`.github/workflows/pull-request-checks.yml`) runs those checks on Windows, m
 ## Releasing
 
 1. Raise `__version__` in `pskill_runner/__init__.py` and `version` in `pyproject.toml` (a test checks that they are equal).
-2. Add the version's section to `CHANGELOG.md`, and merge the pull request.
-3. Push the tag `v<version>` on `main`. `.github/workflows/release.yml` tests, builds `pskill.zip`, and publishes the GitHub release.
+2. Add the version's section to `CHANGELOG.md` (a test checks that the current version has one), and merge the pull request.
+3. Do nothing more. On the merge, `.github/workflows/release.yml` tags `v<version>`, tests, builds `pskill.zip`, and publishes the GitHub release with the section as its notes.
+
+A merge that keeps the version releases nothing. A version below the newest tag fails the workflow. Never push a release tag by hand: the workflow then finds the tag and publishes no release.
 
 The first-install command `uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init` downloads `releases/latest/download/pskill.zip`, so a release must exist before it works.
 
