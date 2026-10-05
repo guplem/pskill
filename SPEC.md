@@ -1250,7 +1250,7 @@ The skill screen can change a skill. `skill_editor.py` writes the change to `ski
 
 ### 14.3 The hosted viewer
 
-The viewer also runs on GitHub Pages, with no server: <https://guplem.github.io/pskill/>. It shows the runs of many projects at once: clones, worktrees, and separate projects.
+The viewer also runs on GitHub Pages, with no server: <https://triunitystudios.com/pskill/> (the account's custom domain; <https://guplem.github.io/pskill/> leads there). It shows the runs of many projects at once: clones, worktrees, and separate projects.
 
 - **Which mode:** the page asks `/api/version` first. When no local server answers, `app.js` loads `hosted.js`, and the page is the hosted viewer.
 - **Folders:** the Folders tab picks folders with the File System Access API (Chrome and Edge only). A folder is one project, or a folder of projects. IndexedDB keeps the picked folders, so a reload only asks the browser for permission again.

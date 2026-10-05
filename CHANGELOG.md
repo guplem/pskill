@@ -4,7 +4,7 @@
 
 The viewer also runs on GitHub Pages, for many projects at once.
 
-- **The hosted viewer:** open https://guplem.github.io/pskill/ in Chrome or Edge, and pick your project folders. No command and no server: Pyodide runs the runner's own Python in the browser, and your files stay on your computer.
+- **The hosted viewer:** open https://triunitystudios.com/pskill/ in Chrome or Edge, and pick your project folders. No command and no server: Pyodide runs the runner's own Python in the browser, and your files stay on your computer.
 - **Clones and worktrees:** pick a folder of clones, and the viewer finds each project in it, with the worktrees of each clone. It looks again every minute, so a new worktree appears by itself. A pattern (a regular expression) per folder keeps only the matching projects.
 - **Where each run happened:** each run card names its project folder, its kind (clone or worktree), and its branch. A folder filter shows the runs of one project.
 - **Two tabs:** Runs shows the runs of every project. Content shows the skills and the agents of one project, with a picker for the project. (`pskill view` has the same tabs, for its one project.)
