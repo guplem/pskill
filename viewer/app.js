@@ -10,6 +10,21 @@ const FOLD_LINE_LIMIT = 3;
 const PANEL_WIDTH_KEY = "pskill.panelWidth";
 const REPOSITORY_URL = "https://github.com/guplem/pskill"; // the logo and the version note lead there
 const PLACE_KEY = "pskill.place"; // the project that the Content tab opens
+// How often the page reads its data again on its own. Each read is cheap: local files, no network.
+const REFRESH_CHOICES = [
+  { id: "off", label: "Auto: off", seconds: 0 },
+  { id: "10s", label: "Auto: 10 s", seconds: 10 },
+  { id: "30s", label: "Auto: 30 s", seconds: 30 },
+  { id: "1m", label: "Auto: 1 min", seconds: 60 },
+  { id: "5m", label: "Auto: 5 min", seconds: 300 },
+];
+const DEFAULT_REFRESH = "30s";
+const REFRESH_KEY = "pskill.refresh";
+// How often the page updates the live status and checks whether a refresh is due. It is not the refresh
+// interval: it is short, so the time since the last read counts up each second.
+const REFRESH_TICK_MS = 1000;
+// The shortest time the refresh button stays down after a press, so a fast read still shows that it happened.
+const REFRESH_REST_MS = 1000;
 const EXPANDED_KEY = "pskill.expandChildSkills"; // only a choice to expand is kept: collapsed is the default
 const PANEL_MIN_WIDTH = 320;
 const CANVAS_MIN_WIDTH = 240;
@@ -109,6 +124,12 @@ const view = {
   renderAgain: false,
   runsFilter: "unfinished",
   pollTimer: null,
+  pollWaiting: false, // a live run's poll that waits for the hidden page to come back
+  refreshChoice: savedRefresh(),
+  refreshedAt: null, // when the last read finished, in milliseconds
+  refreshing: false,
+  live: false, // a live run that the page polls every second or two
+  pollAsked: false, // the screen of this render asked to poll again
   dragEnded: false,
   playTimer: null,
   collapsed: savedCollapsed(), // the skill screen draws each child skill as its call block's node, not a frame
@@ -334,6 +355,8 @@ function rememberPlace(place) {
   }
 }
 
+// The bar at the top of every screen: the logo, the tabs, and the refresh control with the live status.
+// The run and skill screens put their own parts in a toolbar under it (screenHead), so neither row crowds.
 function topbar() {
   const bar = element("header", null, "topbar");
   const brand = externalLink("pskill", REPOSITORY_URL, "pskill on GitHub: the code, the docs, and the releases");
@@ -351,8 +374,165 @@ function topbar() {
     nav.append(link);
   }
   if (hosted?.needsAccess()) nav.append(button("Allow the folders again", allowFolders, "tool primary"));
-  bar.append(brand, nav);
+  bar.append(brand, nav, element("span", null, "spacer"), refreshControl());
   return bar;
+}
+
+// The top of the run and skill screens: the app bar, and the screen's toolbar.
+function screenHead(...parts) {
+  const head = element("div", null, "screen-head");
+  const toolbar = element("div", null, "toolbar");
+  toolbar.append(...parts);
+  head.append(topbar(), toolbar);
+  return head;
+}
+
+// --- refreshing: read the data again, on a schedule or on a press ---------------------------------------
+
+function savedRefresh() {
+  try {
+    const choice = localStorage.getItem(REFRESH_KEY);
+    return REFRESH_CHOICES.some((item) => item.id === choice) ? choice : DEFAULT_REFRESH;
+  } catch {
+    return DEFAULT_REFRESH; // the browser blocks site data
+  }
+}
+
+function saveRefresh(choice) {
+  try {
+    localStorage.setItem(REFRESH_KEY, choice);
+  } catch {
+    // the browser blocks site data: the choice lasts until the reload
+  }
+}
+
+// An open editor or dialog. A refresh draws the screen again, so it would lose what is in them.
+function editorOpen() {
+  return Boolean(app.querySelector(".edit-form") || document.querySelector("dialog[open]"));
+}
+
+// Whether a refresh now would get in the way: an open editor, or a text field that the user types in.
+function refreshWouldInterrupt() {
+  return editorOpen() || Boolean(document.activeElement?.matches("textarea, input:not([type]), input[type=text]"));
+}
+
+function refreshDue() {
+  const seconds = REFRESH_CHOICES.find((item) => item.id === view.refreshChoice)?.seconds ?? 0;
+  if (!seconds || document.visibilityState === "hidden" || view.refreshing || refreshWouldInterrupt()) return false;
+  if (view.refreshedAt === null) return true;
+  const waited = Date.now() - view.refreshedAt;
+  return waited < 0 || waited >= seconds * 1000; // a clock that went back must not stop the refresh
+}
+
+function tickRefresh() {
+  drawRefreshButtons();
+  if (refreshDue()) refreshNow();
+}
+
+// Read everything again. On the hosted viewer, look for new clones and worktrees first. The screen draws
+// again only where its data changed (each screen compares it with view.detailText).
+async function refreshNow() {
+  if (view.refreshing || editorOpen()) return;
+  view.refreshing = true;
+  drawRefreshButtons();
+  const rest = new Promise((resolve) => setTimeout(resolve, REFRESH_REST_MS));
+  try {
+    if (hosted?.supported()) await hosted.rescan();
+    await render();
+  } finally {
+    await rest;
+    view.refreshing = false;
+    drawRefreshButtons();
+  }
+}
+
+function refreshTip() {
+  if (view.refreshing) return "Refreshing…";
+  if (editorOpen()) return "Save or close the edit first: a refresh would lose it.";
+  return "Refresh now";
+}
+
+// The time since the last read, in whole seconds or minutes: the live status changes once a second.
+function updatedText() {
+  if (view.refreshedAt === null) return "Not updated yet";
+  const seconds = Math.floor(Math.max(0, Date.now() - view.refreshedAt) / 1000);
+  if (seconds < 5) return "Updated just now";
+  return seconds < 60 ? `Updated ${seconds} s ago` : `Updated ${Math.floor(seconds / 60)} min ago`;
+}
+
+const LIVE_MODE_TEXT = {
+  live: "Live: the page reads the open run every second while it runs.",
+  auto: "The page reads the runs and the files again on its own, at the time that you chose.",
+  off: "The page reads the data only when you open a screen or press the refresh button.",
+};
+
+// The refresh button and the live status of each top bar. The button is down and turning while a refresh
+// runs. The status dot pulses while a live run updates, is solid while the page refreshes on its own,
+// and is hollow when the automatic refresh is off.
+function drawRefreshButtons() {
+  for (const press of document.querySelectorAll(".refresh-now")) {
+    press.disabled = view.refreshing;
+    if (view.refreshing) press.setAttribute("aria-busy", "true");
+    else press.removeAttribute("aria-busy");
+  }
+  const mode = view.live ? "live" : view.refreshChoice === "off" ? "off" : "auto";
+  for (const status of document.querySelectorAll(".refresh-status")) {
+    status.dataset.mode = mode;
+    status.title = LIVE_MODE_TEXT[mode];
+    const since = updatedText();
+    status.querySelector(".refresh-since").textContent = mode === "live" ? `Live · ${since.toLowerCase()}` : since;
+  }
+}
+
+function refreshControl() {
+  const control = element("div", null, "refresh-control");
+  const status = element("span", null, "refresh-status note");
+  status.append(element("span", null, "refresh-dot"), element("span", null, "refresh-since"));
+  const choice = element("select", null, "run-picker refresh-choice");
+  choice.setAttribute("aria-label", "Refresh on its own");
+  choice.title = "How often the page reads the runs and the files again. It waits while the tab is hidden or while you edit.";
+  for (const item of REFRESH_CHOICES) {
+    const option = element("option", item.label);
+    option.value = item.id;
+    option.selected = item.id === view.refreshChoice;
+    choice.append(option);
+  }
+  choice.addEventListener("change", () => {
+    view.refreshChoice = choice.value;
+    saveRefresh(choice.value);
+    drawRefreshButtons();
+  });
+  const press = button("", refreshNow, "tool refresh-now");
+  press.setAttribute("aria-label", "Refresh now");
+  press.append(refreshIcon());
+  // The tip says how long ago the page read its data, at the moment the pointer or the focus arrives.
+  const showTip = () => (press.title = refreshTip());
+  press.addEventListener("pointerenter", showTip);
+  press.addEventListener("focus", showTip);
+  control.append(status, choice, press);
+  // The parts take their state when drawRefreshButtons runs next: at the end of render, or on the next tick.
+  return control;
+}
+
+// Two strokes: a circle with a gap, and the arrow head at its end.
+function refreshIcon() {
+  const namespace = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(namespace, "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("aria-hidden", "true");
+  for (const shape of ["M21 12a9 9 0 1 1-2.64-6.36", "M21 3v6h-6"]) {
+    const path = document.createElementNS(namespace, "path");
+    path.setAttribute("d", shape);
+    icon.append(path);
+  }
+  return icon;
+}
+
+// Ask a live run again soon, while the page is visible. A hidden page asks when it comes back.
+function pollAgain(milliseconds) {
+  view.pollAsked = true;
+  if (document.visibilityState === "visible") view.pollTimer = setTimeout(render, milliseconds);
+  else view.pollWaiting = true;
 }
 
 // A screen with the top bar and one message: Python starts, the browser cannot run the viewer, or an error.
@@ -415,7 +595,7 @@ async function showRuns() {
     view.detailText = text;
     drawRuns(overview);
   }
-  if (overview.runs.some((run) => UNFINISHED.includes(run.status))) view.pollTimer = setTimeout(render, POLL_MS * 2);
+  if (overview.runs.some((run) => UNFINISHED.includes(run.status))) pollAgain(POLL_MS * 2);
 }
 
 function drawRuns(overview) {
@@ -441,16 +621,6 @@ function drawRuns(overview) {
       }),
     );
   }
-  const summaries = element("div", null, "summaries");
-  for (const summary of overview.summaries) {
-    const card = element("div", null, "summary");
-    const rate = summary.success_rate === null ? "no finished run" : `${Math.round(summary.success_rate * 100)} % succeeded`;
-    card.append(
-      element("strong", summary.skill_id),
-      element("span", `${summary.runs} runs · ${rate} · median ${formatDuration(summary.median_duration_ms)}`),
-    );
-    summaries.append(card);
-  }
   const cards = element("div", null, "run-cards");
   const runs = placeRuns.filter(RUN_FILTERS[view.runsFilter].keep);
   const finished = runs.filter((run) => !UNFINISHED.includes(run.status));
@@ -473,10 +643,36 @@ function drawRuns(overview) {
     cards.append(card);
   }
   page.append(element("h1", "Runs"), filters);
-  if (overview.summaries.length) page.append(summaries);
   page.append(runs.length ? cards : element("p", hosted && !placeList().length ? "No folder yet: add one on the Folders tab." : "No runs here yet.", "note"));
+  if (overview.summaries.length) page.append(...skillTotals(overview.summaries));
   app.className = "";
   app.replaceChildren(topbar(), page, ...versionNote());
+}
+
+// The numbers of each skill, under the run cards. They count every run, whatever the filters, so they get
+// their own heading and a table: they must not read as one more run.
+function skillTotals(summaries) {
+  const table = element("table", null, "skill-totals");
+  const head = element("tr");
+  for (const name of ["Skill", "Runs", "Succeeded", "Median time"]) head.append(element("th", name));
+  const body = element("tbody");
+  for (const summary of summaries) {
+    const succeeded =
+      summary.success_rate === null ? "no finished run" : `${Math.round(summary.success_rate * 100)} % of ${summary.finished}`;
+    const row = element("tr");
+    row.append(
+      element("td", summary.skill_id, "mono"),
+      element("td", String(summary.runs)),
+      element("td", succeeded),
+      element("td", formatDuration(summary.median_duration_ms)),
+    );
+    body.append(row);
+  }
+  const thead = element("thead");
+  thead.append(head);
+  table.append(thead, body);
+  const where = hosted ? "in every folder" : "in this project";
+  return [element("h2", "By skill"), element("p", `Every run of each skill ${where}, whatever the filters above.`, "note"), table];
 }
 
 // --- the content page: the skills and the agents of one project ----------------------------------
@@ -593,6 +789,9 @@ async function showAgent(place, name) {
   view.place = place;
   const agent = await apiJson(`/api/agents/${encodeURIComponent(name)}`, place);
   if (view.screen !== "agent") return; // the user moved on while it loaded
+  const text = JSON.stringify(agent) + place;
+  if (text === view.detailText) return; // a refresh with no change keeps the scroll position
+  view.detailText = text;
   drawAgent(agent, false);
 }
 
@@ -660,7 +859,6 @@ async function saveAgent(name, text, errorBox) {
 // --- the run screen: layout -------------------------------------------------------------------
 
 function buildRunScreen() {
-  const bar = topbar();
   const picker = element("select", null, "run-picker");
   picker.setAttribute("aria-label", "Run");
   picker.addEventListener("change", () => {
@@ -674,8 +872,8 @@ function buildRunScreen() {
   });
   follow.setAttribute("aria-pressed", String(view.followLive));
   const zoomLabel = element("span", "100 %", "note");
-  bar.append(picker, status, element("span", null, "spacer"), follow, ...zoomTools(zoomLabel));
-  const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected step");
+  const head = screenHead(picker, status);
+  const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected step", [follow, ...zoomTools(zoomLabel)]);
 
   const replay = element("footer", null, "replay");
   const play = button("▶", togglePlay, "play");
@@ -696,7 +894,7 @@ function buildRunScreen() {
   replay.append(play, body);
 
   const screen = element("div", null, "run-screen");
-  screen.append(bar, workspace, replay);
+  screen.append(head, workspace, replay);
   app.className = "";
   app.replaceChildren(screen);
   view.parts = { picker, status, follow, zoomLabel, canvas, layer, note, panel, progress, marks, slider, labels, play, workspace };
@@ -707,11 +905,14 @@ function zoomTools(zoomLabel) {
 }
 
 // The canvas, the panel, and the handle between them: the same on the run screen and the skill screen.
-function buildWorkspace(panelLabel) {
+// The canvas tools (the zoom, and Follow live on the run screen) float in the canvas's top right corner.
+function buildWorkspace(panelLabel, tools) {
   const canvas = element("div", null, "canvas");
   const layer = element("div", null, "layer");
   const note = element("p", null, "canvas-note");
-  canvas.append(layer, note);
+  const canvasTools = element("div", null, "canvas-tools");
+  canvasTools.append(...tools);
+  canvas.append(layer, note, canvasTools);
   attachPanAndZoom(canvas);
   const panel = element("aside", null, "panel");
   panel.setAttribute("aria-label", panelLabel);
@@ -726,7 +927,6 @@ function buildWorkspace(panelLabel) {
 // --- the skill screen: layout -------------------------------------------------------------------
 
 function buildSkillScreen() {
-  const bar = topbar();
   const picker = element("select", null, "run-picker");
   picker.setAttribute("aria-label", "Skill");
   picker.addEventListener("change", () => {
@@ -746,11 +946,11 @@ function buildSkillScreen() {
   addBar.hidden = !view.editing;
   const collapseToggle = switchControl("Collapse sub-skills", view.collapsed, toggleChildSkills);
   collapseToggle.title = "Draw each child skill as one node, to see the main flow of a skill with many child skills.";
-  bar.append(picker, status, element("span", null, "spacer"), addBar, editToggle, collapseToggle, ...zoomTools(zoomLabel));
-  const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected block");
+  const head = screenHead(picker, status, element("span", null, "spacer"), addBar, editToggle, collapseToggle);
+  const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected block", zoomTools(zoomLabel));
   layer.classList.add("is-skill");
   const screen = element("div", null, "run-screen skill-screen");
-  screen.append(bar, workspace);
+  screen.append(head, workspace);
   app.className = "";
   app.replaceChildren(screen);
   view.parts = { picker, status, follow: null, zoomLabel, canvas, layer, note, panel, workspace, collapseToggle };
@@ -795,7 +995,7 @@ function drawSkillTopbar() {
       return option;
     }),
   );
-  const parts = hosted ? [element("span", placeText(placeInfo(view.place)), "note")] : [];
+  const parts = hosted ? [element("span", placeText(placeInfo(view.place)), "toolbar-facts note")] : [];
   if (view.detail.skill.invocation) {
     const invocation = element("span", `invocation: ${view.detail.skill.invocation}`, "note");
     invocation.title = INVOCATION_MEANING[view.detail.skill.invocation] || "";
@@ -807,7 +1007,7 @@ function drawSkillTopbar() {
   if (warnings) parts.push(element("span", `${warnings} warning${warnings === 1 ? "" : "s"}`, "pill state-now"));
   if (!view.detail.error && !errors) {
     // The server builds the export (skill_export.py); the page only offers the download.
-    const exportLink = element("a", "Export as Markdown", "tool");
+    const exportLink = element("a", "Export", "tool");
     const exportPath = `/api/skills/${encodeURIComponent(skillId)}/export`;
     exportLink.href = hosted ? "#" : exportPath;
     exportLink.download = `${skillId}.zip`;
@@ -834,18 +1034,23 @@ function drawTopbar() {
   picker.replaceChildren(
     ...options.map((run) => {
       const where = hosted ? ` · ${placeInfo(run.place)?.label ?? run.location}` : "";
-      const option = element("option", `${run.skill_id} · ${STATUS_TEXT[run.status] || run.status}${where} · ${run.run_id}`);
+      const option = element("option", `${run.skill_id} · ${STATUS_TEXT[run.status] || run.status} · ${run.run_id}${where}`);
       option.value = runHref(run.place, run.run_id);
       option.selected = run.run_id === info.run_id && run.place === view.place;
       return option;
     }),
   );
-  const harnessAndMode = element("span", `${info.harness} · ${info.mode}`, "note");
-  harnessAndMode.title = `Harness: ${info.harness}, the agent tool that runs the skill.\n${MODE_MEANING[info.mode] || ""}`;
-  const parts = [statusPill(info.status), harnessAndMode];
-  if (hosted) parts.push(element("span", placeText(placeInfo(view.place)), "note"));
-  if (info.pause_reason) parts.push(element("span", `paused: ${info.pause_reason}`, "note"));
-  if (view.detail.skill_changed) parts.push(element("span", "The skill changed after this run started.", "note"));
+  const facts = [`${info.harness} · ${info.mode}`];
+  if (hosted) facts.push(placeText(placeInfo(view.place)));
+  if (info.pause_reason) facts.push(`paused: ${info.pause_reason}`);
+  if (view.detail.skill_changed) facts.push("the skill changed after this run started");
+  const factsLine = element("span", facts.join(" · "), "toolbar-facts note");
+  factsLine.title = [
+    `Harness: ${info.harness}, the agent tool that runs the skill.`,
+    MODE_MEANING[info.mode] || "",
+    ...facts.slice(1),
+  ].filter(Boolean).join("\n");
+  const parts = [statusPill(info.status), factsLine, element("span", null, "spacer")];
   const skillLink = element("a", "Skill graph", "tool");
   skillLink.href = skillHref(info.skill_id);
   skillLink.title = `See the skill ${info.skill_id} as it is now in .pskill/skills/, without this run.`;
@@ -1191,7 +1396,7 @@ function centerOnNode(node, targetScale = view.transform.scale, { atTop = false 
 function attachPanAndZoom(canvas) {
   let drag = null;
   canvas.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || event.target.closest(".step-list")) return;
+    if (event.button !== 0 || event.target.closest(".step-list, .canvas-tools")) return;
     drag = { startX: event.clientX, startY: event.clientY, x: view.transform.x, y: view.transform.y, moved: false };
   });
   window.addEventListener("pointermove", (event) => {
@@ -2387,7 +2592,7 @@ async function showRun(place, runId) {
     drawPanel();
     await drawCanvas();
   }
-  if (UNFINISHED.includes(detail.info.status)) view.pollTimer = setTimeout(render, POLL_MS);
+  if (UNFINISHED.includes(detail.info.status)) pollAgain(POLL_MS);
 }
 
 // --- the skill screen: loading ---------------------------------------------------------------------
@@ -2509,6 +2714,8 @@ function route() {
 
 async function render() {
   clearTimeout(view.pollTimer);
+  view.pollWaiting = false;
+  view.pollAsked = false; // the screen calls pollAgain again while its run is live
   const { screen, rest } = route();
   if (screen !== view.screen) {
     view.parts = null; // another screen: build its layout again
@@ -2527,6 +2734,9 @@ async function render() {
   } catch (error) {
     showMessage(`The viewer could not load the data: ${error.message}`, "errors");
   }
+  view.refreshedAt = Date.now();
+  view.live = view.pollAsked; // set at the end, so the live dot does not blink while a read runs
+  drawRefreshButtons();
 }
 
 // On the hosted viewer, a screen with data needs a folder and Python first. False when the screen cannot show.
@@ -2581,10 +2791,16 @@ async function start() {
   } catch {
     hosted = await import("./hosted.js");
     if (hosted.supported()) await hosted.load();
-    // Clones and worktrees come and go: look for projects again every minute, while the page is visible.
-    setInterval(() => document.visibilityState === "visible" && hosted.rescan(), 60_000);
   }
   render();
+  setInterval(tickRefresh, REFRESH_TICK_MS);
 }
+
+// A page that comes back into view: a live run asks again at once, and a due refresh runs.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (view.pollWaiting) render();
+  else tickRefresh();
+});
 
 start();

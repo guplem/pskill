@@ -274,29 +274,30 @@ pre {
   gap: 18px;
 }
 
-.filters,
-.summaries {
+.filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.summary {
-  display: flex;
-  flex-direction: column;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  min-width: 170px;
+/* The numbers of each skill, under the run cards: a plain table, so they do not read as a run card. */
+.skill-totals {
+  border-collapse: collapse;
+  width: fit-content;
+  max-width: 100%;
+  font-size: 13px;
 }
 
-.summary strong {
-  font-size: 14px;
+.skill-totals th,
+.skill-totals td {
+  padding: 6px 16px 6px 0;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
 }
 
-.summary span {
+.skill-totals th {
   font-size: 12px;
+  font-weight: 600;
   color: var(--muted);
 }
 
@@ -1580,8 +1581,151 @@ a.tool {
   max-width: none;
 }
 
-.skill-screen .topbar {
+/* The top of the run and skill screens: the app bar, then the screen's own toolbar. Nothing in them wraps
+   onto two lines: a row that runs out of room wraps whole items, and a long fact is cut with an ellipsis. */
+.screen-head .topbar {
+  border-bottom: none;
+}
+
+.toolbar {
+  display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 0 16px 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.toolbar .run-picker {
+  max-width: 400px;
+}
+
+.topbar .tool,
+.topbar .nav-link,
+.toolbar .tool,
+.toolbar .note,
+.toolbar .pill,
+.canvas-tools .tool,
+.canvas-tools .note {
+  white-space: nowrap;
+}
+
+.toolbar .run-status {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.toolbar-facts {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The canvas tools float in the canvas's top right corner, like the controls of a map. */
+.canvas-tools {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: default;
+}
+
+.canvas-tools .tool {
+  min-height: 30px;
+  padding: 4px 10px;
+}
+
+/* The refresh control in the app bar: the live status, the automatic refresh choice, and the button. */
+.refresh-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refresh-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.refresh-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.refresh-status[data-mode="off"] .refresh-dot {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+}
+
+.refresh-status[data-mode="live"] .refresh-dot {
+  background: var(--now);
+  animation: refresh-pulse 1.6s ease-in-out infinite;
+}
+
+.refresh-choice {
+  font-weight: 500;
+}
+
+.refresh-now {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+}
+
+.refresh-now svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.refresh-now[aria-busy="true"] svg {
+  animation: refresh-turn 0.9s linear infinite;
+}
+
+@keyframes refresh-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes refresh-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh-status[data-mode="live"] .refresh-dot,
+  .refresh-now[aria-busy="true"] svg {
+    animation: none;
+  }
+}
+
+/* On a phone, the app bar keeps the tabs and the refresh button: the status and the choice go. */
+@media (max-width: 640px) {
+  .refresh-status,
+  .refresh-choice {
+    display: none;
+  }
 }
 
 /* The "?" button of a field, and the dialog that it opens. */

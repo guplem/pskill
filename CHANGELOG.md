@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.25.0 (2026-10-05)
+
+The viewer refreshes on its own, shows that it is live, and has calmer top bars.
+
+- **Automatic refresh:** every screen reads its data again on its own, every 30 seconds by default. Pick off, 10 s, 1 min, or 5 min in the top bar, or press the refresh button. It waits while the tab is hidden and catches up when the tab comes back. It never runs over an open editor.
+- **Live status:** the top bar shows the time since the last read, like "Updated 12 s ago". While a run is live, it says "Live" and its dot pulses.
+- **Calmer top bars:** the run and skill screens have two rows: the app bar, and a toolbar for the screen. Fit, zoom, and Follow live float on the canvas. No button breaks onto two lines, and the run's facts fit on one line, with all of them in the tooltip.
+- **Totals by skill:** the per-skill numbers on the Runs screen are now a "By skill" table under the runs. They looked like one more run card.
+- **Less work in a hidden tab:** a live run stops polling while its tab is hidden.
+
 ## 0.24.2 (2026-10-05)
 
 The top bar spans the page on the message screens.
