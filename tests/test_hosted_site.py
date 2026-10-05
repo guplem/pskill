@@ -15,7 +15,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 def test_the_site_holds_the_viewer_and_the_runner_without_caches(tmp_path: Path) -> None:
     site = build_hosted_site(REPOSITORY_ROOT, tmp_path / "site")
 
-    assert {"index.html", "app.js", "hosted.js", "style.css", RUNNER_ARCHIVE} <= {path.name for path in site.iterdir()}
+    viewer_files = {"index.html", "app.js", "hosted.js", "style.css", "icon.svg", RUNNER_ARCHIVE}
+    assert viewer_files <= {path.name for path in site.iterdir()}
     with zipfile.ZipFile(site / RUNNER_ARCHIVE) as archive:
         names = archive.namelist()
     assert "pskill_runner/viewer_api.py" in names
