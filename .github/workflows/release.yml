@@ -1,11 +1,19 @@
 name: Release
 
+# Publish a release when a merge to main raises the runner version (pskill_runner/__init__.py).
+# A merge that keeps the version finds its tag and stops. One workflow tags, builds, and publishes:
+# a tag that a workflow pushes starts no other workflow. Run it by hand to retry a failed release.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write # to create the GitHub release and upload pskill.zip
+  contents: write # to create the tag, the GitHub release, and upload pskill.zip
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -13,6 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0 # every tag, for the release plan
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
@@ -20,13 +29,20 @@ jobs:
           python-version: "3.11"
       - name: Install the dev environment
         run: uv sync --locked
+      - name: Decide whether the version needs a release
+        id: plan
+        run: |
+          tag=$(uv run python -m pskill_runner.release_plan dist/notes.md $(git tag --list 'v*'))
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Test
+        if: steps.plan.outputs.tag != ''
         run: uv run pytest --cov
-      - name: Check that the tag matches the runner version
-        run: test "$GITHUB_REF_NAME" = "v$(uv run python -c 'import pskill_runner; print(pskill_runner.__version__)')"
       - name: Build the release archive
+        if: steps.plan.outputs.tag != ''
         run: uv run python -m pskill_runner.release dist/pskill.zip
       - name: Publish the release
-        run: gh release create "$GITHUB_REF_NAME" dist/pskill.zip --title "$GITHUB_REF_NAME" --notes "See CHANGELOG.md."
+        if: steps.plan.outputs.tag != ''
+        run: gh release create "$TAG" dist/pskill.zip --target "$GITHUB_SHA" --title "$TAG" --notes-file dist/notes.md
         env:
+          TAG: ${{ steps.plan.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
