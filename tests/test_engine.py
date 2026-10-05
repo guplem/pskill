@@ -282,6 +282,7 @@ def test_an_unfinished_run_must_be_cancelled_before_it_is_deleted(tmp_path: Path
 
 def test_delete_refuses_a_folder_outside_the_runs_folder(tmp_path: Path) -> None:
     project = make_project(tmp_path)
+    project.runs_folder.mkdir()  # Linux and macOS resolve "runs/../keep" only when runs/ exists
     outside = project.pskill_folder / "keep"
     outside.mkdir()
     (outside / "run.json").write_text('{"status": "cancelled"}', encoding="utf-8")
