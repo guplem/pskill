@@ -702,14 +702,60 @@ def task_frame_edges(task_counts: dict[tuple[int, str], int]) -> list[CanvasEdge
     return edges
 
 
+def frame_of_node(node: str) -> int:
+    """The frame index in a node id: 2 for `f2_check` and for its task node `f2_check_T0`."""
+    return int(node.split("_", 1)[0].removeprefix("f"))
+
+
+def frame_call_node(frame: CanvasFrame) -> str | None:
+    """The node of the call block that entered a child frame. None for the run's own skill."""
+    if frame.parent is None or frame.called_by is None:
+        return None
+    return node_id(frame.parent, frame.called_by)
+
+
+def call_block_on_top(frames: list[CanvasFrame], node: str) -> str:
+    """The node of the run's own skill that holds a node: the node, or the call block of its outermost frame."""
+    frame = frames[frame_of_node(node)]
+    while (call_node := frame_call_node(frame)) is not None:
+        node = call_node
+        frame = frames[frame_of_node(call_node)]
+    return node
+
+
+def collapsed_run_canvas(
+    canvas: dict[str, Any], frames: list[CanvasFrame], edges: list[CanvasEdge], task_counts: dict[tuple[int, str], int]
+) -> dict[str, Any]:
+    """The run canvas with each child skill drawn as its call block's node: only the run's own skill.
+
+    Its edges keep the ids of the full canvas, so the timeline rows fit both canvases. A step in a child skill
+    shows on the call block at the top of it.
+    """
+    own_edges = [edge for edge in edges if edge.frame == 0]
+    own_nodes = [node for node in canvas["nodes"] if node["frame"] == 0]
+    current = canvas["current"]
+    return {
+        "template": canvas_template(
+            frames[:1], own_edges, {key: count for key, count in task_counts.items() if key[0] == 0}
+        ),
+        "start": START_NODE,
+        "labels": {node["id"]: canvas["labels"][node["id"]] for node in own_nodes},
+        "nodes": own_nodes,
+        "edges": canvas_edge_rows(own_edges),
+        "current": None if current is None else {**current, "node": call_block_on_top(frames, current["node"])},
+        "main_edges": main_line_edges(frames[:1], own_edges),
+    }
+
+
 def run_canvas(
     folder: Path, info: RunInfo, rows: list[dict[str, Any]]
-) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    """The canvas of a run (None when its skill copy does not load), and the rows with their canvas fields."""
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[dict[str, Any]]]:
+    """The canvas of a run and its collapsed canvas (None when its skill copy does not load), and the rows
+    with their canvas fields."""
     skills = load_run_skills(folder)
     root = skills.get(info["skill_id"])
     if root is None:
-        return None, annotate_rows(rows, [None] * len(rows), [], [], info["mode"])
+        return None, None, annotate_rows(rows, [None] * len(rows), [], [], info["mode"])
     frames, row_frames = assign_frames(rows, skills, root)
     task_counts = parallel_task_counts(rows, row_frames)
     task_names = parallel_task_names(rows, row_frames)
@@ -745,8 +791,14 @@ def run_canvas(
         "edges": canvas_edge_rows(edges),
         "current": current_step(info, annotated),
         "main_edges": main_line_edges(frames, edges),
+        # Each child frame and the call block that entered it: the page puts a hidden child's step on its call block.
+        "child_frames": [
+            {"id": f"f{index}", "node": call_node}
+            for index, frame in enumerate(frames)
+            if (call_node := frame_call_node(frame)) is not None
+        ],
     }
-    return canvas, annotated
+    return canvas, collapsed_run_canvas(canvas, frames, edges, task_counts), annotated
 
 
 def block_nodes(frames: list[CanvasFrame]) -> list[dict[str, Any]]:
@@ -961,11 +1013,12 @@ def run_detail(project: Project, run_id: str) -> dict[str, Any] | None:
     state = read_run_state(project, run_id)
     rows = timeline_rows(read_events(folder))
     add_task_lists(rows, state)
-    canvas, rows = run_canvas(folder, info, rows)
+    canvas, collapsed_canvas, rows = run_canvas(folder, info, rows)
     return {
         "info": info,
         "state": state,
         "canvas": canvas,
+        "collapsed_canvas": collapsed_canvas,  # the switch that collapses the child skills
         "timeline": rows,
         "skill_changed": skill_changed(project, info),
     }

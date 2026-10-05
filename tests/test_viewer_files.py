@@ -417,3 +417,16 @@ def test_the_facts_of_a_run_or_a_skill_hide_behind_a_details_button() -> None:
     style = (VIEWER / "style.css").read_text(encoding="utf-8")
     card_rule = style.split(".details-card {", 1)[1].split("}", 1)[0]
     assert "display:" not in card_rule  # it would show the closed card: only .details-card:popover-open sets it
+
+
+def test_the_run_screen_can_collapse_its_child_skills_and_keeps_the_real_step_in_the_panel() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    run_panel = script.split("function drawRunPanel(", 1)[1].split("\n}\n", 1)[0]
+
+    assert 'switchControl("Collapse sub-skills", view.runCollapsed, toggleChildSkills)' in script
+    assert 'localStorage.getItem(RUN_COLLAPSED_KEY) === "true"' in script  # expanded unless the user collapsed
+    assert "canvasStepNode: nodeOnCanvas(stepNode)" in script  # a child step shows on its call block
+    assert "centerOnNode(stepState().canvasStepNode" in script  # Follow live follows the call block
+    assert "view.detail.canvas.nodes.find(" in run_panel  # the panel shows the real block of the child skill
+    assert "collapsedChildNote(" in run_panel
+    assert "view.detail.canvas?.child_frames" in script
