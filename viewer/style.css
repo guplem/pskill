@@ -340,6 +340,7 @@ pre {
 
 .run-screen {
   display: grid;
+  grid-template-columns: minmax(0, 1fr); /* no row can make the screen wider than the window */
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
 }
@@ -1581,45 +1582,77 @@ a.tool {
   max-width: none;
 }
 
-/* The top of the run and skill screens: the app bar, then the screen's own toolbar. Nothing in them wraps
-   onto two lines: a row that runs out of room wraps whole items, and a long fact is cut with an ellipsis. */
-.screen-head .topbar {
-  border-bottom: none;
-}
-
-.toolbar {
-  display: flex;
+/* The top bar is one row. No label in it wraps onto two lines: a row that runs out of room wraps whole items,
+   and a long fact is cut with an ellipsis. On a detail screen, the logo carries a back arrow. */
+.topbar {
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 10px;
-  padding: 0 16px 10px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
 }
 
-.toolbar .run-picker {
-  max-width: 400px;
+.brand-back {
+  margin-right: 4px;
+  color: var(--muted);
+}
+
+/* At most 400px, and on a phone, the room left next to the logo: a select does not shrink below its text. */
+.topbar .run-picker {
+  max-width: min(400px, calc(100vw - 140px));
 }
 
 .topbar .tool,
 .topbar .nav-link,
-.toolbar .tool,
-.toolbar .note,
-.toolbar .pill,
+.topbar .note,
+.topbar .pill,
 .canvas-tools .tool,
 .canvas-tools .note {
   white-space: nowrap;
 }
 
-.toolbar .run-status {
+.topbar .run-status {
   flex: 1 1 240px;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
-.toolbar-facts {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* The Details button of a run or skill, and its card: each fact with its name. */
+.details-button {
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.details-card {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: max-content;
+  max-width: 340px;
+  padding: 12px 14px;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.12);
+  font-size: 13px;
+}
+
+/* Only while open: a display rule on the closed card would beat the browser's rule that hides it. */
+.details-card:popover-open {
+  display: grid;
+}
+
+.details-card dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.details-card dd {
+  margin: 0;
 }
 
 /* The canvas tools float in the canvas's top right corner, like the controls of a map. */
@@ -1647,6 +1680,7 @@ a.tool {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto; /* the right end of the top bar */
 }
 
 .refresh-status {

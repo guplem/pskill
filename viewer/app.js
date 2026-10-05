@@ -355,16 +355,26 @@ function rememberPlace(place) {
   }
 }
 
-// The bar at the top of every screen: the logo, the tabs, and the refresh control with the live status.
-// The run and skill screens put their own parts in a toolbar under it (screenHead), so neither row crowds.
-function topbar() {
+// The run, skill, and agent screens: each shows one thing, and its logo leads back to the list.
+function isDetailScreen() {
+  return ["run", "skill", "agent"].includes(view.screen);
+}
+
+// The bar at the top of every screen, in one row: the logo, then the tabs on the list screens (Runs, Content,
+// Folders) or the screen's own parts on a detail screen, then the refresh control with the live status.
+function topbar(...parts) {
   const bar = element("header", null, "topbar");
-  const brand = externalLink("pskill", REPOSITORY_URL, "pskill on GitHub: the code, the docs, and the releases");
+  const brand = brandLink();
   brand.className = "brand";
+  const access = hosted?.needsAccess() ? [button("Allow the folders again", allowFolders, "tool primary")] : [];
+  if (isDetailScreen()) {
+    bar.append(brand, ...access, ...parts, refreshControl());
+    return bar;
+  }
   const nav = element("nav", null, "nav");
   const tabs = [
-    ["Runs", "#/", ["runs", "run"]],
-    ["Content", contentHref(view.lastPlace), ["content", "skill", "agent"]],
+    ["Runs", "#/", ["runs"]],
+    ["Content", contentHref(view.lastPlace), ["content"]],
   ];
   if (hosted) tabs.push(["Folders", "#/folders", ["folders"]]);
   for (const [text, href, screens] of tabs) {
@@ -373,18 +383,26 @@ function topbar() {
     if (screens.includes(view.screen)) link.setAttribute("aria-current", "page");
     nav.append(link);
   }
-  if (hosted?.needsAccess()) nav.append(button("Allow the folders again", allowFolders, "tool primary"));
-  bar.append(brand, nav, element("span", null, "spacer"), refreshControl());
+  bar.append(brand, nav, ...access, refreshControl());
   return bar;
 }
 
-// The top of the run and skill screens: the app bar, and the screen's toolbar.
-function screenHead(...parts) {
-  const head = element("div", null, "screen-head");
-  const toolbar = element("div", null, "toolbar");
-  toolbar.append(...parts);
-  head.append(topbar(), toolbar);
-  return head;
+// The logo. On a detail screen, it leads back to the list that the screen belongs to: the runs, or the content
+// of the project that the screen shows. On the Runs, Content, and Folders screens, it opens pskill on GitHub.
+function brandLink() {
+  const back = {
+    run: ["#/", "Back to the runs"],
+    skill: [contentHref(view.place), "Back to the skills and agents of this project"],
+    agent: [contentHref(view.place), "Back to the skills and agents of this project"],
+  }[view.screen];
+  if (!back) return externalLink("pskill", REPOSITORY_URL, "pskill on GitHub: the code, the docs, and the releases");
+  const link = element("a");
+  const arrow = element("span", "‹", "brand-back");
+  arrow.setAttribute("aria-hidden", "true");
+  link.append(arrow, "pskill");
+  [link.href, link.title] = back;
+  link.setAttribute("aria-label", back[1]);
+  return link;
 }
 
 // --- refreshing: read the data again, on a schedule or on a press ---------------------------------------
@@ -411,9 +429,10 @@ function editorOpen() {
   return Boolean(app.querySelector(".edit-form") || document.querySelector("dialog[open]"));
 }
 
-// Whether a refresh now would get in the way: an open editor, or a text field that the user types in.
+// Whether a refresh now would get in the way: an open editor, an open Details card, or a text field in use.
 function refreshWouldInterrupt() {
-  return editorOpen() || Boolean(document.activeElement?.matches("textarea, input:not([type]), input[type=text]"));
+  if (editorOpen() || document.querySelector(":popover-open")) return true;
+  return Boolean(document.activeElement?.matches("textarea, input:not([type]), input[type=text]"));
 }
 
 function refreshDue() {
@@ -872,7 +891,7 @@ function buildRunScreen() {
   });
   follow.setAttribute("aria-pressed", String(view.followLive));
   const zoomLabel = element("span", "100 %", "note");
-  const head = screenHead(picker, status);
+  const bar = topbar(picker, status);
   const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected step", [follow, ...zoomTools(zoomLabel)]);
 
   const replay = element("footer", null, "replay");
@@ -894,7 +913,7 @@ function buildRunScreen() {
   replay.append(play, body);
 
   const screen = element("div", null, "run-screen");
-  screen.append(head, workspace, replay);
+  screen.append(bar, workspace, replay);
   app.className = "";
   app.replaceChildren(screen);
   view.parts = { picker, status, follow, zoomLabel, canvas, layer, note, panel, progress, marks, slider, labels, play, workspace };
@@ -946,11 +965,11 @@ function buildSkillScreen() {
   addBar.hidden = !view.editing;
   const collapseToggle = switchControl("Collapse sub-skills", view.collapsed, toggleChildSkills);
   collapseToggle.title = "Draw each child skill as one node, to see the main flow of a skill with many child skills.";
-  const head = screenHead(picker, status, element("span", null, "spacer"), addBar, editToggle, collapseToggle);
+  const bar = topbar(picker, status, element("span", null, "spacer"), addBar, editToggle, collapseToggle);
   const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected block", zoomTools(zoomLabel));
   layer.classList.add("is-skill");
   const screen = element("div", null, "run-screen skill-screen");
-  screen.append(head, workspace);
+  screen.append(bar, workspace);
   app.className = "";
   app.replaceChildren(screen);
   view.parts = { picker, status, follow: null, zoomLabel, canvas, layer, note, panel, workspace, collapseToggle };
@@ -995,12 +1014,13 @@ function drawSkillTopbar() {
       return option;
     }),
   );
-  const parts = hosted ? [element("span", placeText(placeInfo(view.place)), "toolbar-facts note")] : [];
+  const facts = [];
   if (view.detail.skill.invocation) {
-    const invocation = element("span", `invocation: ${view.detail.skill.invocation}`, "note");
-    invocation.title = INVOCATION_MEANING[view.detail.skill.invocation] || "";
-    parts.push(invocation);
+    const invocation = view.detail.skill.invocation;
+    facts.push(["Invocation", `${invocation}: ${INVOCATION_MEANING[invocation] || ""}`]);
   }
+  if (hosted) facts.push(["Project", placeText(placeInfo(view.place))]);
+  const parts = facts.length ? [detailsButton(facts)] : [];
   const errors = view.detail.problems.filter((problem) => problem.level === "error").length;
   const warnings = view.detail.problems.length - errors;
   if (errors) parts.push(element("span", `${errors} error${errors === 1 ? "" : "s"}`, "pill state-failed"));
@@ -1031,26 +1051,31 @@ function drawTopbar() {
   const info = view.detail.info;
   const current = { run_id: info.run_id, skill_id: info.skill_id, status: info.status, place: view.place };
   const options = view.runs.length ? view.runs : [current];
-  picker.replaceChildren(
-    ...options.map((run) => {
-      const where = hosted ? ` · ${placeInfo(run.place)?.label ?? run.location}` : "";
-      const option = element("option", `${run.skill_id} · ${STATUS_TEXT[run.status] || run.status} · ${run.run_id}${where}`);
-      option.value = runHref(run.place, run.run_id);
-      option.selected = run.run_id === info.run_id && run.place === view.place;
-      return option;
-    }),
-  );
-  const facts = [`${info.harness} · ${info.mode}`];
-  if (hosted) facts.push(placeText(placeInfo(view.place)));
-  if (info.pause_reason) facts.push(`paused: ${info.pause_reason}`);
-  if (view.detail.skill_changed) facts.push("the skill changed after this run started");
-  const factsLine = element("span", facts.join(" · "), "toolbar-facts note");
-  factsLine.title = [
-    `Harness: ${info.harness}, the agent tool that runs the skill.`,
-    MODE_MEANING[info.mode] || "",
-    ...facts.slice(1),
-  ].filter(Boolean).join("\n");
-  const parts = [statusPill(info.status), factsLine, element("span", null, "spacer")];
+  // One group per status, the unfinished runs first: the status pill names the shown run's own status.
+  const groups = new Map();
+  for (const run of [...options].sort((a, b) => UNFINISHED.includes(b.status) - UNFINISHED.includes(a.status))) {
+    const label = STATUS_TEXT[run.status] || run.status;
+    if (!groups.has(label)) groups.set(label, element("optgroup"));
+    groups.get(label).label = label[0].toUpperCase() + label.slice(1);
+    const option = element("option", `${run.skill_id} · ${run.run_id}`);
+    option.value = runHref(run.place, run.run_id);
+    option.selected = run.run_id === info.run_id && run.place === view.place;
+    groups.get(label).append(option);
+  }
+  picker.replaceChildren(...groups.values());
+  const facts = [
+    ["Harness", `${info.harness}: the agent tool that runs the skill.`],
+    ["Mode", MODE_MEANING[info.mode] || info.mode],
+  ];
+  if (hosted) facts.push(["Project", placeText(placeInfo(view.place))]);
+  if (info.pause_reason) facts.push(["Paused", info.pause_reason]);
+  const parts = [statusPill(info.status), detailsButton(facts)];
+  if (view.detail.skill_changed) {
+    const changed = element("span", "skill changed", "pill state-now");
+    changed.title = "The skill changed after this run started. The graph shows the skill as the run saw it.";
+    parts.push(changed);
+  }
+  parts.push(element("span", null, "spacer"));
   const skillLink = element("a", "Skill graph", "tool");
   skillLink.href = skillHref(info.skill_id);
   skillLink.title = `See the skill ${info.skill_id} as it is now in .pskill/skills/, without this run.`;
@@ -1058,6 +1083,27 @@ function drawTopbar() {
   if (UNFINISHED.includes(info.status)) parts.push(button("Cancel run", cancelOpenRun, "tool danger"));
   else parts.push(button("Delete run", deleteOpenRun, "tool danger"));
   status.replaceChildren(...parts);
+}
+
+// The facts of the shown run or skill, behind one small button: they matter now and then, not all the time.
+// A click opens a card under the button. It closes on a click outside or on Escape (a native popover).
+function detailsButton(facts) {
+  const wrap = element("span", null, "details");
+  const press = element("button", "i", "tool details-button");
+  press.type = "button";
+  press.setAttribute("aria-label", "Details");
+  press.title = "Details";
+  const card = element("dl", null, "details-card");
+  card.popover = "auto";
+  for (const [name, value] of facts) card.append(element("dt", name), element("dd", value));
+  press.addEventListener("click", () => {
+    const box = press.getBoundingClientRect();
+    card.style.top = `${box.bottom + 6}px`;
+    card.style.left = `${Math.max(8, Math.min(box.left, innerWidth - 360))}px`;
+    card.togglePopover();
+  });
+  wrap.append(press, card);
+  return wrap;
 }
 
 // --- cancelling and deleting runs ------------------------------------------------------------------
@@ -2774,8 +2820,8 @@ window.addEventListener("hashchange", () => {
 });
 window.addEventListener("keydown", (event) => {
   if (!view.parts || ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
-  // Escape does what the panel's close button does. An open help dialog takes Escape for itself.
-  if (event.key === "Escape" && !document.querySelector("dialog[open]")) view.parts.panel.querySelector(".panel-close")?.click();
+  // Escape does what the panel's close button does. An open help dialog or Details card takes Escape for itself.
+  if (event.key === "Escape" && !document.querySelector("dialog[open], :popover-open")) view.parts.panel.querySelector(".panel-close")?.click();
   if (view.screen !== "run") return;
   if (event.key === "ArrowRight") setStep(view.step + 1);
   else if (event.key === "ArrowLeft") setStep(view.step - 1);
