@@ -898,7 +898,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 1. **Runs** (the Runs tab).
    - The runs of every project, newest first, with the filters Unfinished, All, and Failed, and a folder filter when there are several projects.
    - On the hosted viewer, each run card names its project: its path, its kind (clone or worktree), and its branch.
-   - Under the cards, a "By skill" table: the runs, the success rate, and the median time of each skill, over every run, whatever the filters.
+   - Under the cards, a "By skill" section: a table on a card like the run cards, with the runs, the success rate, and the median time of each skill, over every run, whatever the filters. The numbers align right.
    - For cleanup, one button deletes the finished runs that the filters show. It asks first, and the unfinished runs stay.
 2. **Run.**
    - In the top bar: a run switcher (each option is the skill and the run id, grouped by status), the status, the Details button, a "skill changed" pill when the skill changed after the run started, Collapse sub-skills, Skill graph, and Cancel run or Delete run. Follow live, Fit, and zoom are on the canvas.

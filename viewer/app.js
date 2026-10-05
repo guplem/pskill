@@ -684,29 +684,42 @@ function drawRuns(overview) {
 }
 
 // The numbers of each skill, under the run cards. They count every run, whatever the filters, so they get
-// their own heading and a table: they must not read as one more run.
+// their own section and a table: they must not read as one more run.
 function skillTotals(summaries) {
   const table = element("table", null, "skill-totals");
   const head = element("tr");
-  for (const name of ["Skill", "Runs", "Succeeded", "Median time"]) head.append(element("th", name));
+  for (const [name, className] of [["Skill"], ["Runs", "number"], ["Succeeded", "number"], ["Median time", "number"]]) {
+    head.append(element("th", name, className));
+  }
   const body = element("tbody");
   for (const summary of summaries) {
-    const succeeded =
-      summary.success_rate === null ? "no finished run" : `${Math.round(summary.success_rate * 100)} % of ${summary.finished}`;
+    const succeeded = element("td", null, "number");
+    if (summary.success_rate === null) succeeded.append(element("span", "no finished run", "note"));
+    else {
+      succeeded.append(
+        `${Math.round(summary.success_rate * 100)} %`,
+        element("span", ` · ${summary.succeeded} of ${summary.finished}`, "note"),
+      );
+    }
     const row = element("tr");
     row.append(
-      element("td", summary.skill_id, "mono"),
-      element("td", String(summary.runs)),
-      element("td", succeeded),
-      element("td", formatDuration(summary.median_duration_ms)),
+      element("td", summary.skill_id, "totals-skill"),
+      element("td", String(summary.runs), "number"),
+      succeeded,
+      element("td", formatDuration(summary.median_duration_ms), "number"),
     );
     body.append(row);
   }
   const thead = element("thead");
   thead.append(head);
   table.append(thead, body);
-  const where = hosted ? "in every folder" : "in this project";
-  return [element("h2", "By skill"), element("p", `Every run of each skill ${where}, whatever the filters above.`, "note"), table];
+  const card = element("div", null, "totals-card");
+  card.append(table);
+  const heading = element("div", null, "totals-head");
+  heading.append(element("h2", "By skill"), element("span", hosted ? "Every run in every folder, whatever the filters" : "Every run, whatever the filters", "note"));
+  const section = element("section", null, "totals-section");
+  section.append(heading, card);
+  return [section];
 }
 
 // --- the content page: the skills and the agents of one project ----------------------------------

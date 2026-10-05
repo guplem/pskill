@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.28.0 (2026-10-05)
+
+A tidier "By skill" table on the Runs screen.
+
+- **One section:** the heading and its note share one line, and the table sits right under them, on a card like the run cards. The big gaps between them are gone.
+- **Easier to read:** the skill names use the regular font, the numbers align right and line up, and the success rate shows how many runs it counts ("100 % · 2 of 2").
+- **Phone:** every column fits on a phone screen, without a sideways scroll.
+
 ## 0.27.0 (2026-10-05)
 
 The run screen can collapse its sub-skills.

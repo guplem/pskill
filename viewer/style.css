@@ -280,25 +280,87 @@ pre {
   gap: 8px;
 }
 
-/* The numbers of each skill, under the run cards: a plain table, so they do not read as a run card. */
-.skill-totals {
-  border-collapse: collapse;
-  width: fit-content;
-  max-width: 100%;
+/* The numbers of each skill, under the run cards: a heading with its note, then a table on a card like the
+   run cards. The numbers align right, with digits of one width, so they line up. */
+.totals-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.totals-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.totals-head h2 {
+  margin: 0;
+}
+
+.totals-head .note {
   font-size: 13px;
+}
+
+.totals-card {
+  max-width: 640px;
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.skill-totals {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
 }
 
 .skill-totals th,
 .skill-totals td {
-  padding: 6px 16px 6px 0;
+  padding: 10px 16px;
   text-align: left;
-  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
 }
 
 .skill-totals th {
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.skill-totals tbody tr + tr td {
+  border-top: 1px solid var(--line);
+}
+
+.skill-totals .totals-skill {
+  width: 100%;
+  font-weight: 600;
+}
+
+.skill-totals .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* On a phone, every column fits: less padding, a skill name that wraps, and no "x of y" after the rate. */
+@media (max-width: 640px) {
+  .skill-totals th,
+  .skill-totals td {
+    padding: 8px 10px;
+  }
+
+  .skill-totals .totals-skill {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .skill-totals .number .note {
+    display: none;
+  }
 }
 
 .run-cards {
