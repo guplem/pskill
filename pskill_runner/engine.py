@@ -230,6 +230,22 @@ def cancel_run(project: Project, run_id: str) -> str:
     return f"Run {run_id} is cancelled. No more pskill commands are needed.\n"
 
 
+def delete_run(project: Project, run_id: str) -> str:
+    """Delete the folder of a finished run, for cleanup. An unfinished run must be cancelled first.
+
+    The id must name a folder right inside `runs/`, so that `../` never reaches another folder.
+    """
+    folder = run_folder(project, run_id)
+    if folder.resolve().parent != project.runs_folder.resolve():
+        raise RunError(f"There is no run {run_id!r}. List the runs with `pskill runs`.")
+    with run_lock(folder):
+        status = read_run_info(project, run_id)["status"]
+        if status in UNFINISHED_STATUSES:
+            raise RunError(f"Run {run_id} is {status}, so it cannot be deleted. Cancel it first.")
+    shutil.rmtree(folder)
+    return f"Run {run_id} is deleted.\n"
+
+
 def register_stop_attempt(project: Project, run_id: str) -> bool:
     """Count one try of the agent to end its turn with an open block. Return True to keep it working.
 

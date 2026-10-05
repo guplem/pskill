@@ -10,6 +10,7 @@ from pskill_runner.engine import (
     RunError,
     cancel_run,
     current_packet,
+    delete_run,
     pause_run,
     read_run_info,
     read_run_state,
@@ -259,6 +260,36 @@ def test_pause_resume_and_cancel(tmp_path: Path) -> None:
     assert "cancelled" in cancel_run(project, run_id)
     assert read_run_info(project, run_id)["status"] == "cancelled"
     assert event_types(project, run_id)[-3:] == ["run_paused", "run_resumed", "run_ended"]
+
+
+def test_delete_removes_the_folder_of_a_finished_run(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    cancel_run(project, run_id)
+
+    assert "deleted" in delete_run(project, run_id)
+    assert not (project.runs_folder / run_id).exists()
+
+
+def test_an_unfinished_run_must_be_cancelled_before_it_is_deleted(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    with pytest.raises(RunError, match="Cancel it first"):
+        delete_run(project, run_id)
+    assert (project.runs_folder / run_id / "run.json").is_file()
+
+
+def test_delete_refuses_a_folder_outside_the_runs_folder(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    project.runs_folder.mkdir()  # Linux and macOS resolve "runs/../keep" only when runs/ exists
+    outside = project.pskill_folder / "keep"
+    outside.mkdir()
+    (outside / "run.json").write_text('{"status": "cancelled"}', encoding="utf-8")
+
+    with pytest.raises(RunError, match="There is no run"):
+        delete_run(project, "../keep")
+    assert outside.is_dir()
 
 
 def test_current_prints_the_same_packet_without_changing_the_run(tmp_path: Path) -> None:

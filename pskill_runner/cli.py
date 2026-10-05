@@ -19,6 +19,7 @@ from pskill_runner.engine import (
     RunError,
     cancel_run,
     current_packet,
+    delete_run,
     list_runs,
     pause_run,
     resume_run,
@@ -77,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("pause", "Pause a run."),
         ("resume", "Resume a paused run and retry its block."),
         ("cancel", "Stop a run for good."),
+        ("delete", "Delete the folder of a finished run, for cleanup."),
     ):
         commands.add_parser(name, help=help_text).add_argument("run_id")
 
@@ -169,6 +171,8 @@ def run_command(options: argparse.Namespace) -> int:
         return print_text(resume_run(project, options.run_id, harness, session_id))
     if command == "cancel":
         return print_text(cancel_run(project, options.run_id))
+    if command == "delete":
+        return print_text(delete_run(project, options.run_id))
     if command == "runs":
         return print_text(runs_table(project, only_open=options.open))
     if command == "list":

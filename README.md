@@ -6,6 +6,12 @@
 
 *The example skill `implement-issue` in the viewer. Each box is one step, and the arrows show where each step can go next.*
 
+## Open the viewer, with no install
+
+**<https://triunitystudios.com/pskill/>**
+
+Open it in Chrome or Edge. On the Folders tab, pick your project folder, or a folder of clones and worktrees. You then see every run and every skill in them. Your files stay on your computer: the page reads them in the browser. (<https://guplem.github.io/pskill/> leads to the same page.)
+
 ## Why
 
 Agents often skip a step of a long skill, forget a value, or jump ahead. With pskill, the runner keeps the order and the values. The agent only does the current step.
@@ -63,12 +69,15 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 | `current <run>` | Show the current step of a run. |
 | `task <run> <n>` | Show the full prompt of one parallel task. A subagent runs this first. |
 | `pause <run>`, `resume <run>`, `cancel <run>` | Pause, continue, or stop a run. A run survives when you close the session. |
+| `delete <run>` | Delete a finished run, for cleanup. |
 | `view` | Open the viewer in your browser (below). |
 | `validate` | Check the skills for mistakes. |
 | `test` | Run the skills' test cases with recorded answers. No AI model runs. |
 | `sync` | Update the small skill files, the hooks, and the permission rule. |
 
-**The viewer** shows each skill as a graph of steps, and each run as the path that it took. Click a step to see its details. You can edit skills and agents there, and replay a run step by step.
+**The viewer** shows each skill as a graph of steps, and each run as the path that it took. Click a step to see its details. You can edit skills and agents there, replay a run step by step, cancel a run, and delete finished runs.
+
+**The hosted viewer** shows the same screens without a command, for many projects at once: open <https://triunitystudios.com/pskill/> in Chrome or Edge (see [Open the viewer, with no install](#open-the-viewer-with-no-install)), and pick your project folders on the Folders tab. A folder of clones and worktrees works too: the viewer finds each project in it, and names the folder and the branch of every run. Your files stay on your computer.
 
 ## Write a skill
 

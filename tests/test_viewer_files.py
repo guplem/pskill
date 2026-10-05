@@ -177,10 +177,19 @@ def test_the_skills_list_shows_the_internal_skills_in_their_own_section() -> Non
     assert '"Internal skills"' in script
 
 
-def test_the_viewer_has_an_agents_page_and_an_agent_screen_with_an_editor() -> None:
+def test_the_viewer_has_two_tabs_runs_and_the_content_of_one_project() -> None:
     script = (VIEWER / "app.js").read_text(encoding="utf-8")
 
-    assert '["Agents", "#/agents"' in script
+    assert '["Runs", "#/", ["runs", "run"]]' in script
+    assert '["Content", contentHref(view.lastPlace), ["content", "skill", "agent"]]' in script
+    assert 'if (hosted) tabs.push(["Folders", "#/folders", ["folders"]]);' in script
+    # Each route names its project, so a run or a skill opens in the right folder.
+    assert "return `#/run/${encodedPath(place, runId)}`;" in script
+
+
+def test_the_viewer_has_an_agent_screen_with_an_editor() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
     assert "/api/agents/" in script
     assert 'element("textarea"' in script
 
@@ -220,3 +229,37 @@ def test_the_skill_screen_can_collapse_its_child_skills() -> None:
     assert 'control.setAttribute("role", "switch");' in script
     assert "view.detail?.collapsed_canvas" in script
     assert 'localStorage.getItem(EXPANDED_KEY) !== "true"' in script  # collapsed unless the user expanded
+
+
+def test_without_a_local_server_the_page_is_the_hosted_viewer() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    hosted = (VIEWER / "hosted.js").read_text(encoding="utf-8")
+
+    assert 'hosted = await import("./hosted.js");' in script  # only when /api/version does not answer
+    assert "window.showDirectoryPicker(" in hosted
+    assert "indexedDB.open(DATABASE" in hosted  # the picked folders survive a reload
+    assert "answer_get, answer_post" in hosted  # the same API code as the local server
+    assert "WORKTREE_HOMES" in hosted  # the worktrees of each clone are found too
+
+
+def test_the_page_maps_pyodide_to_a_pinned_cdn_version_with_a_hash_per_module() -> None:
+    index = (VIEWER / "index.html").read_text(encoding="utf-8")
+    hosted = (VIEWER / "hosted.js").read_text(encoding="utf-8")
+    import_map = json.loads(index.split('<script type="importmap">', 1)[1].split("</script>", 1)[0])
+
+    entry = import_map["imports"]["pyodide"]
+    match = re.fullmatch(r"https://cdn\.jsdelivr\.net/pyodide/v(\d+\.\d+\.\d+)/full/pyodide\.mjs", entry)
+    assert match is not None
+    assert {entry, entry.replace("pyodide.mjs", "pyodide.asm.mjs")} <= set(import_map["integrity"])
+    assert 'await import("pyodide")' in hosted
+
+
+def test_the_viewer_cancels_a_run_and_deletes_finished_runs_after_asking() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    assert 'button("Cancel run", cancelOpenRun, "tool danger")' in script
+    assert 'button("Delete run", deleteOpenRun, "tool danger")' in script
+    assert (
+        "const finished = runs.filter((run) => !UNFINISHED.includes(run.status));" in script
+    )  # cleanup keeps the open ones
+    assert script.count("window.confirm(") >= 4  # the editor's block delete, and the three run actions

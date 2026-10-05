@@ -8,7 +8,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 |---|---|
 | `pskill.py` | Entry script. Holds the PEP 723 dependency block, then calls `pskill_runner.cli.main`. |
 | `pskill_runner/` | The runner package. One module per concern (table below). |
-| `viewer/` | The viewer page: plain HTML, CSS, and JavaScript, no build step. It only draws what `viewer_data.py` returns. |
+| `viewer/` | The viewer page: plain HTML, CSS, and JavaScript, no build step. It only draws what `viewer_data.py` returns. `hosted.js` is the hosted viewer's engine: picked folders, their copy, and Pyodide. |
 | `docs/` | Images for the README, such as the viewer screenshot. |
 | `tests/` | The pytest suite. One test file per module. |
 | `SPEC.md` | The implementation specification. |
@@ -46,7 +46,9 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `agent_view.py` | The agent screens of the viewer: the agents list, one agent's text and users, and saving its text. |
 | `skill_export.py` | A skill as plain Markdown skills (`SKILL.md`) in a zip, for projects without pskill. |
 | `skill_editor.py` | The viewer's skill editor: change, add, or delete one block of `skill.yaml`, keeping every other line. |
-| `viewer_server.py` | `pskill view`: the local server on 127.0.0.1 (JSON API plus the static files). |
+| `viewer_server.py` | `pskill view`: the local server on 127.0.0.1 (the static files, and the API through `viewer_api.py`). |
+| `viewer_api.py` | The viewer's API as plain functions, for the local server and for the hosted viewer (Pyodide). |
+| `hosted_site.py` | Builds the hosted viewer for GitHub Pages: `viewer/` plus `pskill_runner.zip`. |
 
 ## Commands
 

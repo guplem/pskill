@@ -13,6 +13,7 @@ from pskill_runner.viewer_data import (
     CanvasFrame,
     format_duration,
     frame_edges,
+    locations_runs_overview,
     main_line,
     main_line_edges,
     node_hint,
@@ -715,6 +716,18 @@ def test_the_overview_lists_runs_and_one_summary_per_skill(tmp_path: Path) -> No
         "median_duration_ms": finished_row["duration_ms"],
     }
     assert summaries["plan-work"]["success_rate"] is None
+
+
+def test_the_overview_of_several_locations_names_the_location_of_each_run(tmp_path: Path) -> None:
+    first = make_project(tmp_path / "clone")
+    second = make_project(tmp_path / "worktree")
+    older, _ = start_run(first, "scripted", {}, mode="interactive", harness="generic")
+    newer, _ = start_run(second, "scripted", {}, mode="interactive", harness="generic")
+
+    overview = locations_runs_overview({"clone": first, "worktree": second})
+
+    assert [(row["run_id"], row["location"]) for row in overview["runs"]] == [(newer, "worktree"), (older, "clone")]
+    assert [(summary["skill_id"], summary["runs"]) for summary in overview["summaries"]] == [("scripted", 2)]
 
 
 def test_the_run_detail_has_the_timeline_with_packets_submissions_and_outputs(tmp_path: Path) -> None:

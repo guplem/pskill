@@ -1,12 +1,10 @@
 """`pskill view`: a small local web server for the viewer and its skill editor (SPEC.md section 14).
 
-It serves the static files of `viewer/`, six JSON endpoints (runs, skills, and agents), a skill export,
-and two write endpoints: the skill editor and the agent editor.
+It serves the static files of `viewer/`, and answers the API with `viewer_api.py`: six JSON endpoints (runs,
+skills, and agents), a skill export, and two write endpoints, the skill editor and the agent editor.
 It listens on 127.0.0.1 only, and reads the files on every request, so it never shows stale state.
 """
 
-import json
-import re
 import webbrowser
 from functools import partial
 from http import HTTPStatus
@@ -15,18 +13,10 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
-from pskill_runner import __version__
-from pskill_runner.agent_view import AgentEditError, agent_detail, agents_overview, save_agent
 from pskill_runner.project import Project
-from pskill_runner.skill_editor import EditError, add_block, delete_block, update_block
-from pskill_runner.skill_export import ExportError, export_zip
-from pskill_runner.skill_view import skill_detail, skills_overview
-from pskill_runner.viewer_data import run_detail, runs_overview
+from pskill_runner.viewer_api import Answer, answer_get, answer_post, is_write_path, json_answer
 
 LOCAL_HOST = "127.0.0.1"
-EXPORT_PATH = re.compile(r"/api/skills/([^/]+)/export")
-EDIT_PATH = re.compile(r"/api/skills/([^/]+)/edit")
-AGENT_EDIT_PATH = re.compile(r"/api/agents/([^/]+)/edit")
 MAX_EDIT_BYTES = 1_000_000
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -44,66 +34,24 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = unquote(urlparse(self.path).path)
-        if path == "/api/version":
-            self.send_json(HTTPStatus.OK, {"version": __version__})
-        elif path == "/api/runs":
-            self.send_json(HTTPStatus.OK, runs_overview(self.project))
-        elif path.startswith("/api/runs/"):
-            detail = run_detail(self.project, path.removeprefix("/api/runs/"))
-            if detail is None:
-                self.send_json(HTTPStatus.NOT_FOUND, {"error": "There is no run with this id."})
-            else:
-                self.send_json(HTTPStatus.OK, detail)
-        elif export_match := EXPORT_PATH.fullmatch(path):
-            self.send_export(export_match[1])
-        elif path == "/api/skills":
-            self.send_json(HTTPStatus.OK, skills_overview(self.project))
-        elif path.startswith("/api/skills/"):
-            skill = skill_detail(self.project, path.removeprefix("/api/skills/"))
-            if skill is None:
-                self.send_json(HTTPStatus.NOT_FOUND, {"error": "There is no skill with this id."})
-            else:
-                self.send_json(HTTPStatus.OK, skill)
-        elif path == "/api/agents":
-            self.send_json(HTTPStatus.OK, agents_overview(self.project))
-        elif path.startswith("/api/agents/"):
-            agent = agent_detail(self.project, path.removeprefix("/api/agents/"))
-            if agent is None:
-                self.send_json(HTTPStatus.NOT_FOUND, {"error": "There is no agent with this name."})
-            else:
-                self.send_json(HTTPStatus.OK, agent)
-        else:
+        answer = answer_get(self.project, path)
+        if answer is None:
             self.send_viewer_file(path)
+        else:
+            self.send_answer(answer)
 
     def do_POST(self) -> None:
-        """The two write endpoints: a block of a skill (issue #3), and the text of an agent."""
+        """The two write endpoints, once the request shows that it comes from the viewer page."""
         body = self.read_body()
         path = unquote(urlparse(self.path).path)
-        edit_match = EDIT_PATH.fullmatch(path)
-        agent_match = AGENT_EDIT_PATH.fullmatch(path)
-        if edit_match is None and agent_match is None:
-            self.send_json(HTTPStatus.NOT_FOUND, {"error": "There is no such endpoint."})
+        if not is_write_path(path):
+            self.send_answer(json_answer(HTTPStatus.NOT_FOUND, {"error": "There is no such endpoint."}))
             return
         refusal = self.write_refusal()
         if refusal is not None:
-            self.send_json(HTTPStatus.FORBIDDEN, {"error": refusal})
+            self.send_answer(json_answer(HTTPStatus.FORBIDDEN, {"error": refusal}))
             return
-        try:
-            request = json.loads(body)
-            if edit_match is not None:
-                apply_edit(self.project, edit_match[1], request)
-                result = skill_detail(self.project, edit_match[1])
-            else:
-                assert agent_match is not None
-                save_agent(self.project, agent_match[1], str(request["text"]))
-                result = agent_detail(self.project, agent_match[1])
-        except (ValueError, TypeError, KeyError) as error:
-            self.send_json(HTTPStatus.BAD_REQUEST, {"error": [f"The request is not a valid edit: {error}"]})
-            return
-        except (EditError, AgentEditError) as error:
-            self.send_json(HTTPStatus.BAD_REQUEST, {"error": error.problems})
-            return
-        self.send_json(HTTPStatus.OK, result)
+        self.send_answer(answer_post(self.project, path, body))
 
     def read_body(self) -> bytes:
         """The request body, read before any answer. An empty body if its Content-Length is bad.
@@ -137,18 +85,11 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             return "A change needs a Content-Length of at most 1 MB."
         return None
 
-    def send_export(self, skill_id: str) -> None:
-        """The skill as plain Markdown skills in a zip file, as a download (issue #55)."""
-        try:
-            archive = export_zip(self.project, skill_id)
-        except ExportError as error:
-            self.send_json(HTTPStatus.NOT_FOUND, {"error": str(error)})
-            return
-        disposition = f'attachment; filename="{skill_id}.zip"'
-        self.send_body(HTTPStatus.OK, "application/zip", archive, {"Content-Disposition": disposition})
-
-    def send_json(self, status: HTTPStatus, data: Any) -> None:
-        self.send_body(status, "application/json; charset=utf-8", json.dumps(data).encode("utf-8"))
+    def send_answer(self, answer: Answer) -> None:
+        headers = {}
+        if answer.download_name is not None:
+            headers["Content-Disposition"] = f'attachment; filename="{answer.download_name}"'
+        self.send_body(HTTPStatus(answer.status), answer.content_type, answer.body, headers)
 
     def send_viewer_file(self, path: str) -> None:
         relative_path = "index.html" if path in ("", "/") else path.lstrip("/")
@@ -173,18 +114,6 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *arguments: Any) -> None:
         """Keep the terminal quiet: one line per request would drown the useful output."""
-
-
-def apply_edit(project: Project, skill_id: str, request: dict[str, Any]) -> None:
-    action = request["action"]
-    if action == "update":
-        update_block(project, skill_id, str(request["block"]), dict(request["values"]))
-    elif action == "add":
-        add_block(project, skill_id, str(request["block"]), str(request["type"]))
-    elif action == "delete":
-        delete_block(project, skill_id, str(request["block"]))
-    else:
-        raise EditError([f"Unknown action {action!r}: use update, add, or delete."])
 
 
 def make_server(project: Project, viewer_folder: Path, port: int) -> ThreadingHTTPServer:

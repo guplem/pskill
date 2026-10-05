@@ -286,6 +286,9 @@ def test_pause_resume_and_cancel_change_the_status_of_a_run(
     assert run_cli(monkeypatch, "cancel", run_id) == cli.EXIT_OK
     assert "cancelled" in capsys.readouterr().out
     assert read_run_info(project, run_id)["status"] == "cancelled"
+    assert run_cli(monkeypatch, "delete", run_id) == cli.EXIT_OK
+    assert "deleted" in capsys.readouterr().out
+    assert not (project.runs_folder / run_id).exists()
 
 
 # --- runs and list --------------------------------------------------------------------------------
