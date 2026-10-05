@@ -355,6 +355,13 @@ function topbar() {
   return bar;
 }
 
+// A screen with the top bar and one message: Python starts, the browser cannot run the viewer, or an error.
+// index.html starts #app with the "loading" class. Its padding goes, so the top bar spans the page.
+function showMessage(text, className) {
+  app.className = "";
+  app.replaceChildren(topbar(), element("p", text, `${className} loading`));
+}
+
 // A name that leads to another skill or agent: a link with an arrow, so it reads as "go there".
 function entityLink(text, href) {
   const link = element("a", text, "entity-link");
@@ -2518,14 +2525,14 @@ async function render() {
     else if (screen === "folders") showFolders();
     else await showRuns();
   } catch (error) {
-    app.replaceChildren(topbar(), element("p", `The viewer could not load the data: ${error.message}`, "errors loading"));
+    showMessage(`The viewer could not load the data: ${error.message}`, "errors");
   }
 }
 
 // On the hosted viewer, a screen with data needs a folder and Python first. False when the screen cannot show.
 async function hostedReady(screen) {
   if (!hosted.supported()) {
-    app.replaceChildren(topbar(), element("p", UNSUPPORTED, "note loading"));
+    showMessage(UNSUPPORTED, "note");
     return false;
   }
   if (screen === "folders") return true;
@@ -2534,7 +2541,7 @@ async function hostedReady(screen) {
     return false;
   }
   if (!view.pythonReady) {
-    app.replaceChildren(topbar(), element("p", PYTHON_LOADING, "note loading"));
+    showMessage(PYTHON_LOADING, "note");
     await hosted.startPython();
     view.pythonReady = true;
     view.version = (await apiJson("/api/version", ALL_PLACES)).version;

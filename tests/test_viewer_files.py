@@ -245,6 +245,14 @@ def test_without_a_local_server_the_page_is_the_hosted_viewer() -> None:
     assert "WORKTREE_HOMES" in hosted  # the worktrees of each clone are found too
 
 
+def test_a_message_screen_drops_the_loading_padding_so_the_top_bar_spans_the_page() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    show_message = script.split("function showMessage(", 1)[1].split("\n}\n", 1)[0]
+
+    assert 'app.className = "";' in show_message  # index.html starts #app with the "loading" class
+    assert script.count('app.replaceChildren(topbar(), element("p"') == 1  # only showMessage draws one
+
+
 def test_the_page_maps_pyodide_to_a_pinned_cdn_version_with_a_hash_per_module() -> None:
     index = (VIEWER / "index.html").read_text(encoding="utf-8")
     hosted = (VIEWER / "hosted.js").read_text(encoding="utf-8")
