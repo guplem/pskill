@@ -263,3 +263,12 @@ def test_the_viewer_cancels_a_run_and_deletes_finished_runs_after_asking() -> No
         "const finished = runs.filter((run) => !UNFINISHED.includes(run.status));" in script
     )  # cleanup keeps the open ones
     assert script.count("window.confirm(") >= 4  # the editor's block delete, and the three run actions
+
+
+def test_the_logo_and_the_version_lead_to_the_repository_in_a_new_tab() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    assert 'const REPOSITORY_URL = "https://github.com/guplem/pskill";' in script
+    assert 'externalLink("pskill", REPOSITORY_URL,' in script
+    assert "`${REPOSITORY_URL}/releases/tag/v${view.version}`" in script
+    assert 'link.rel = "noopener";' in script

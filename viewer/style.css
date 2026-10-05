@@ -1235,6 +1235,16 @@ a.tool {
   color: var(--muted);
 }
 
+.version-note a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.version-note a:hover,
+.brand:hover {
+  text-decoration: underline;
+}
+
 .field .facts {
   margin-top: 6px;
 }
