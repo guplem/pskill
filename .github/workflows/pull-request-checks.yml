@@ -3,6 +3,9 @@ name: Pull request checks
 on:
   pull_request:
     branches: [main]
+    # ready_for_review starts the checks when a draft becomes ready. A draft runs nothing (the `if` below), so the
+    # example skills can push many commits to a draft pull request without a CI run for each one.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -17,6 +20,7 @@ jobs:
   # The ruleset on main requires "checks (<os>)" for each OS below. Never rename this job or the OS list
   # without updating the ruleset in the same pull request.
   checks:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     strategy:
       fail-fast: false
       matrix:
@@ -40,7 +44,7 @@ jobs:
         run: uv run mypy
       - name: Test
         run: uv run pytest --cov
-      - name: Validate the proof skills
+      - name: Validate the example skills
         run: uv run pskill.py validate
       - name: Run the skill tests
         run: uv run pskill.py test
