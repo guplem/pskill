@@ -1,9 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- pskill: a skill is a line of steps, and the runner gives the agent one step at a time.
-       Done (white), now (orange), and to do (a ring): the colors of the viewer. -->
-  <rect width="32" height="32" rx="7" fill="#2f6fde"/>
-  <path d="M16 6v20" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="16" cy="6" r="2.75" fill="#fff"/>
-  <circle cx="16" cy="16" r="4.25" fill="#f5a524"/>
-  <circle cx="16" cy="26" r="2.5" fill="#2f6fde" stroke="#fff" stroke-width="1.75"/>
+  <!-- pskill: a bold "p", with one step (teal) in its corner. It takes the viewer's colors (style.css): the
+       ink of the logo, and a light tile when the system is in dark mode, like the viewer. -->
+  <style>
+    .tile { fill: #1c2127; }
+    .mark { stroke: #ffffff; }
+    .step { fill: #3ccdb5; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #e6e9ee; }
+      .mark { stroke: #171b21; }
+      .step { fill: #0b8a78; }
+    }
+  </style>
+  <rect class="tile" width="32" height="32" rx="7"/>
+  <path class="mark" d="M11 9.5v17" fill="none" stroke-width="3.75" stroke-linecap="round"/>
+  <circle class="mark" cx="16.75" cy="14.5" r="5.5" fill="none" stroke-width="3.75"/>
+  <rect class="step" x="21" y="21.5" width="5" height="5" rx="1.25"/>
 </svg>
