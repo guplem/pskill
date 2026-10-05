@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.27.0 (2026-10-05)
+
+The run screen can collapse its sub-skills.
+
+- **Collapse sub-skills on a run:** the switch from the skill screen now shows on the run screen too, when the run entered a child skill. It draws each child skill as its call block's node, so a long run with many child skills reads at a glance. It is off by default, and the page remembers your choice.
+- **The step stays visible:** a step inside a collapsed child skill shows on its call block, and Follow live follows that block. The side panel still shows the step itself, with an Expand sub-skills button.
+
 ## 0.26.0 (2026-10-05)
 
 One top bar row on every screen, a logo that leads back, and fewer facts in sight.

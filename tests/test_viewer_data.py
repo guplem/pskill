@@ -11,6 +11,7 @@ from pskill_runner.skill_loader import load_skill
 from pskill_runner.skill_model import ScriptBlock
 from pskill_runner.viewer_data import (
     CanvasFrame,
+    call_block_on_top,
     format_duration,
     frame_edges,
     locations_runs_overview,
@@ -510,6 +511,58 @@ def test_human_steps_are_marked_and_each_step_knows_where_it_went_next(tmp_path:
     assert rows[-1]["left_by"] is None
 
 
+def test_the_collapsed_canvas_draws_only_the_run_skill_and_puts_a_child_step_on_its_call_block(
+    tmp_path: Path,
+) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello.\n")
+
+    detail = detail_of(project, run_id)
+
+    canvas, collapsed = detail["canvas"], detail["collapsed_canvas"]
+    assert canvas["child_frames"] == [{"id": "f1", "node": "f0_child"}]
+    assert "subgraph f1" not in collapsed["template"]
+    assert "f1_greet" not in collapsed["template"]
+    assert {node["frame"] for node in collapsed["nodes"]} == {0}
+    assert set(collapsed["labels"]) == {node["id"] for node in collapsed["nodes"]}
+    assert all(edge["kind"] != "call" for edge in collapsed["edges"])
+    # The edges keep the ids of the full canvas, so the timeline rows fit both canvases.
+    assert {edge["id"] for edge in collapsed["edges"]} < {edge["id"] for edge in canvas["edges"]}
+    assert collapsed["main_edges"] == [edge for edge in canvas["main_edges"] if "_f1_" not in edge]
+    assert canvas["current"]["node"] == "f1_greet"
+    assert collapsed["current"] == {**canvas["current"], "node": "f0_child"}
+
+
+def test_a_finished_run_has_no_current_step_on_the_collapsed_canvas(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    assert detail_of(project, run_parent_to_the_end(project))["collapsed_canvas"]["current"] is None
+
+
+def test_the_collapsed_canvas_keeps_the_task_frames_of_the_run_skill_only(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    caller, _ = start_run(project, "fanout-caller", {}, mode="interactive", harness="subagents-for-tests")
+    fanout, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
+
+    assert "TASKS" not in detail_of(project, caller)["collapsed_canvas"]["template"]
+    assert "subgraph f0_check_TASKS" in detail_of(project, fanout)["collapsed_canvas"]["template"]
+
+
+def test_a_node_of_a_nested_child_skill_lies_under_the_call_block_of_the_run_skill(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    skill = load_skill(project.skills_folder / "child")
+    frames = [
+        CanvasFrame(skill, parent=None, called_by=None),
+        CanvasFrame(skill, parent=0, called_by="outer"),
+        CanvasFrame(skill, parent=1, called_by="inner"),
+    ]
+
+    assert call_block_on_top(frames, "f2_greet_T0") == "f0_outer"
+    assert call_block_on_top(frames, "f1_greet") == "f0_outer"
+    assert call_block_on_top(frames, "f0_greet") == "f0_greet"
+
+
 def test_the_canvas_names_the_current_step_and_its_state(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     open_run, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
@@ -607,6 +660,7 @@ def test_rows_get_their_texts_even_without_a_canvas(tmp_path: Path) -> None:
     detail = detail_of(project, run_id)
 
     assert detail["canvas"] is None
+    assert detail["collapsed_canvas"] is None
     first, second = detail["timeline"]
     assert first["node"] is None
     assert first["arrival"] == "the start"

@@ -881,7 +881,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 |---|---|
 | `GET /api/version` | The version of the runner that serves the viewer, and the project's folder name. The list screens show the version at the bottom left. |
 | `GET /api/runs?skill=` | Run rows, plus one summary row per skill: runs, success rate, median duration. |
-| `GET /api/runs/<id>` | `run.json`, the canvas, the timeline rows, and the current state. |
+| `GET /api/runs/<id>` | `run.json`, the canvas, the collapsed canvas (only the run's own skill), the timeline rows, and the current state. |
 | `GET /api/skills` | One row per skill in `.pskill/skills/`: description, invocation, block count, run count, and the load error of a skill that does not load. |
 | `GET /api/skills/<id>` | The skill's facts, its canvas (its blocks, with each call block drawn as its child's frame, and no run parts), the details of each block, the details of each child block by node id, and the `pskill validate` problems, or the load error. |
 | `GET /api/skills/<id>/export` | The skill as plain Markdown skills, in a zip file (section 14.1). |
@@ -901,7 +901,8 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
    - Under the cards, a "By skill" table: the runs, the success rate, and the median time of each skill, over every run, whatever the filters.
    - For cleanup, one button deletes the finished runs that the filters show. It asks first, and the unfinished runs stay.
 2. **Run.**
-   - In the top bar: a run switcher (each option is the skill and the run id, grouped by status), the status, the Details button, a "skill changed" pill when the skill changed after the run started, Skill graph, and Cancel run or Delete run. Follow live, Fit, and zoom are on the canvas.
+   - In the top bar: a run switcher (each option is the skill and the run id, grouped by status), the status, the Details button, a "skill changed" pill when the skill changed after the run started, Collapse sub-skills, Skill graph, and Cancel run or Delete run. Follow live, Fit, and zoom are on the canvas.
+   - **Collapse sub-skills:** an on and off switch, shown when the run entered a child skill. It draws each call block as one node instead of its child's frame. It is off by default, so a live run shows its exact step; the page keeps only a choice to collapse, in `localStorage`. The server sends this second canvas too (`collapsed_canvas`): the run's own skill, with the edge ids of the full canvas, so the timeline rows fit both, and its current step on the call block at the top. The full canvas lists each child frame with its call block (`child_frames`). A step inside a collapsed child skill shows on its call block, which Follow live then follows. The side panel still shows the step's own block, with a note and an Expand sub-skills button.
    - The canvas: the graph fills the screen. Drag to pan, and use the wheel to zoom. It opens at a readable zoom, centered on the current step. With Follow live, it keeps the current step in view.
    - A side panel for the clicked node. Drag its left edge to change its width; the page keeps the width in `localStorage`.
      - the status and the type, and a visit picker when the block ran more than once,

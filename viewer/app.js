@@ -26,6 +26,8 @@ const REFRESH_TICK_MS = 1000;
 // The shortest time the refresh button stays down after a press, so a fast read still shows that it happened.
 const REFRESH_REST_MS = 1000;
 const EXPANDED_KEY = "pskill.expandChildSkills"; // only a choice to expand is kept: collapsed is the default
+// The run screen opens with the child skills expanded, so a live run shows its exact step: only a choice to collapse is kept.
+const RUN_COLLAPSED_KEY = "pskill.collapseRunChildSkills";
 const PANEL_MIN_WIDTH = 320;
 const CANVAS_MIN_WIDTH = 240;
 const READABLE_SCALE = 0.9;
@@ -133,6 +135,7 @@ const view = {
   dragEnded: false,
   playTimer: null,
   collapsed: savedCollapsed(), // the skill screen draws each child skill as its call block's node, not a frame
+  runCollapsed: savedRunCollapsed(), // the same choice on the run screen, kept apart: expanded by default
   parts: null,
 };
 
@@ -592,9 +595,21 @@ function isSkillScreen() {
   return view.screen === "skill";
 }
 
-// The canvas that the screen draws: on the skill screen, with the child skills expanded or collapsed.
+// Whether the screen draws each child skill as its call block's node: the skill screen and the run screen
+// each keep their own choice.
+function childSkillsCollapsed() {
+  return isSkillScreen() ? view.collapsed : view.runCollapsed;
+}
+
+// The canvas that the screen draws: with the child skills expanded or collapsed.
 function canvasData() {
-  return isSkillScreen() && view.collapsed ? view.detail?.collapsed_canvas : view.detail?.canvas;
+  return childSkillsCollapsed() ? view.detail?.collapsed_canvas : view.detail?.canvas;
+}
+
+// The node on the drawn canvas that shows a node: the node, or, when the child skills are collapsed, the call
+// block at the top of its child frames. The side panel still shows the node itself.
+function nodeOnCanvas(node) {
+  return node && childSkillsCollapsed() ? callBlockOnTop(node) : node;
 }
 
 // --- the runs page ----------------------------------------------------------------------------
@@ -891,6 +906,8 @@ function buildRunScreen() {
   });
   follow.setAttribute("aria-pressed", String(view.followLive));
   const zoomLabel = element("span", "100 %", "note");
+  const collapseToggle = switchControl("Collapse sub-skills", view.runCollapsed, toggleChildSkills);
+  collapseToggle.title = "Draw each child skill as its call block's node. A step inside a child skill shows on its call block.";
   const bar = topbar(picker, status);
   const { workspace, canvas, layer, note, panel } = buildWorkspace("The selected step", [follow, ...zoomTools(zoomLabel)]);
 
@@ -916,7 +933,7 @@ function buildRunScreen() {
   screen.append(bar, workspace, replay);
   app.className = "";
   app.replaceChildren(screen);
-  view.parts = { picker, status, follow, zoomLabel, canvas, layer, note, panel, progress, marks, slider, labels, play, workspace };
+  view.parts = { picker, status, follow, zoomLabel, canvas, layer, note, panel, progress, marks, slider, labels, play, workspace, collapseToggle };
 }
 
 function zoomTools(zoomLabel) {
@@ -1076,6 +1093,8 @@ function drawTopbar() {
     parts.push(changed);
   }
   parts.push(element("span", null, "spacer"));
+  // A run that entered no child skill has nothing to collapse.
+  if (view.detail.canvas?.child_frames.length) parts.push(view.parts.collapseToggle);
   const skillLink = element("a", "Skill graph", "tool");
   skillLink.href = skillHref(info.skill_id);
   skillLink.title = `See the skill ${info.skill_id} as it is now in .pskill/skills/, without this run.`;
@@ -1170,7 +1189,8 @@ function stepState() {
   const current = canvasData()?.current;
   const stepNode = upToStep.length ? upToStep[upToStep.length - 1].node : null;
   const stepNodeState = atEnd ? (current ? current.state : "done") : "now";
-  return { visited, taken, labels, taskStates, stepNode, stepNodeState };
+  // A step in a collapsed child skill shows on its call block.
+  return { visited, taken, labels, taskStates, stepNode, canvasStepNode: nodeOnCanvas(stepNode), stepNodeState };
 }
 
 // A task node: blue when done, red after a rejected answer, orange while open at the step, else grey.
@@ -1181,11 +1201,12 @@ function taskNodeState(nodeInfo, state) {
   return nodeInfo.parent === state.stepNode && state.stepNodeState === "now" ? "now" : "unvisited";
 }
 
+// The state of a node: on the canvas, or in the side panel (which can show a block of a collapsed child skill).
 function nodeState(node, state) {
   if (isSkillScreen()) return "plain";
-  const nodeInfo = canvasData()?.nodes.find((item) => item.id === node);
+  const nodeInfo = view.detail.canvas?.nodes.find((item) => item.id === node);
   if (nodeInfo && nodeInfo.kind === "task") return taskNodeState(nodeInfo, state);
-  if (node === state.stepNode) return state.stepNodeState;
+  if (node === state.stepNode || node === state.canvasStepNode) return state.stepNodeState;
   return state.visited.has(node) || node === canvasData()?.start ? "done" : "unvisited";
 }
 
@@ -1420,7 +1441,7 @@ function zoomBy(factor, centerX, centerY) {
 }
 
 function centerOnStep(targetScale = view.transform.scale) {
-  centerOnNode(stepState().stepNode, targetScale);
+  centerOnNode(stepState().canvasStepNode, targetScale);
 }
 
 // Center the view on a node. With `atTop`, put the node near the top edge instead of the middle.
@@ -1502,22 +1523,46 @@ function saveCollapsed(collapsed) {
   }
 }
 
-// Collapse or expand the child skills. A block of a child skill that the panel shows gives way to the call
-// block that holds it, because a collapsed canvas has no node for it.
+function savedRunCollapsed() {
+  try {
+    return localStorage.getItem(RUN_COLLAPSED_KEY) === "true";
+  } catch {
+    return false; // the browser blocks site data
+  }
+}
+
+function saveRunCollapsed(collapsed) {
+  try {
+    localStorage.setItem(RUN_COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // the browser blocks site data: the choice lasts until the reload
+  }
+}
+
+// Collapse or expand the child skills. On the skill screen, a block of a child skill that the panel shows gives
+// way to the call block that holds it, because a collapsed canvas has no node for it. The run screen's panel
+// keeps the block, and the canvas rings its call block.
 function toggleChildSkills() {
-  view.collapsed = !view.collapsed;
-  saveCollapsed(view.collapsed);
-  view.parts.collapseToggle.setAttribute("aria-checked", String(view.collapsed));
-  if (view.collapsed && view.selectedNode) view.selectedNode = callBlockOnTop(view.selectedNode);
+  if (isSkillScreen()) {
+    view.collapsed = !view.collapsed;
+    saveCollapsed(view.collapsed);
+    if (view.collapsed && view.selectedNode) view.selectedNode = callBlockOnTop(view.selectedNode);
+  } else {
+    view.runCollapsed = !view.runCollapsed;
+    saveRunCollapsed(view.runCollapsed);
+  }
+  view.parts.collapseToggle.setAttribute("aria-checked", String(childSkillsCollapsed()));
   view.fitted = false;
   drawPanel();
   drawCanvas();
 }
 
 // The block of the skill itself that holds a node: the node, or the call block at the top of its child frames.
+// The skill canvas lists its child frames as `frames`, the run canvas as `child_frames`.
 function callBlockOnTop(node) {
+  const frames = view.detail.canvas?.frames ?? view.detail.canvas?.child_frames ?? [];
   let frame;
-  while ((frame = view.detail.canvas.frames.find((item) => node.startsWith(`${item.id}_`)))) node = frame.node;
+  while ((frame = frames.find((item) => node.startsWith(`${item.id}_`)))) node = frame.node;
   return node;
 }
 
@@ -1605,7 +1650,7 @@ function addSelectionRing(group) {
 
 // Ring the shown node, and the task node of the shown task, on the canvas and in the offline card list.
 function markSelection() {
-  const node = shownNode();
+  const node = nodeOnCanvas(shownNode());
   const taskNode = canvasData()?.nodes.find(
     (item) => item.kind === "task" && item.parent === node && item.task === view.selectedTask,
   )?.id;
@@ -1649,7 +1694,8 @@ function drawRunPanel() {
       return;
     }
   }
-  const nodeInfo = canvasData() && node ? canvasData().nodes.find((item) => item.id === node) : null;
+  // The full canvas: the panel can show a block of a collapsed child skill.
+  const nodeInfo = view.detail.canvas && node ? view.detail.canvas.nodes.find((item) => item.id === node) : null;
   const visits = rows()
     .map((row, index) => ({ row, index }))
     .filter((item) => item.row.node === node && item.index <= view.step);
@@ -1669,6 +1715,7 @@ function drawRunPanel() {
   head.append(title, blockType(type, `${type}${skillText}${meaningText}`));
   if (nodeInfo) appendBlockIntro(head, nodeInfo);
   const parts = [head];
+  if (nodeOnCanvas(node) !== node) parts.push(collapsedChildNote(nodeInfo, nodeOnCanvas(node)));
   if (visits.length > 1) parts.push(visitPicker(visits, chosen));
   if (!chosen) {
     parts.push(element("p", "The run has not reached this step at this point of the replay.", "note"));
@@ -1680,6 +1727,15 @@ function drawRunPanel() {
   stateDetails.append(element("summary", "Run state now (inputs, steps, history)"), jsonTree(view.detail.state, "state"));
   parts.push(stateDetails);
   panel.replaceChildren(...parts);
+}
+
+// A block of a child skill that the collapsed canvas draws inside its call block.
+function collapsedChildNote(nodeInfo, callNode) {
+  const note = element("p", `A block of the child skill ${nodeInfo?.skill_id ?? ""}. The canvas shows it inside the call block `, "note");
+  const callBlock = view.detail.canvas.nodes.find((item) => item.id === callNode)?.block ?? callNode;
+  note.append(blockRef(callBlock, callNode, `The call block ${callBlock}.`), ". ");
+  note.append(button("Expand sub-skills", toggleChildSkills, "tool"));
+  return note;
 }
 
 // --- the skill screen: the side panel --------------------------------------------------------------
