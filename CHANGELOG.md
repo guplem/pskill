@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.23.0 (2026-10-05)
+
+The viewer also runs on GitHub Pages, for many projects at once.
+
+- **The hosted viewer:** open https://guplem.github.io/pskill/ in Chrome or Edge, and pick your project folders. No command and no server: Pyodide runs the runner's own Python in the browser, and your files stay on your computer.
+- **Clones and worktrees:** pick a folder of clones, and the viewer finds each project in it, with the worktrees of each clone. It looks again every minute, so a new worktree appears by itself. A pattern (a regular expression) per folder keeps only the matching projects.
+- **Where each run happened:** each run card names its project folder, its kind (clone or worktree), and its branch. A folder filter shows the runs of one project.
+- **Two tabs:** Runs shows the runs of every project. Content shows the skills and the agents of one project, with a picker for the project. (`pskill view` has the same tabs, for its one project.)
+- **Edits on the hosted viewer:** the skill and agent editors write to the picked folder.
+- **Cancel a run from the viewer:** the run screen has "Cancel run" on an unfinished run. The agent learns it at its next pskill command.
+- **Delete finished runs:** "Delete run" on a finished run, and one button on the Runs page that deletes the finished runs that the filters show, for cleanup. Each asks first. The CLI has the same: `pskill delete <run>`. An unfinished run must be cancelled first.
+- **Under the hood:** `viewer_api.py` now answers the API for both viewers, and `/api/version` also names the project folder.
+
 ## 0.22.0 (2026-10-04)
 
 A project commits one small runner file instead of the whole runner.
