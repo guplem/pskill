@@ -1,0 +1,33 @@
+name: checks that still fail after 10 waits end the skill as failed
+inputs: {pr: 9}
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: c1, plan_file: implementation-plan-api-key-copy-button.md}}
+answers:
+  wait_ci:
+    - {state: failed, failed_checks: ["e2e (slow): https://x/1"], head_sha: s1}
+    - {state: failed, failed_checks: ["e2e (slow): https://x/2"], head_sha: s2}
+    - {state: failed, failed_checks: ["e2e (slow): https://x/3"], head_sha: s3}
+    - {state: failed, failed_checks: ["e2e (slow): https://x/4"], head_sha: s4}
+    - {state: failed, failed_checks: ["e2e (slow): https://x/5"], head_sha: s5}
+    - {state: failed, failed_checks: ["e2e (slow): https://x/6"], head_sha: s6}
+    - {state: failed, failed_checks: ["e2e (slow): https://x/7"], head_sha: s7}
+    - {state: failed, failed_checks: ["e2e (slow): https://x/8"], head_sha: s8}
+    - {state: failed, failed_checks: ["e2e (slow): https://x/9"], head_sha: s9}
+    - {state: failed, failed_checks: ["e2e (slow): https://x/10"], head_sha: s10}
+  fix_ci:
+    - {cause: flaky, summary: Rerun 1.}
+    - {cause: flaky, summary: Rerun 2.}
+    - {cause: flaky, summary: Rerun 3.}
+    - {cause: flaky, summary: Rerun 4.}
+    - {cause: flaky, summary: Rerun 5.}
+    - {cause: flaky, summary: Rerun 6.}
+    - {cause: flaky, summary: Rerun 7.}
+    - {cause: flaky, summary: Rerun 8.}
+    - {cause: flaky, summary: Rerun 9.}
+    - {cause: flaky, summary: Rerun 10.}
+expect:
+  path: [checkout, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci,
+         fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, failed]
+  status: failed
+  outputs: {state: failed, failed_checks: ["e2e (slow): https://x/10"], head_sha: s10, fixes: 10}

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+New example skills for the daily work on a GitHub project, and one export fix.
+
+- **`implement-issue` goes all the way:** it understands the issue and asks only what the code cannot answer. It shows a plan for approval, and pushes it as a draft pull request. Then it builds the plan test-first, one commit per step. Fresh reviewers check it, round after round, until a round fixes nothing (at most 7 rounds). At the end it marks the pull request ready, gets CI green, answers late comments, and adds `waiting-for-human-review` when a person must look. It never merges.
+- **New skills:** `resolve-pr-feedback` (fix or dismiss each finding and open comment, one at a time, with a 👀 reaction and a reply), `fix-ci` (wait for CI in the foreground, and fix what the pull request breaks), and the internal `checkout-pr`.
+- **`review-pr` is one round with five fixed reviewers:** correctness, tests, completeness, conventions, and docs, each with an optional `when`. A script drops each finding whose quote is not in its file. It posts the findings when you agree.
+- **`create-issue`** adds `waiting-for-human-check` only in autonomous mode, when no person approved the draft.
+- **Repository agnostic:** the skills read the project's rules from its `AGENTS.md`, `CLAUDE.md`, README, and ADR files, and hard-code no project detail. The README section "Recommended setup for the example skills" lists the few conventions, such as CI only on ready pull requests. This repository now runs its CI that way.
+- **Export fix:** "Export as Markdown" shows a list item's `when` as words, such as "(only when `read_pr.json.code_paths`)", instead of raw `{{ }}`.
+
 ## 0.23.1 (2026-10-05)
 
 The viewer has a tab icon, and links to GitHub.

@@ -1,0 +1,17 @@
+name: work that the code already does is held after the understand step
+inputs: {request: "#42"}
+scripts:
+  read_issue:
+    - exit_code: 0
+      stdout: >-
+        {"number": 42, "title": "Saving a file crashes", "body": "Saving a file with no name crashes.", "labels": ["bug"],
+        "comments": [], "cross_references": [], "hold_reason": null, "existing_branches": []}
+  checkout_default:
+    - {exit_code: 0, stdout: '{"ok": true, "default_branch": "main"}'}
+answers:
+  understand:
+    - {title: T, slug: fix-save, brief: B, base: main, gaps: [], blocker: "Pull request #7 already fixes it."}
+expect:
+  path: [read_issue, checkout_default, understand, held]
+  status: cancelled
+  outputs: {result: held}

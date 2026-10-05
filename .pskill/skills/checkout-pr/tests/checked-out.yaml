@@ -1,0 +1,9 @@
+name: the checkout is on the branch of the pull request, with its plan file
+inputs: {pr: 9}
+scripts:
+  checkout_pr:
+    - {exit_code: 0, stdout: '{"branch": "42-fix-save", "base": "main", "head_sha": "abc", "plan_file": "implementation-plan-42.md"}'}
+expect:
+  path: [checkout_pr, checked_out]
+  status: succeeded
+  outputs: {branch: 42-fix-save, base: main, head_sha: abc, plan_file: implementation-plan-42.md}

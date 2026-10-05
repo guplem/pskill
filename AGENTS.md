@@ -13,7 +13,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `tests/` | The pytest suite. One test file per module. |
 | `SPEC.md` | The implementation specification. |
 | `README.md`, `AUTHORING.md`, `CHANGELOG.md` | For users; for agents that write skills (`pskill authoring` prints it); the release notes. |
-| `.pskill/skills/`, `.pskill/agents/` | The proof skills and their pskill agents. They run on this repository's own issues and pull requests (the test bed). |
+| `.pskill/skills/`, `.pskill/agents/` | The example skills and their pskill agents (`SPEC.md` section 13). They run on this repository's own issues and pull requests (the test bed). Their scripts have tests in `tests/test_skill_<skill>.py`. |
 
 ## Runner modules
 

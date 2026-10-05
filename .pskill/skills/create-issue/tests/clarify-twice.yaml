@@ -1,4 +1,4 @@
-name: two clarification rounds, then a new issue
+name: two clarification rounds, then a new issue with no label, because the user approved the draft
 inputs: {description: The runner is slow.}
 answers:
   assess_clarity:
@@ -19,11 +19,10 @@ answers:
 scripts:
   search_duplicates:
     - {exit_code: 0, stdout: "[]"}
-  ensure_label:
-    - {exit_code: 0}
   create:
     - {exit_code: 0, stdout: "https://github.com/guplem/pskill/issues/31\n"}
 expect:
-  path_contains: [assess_clarity, ask_clarify, assess_clarity, ask_clarify, assess_clarity, extract_terms, create, created]
+  path: [assess_clarity, ask_clarify, assess_clarity, ask_clarify, assess_clarity, extract_terms, search_duplicates,
+         judge_duplicates, draft_issue, confirm_draft, create, created]
   status: succeeded
   outputs: {issue_number: 31}

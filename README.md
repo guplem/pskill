@@ -79,9 +79,49 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 
 **The hosted viewer** shows the same screens without a command, for many projects at once: open <https://guplem.github.io/pskill/> in Chrome or Edge (see [Open the viewer, with no install](#open-the-viewer-with-no-install)), and pick your project folders on the Folders tab. A folder of clones and worktrees works too: the viewer finds each project in it, and names the folder and the branch of every run. Your files stay on your computer.
 
+## The example skills
+
+[`.pskill/skills/`](.pskill/skills/) holds skills for the daily work on a GitHub project. Copy the ones you want into your own `.pskill/skills/` (with the agents in [`.pskill/agents/`](.pskill/agents/)), run `sync`, and adapt them.
+
+| Skill | What it does |
+|---|---|
+| `implement-issue` | From an issue (or a described change) to a pull request that is ready to merge. It understands the issue, asks you only what the code cannot answer, and shows you a plan. Then it opens a draft pull request and builds the change test-first. Fresh reviewers check it, round after round, until a round finds nothing to fix. Then it marks the pull request ready, gets CI green, and answers late comments. It never merges. |
+| `review-pr` | One review of a pull request by five reviewers at once: correctness, tests, completeness, conventions, and docs. Each finding quotes the code line. It posts them when you agree. |
+| `resolve-pr-feedback` | Answers each open comment of a pull request, one at a time: it fixes the code or explains why not, and replies. |
+| `fix-ci` | Waits for the CI checks of a pull request, and fixes the failures that the pull request causes. |
+| `create-issue` | Writes a clear issue with you, after a check for duplicates. |
+
+### Recommended setup for the example skills
+
+The skills read your project's rules from its own files, so they work in most repositories as they are. These settings make them work best:
+
+- **Run CI only on ready pull requests.** `implement-issue` pushes many commits to a draft, and marks it ready at the end. In each pull request workflow, start the checks on `ready_for_review` too, skip drafts, and let a new push cancel the older run:
+  ```yaml
+  on:
+    pull_request:
+      types: [opened, synchronize, reopened, ready_for_review]
+  concurrency:
+    group: checks-${{ github.ref }}
+    cancel-in-progress: true
+  jobs:
+    checks:
+      if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+  ```
+- **Name your fast checks in `AGENTS.md`** (or `CLAUDE.md`, or the README): the lint, type check, and test commands. The skills run them before each push, and leave slow suites to CI.
+- **Use the labels:**
+  - A label that starts with `waiting-for-` (for example `waiting-for-design`) holds an issue: `implement-issue` does not start on it.
+  - `implement-issue` adds `waiting-for-human-review` to a pull request that a person must look at before the merge. It creates the label when it is missing.
+  - In autonomous mode, `create-issue` adds `waiting-for-human-check` to an issue that no person has read yet.
+- **Protect the default branch:** require the CI checks and one approval. The skills never merge, so a person always does.
+- **Record your decisions** in `adr/` or `docs/adr/` (one file per decision). The skills check a change against them.
+- **Work in a clean checkout.** The skills stop when the checkout has uncommitted changes, because those changes are yours. They expect the GitHub remote to be named `origin`.
+- **Add your own reviewers.** Each reviewer is one row in the `review` block of `review-pr`, with an optional `when`, for example a database reviewer when the change touches your migrations.
+
+This repository follows the same setup, with two differences: it requires no approval (it has one maintainer), and its decisions live in `SPEC.md` section 3, which `AGENTS.md` names.
+
 ## Write a skill
 
-Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`. The skills in [`.pskill/skills/`](.pskill/skills/) are working examples.
+Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`. The example skills are working examples of every feature.
 
 ## Which agent apps work
 

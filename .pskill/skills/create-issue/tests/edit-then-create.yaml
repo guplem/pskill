@@ -16,8 +16,6 @@ answers:
 scripts:
   search_duplicates:
     - {exit_code: 0, stdout: "[]"}
-  ensure_label:
-    - {exit_code: 0}
   create:
     - {exit_code: 0, stdout: "https://github.com/guplem/pskill/issues/40\n"}
 expect:

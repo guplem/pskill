@@ -1,0 +1,14 @@
+name: a checkout with uncommitted changes stops the run, because the changes belong to the user
+inputs: {request: "#42"}
+scripts:
+  read_issue:
+    - exit_code: 0
+      stdout: >-
+        {"number": 42, "title": "Saving a file crashes", "body": "Saving a file with no name crashes.", "labels": ["bug"],
+        "comments": [], "cross_references": [], "hold_reason": null, "existing_branches": []}
+  checkout_default:
+    - {exit_code: 0, stdout: '{"ok": false, "reason": "The checkout has uncommitted changes: a.py"}'}
+expect:
+  path: [read_issue, checkout_default, stopped]
+  status: cancelled
+  outputs: {result: stopped}

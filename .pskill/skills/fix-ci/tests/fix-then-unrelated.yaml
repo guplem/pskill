@@ -1,0 +1,16 @@
+name: a failure that the base branch has too ends the skill, after the fix of the failure that the pull request caused
+inputs: {pr: 9}
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: c1, plan_file: implementation-plan-api-key-copy-button.md}}
+answers:
+  wait_ci:
+    - {state: failed, failed_checks: ["lint: https://x/1", "docs (link check): https://x/2"], head_sha: f2}
+    - {state: failed, failed_checks: ["docs (link check): https://x/3"], head_sha: f3}
+  fix_ci:
+    - {cause: this_pr, summary: Fixed the lint error; the link check fails on main too.}
+    - {cause: unrelated, summary: The link check fails on main too.}
+expect:
+  path: [checkout, wait_ci, fix_ci, wait_ci, fix_ci, failed]
+  status: failed
+  outputs: {state: failed, failed_checks: ["docs (link check): https://x/3"], head_sha: f3, fixes: 2}

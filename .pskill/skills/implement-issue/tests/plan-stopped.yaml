@@ -1,0 +1,27 @@
+name: the user stops at the plan, so no branch and no pull request exist
+inputs: {request: "#42"}
+scripts:
+  read_issue:
+    - exit_code: 0
+      stdout: >-
+        {"number": 42, "title": "Saving a file crashes", "body": "Saving a file with no name crashes.", "labels": ["bug"],
+        "comments": [], "cross_references": [], "hold_reason": null, "existing_branches": []}
+  checkout_default:
+    - {exit_code: 0, stdout: '{"ok": true, "default_branch": "main"}'}
+  checkout_base:
+    - {exit_code: 0, stdout: '{"ok": true, "base": "main", "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}'}
+answers:
+  understand:
+    - {title: Fix the crash when a file is saved with no name, slug: fix-save, brief: Guard the save., base: main, gaps: []}
+  research_code:
+    - {report: The rename guard in files.py is the closest code.}
+    - {report: No recorded decision affects this work.}
+  write_plan:
+    - {summary: "1. Guard the save."}
+  approve_plan:
+    - {choice: later, rationale: Not a choice.}
+    - {choice: stop, rationale: The user wants to think about it., $answered_by: human}
+expect:
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, stopped]
+  status: cancelled
+  outputs: {result: stopped}

@@ -1,0 +1,28 @@
+name: the user agrees, so the findings get posted on the pull request
+inputs: {pr: 9}
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: abc, plan_file: implementation-plan-42.md}}
+scripts:
+  read_pr:
+    - {exit_code: 0, stdout: '{"paths": ["src/app.py"], "code_paths": ["src/app.py"]}'}
+  collect_findings:
+    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Wrong operator", "summary": "S.", "quote": "return a - b"}], "count": 1, "dropped": []}'}
+  post_findings:
+    - {exit_code: 0, stdout: '{"inline": 1, "in_conversation": 0}'}
+answers:
+  review:
+    - reviewer: correctness
+      findings: [{file: src/app.py, line: 3, severity: required, title: Wrong operator, summary: S., quote: return a - b}]
+    - {reviewer: tests, findings: []}
+    - {reviewer: completeness, findings: []}
+    - {reviewer: conventions, findings: []}
+    - {reviewer: docs, findings: []}
+  confirm_post:
+    - {choice: post, rationale: The user agreed., $answered_by: human}
+expect:
+  path: [checkout, read_pr, review, collect_findings, confirm_post, post_findings, reviewed]
+  status: succeeded
+  outputs:
+    reviewed_sha: abc
+    findings: [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Wrong operator", "summary": "S.", "quote": "return a - b"}]

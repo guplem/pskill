@@ -54,4 +54,4 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["pskill.py", "pskill_runner", "tests", ".pskill/skills/review-pr/scripts"]
+files = ["pskill.py", "pskill_runner", "tests", ".pskill/skills/*/scripts"]

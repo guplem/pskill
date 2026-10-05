@@ -1,24 +1,31 @@
-name: an implementation that cannot be done pauses the run after the retries
-inputs: {issue: "42"}
+name: a step that cannot be built pauses the run after the retries
+inputs: {request: "#42"}
 scripts:
   read_issue:
-    - {exit_code: 0, stdout: '{"number": 42, "title": "Crash on save", "body": "Saving crashes.", "labels": [], "comments": []}'}
-  publish_plan:
-    - {exit_code: 0}
+    - exit_code: 0
+      stdout: >-
+        {"number": 42, "title": "Saving a file crashes", "body": "Saving a file with no name crashes.", "labels": ["bug"],
+        "comments": [], "cross_references": [], "hold_reason": null, "existing_branches": []}
+  checkout_default:
+    - {exit_code: 0, stdout: '{"ok": true, "default_branch": "main"}'}
+  checkout_base:
+    - {exit_code: 0, stdout: '{"ok": true, "base": "main", "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}'}
+  open_draft_pr:
+    - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/octo/app/pull/9"}'}
 answers:
-  check_applies:
-    - {choice: applies, rationale: The crash still happens., evidence: "pskill_runner/cli.py:40"}
-  research:
-    - {report: "Similar code: pskill_runner/engine.py."}
+  understand:
+    - {title: Fix the crash when a file is saved with no name, slug: fix-save, brief: Guard the save., base: main, gaps: []}
+  research_code:
+    - {report: The rename guard in files.py is the closest code.}
     - {report: No recorded decision affects this work.}
-  create_plan:
-    - {status: finished, plan: Fix it.}
+  write_plan:
+    - {summary: "1. Guard the save. 2. Test it."}
   approve_plan:
-    - {choice: approve, rationale: Fine., $answered_by: human}
-  implement:
-    - {$cannot_complete: The repository cannot be cloned.}
-    - {$cannot_complete: The repository cannot be cloned.}
-    - {$cannot_complete: The repository cannot be cloned.}
+    - {choice: approve, rationale: The user approved., $answered_by: human}
+  implement_step:
+    - {$cannot_complete: The test framework does not start.}
+    - {$cannot_complete: The test framework does not start.}
+    - {$cannot_complete: The test framework does not start.}
 expect:
-  path_contains: [approve_plan, publish_plan, implement]
+  path_contains: [approve_plan, open_draft_pr, implement_step]
   status: paused

@@ -11,10 +11,16 @@ from pskill_runner.project import Project, find_project
 from pskill_runner.skill_export import ExportError, export_skill, export_zip, plain_text
 from pskill_runner.skill_loader import load_skill
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_engine_blocks import CHILD_SKILL, NAMED_PARALLEL_SKILL, PARALLEL_SKILL, PARENT_SKILL
+from tests.test_engine_blocks import (
+    CHILD_SKILL,
+    NAMED_PARALLEL_SKILL,
+    PARALLEL_SKILL,
+    PARENT_SKILL,
+    PICKED_PARALLEL_SKILL,
+)
 
 REPOSITORY = Path(__file__).resolve().parent.parent
-PROOF_SKILLS = ["implement-issue", "review-pr", "create-issue"]
+EXAMPLE_SKILLS = ["implement-issue", "review-pr", "resolve-pr-feedback", "fix-ci", "create-issue"]
 
 STATE_SKILL = """\
 schema: pskill/v1
@@ -142,6 +148,22 @@ def test_a_script_step_names_its_command_its_input_and_its_files(tmp_path: Path)
     assert files["checker/scripts/verify.py"].startswith(b"import json")
 
 
+def test_the_scripts_folder_ships_its_subfolders_but_not_the_python_cache(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    scripts_folder = project.skills_folder / "checker" / "scripts"
+    (scripts_folder / "helpers").mkdir()
+    (scripts_folder / "helpers" / "quotes.py").write_text("QUOTE = 1\n", encoding="utf-8")
+    (scripts_folder / "__pycache__").mkdir()
+    (scripts_folder / "__pycache__" / "verify.cpython-311.pyc").write_bytes(b"\x00")
+
+    files = export_skill(project, "checker")
+
+    assert sorted(path for path in files if "/scripts/" in path) == [
+        "checker/scripts/helpers/quotes.py",
+        "checker/scripts/verify.py",
+    ]
+
+
 def test_a_script_step_with_a_text_input_sends_that_text(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     skill_yaml = STATE_SKILL.replace(
@@ -200,11 +222,11 @@ def test_a_value_inside_code_stays_a_bare_name() -> None:
     )
 
 
-# --- the proof skills -----------------------------------------------------------------------------
+# --- the example skills ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("skill_id", PROOF_SKILLS)
-def test_each_proof_skill_exports_to_a_plain_skill_that_an_agent_can_follow(skill_id: str) -> None:
+@pytest.mark.parametrize("skill_id", EXAMPLE_SKILLS)
+def test_each_example_skill_exports_to_a_plain_skill_that_an_agent_can_follow(skill_id: str) -> None:
     project = find_project(REPOSITORY)
 
     files = export_skill(project, skill_id)
@@ -235,6 +257,16 @@ def test_a_missing_instruction_file_stops_the_export_with_its_name(tmp_path: Pat
 
 def test_whitespace_control_in_a_value_leaves_no_dash() -> None:
     assert plain_text("x {{- steps.a.b -}} z") == "x `a.b` z"
+
+
+def test_a_list_item_with_a_when_names_its_condition_in_words(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "picked", PICKED_PARALLEL_SKILL)
+
+    markdown = export_skill(find_project(tmp_path), "picked")["picked/SKILL.md"].decode("utf-8")
+
+    assert '- `{"name": "always"}`\n' in markdown
+    assert """- `{"name": "api"}` (only when `inputs.paths | select('matches', '^api/') | list`)""" in markdown
+    assert "{{" not in markdown
 
 
 def test_a_parallel_step_names_its_tasks(tmp_path: Path) -> None:

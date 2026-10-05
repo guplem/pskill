@@ -1,0 +1,34 @@
+name: a finding and a comment are resolved one by one, and only the comment gets a reply
+inputs:
+  pr: 9
+  findings: [{reviewer: completeness, file: src/app.py, line: 3, severity: required, title: Missing guard, summary: S, quote: q}]
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: aaa, plan_file: implementation-plan-42.md}}
+scripts:
+  collect_items:
+    - exit_code: 0
+      stdout: >-
+        {"queue": [{"kind": "finding", "reviewer": "completeness", "file": "src/app.py", "line": 3, "severity": "required",
+        "title": "Missing guard", "summary": "S", "quote": "q"}, {"kind": "comment", "id": 91, "comment_kind": "inline",
+        "author": "ivan", "path": "src/app.py", "line": 4, "thread_id": 91, "body": "Looks good."}], "count": 2}
+  claim_item:
+    - {exit_code: 0, stdout: '{"claimed": false}'}
+    - {exit_code: 0, stdout: '{"claimed": true}'}
+  finish_item:
+    - exit_code: 0
+      stdout: '{"replied": false, "decision": {"kind": "finding", "reviewer": "completeness", "title": "Missing guard", "verdict": "fixed", "reason": "Added the guard."}}'
+    - exit_code: 0
+      stdout: '{"replied": true, "decision": {"kind": "comment", "reviewer": "", "title": "Looks good.", "verdict": "dismissed", "reason": "Thanks!"}}'
+answers:
+  resolve_item:
+    - {verdict: fixed, reason: Added the guard.}
+    - {verdict: dismissed, reason: Thanks!}
+expect:
+  path: [checkout, collect_items, claim_item, resolve_item, finish_item, claim_item, resolve_item, finish_item, resolved]
+  status: succeeded
+  outputs:
+    fixed: 1
+    decisions:
+      - {kind: finding, reviewer: completeness, title: Missing guard, verdict: fixed, reason: Added the guard.}
+      - {kind: comment, reviewer: "", title: Looks good., verdict: dismissed, reason: Thanks!}

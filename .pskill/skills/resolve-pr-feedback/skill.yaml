@@ -1,0 +1,102 @@
+schema: pskill/v1
+id: resolve-pr-feedback
+description: >-
+  Resolve the feedback on a GitHub pull request, one item at a time: the review findings given to it, and every pull
+  request comment that nobody addressed yet. It marks a comment with the eyes reaction when its work starts, fixes
+  the item or dismisses it with a reason, and replies to the comment. Use when the user asks to address, answer, or
+  resolve the comments or the review of a pull request. Starting it authorizes the commits and pushes on the branch
+  of the pull request, the reactions, and the replies.
+goal: >-
+  Every given finding and every unaddressed comment has a verdict, fixed or dismissed with its reason, and every
+  comment has a reply.
+x-finding: &finding
+  type: object
+  properties:
+    reviewer: {type: string, optional: true, description: "The reviewer that reported it."}
+    file: {type: string}
+    line: {type: integer}
+    severity: {type: string, enum: [required, suggestion]}
+    title: {type: string}
+    summary: {type: string}
+    quote: {type: string}
+inputs:
+  pr: {type: integer, description: "Number of the pull request."}
+  findings: {type: array, items: *finding, optional: true, description: "Findings to resolve, for example from review-pr."}
+outputs:
+  decisions:
+    type: array
+    description: "One decision per item, in order: its kind, its reviewer (empty for a comment), title, verdict, and reason."
+    items:
+      type: object
+      properties:
+        kind: {type: string, enum: [finding, comment]}
+        reviewer: {type: string, optional: true}
+        title: {type: string}
+        verdict: {type: string, enum: [fixed, dismissed]}
+        reason: {type: string}
+  fixed: {type: integer, description: "How many items were fixed."}
+entry: checkout
+
+blocks:
+  checkout:
+    type: call
+    description: Check out the latest commit of the pull request
+    skill: checkout-pr
+    inputs: {pr: "{{ inputs.pr }}"}
+    next: collect_items
+
+  collect_items:
+    type: script
+    description: List the given findings and the unaddressed comments
+    run: [uv, run, "{{ skill.dir }}/scripts/collect_items.py"]
+    input: {pr: "{{ inputs.pr }}", findings: "{{ inputs.findings | default([]) }}"}
+    parse: json
+    next:
+      - when: "{{ steps.collect_items.json.count == 0 }}"
+        to: resolved
+      - to: claim_item
+
+  claim_item:
+    type: script
+    description: Mark a comment with the eyes reaction as its work starts
+    run: [uv, run, "{{ skill.dir }}/scripts/claim_item.py"]
+    input: {item: "{{ steps.collect_items.json.queue[history.claim_item | default([]) | length] }}"}
+    max_visits: 100
+    on_max_visits: resolved
+    next: resolve_item
+
+  resolve_item:
+    type: task
+    description: Fix the item or dismiss it
+    instruction: instructions/resolve_item.md
+    output:
+      verdict: {type: string, enum: [fixed, dismissed], description: "fixed only when you pushed the fix or edited the pull request description."}
+      reason: {type: string, description: "What you changed, or why you dismissed it. A comment's author reads it as the reply."}
+    next: finish_item
+
+  finish_item:
+    type: script
+    description: Reply to a comment, and record the decision
+    run: [uv, run, "{{ skill.dir }}/scripts/finish_item.py"]
+    input:
+      pr: "{{ inputs.pr }}"
+      item: "{{ steps.collect_items.json.queue[history.finish_item | default([]) | length] }}"
+      decision: "{{ steps.resolve_item }}"
+    parse: json
+    retries: 0
+    next:
+      - when: "{{ (history.finish_item | length) < steps.collect_items.json.count }}"
+        to: claim_item
+      - to: resolved
+
+  resolved:
+    type: end
+    description: Every item has a verdict
+    status: succeeded
+    outputs:
+      decisions: "{{ history.finish_item | default([]) | map(attribute='json') | map(attribute='decision') | list }}"
+      fixed: "{{ history.finish_item | default([]) | map(attribute='json') | map(attribute='decision') | selectattr('verdict', 'equalto', 'fixed') | list | length }}"
+    report: >-
+      Tell the user how each item of pull request #{{ inputs.pr }} was resolved, one line per item:
+      {% for decision in history.finish_item | default([]) | map(attribute='json') | map(attribute='decision') %}{{ decision.verdict }}
+      "{{ decision.title }}" ({{ decision.reason }}){% if not loop.last %}; {% endif %}{% else %}there was nothing to resolve{% endfor %}.
