@@ -873,7 +873,9 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 - **ELK lays the graph out.** Mermaid's `@mermaid-js/layout-elk` package draws the graph top to bottom. It comes from jsDelivr too: an import map in `index.html` pins its version, with a hash for each of its files. Each main-line edge asks ELK to stay straight (`elk.layered.priority.straightness`), so the main line is one straight column, and the side branches go beside it. Main-line edges are thicker; on the skill screen, the other edges are lighter. When ELK does not load, Mermaid's own layout draws the graph.
 - **Fonts:** Manrope and IBM Plex Mono from Google Fonts. The page falls back to the system fonts when they do not load.
 - **Offline:** the canvas shows "Graph unavailable offline (Mermaid did not load)" and the steps (or, on the skill screen, the blocks) as a list of cards in the node style. The side panel, the replay bar, and the Runs, Content, and Folders screens still work, because they do not need Mermaid.
-- While the open run is unfinished, the page polls every second.
+- While the open run is unfinished, the page polls every second (every 2 s on the Runs screen).
+- **Refresh.** The app bar shows the live status: a dot and the time since the last read. The dot pulses with "Live" while a run updates, is solid while the automatic refresh is on, and is hollow when it is off. Next to it, a choice (off, 10 s, 30 s by default, 1 min, 5 min, kept in `localStorage`) and a button read everything again; on the hosted viewer, a refresh looks for new clones and worktrees first. A screen draws again only where its data changed. The refresh and the polls wait while the tab is hidden, and run at once when it comes back. They never run over an open editor or a dialog, and the automatic refresh also waits while a text field has the focus.
+- **Top bars.** Every screen has the app bar: the logo, the tabs, and the refresh. The run and skill screens add a toolbar row under it, and their Fit, zoom, and Follow live float in the canvas's top right corner. No label wraps onto two lines: a long fact is cut with an ellipsis, and its tooltip holds all of it.
 
 | Endpoint | Returns |
 |---|---|
@@ -896,10 +898,10 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 1. **Runs** (the Runs tab).
    - The runs of every project, newest first, with the filters Unfinished, All, and Failed, and a folder filter when there are several projects.
    - On the hosted viewer, each run card names its project: its path, its kind (clone or worktree), and its branch.
-   - Above the cards, the per-skill summary row.
+   - Under the cards, a "By skill" table: the runs, the success rate, and the median time of each skill, over every run, whatever the filters.
    - For cleanup, one button deletes the finished runs that the filters show. It asks first, and the unfinished runs stay.
 2. **Run.**
-   - A top bar: a run switcher, the status, the harness and mode, a note when the skill changed after the run started, Follow live, Fit, and zoom.
+   - A toolbar: a run switcher, the status, one line of facts (the harness and mode, the project on the hosted viewer, a pause reason, and a note when the skill changed after the run started), Skill graph, and Cancel run or Delete run. Follow live, Fit, and zoom are on the canvas.
    - The canvas: the graph fills the screen. Drag to pan, and use the wheel to zoom. It opens at a readable zoom, centered on the current step. With Follow live, it keeps the current step in view.
    - A side panel for the clicked node. Drag its left edge to change its width; the page keeps the width in `localStorage`.
      - the status and the type, and a visit picker when the block ran more than once,
@@ -921,7 +923,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 4. **Skill.** One skill's graph without a run, read from `.pskill/skills/` (never from a run copy). `skill_view.py` builds it.
    - The same canvas as the run screen, with every block and every edge, and no run parts: no status, no current step, no timeline, and no replay bar. Every node has the same plain style.
    - **Child skills:** each call block is drawn as a dashed frame that holds its child skill, in the call block's place. The edges into the call block end at the frame, and its exits leave from the frame. The frame's title, at its top left, is the call block's name, with `call: <child skill>` below it. A click on the title or on the frame's empty area selects the call block. A child's own call blocks are frames inside its frame. (The run screen keeps the call block as a node, with the child's frame next to it.) A child that does not load, or a call back into a skill of its own chain, gets no frame. A click on a block of a child frame shows its details read-only, with a link to the child skill's own screen, where it can be edited. The panel finds a child block by its node id, because its name can be the name of a block of the parent.
-   - **Collapse sub-skills:** an on and off switch in the top bar, next to the zoom controls, draws each call block as one node instead of its child's frame. It is on by default, for a quick look at the flow of a skill with many child skills. The server sends this second canvas too (`collapsed_canvas`). A block of a child frame that the panel shows gives way to the call block that holds it. The page keeps only a choice to expand, in `localStorage`. A skill with no child skill has no switch.
+   - **Collapse sub-skills:** an on and off switch in the toolbar draws each call block as one node instead of its child's frame. It is on by default, for a quick look at the flow of a skill with many child skills. The server sends this second canvas too (`collapsed_canvas`). A block of a child frame that the panel shows gives way to the call block that holds it. The page keeps only a choice to expand, in `localStorage`. A skill with no child skill has no switch.
    - The side panel with nothing selected: the goal, the inputs and outputs, and the `pskill validate` problems.
    - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A name that leads to another screen is a link with an arrow: the child skill of a call block, and the agent of a parallel block (one link per agent of a fixed `for_each` list). An agent name computed from run data has no link.
    - A script block also shows the text of each file inside its skill folder that its command runs as `{{ skill.dir }}/<path>`.
@@ -930,7 +932,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
    - **References:** each `steps.<block>` and `history.<block>` in the panel (an instruction, a fact, a command, an input or output value, an item's `when`, an exit condition) is a teal reference to that block of the same frame. A hover lights up the block on the canvas, and a click opens it. A hover on an edge of the canvas lights up the blocks that its condition reads. A problem whose location is a block, and the call block that runs a child, are references too.
    - **Field help:** each field of a block (in the panel and in the editor), and the goal, inputs, and outputs of the skill, has a "?" button. Its tooltip says what the field is. A click opens a dialog with the details and YAML examples. `viewer/field_help.js` holds the texts; a test checks that every block field of the schema has one.
    - A skill that does not load shows its load error instead of a graph.
-   - An "Export as Markdown" button downloads the export (section 14.1).
+   - An "Export" button downloads the export as Markdown (section 14.1).
    - An "Edit" button turns on the skill editor (section 14.2).
 5. **Agent.** One agent: its file, a link to each skill that uses it (with the block names), and its text as Markdown.
    - "Used by" lists only the uses that `pskill validate` can see: a plain agent name, or the items of a fixed `for_each` list.

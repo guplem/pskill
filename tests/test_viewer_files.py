@@ -119,7 +119,7 @@ def test_the_view_command_serves_the_viewer_until_stopped(tmp_path: Path) -> Non
 def test_the_skill_screen_offers_the_markdown_export_as_a_download() -> None:
     script = (VIEWER / "app.js").read_text(encoding="utf-8")
 
-    assert "Export as Markdown" in script
+    assert 'element("a", "Export", "tool")' in script  # short: its tooltip says what it downloads
     assert "/export`" in script
     assert "exportLink.download" in script
 
@@ -348,3 +348,45 @@ def test_the_font_sizes_and_the_corner_radii_come_from_one_scale_each() -> None:
 
     assert font_sizes <= {"11px", "12px", "13px", "14px", "15px", "18px", "20px"}
     assert radii <= {"4px", "8px", "12px", "999px", "50%"}
+
+
+def test_the_skill_totals_are_a_table_apart_from_the_run_cards() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    style = (VIEWER / "style.css").read_text(encoding="utf-8")
+
+    assert 'element("h2", "By skill")' in script  # a heading, so the totals do not read as a run
+    assert 'element("table", null, "skill-totals")' in script
+    assert '"summary")' not in script  # the old cards, in the style of a run card
+    assert ".summary {" not in style
+
+
+def test_the_page_refreshes_on_a_schedule_only_while_it_is_visible_and_never_over_an_edit() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    refresh_due = script.split("function refreshDue(", 1)[1].split("\n}\n", 1)[0]
+    refresh_now = script.split("async function refreshNow(", 1)[1].split("\n}\n", 1)[0]
+
+    assert '{ id: "off", label: "Auto: off", seconds: 0 }' in script
+    assert "setInterval(tickRefresh, REFRESH_TICK_MS);" in script
+    assert 'document.visibilityState === "hidden"' in refresh_due
+    assert "refreshWouldInterrupt()" in refresh_due  # an open editor, a dialog, or a text field in use
+    assert "editorOpen()" in refresh_now  # a press never wipes an edit either
+    assert "hosted.rescan()" in refresh_now  # clones and worktrees come and go
+    assert "60_000" not in script  # the old rescan timer: the schedule does it now
+    assert 'document.addEventListener("visibilitychange"' in script
+    assert "localStorage.getItem(REFRESH_KEY)" in script
+
+
+def test_a_live_run_polls_only_while_the_page_is_visible() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    poll_again = script.split("function pollAgain(", 1)[1].split("\n}\n", 1)[0]
+
+    assert 'document.visibilityState === "visible"' in poll_again
+    assert script.count("view.pollTimer = setTimeout(") == 1  # only pollAgain starts a poll
+    assert script.count("pollAgain(") >= 3  # the runs page and the run screen use it
+
+
+def test_the_agent_screen_redraws_only_when_the_agent_changed() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    show_agent = script.split("async function showAgent(", 1)[1].split("\n}\n", 1)[0]
+
+    assert "view.detailText" in show_agent  # a refresh keeps the scroll position
