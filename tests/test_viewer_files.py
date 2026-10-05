@@ -363,6 +363,15 @@ def test_the_skill_totals_are_a_table_apart_from_the_run_cards() -> None:
     assert 'element("table", null, "skill-totals")' in script
     assert '"summary")' not in script  # the old cards, in the style of a run card
     assert ".summary {" not in style
+    # One section: the heading with its note on one line, then the table on a card like the run cards.
+    assert 'element("section", null, "totals-section")' in script
+    assert 'element("div", null, "totals-card")' in script
+    card_rule = style.split(".totals-card {", 1)[1].split("}", 1)[0]
+    assert "background: var(--surface);" in card_rule
+    assert "border-radius: 12px;" in card_rule
+    numbers_rule = style.split(".skill-totals .number {", 1)[1].split("}", 1)[0]
+    assert "text-align: right;" in numbers_rule  # the numbers line up
+    assert "font-variant-numeric: tabular-nums;" in numbers_rule
 
 
 def test_the_page_refreshes_on_a_schedule_only_while_it_is_visible_and_never_over_an_edit() -> None:
