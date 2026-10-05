@@ -170,6 +170,23 @@ blocks:
 """
 
 
+# A skill that calls a skill that calls a child: two frames, one inside the other.
+GRANDPARENT_SKILL = """\
+schema: pskill/v1
+id: grandparent
+description: Calls a skill that calls a child.
+goal: Get a greeting through two calls.
+entry: parent
+blocks:
+  parent:
+    type: call
+    skill: parent
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
+
 HEADING_TASK_SKILL = """\
 schema: pskill/v1
 id: heading-task
@@ -295,6 +312,7 @@ def make_project(tmp_path: Path) -> Project:
     write_skill(tmp_path / ".pskill" / "skills", "fanout-twice", FANOUT_TWICE_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "fanout-caller", FANOUT_CALLER_SKILL)
     write_skill(tmp_path / ".pskill" / "skills", "heading-task", HEADING_TASK_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "grandparent", GRANDPARENT_SKILL)
     (tmp_path / ".pskill" / "agents").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".pskill" / "agents" / "checker.md").write_text("You check facts.", encoding="utf-8")
     return find_project(tmp_path)
@@ -509,6 +527,23 @@ def test_human_steps_are_marked_and_each_step_knows_where_it_went_next(tmp_path:
     assert rows[0]["left_by"] == {"to": "ask_user", "label": "steps.create_plan.status == 'question'"}
     assert rows[3]["left_by"] == {"to": "done", "label": "approve"}
     assert rows[-1]["left_by"] is None
+
+
+def test_a_child_skill_of_a_child_skill_is_a_frame_inside_its_parent_frame(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "grandparent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello.\n")
+
+    detail = detail_of(project, run_id)
+
+    template = detail["canvas"]["template"]
+    outer = template.index('  subgraph f1 ["parent · called by parent"]\n')
+    inner = template.index('    subgraph f2 ["child · called by child"]\n')
+    assert outer < inner < template.index("\n  end\n", outer)  # the inner frame sits inside the outer one
+    assert '      f2_greet["@@f2_greet@@"]\n' in template
+    assert "  f1_child -.-> f2_greet\n" in template  # the call edge stays short: from the call block, inside
+    assert detail["timeline"][-1]["node"] == "f2_greet"
+    assert detail["collapsed_canvas"]["current"]["node"] == "f0_parent"
 
 
 def test_the_collapsed_canvas_draws_only_the_run_skill_and_puts_a_child_step_on_its_call_block(

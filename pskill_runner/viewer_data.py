@@ -463,19 +463,24 @@ def task_row_sizes(count: int) -> list[int]:
 
 
 def canvas_template(frames: list[CanvasFrame], edges: list[CanvasEdge], task_counts: dict[tuple[int, str], int]) -> str:
-    # A small start dot: Mermaid 12 gives a labeled circle a fixed radius of about 90 px.
-    lines = ["flowchart TD", f"  {START_NODE}@{{ shape: sm-circ }}"]
-    for index, frame in enumerate(frames):
-        indent = "  " if index == 0 else "    "
-        if index > 0:
-            lines.append(f'  subgraph f{index} ["{frame.skill.id} · called by {frame.called_by}"]')
-        for block_id in frame.skill.blocks:
+    """The Mermaid template: each child skill is a frame inside the frame of the skill that called it."""
+
+    def frame_lines(index: int, indent: str) -> list[str]:
+        lines = []
+        for block_id in frames[index].skill.blocks:
             lines.append(f'{indent}{node_id(index, block_id)}["{label_token(node_id(index, block_id))}"]')
         for (frame_index, block_id), count in task_counts.items():
             if frame_index == index:
                 lines += task_frame_lines(node_id(index, block_id), block_id, count, indent)
-        if index > 0:
-            lines.append("  end")
+        for child, frame in enumerate(frames):
+            if frame.parent == index:
+                lines.append(f'{indent}subgraph f{child} ["{frame.skill.id} · called by {frame.called_by}"]')
+                lines += frame_lines(child, indent + "  ")
+                lines.append(f"{indent}end")
+        return lines
+
+    # A small start dot: Mermaid 12 gives a labeled circle a fixed radius of about 90 px.
+    lines = ["flowchart TD", f"  {START_NODE}@{{ shape: sm-circ }}", *frame_lines(0, "  ")]
     for edge in edges:
         arrow = "-.-" if edge.kind == "tasks" else "-.->" if edge.kind in DOTTED_EDGE_KINDS else "-->"
         label = f'|"{edge.label}"|' if edge.label is not None else ""
