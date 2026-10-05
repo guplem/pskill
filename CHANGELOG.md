@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.2 (2026-10-05)
+
+The top bar spans the page on the message screens.
+
+- **No gap around the top bar:** while Python starts on the hosted viewer, the top bar spans the full width. It sat in a padded box with a gap around it. The message for a browser that cannot run the viewer and the error message on the first load had the same gap.
+
 ## 0.24.1 (2026-10-05)
 
 The selected step's ring is even.
