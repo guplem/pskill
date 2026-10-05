@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.26.0 (2026-10-05)
+
+One top bar row on every screen, a logo that leads back, and fewer facts in sight.
+
+- **The logo leads back:** on a run, skill, or agent screen, the logo shows a back arrow and leads back to the runs, or to the content of the project that the screen shows. On the Runs, Content, and Folders screens, it still opens pskill on GitHub.
+- **One row:** the run, skill, and agent screens drop the tabs, so their top bar is one row again.
+- **Details button:** the harness, the mode, the invocation, the project, and a pause reason wait behind a small "i" button. A click shows them in a card. A short "skill changed" pill stays in sight when the skill changed after the run started.
+- **Shorter run picker:** each option is the skill and the run id, grouped by status.
+- **Phone fix:** the run picker no longer makes the screen wider than the window, and the refresh button no longer covers Skill graph.
+
 ## 0.25.0 (2026-10-05)
 
 The viewer refreshes on its own, shows that it is live, and has calmer top bars.
