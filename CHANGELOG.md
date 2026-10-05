@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.29.0 (2026-10-05)
+
+A child skill of a child skill shows inside its parent's frame on the run screen.
+
+- **Nested frames:** with the sub-skills expanded, each child skill's frame now sits inside the frame of the skill that called it, as on the skill screen. Before, every child frame sat at the top level of the graph, far from its call block, with a long arrow to it.
+
 ## 0.28.0 (2026-10-05)
 
 A tidier "By skill" table on the Runs screen.
