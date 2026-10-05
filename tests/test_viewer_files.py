@@ -183,8 +183,8 @@ def test_the_skills_list_shows_the_internal_skills_in_their_own_section() -> Non
 def test_the_viewer_has_two_tabs_runs_and_the_content_of_one_project() -> None:
     script = (VIEWER / "app.js").read_text(encoding="utf-8")
 
-    assert '["Runs", "#/", ["runs", "run"]]' in script
-    assert '["Content", contentHref(view.lastPlace), ["content", "skill", "agent"]]' in script
+    assert '["Runs", "#/", ["runs"]]' in script  # a detail screen has no tabs: its logo leads back
+    assert '["Content", contentHref(view.lastPlace), ["content"]]' in script
     assert 'if (hosted) tabs.push(["Folders", "#/folders", ["folders"]]);' in script
     # Each route names its project, so a run or a skill opens in the right folder.
     assert "return `#/run/${encodedPath(place, runId)}`;" in script
@@ -276,11 +276,16 @@ def test_the_viewer_cancels_a_run_and_deletes_finished_runs_after_asking() -> No
     assert script.count("window.confirm(") >= 4  # the editor's block delete, and the three run actions
 
 
-def test_the_logo_and_the_version_lead_to_the_repository_in_a_new_tab() -> None:
+def test_the_logo_leads_back_to_the_list_or_to_the_repository_and_the_version_to_its_release() -> None:
     script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    brand_link = script.split("function brandLink(", 1)[1].split("\n}\n", 1)[0]
 
     assert 'const REPOSITORY_URL = "https://github.com/guplem/pskill";' in script
-    assert 'externalLink("pskill", REPOSITORY_URL,' in script
+    assert 'externalLink("pskill", REPOSITORY_URL,' in brand_link  # on the Runs, Content, and Folders screens
+    assert 'run: ["#/",' in brand_link  # a run leads back to the runs
+    assert "skill: [contentHref(view.place)," in brand_link  # a skill or an agent, to its project's content
+    assert "agent: [contentHref(view.place)," in brand_link
+    assert "const brand = brandLink();" in script
     assert "`${REPOSITORY_URL}/releases/tag/v${view.version}`" in script
     assert 'link.rel = "noopener";' in script
 
@@ -390,3 +395,25 @@ def test_the_agent_screen_redraws_only_when_the_agent_changed() -> None:
     show_agent = script.split("async function showAgent(", 1)[1].split("\n}\n", 1)[0]
 
     assert "view.detailText" in show_agent  # a refresh keeps the scroll position
+
+
+def test_a_detail_screen_has_one_top_bar_row_without_the_tabs() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    top_bar = script.split("function topbar(", 1)[1].split("\n}\n", 1)[0]
+
+    assert "if (isDetailScreen()) {" in top_bar  # the run, skill, and agent screens: their logo leads back
+    assert "bar.append(brand, ...access, ...parts, refreshControl());" in top_bar
+    assert "screenHead" not in script  # the second row is gone
+    assert "const bar = topbar(picker, status" in script
+
+
+def test_the_facts_of_a_run_or_a_skill_hide_behind_a_details_button() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+
+    assert 'card.popover = "auto";' in script  # closes on a click outside or on Escape
+    assert script.count("detailsButton(facts)") == 3  # the function, the run screen, and the skill screen
+    assert '"toolbar-facts' not in script  # the old line of facts in the bar
+    assert 'element("optgroup")' in script  # the run picker groups by status, so its options stay short
+    style = (VIEWER / "style.css").read_text(encoding="utf-8")
+    card_rule = style.split(".details-card {", 1)[1].split("}", 1)[0]
+    assert "display:" not in card_rule  # it would show the closed card: only .details-card:popover-open sets it
