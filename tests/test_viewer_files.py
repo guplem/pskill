@@ -10,6 +10,7 @@ from pathlib import Path
 from pskill_runner.release import release_file_map
 from pskill_runner.skill_schema import BLOCK_SCHEMAS
 from pskill_runner.viewer_data import BLOCK_TYPE_MEANINGS
+from pskill_runner.viewer_server import CONTENT_TYPES
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 VIEWER = REPOSITORY_ROOT / "viewer"
@@ -272,3 +273,12 @@ def test_the_logo_and_the_version_lead_to_the_repository_in_a_new_tab() -> None:
     assert 'externalLink("pskill", REPOSITORY_URL,' in script
     assert "`${REPOSITORY_URL}/releases/tag/v${view.version}`" in script
     assert 'link.rel = "noopener";' in script
+
+
+def test_the_page_has_a_tab_icon_that_the_local_server_can_serve() -> None:
+    index = (VIEWER / "index.html").read_text(encoding="utf-8")
+    icon = (VIEWER / "icon.svg").read_text(encoding="utf-8")
+
+    assert '<link rel="icon" href="icon.svg" type="image/svg+xml" />' in index  # relative: it works under /pskill/ too
+    assert icon.startswith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">')
+    assert ".svg" in CONTENT_TYPES
