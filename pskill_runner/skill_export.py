@@ -222,7 +222,7 @@ def parallel_body(skill: Skill, block: ParallelBlock) -> list[str]:
         "subagents, do the items one by one yourself. In the task, `item` is the current item."
     ]
     if isinstance(block.for_each, list):
-        lines.append("\n".join(f"- `{json.dumps(item)}`" for item in block.for_each))
+        lines.append("\n".join(list_item_line(item) for item in block.for_each))
     if block.agent is not None and "{{" not in block.agent:
         lines.append(f"Give each subagent the role in `{SUBAGENTS_FOLDER}/{block.agent}.md` first.")
     elif block.agent is not None:
@@ -238,6 +238,14 @@ def parallel_body(skill: Skill, block: ParallelBlock) -> list[str]:
         "Each answer holds:\n\n" + field_lines(block.output)
     )
     return lines
+
+
+def list_item_line(item: Any) -> str:
+    """One item of a `for_each` YAML list. An item's `when` becomes words after it, as the task's `item` has none."""
+    if not (isinstance(item, dict) and "when" in item):
+        return f"- `{json.dumps(item)}`"
+    rest = {key: value for key, value in item.items() if key != "when"}
+    return f"- `{json.dumps(rest)}` (only when `{condition_text(str(item['when']))}`)"
 
 
 def script_body(block: ScriptBlock, default_retries: int) -> list[str]:
