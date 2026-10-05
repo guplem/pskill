@@ -996,6 +996,7 @@ async function drawGraph() {
     const stateName = nodeState(node, state);
     group.dataset.node = node;
     group.classList.add(`is-${stateName}`);
+    addSelectionRing(group);
     const nodeInfo = data.nodes.find((item) => item.id === node);
     if (nodeInfo && nodeInfo.kind === "task") {
       group.classList.add("is-task");
@@ -1318,6 +1319,30 @@ function selectTask(task) {
 function shownNode() {
   if (view.selectedNode || isSkillScreen()) return view.selectedNode;
   return view.selectedRow === null ? stepState().stepNode : null;
+}
+
+// The ring of the node that the side panel shows (style.css shows it on .is-selected): a rounded rectangle
+// around the node's box, RING_GAP away from its border line. Its corners follow the box's corners, so the ring
+// has one width everywhere.
+const RING_GAP = 4;
+
+function addSelectionRing(group) {
+  const box = group.querySelector(":scope > rect");
+  if (!box) return; // the start dot: it is never selected
+  const x = box.x.baseVal.value - RING_GAP;
+  const y = box.y.baseVal.value - RING_GAP;
+  const width = box.width.baseVal.value + 2 * RING_GAP;
+  const height = box.height.baseVal.value + 2 * RING_GAP;
+  const r = Math.min((parseFloat(getComputedStyle(box).rx) || 0) + RING_GAP, width / 2, height / 2);
+  const ring = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  ring.setAttribute("class", "selection-ring");
+  ring.setAttribute(
+    "d",
+    `M${x + r},${y}H${x + width - r}A${r},${r} 0 0 1 ${x + width},${y + r}V${y + height - r}` +
+      `A${r},${r} 0 0 1 ${x + width - r},${y + height}H${x + r}A${r},${r} 0 0 1 ${x},${y + height - r}` +
+      `V${y + r}A${r},${r} 0 0 1 ${x + r},${y}Z`,
+  );
+  box.before(ring);
 }
 
 // Ring the shown node, and the task node of the shown task, on the canvas and in the offline card list.

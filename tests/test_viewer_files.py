@@ -163,11 +163,13 @@ def test_a_help_button_opens_a_dialog_with_the_details() -> None:
 def test_the_node_that_the_panel_shows_gets_a_ring_that_beats_mermaid_styles() -> None:
     script = (VIEWER / "app.js").read_text(encoding="utf-8")
     style = (VIEWER / "style.css").read_text(encoding="utf-8")
-    selection_rule = style.split(".layer g.node.is-selected circle {", 1)[1].split("}", 1)[0]
+    ring_rule = style.split(".layer .selection-ring {", 1)[1].split("}", 1)[0]
 
     assert script.count("markSelection();") >= 5  # the graph, both card lists, a node click, and a task click
-    assert "var(--ink)" in selection_rule
-    assert "!important" in selection_rule  # Mermaid scopes its own drop-shadow by id
+    assert "addSelectionRing(group);" in script  # one rounded rectangle: one width on every side and corner
+    assert "stroke: var(--ink) !important;" in ring_rule  # Mermaid scopes its own node styles by id
+    assert ".layer g.node.is-selected .selection-ring {" in style
+    assert "drop-shadow(2px" not in style  # the old ring of offset shadows: thinner at the corners
     assert ".step-card.is-selected" in style
 
 
