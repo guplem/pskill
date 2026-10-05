@@ -1,0 +1,18 @@
+name: a change of docs only skips the correctness and tests reviewers
+inputs: {pr: 9}
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: abc, plan_file: implementation-plan-42.md}}
+scripts:
+  read_pr:
+    - {exit_code: 0, stdout: '{"paths": ["README.md"], "code_paths": []}'}
+  collect_findings:
+    - {exit_code: 0, stdout: '{"findings": [], "count": 0, "dropped": []}'}
+answers:
+  review:
+    - {reviewer: completeness, findings: []}
+    - {reviewer: conventions, findings: []}
+    - {reviewer: docs, findings: []}
+expect:
+  path: [checkout, read_pr, review, collect_findings, reviewed]
+  status: succeeded

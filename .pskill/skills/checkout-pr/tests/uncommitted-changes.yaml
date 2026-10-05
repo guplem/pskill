@@ -1,0 +1,8 @@
+name: uncommitted changes pause the run, because they belong to the user
+inputs: {pr: 9}
+scripts:
+  checkout_pr:
+    - {exit_code: 1, stderr: "The checkout has uncommitted changes: a.py"}
+expect:
+  path: [checkout_pr]
+  status: paused

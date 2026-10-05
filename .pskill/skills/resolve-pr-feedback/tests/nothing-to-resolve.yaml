@@ -1,0 +1,12 @@
+name: with no finding and no unaddressed comment, the skill ends at once
+inputs: {pr: 9}
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: aaa, plan_file: implementation-plan-42.md}}
+scripts:
+  collect_items:
+    - {exit_code: 0, stdout: '{"queue": [], "count": 0}'}
+expect:
+  path: [checkout, collect_items, resolved]
+  status: succeeded
+  outputs: {decisions: [], fixed: 0}

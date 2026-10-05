@@ -1,0 +1,25 @@
+name: with post_findings false, the findings stay in the outputs and nothing is posted
+inputs: {pr: 9, post_findings: false}
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: abc, plan_file: implementation-plan-42.md}}
+scripts:
+  read_pr:
+    - {exit_code: 0, stdout: '{"paths": ["src/app.py"], "code_paths": ["src/app.py"]}'}
+  collect_findings:
+    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Wrong operator", "summary": "S.", "quote": "return a - b"}], "count": 1, "dropped": [{"reviewer": "tests", "title": "No quote"}]}'}
+answers:
+  review:
+    - reviewer: correctness
+      findings: [{file: src/app.py, line: 3, severity: required, title: Wrong operator, summary: S., quote: return a - b}]
+    - reviewer: tests
+      findings: [{file: src/app.py, line: 9, severity: suggestion, title: No quote, summary: S., quote: not in the file}]
+    - {reviewer: completeness, findings: []}
+    - {reviewer: conventions, findings: []}
+    - {reviewer: docs, findings: []}
+expect:
+  path: [checkout, read_pr, review, collect_findings, reviewed]
+  status: succeeded
+  outputs:
+    reviewed_sha: abc
+    findings: [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Wrong operator", "summary": "S.", "quote": "return a - b"}]

@@ -1,0 +1,9 @@
+name: when the user cancels the new issue, the run stops before any change
+inputs: {request: Show an error when a file is saved with no name.}
+calls:
+  create_new_issue:
+    - {status: cancelled, outputs: {}}
+expect:
+  path: [create_new_issue, stopped]
+  status: cancelled
+  outputs: {result: stopped}

@@ -1,0 +1,56 @@
+name: a gap that only the user can answer, a plan change, then the build
+inputs: {request: "42"}
+scripts:
+  read_issue:
+    - exit_code: 0
+      stdout: >-
+        {"number": 42, "title": "Saving a file crashes", "body": "Saving a file with no name crashes.", "labels": ["bug"],
+        "comments": [], "cross_references": [], "hold_reason": null, "existing_branches": []}
+  checkout_default:
+    - {exit_code: 0, stdout: '{"ok": true, "default_branch": "main"}'}
+  checkout_base:
+    - {exit_code: 0, stdout: '{"ok": true, "base": "main", "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}'}
+  open_draft_pr:
+    - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/octo/app/pull/9"}'}
+  ready:
+    - {exit_code: 0, stdout: '{"head_sha": "h1"}'}
+calls:
+  review:
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: r1}}
+  resolve:
+    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+  get_ci_green:
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h1, fixes: 0}}
+  answer_comments:
+    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+answers:
+  understand:
+    - title: Fix the crash when a file is saved with no name
+      slug: fix-save
+      brief: Guard the save.
+      base: main
+      gaps: [{name: error text, question: "Which message does the user see?"}]
+  research_code:
+    - {report: The rename guard in files.py is the closest code.}
+    - {report: No recorded decision affects this work.}
+  research_gaps:
+    - {status: needs_user, answer: No message exists yet., evidence: "-", options: ["Name the file first (Recommended)", "Save failed"]}
+  ask_user:
+    - {answer: Name the file first., $answered_by: human}
+  write_plan:
+    - {summary: "1. Guard the save."}
+    - {summary: "1. Guard the save. 2. Show the message."}
+  approve_plan:
+    - {choice: change, rationale: The user wants the message step., feedback: Add a step for the message., $answered_by: human}
+    - {choice: approve, rationale: The user approved., $answered_by: human}
+  implement_step:
+    - {behavior: A file with no name is not saved., red: The new test crashed., commit: a1, done: true}
+  write_description:
+    - {summary: Saving a file with no name shows an error instead of crashing.}
+  finish:
+    - {labels: [], reasons: A small bug fix with a test.}
+expect:
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, ask_user, write_plan, approve_plan, write_plan,
+         approve_plan, open_draft_pr, implement_step, write_description, review, resolve, ready, get_ci_green,
+         answer_comments, finish, done]
+  status: succeeded

@@ -1,98 +1,167 @@
 schema: pskill/v1
 id: review-pr
 description: >-
-  Review a GitHub pull request in depth and report real defects, each backed by a quote from the diff.
-  Use when the user asks to review a PR.
-goal: Find the real defects in the pull request, each backed by an exact quote from the diff.
+  Review a GitHub pull request in one round: fresh reviewer subagents read it in parallel, each from one angle
+  (correctness, tests, completeness, conventions, docs), and report the real problems, each backed by a quote from the
+  code. It posts them as pull request comments when the user agrees, unless told not to post. It changes no file and
+  answers no comment: resolve-pr-feedback deals with the findings. Use when the user asks to review a pull request.
+goal: >-
+  Every real problem of the pull request, reported once by the reviewer whose angle covers it, with the exact line as
+  proof.
 x-finding: &finding
   type: object
   properties:
     file: {type: string}
     line: {type: integer}
-    severity: {type: string, enum: [blocker, major, minor]}
-    summary: {type: string}
-    quote: {type: string, description: "Exact lines from the diff. No quote, no finding."}
+    severity: {type: string, enum: [required, suggestion]}
+    title: {type: string, description: "One line."}
+    summary: {type: string, description: "The problem, why it matters, and the fix."}
+    quote: {type: string, description: "The exact line from the code. No quote, no finding."}
 inputs:
-  pr: {type: integer, description: "Number of the pull request to review."}
-  post_verdict: {type: boolean, default: true, optional: true, description: "false: only return the findings, never post."}
+  pr: {type: integer, description: "Number of the pull request."}
+  post_findings:
+    type: boolean
+    optional: true
+    default: true
+    description: "false keeps the findings in the outputs only, with no comment on the pull request."
+  dismissed:
+    type: array
+    optional: true
+    description: "Findings that earlier rounds dismissed. Each goes back only to the reviewer that reported it."
+    items:
+      type: object
+      properties:
+        reviewer: {type: string, description: "The reviewer that reported it."}
+        title: {type: string, description: "The title of the finding."}
+        reason: {type: string, description: "Why it was dismissed."}
 outputs:
-  findings: {type: array, items: *finding, description: "The verified findings."}
-entry: read_pr
+  findings:
+    type: array
+    description: "Every finding of the round with a real quote, each with the reviewer that reported it."
+    items:
+      type: object
+      properties:
+        reviewer: {type: string}
+        file: {type: string}
+        line: {type: integer}
+        severity: {type: string, enum: [required, suggestion]}
+        title: {type: string}
+        summary: {type: string}
+        quote: {type: string}
+  reviewed_sha: {type: string, description: "The head commit that the round reviewed."}
+entry: checkout
 
 blocks:
+  checkout:
+    type: call
+    description: Check out the latest commit of the pull request
+    skill: checkout-pr
+    inputs: {pr: "{{ inputs.pr }}"}
+    next: read_pr
+
   read_pr:
     type: script
-    description: Read the pull request from GitHub
-    run: [gh, pr, view, "{{ inputs.pr }}", --json, "headRefOid,baseRefName,files,additions,deletions"]
+    description: List the changed files
+    run: [uv, run, "{{ skill.dir }}/scripts/read_pr.py"]
+    input:
+      base: "{{ steps.checkout.outputs.base }}"
+      head_sha: "{{ steps.checkout.outputs.head_sha }}"
+      plan_file: "{{ steps.checkout.outputs.plan_file }}"
     parse: json
-    next: plan_review
+    next: review
 
-  plan_review:
-    type: task
-    description: Pick the review angles
-    instruction: instructions/plan_review.md
-    output:
-      angles:
-        type: array
-        description: "One entry per review subagent to run."
-        items:
-          type: object
-          properties:
-            focus: {type: string, enum: [correctness, security, tests, conventions, performance]}
-            brief: {type: string, description: "What this subagent must look at in this PR."}
-    next: analyze
-
-  analyze:
+  review:
     type: parallel
-    description: Review each angle in parallel
-    for_each: "{{ steps.plan_review.angles }}"
+    description: Review with fresh subagents, one per angle
+    # One row per reviewer. A row with a `when` runs only when its condition is true. Add a row for an angle that
+    # your project needs, for example a database reviewer with a condition on the changed paths.
+    for_each:
+      - name: correctness
+        when: "{{ steps.read_pr.json.code_paths }}"
+        focus: >-
+          Correctness and safety: wrong results, unhandled errors and edge cases, broken contracts between callers and
+          the changed code, security holes (unchecked input, injection, leaked secrets, missing permission checks),
+          data loss, and races.
+      - name: tests
+        when: "{{ steps.read_pr.json.code_paths }}"
+        focus: >-
+          Tests: each changed behavior has a test that fails without the change, the tests check outcomes and not
+          implementation details, they follow the test conventions of the repository, and no test was weakened or
+          deleted to pass.
+      - name: completeness
+        focus: >-
+          Completeness: the change does everything that the issue, the plan, and the pull request description promise,
+          and nothing that they rule out. The description matches the code. Every caller, setting, migration, and
+          generated file that the change needs is updated.
+      - name: conventions
+        focus: >-
+          Conventions and architecture: the change follows the rules of the AGENTS.md, CLAUDE.md, and CONTRIBUTING.md
+          files, the recorded decisions (ADRs), and the patterns of the closest existing code. A broken written rule
+          is a finding. So is new code that duplicates code that already exists.
+      - name: docs
+        focus: >-
+          Docs: every doc that the change makes false or leaves out: README files, the docs folder, AGENTS.md and
+          CLAUDE.md, the comments and docstrings near the change, API descriptions, and the changelog when the
+          repository keeps one.
     agent: reviewer
-    task_name: "{{ item.focus }}"
-    instruction: instructions/analyze.md
+    task_name: "{{ item.name }}"
+    instruction: instructions/review.md
     output:
-      findings: {type: array, items: *finding, description: "Your findings for this focus only."}
-    next: triage
+      reviewer: {type: string, description: "Your reviewer name, as your task gives it."}
+      findings: {type: array, items: *finding, description: "Your findings, for your angle only."}
+    next: collect_findings
 
-  triage:
-    type: task
-    description: Merge and deduplicate the findings
-    instruction: instructions/triage.md
-    output:
-      findings: {type: array, items: *finding, description: "The merged, deduplicated findings."}
-    next: verify_quotes
-
-  verify_quotes:
+  collect_findings:
     type: script
-    description: Check each quote against the diff
-    run: [uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]
-    input: {pr: "{{ inputs.pr }}", findings: "{{ steps.triage.findings }}"}
+    description: Join the findings, and keep the ones with a real quote
+    run: [uv, run, "{{ skill.dir }}/scripts/collect_findings.py"]
+    input:
+      results: "{{ steps.review.results }}"
+      head_sha: "{{ steps.checkout.outputs.head_sha }}"
+      base: "{{ steps.checkout.outputs.base }}"
     parse: json
     next:
-      - when: "{{ inputs.post_verdict }}"
+      - when: "{{ inputs.post_findings and steps.collect_findings.json.count > 0 }}"
         to: confirm_post
-      - to: report
+      - to: reviewed
 
   confirm_post:
     type: decision
-    description: Ask whether to post the review
+    description: Ask whether to post the findings
     decider: human
-    instruction: instructions/confirm_post.md
+    instruction: >-
+      Show the user the findings, one line each:
+      {% for finding in steps.collect_findings.json.findings %}[{{ finding.severity }}] `{{ finding.file }}:{{ finding.line }}`
+      {{ finding.title }}{% if not loop.last %}; {% endif %}{% endfor %}. Ask whether to post them as comments on pull
+      request #{{ inputs.pr }}.
     choices:
-      post: Post the review on the pull request.
-      skip: Do not post. Only report here.
-    next: {post: post_review, skip: report}
+      post: Post the findings as pull request comments.
+      skip: Do not post. Only report them here.
+    next: {post: post_findings, skip: reviewed}
 
-  post_review:
-    type: task
-    description: Post the review on GitHub
-    instruction: instructions/post_review.md
-    output:
-      review_url: {type: string, description: "URL of the posted review."}
-    next: report
+  post_findings:
+    type: script
+    description: Post the findings as pull request comments
+    run: [uv, run, "{{ skill.dir }}/scripts/post_findings.py"]
+    input:
+      pr: "{{ inputs.pr }}"
+      head_sha: "{{ steps.checkout.outputs.head_sha }}"
+      findings: "{{ steps.collect_findings.json.findings }}"
+    parse: json
+    retries: 0
+    next: reviewed
 
-  report:
+  reviewed:
     type: end
-    description: Report the findings
+    description: The round is reviewed
     status: succeeded
-    outputs: {findings: "{{ steps.verify_quotes.json.findings }}"}
-    report: instructions/report.md
+    outputs:
+      findings: "{{ steps.collect_findings.json.findings }}"
+      reviewed_sha: "{{ steps.checkout.outputs.head_sha }}"
+    report: >-
+      Tell the user the findings of the review of pull request #{{ inputs.pr }}, one line each, with its severity, file,
+      and line{% if steps.post_findings is defined %} (they are posted on the pull request){% endif %}:
+      {% for finding in steps.collect_findings.json.findings %}[{{ finding.severity }}] `{{ finding.file }}:{{ finding.line }}`
+      {{ finding.title }}{% if not loop.last %}; {% endif %}{% else %}no finding{% endfor %}.{% if steps.collect_findings.json.dropped %}
+      Also say that {{ steps.collect_findings.json.dropped | length }} findings were dropped, because their quote is
+      not in the code.{% endif %}

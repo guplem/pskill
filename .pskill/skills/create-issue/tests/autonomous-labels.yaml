@@ -1,0 +1,29 @@
+name: in autonomous mode no human approved the draft, so the issue gets the waiting-for-human-check label
+inputs: {description: Show token counts in the viewer.}
+mode: autonomous
+answers:
+  assess_clarity:
+    - {clear: true}
+  extract_terms:
+    - {terms: [viewer, tokens]}
+  judge_duplicates:
+    - {choice: none, rationale: Nothing similar.}
+  draft_issue:
+    - {title: Show token counts per block in the viewer, body: The draft.}
+  confirm_draft:
+    - {choice: create, rationale: The request is clear and the draft covers it.}
+scripts:
+  search_duplicates:
+    - {exit_code: 0, stdout: "[]"}
+  create:
+    - {exit_code: 0, stdout: "https://github.com/guplem/pskill/issues/40
+"}
+  ensure_label:
+    - {exit_code: 0}
+  label_issue:
+    - {exit_code: 0}
+expect:
+  path: [assess_clarity, extract_terms, search_duplicates, judge_duplicates, draft_issue, confirm_draft, create,
+         ensure_label, label_issue, created]
+  status: succeeded
+  outputs: {issue_number: 40}

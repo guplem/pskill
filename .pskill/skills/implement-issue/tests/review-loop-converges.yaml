@@ -1,0 +1,47 @@
+name: a fixed finding gets a second review round, and a round that fixes nothing ends the loop
+inputs: {request: "#42"}
+scripts:
+  read_issue:
+    - exit_code: 0
+      stdout: >-
+        {"number": 42, "title": "Saving a file crashes", "body": "Saving a file with no name crashes.", "labels": ["bug"],
+        "comments": [], "cross_references": [], "hold_reason": null, "existing_branches": []}
+  checkout_default:
+    - {exit_code: 0, stdout: '{"ok": true, "default_branch": "main"}'}
+  checkout_base:
+    - {exit_code: 0, stdout: '{"ok": true, "base": "main", "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}'}
+  open_draft_pr:
+    - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/octo/app/pull/9"}'}
+  ready:
+    - {exit_code: 0, stdout: '{"head_sha": "h1"}'}
+calls:
+  review:
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r1}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r2}}
+  resolve:
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test for the guard, verdict: fixed, reason: Added it.}], fixed: 1}}
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test for the guard, verdict: dismissed, reason: The test exists.}], fixed: 0}}
+  get_ci_green:
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h1, fixes: 0}}
+  answer_comments:
+    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+answers:
+  understand:
+    - {title: Fix the crash when a file is saved with no name, slug: fix-save, brief: Guard the save., base: main, gaps: []}
+  research_code:
+    - {report: The rename guard in files.py is the closest code.}
+    - {report: No recorded decision affects this work.}
+  write_plan:
+    - {summary: "1. Guard the save. 2. Test it."}
+  approve_plan:
+    - {choice: approve, rationale: The user approved., $answered_by: human}
+  implement_step:
+    - {behavior: A file with no name is not saved., red: The new test crashed., commit: a1, done: true}
+  write_description:
+    - {summary: Saving a file with no name shows an error instead of crashing.}
+  finish:
+    - {labels: [], reasons: A small bug fix with a test.}
+expect:
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, resolve, ready, get_ci_green, answer_comments, finish, done]
+  status: succeeded
+  outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9"}

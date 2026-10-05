@@ -1,0 +1,12 @@
+name: checks that pass the first time need no fix
+inputs: {pr: 9}
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: c1, plan_file: implementation-plan-api-key-copy-button.md}}
+answers:
+  wait_ci:
+    - {state: passed, failed_checks: [], head_sha: c2}
+expect:
+  path: [checkout, wait_ci, passed]
+  status: succeeded
+  outputs: {state: passed, failed_checks: [], head_sha: c2, fixes: 0}

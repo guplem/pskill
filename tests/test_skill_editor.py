@@ -130,15 +130,21 @@ def test_an_update_keeps_an_alias_as_an_alias(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     ("skill_id", "middle_block"),
-    [("implement-issue", "check_applies"), ("review-pr", "plan_review"), ("create-issue", "judge_duplicates")],
+    [
+        ("implement-issue", "understand"),
+        ("review-pr", "read_pr"),
+        ("resolve-pr-feedback", "claim_item"),
+        ("fix-ci", "fix_ci"),
+        ("create-issue", "judge_duplicates"),
+    ],
 )
-def test_editing_a_proof_skill_block_changes_nothing_else(tmp_path: Path, skill_id: str, middle_block: str) -> None:
+def test_editing_an_example_skill_block_changes_nothing_else(tmp_path: Path, skill_id: str, middle_block: str) -> None:
     shutil.copytree(REPOSITORY / ".pskill" / "skills" / skill_id, tmp_path / ".pskill" / "skills" / skill_id)
     project = find_project(tmp_path)
     before = skill_text(project, skill_id)
     block_ids = list(load_skill(project.skills_folder / skill_id).blocks)
     for block_id in (middle_block, block_ids[-1]):
-        # Every proof block has a description: remove it, then add it back as a new key.
+        # Every example block has a description: remove it, then add it back as a new key.
         update_block(project, skill_id, block_id, {"description": None})
         without = skill_text(project, skill_id)
         assert [line[:17] for line in changed_lines(before, without)] == ["-    description:"]
@@ -161,16 +167,16 @@ def test_changing_the_last_key_of_a_middle_block_keeps_the_blank_line_after_it(t
     update_block(
         project,
         "review-pr",
-        "plan_review",
-        {"next": [{"when": "{{ inputs.pr > 0 }}", "to": "analyze"}, {"to": "report"}]},
+        "read_pr",
+        {"next": [{"when": "{{ inputs.pr > 0 }}", "to": "review"}, {"to": "reviewed"}]},
     )
 
     assert changed_lines(before, skill_text(project, "review-pr")) == [
-        "-    next: analyze",
+        "-    next: review",
         "+    next:",
         '+      - when: "{{ inputs.pr > 0 }}"',
-        "+        to: analyze",
-        "+      - to: report",
+        "+        to: review",
+        "+      - to: reviewed",
     ]
 
 

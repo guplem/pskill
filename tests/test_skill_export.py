@@ -20,7 +20,7 @@ from tests.test_engine_blocks import (
 )
 
 REPOSITORY = Path(__file__).resolve().parent.parent
-PROOF_SKILLS = ["implement-issue", "review-pr", "create-issue"]
+EXAMPLE_SKILLS = ["implement-issue", "review-pr", "resolve-pr-feedback", "fix-ci", "create-issue"]
 
 STATE_SKILL = """\
 schema: pskill/v1
@@ -222,11 +222,11 @@ def test_a_value_inside_code_stays_a_bare_name() -> None:
     )
 
 
-# --- the proof skills -----------------------------------------------------------------------------
+# --- the example skills ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("skill_id", PROOF_SKILLS)
-def test_each_proof_skill_exports_to_a_plain_skill_that_an_agent_can_follow(skill_id: str) -> None:
+@pytest.mark.parametrize("skill_id", EXAMPLE_SKILLS)
+def test_each_example_skill_exports_to_a_plain_skill_that_an_agent_can_follow(skill_id: str) -> None:
     project = find_project(REPOSITORY)
 
     files = export_skill(project, skill_id)

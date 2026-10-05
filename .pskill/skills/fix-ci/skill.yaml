@@ -1,0 +1,82 @@
+schema: pskill/v1
+id: fix-ci
+description: >-
+  Get the CI checks of a GitHub pull request green: wait for them, fix each failure that the pull request causes, and
+  wait again, until every check passes. A failure that the base branch has too ends it, because the pull request
+  cannot fix it. It reads no comment. Use when the user asks to fix CI or to get the checks of a pull request green.
+  Starting it authorizes the commits and pushes on the branch of the pull request.
+goal: >-
+  Every CI check on the head commit of the pull request passed, or each check that still fails also fails on the base
+  branch.
+inputs:
+  pr: {type: integer, description: "Number of the pull request."}
+outputs:
+  state: {type: string, enum: [passed, failed], description: "passed when every check on the head commit passed or was skipped."}
+  failed_checks: {type: array, items: {type: string}, description: "Each check that still fails, as '<name>: <link>'."}
+  head_sha: {type: string, description: "The full sha of the head commit that the last checks ran on."}
+  fixes: {type: integer, description: "How many fix rounds ran."}
+entry: checkout
+
+blocks:
+  checkout:
+    type: call
+    description: Check out the latest commit of the pull request
+    skill: checkout-pr
+    inputs: {pr: "{{ inputs.pr }}"}
+    next: wait_ci
+
+  wait_ci:
+    type: task
+    description: Wait for the CI checks
+    instruction: instructions/wait_ci.md
+    max_visits: 10
+    on_max_visits: failed
+    output:
+      state: {type: string, enum: [passed, failed], description: "passed when every check passed or was skipped."}
+      failed_checks: {type: array, items: {type: string}, description: "Each failed check as '<name>: <link>'."}
+      head_sha: {type: string, description: "The full sha of the head commit that the checks ran on."}
+    next:
+      - when: "{{ steps.wait_ci.state == 'failed' }}"
+        to: fix_ci
+      - to: passed
+
+  fix_ci:
+    type: task
+    description: Find why CI failed and fix it
+    instruction: instructions/fix_ci.md
+    output:
+      cause:
+        type: string
+        enum: [this_pr, flaky, unrelated]
+        description: "unrelated only when every failure that is left also fails on the base branch. Otherwise the cause of the main failure."
+      summary: {type: string, description: "The cause and what you did, per failed check."}
+    next:
+      - when: "{{ steps.fix_ci.cause == 'unrelated' }}"
+        to: failed
+      - to: wait_ci
+
+  passed:
+    type: end
+    description: Every check passed
+    status: succeeded
+    outputs:
+      state: passed
+      failed_checks: []
+      head_sha: "{{ steps.wait_ci.head_sha }}"
+      fixes: "{{ history.fix_ci | default([]) | length }}"
+    report: >-
+      Tell the user that every CI check of pull request #{{ inputs.pr }} passed{% if history.fix_ci | default([]) %},
+      after {{ history.fix_ci | length }} fix rounds: {{ history.fix_ci | map(attribute='summary') | join('; ') }}{% endif %}.
+
+  failed:
+    type: end
+    description: Checks still fail, from the base branch or after the last try
+    status: failed
+    outputs:
+      state: failed
+      failed_checks: "{{ steps.wait_ci.failed_checks }}"
+      head_sha: "{{ steps.wait_ci.head_sha }}"
+      fixes: "{{ history.fix_ci | default([]) | length }}"
+    report: >-
+      Tell the user which CI checks of pull request #{{ inputs.pr }} still fail
+      ({{ steps.wait_ci.failed_checks | join('; ') }}), and why: {{ steps.fix_ci.summary }}

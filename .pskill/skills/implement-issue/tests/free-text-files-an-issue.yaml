@@ -1,0 +1,12 @@
+name: a described change is filed as an issue first, then the run reads that issue
+inputs: {request: Show an error when a file is saved with no name.}
+calls:
+  create_new_issue:
+    - {status: succeeded, outputs: {issue_number: 42}}
+scripts:
+  read_issue:
+    - {exit_code: 0, stdout: '{"number": 42, "title": "T", "body": "", "labels": [], "comments": [], "cross_references": [], "hold_reason": "is assigned to ana, who owns the work", "existing_branches": []}'}
+expect:
+  path: [create_new_issue, read_issue, held]
+  status: cancelled
+  outputs: {result: held}
