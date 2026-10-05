@@ -108,11 +108,11 @@ def test_the_skills_endpoint_lists_every_skill(server: ThreadingHTTPServer) -> N
     assert [skill["skill_id"] for skill in json.loads(body)["skills"]] == ["plan-work"]
 
 
-def test_the_version_endpoint_returns_the_running_version(server: ThreadingHTTPServer) -> None:
+def test_the_version_endpoint_returns_the_running_version(server: ThreadingHTTPServer, project: Project) -> None:
     status, _, body = get(server, "/api/version")
 
     assert status == 200
-    assert json.loads(body) == {"version": __version__}
+    assert json.loads(body) == {"version": __version__, "project": project.root.name}
 
 
 def test_the_skill_endpoint_returns_one_skill(server: ThreadingHTTPServer) -> None:

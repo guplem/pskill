@@ -8,6 +8,7 @@ const POLL_MS = 1000;
 const PLAY_MS = 700;
 const FOLD_LINE_LIMIT = 3;
 const PANEL_WIDTH_KEY = "pskill.panelWidth";
+const PLACE_KEY = "pskill.place"; // the project that the Content tab opens
 const EXPANDED_KEY = "pskill.expandChildSkills"; // only a choice to expand is kept: collapsed is the default
 const PANEL_MIN_WIDTH = 320;
 const CANVAS_MIN_WIDTH = 240;
@@ -79,6 +80,11 @@ const BLOCK_REFERENCE = /\b(steps|history)\.([a-z0-9_]+)(?:\.\w+)*/g;
 const app = document.getElementById("app");
 const view = {
   version: null, // the pskill version that serves this viewer
+  projectName: null, // the folder name of the local server's project
+  place: null, // the project of the open screen: "local", or a folder that the hosted viewer found
+  lastPlace: savedPlace(), // the project that the Content tab opens
+  runsPlace: "all", // the runs page shows the runs of every project, or of one
+  pythonReady: false,
   screen: null,
   skillId: null,
   editing: false,
@@ -234,10 +240,97 @@ function appendBlockIntro(head, block) {
   if (block.notes) head.append(element("p", block.notes, "note panel-hint"));
 }
 
-async function fetchJson(path) {
-  const response = await fetch(path, { cache: "no-store" });
-  if (!response.ok) throw new Error((await response.json()).error || response.statusText);
-  return response.json();
+// --- where the data comes from ---------------------------------------------------------------
+// `pskill view` serves one project, the place "local". On GitHub Pages no server answers: hosted.js reads the
+// folders that the user picked and answers in the browser, and each project in those folders is one place.
+
+const LOCAL_PLACE = "local";
+const ALL_PLACES = "*";
+const PYTHON_LOADING = "Starting Python in your browser. The first visit downloads about 15 MB.";
+const UNSUPPORTED =
+  "This page reads your project folders through the File System Access API, which only Chrome and Edge have. " +
+  "Open it in one of them, or run `uv run .pskill/pskill.py view` in your project.";
+const FOLDERS_INTRO =
+  "Pick each project folder (the one that holds .pskill), or a folder of clones and worktrees. The viewer finds " +
+  "the projects in it: its subfolders up to 3 levels down, and the worktrees of each git checkout. " +
+  "Your files stay on this computer: the page reads them in the browser.";
+let hosted = null; // the hosted.js module on GitHub Pages, else null
+
+// One API request, as { ok, data } with the parsed JSON body.
+async function apiRequest(path, { place = view.place, method = "GET", body = null } = {}) {
+  if (hosted) {
+    const answer = await hosted.request(place, method, path, body ?? "");
+    return { ok: answer.status < 300, data: JSON.parse(new TextDecoder().decode(answer.body)) };
+  }
+  const options = method === "GET" ? { cache: "no-store" } : { method, headers: { "Content-Type": "application/json" }, body };
+  const response = await fetch(path, options);
+  return { ok: response.ok, data: await response.json() };
+}
+
+async function apiJson(path, place = view.place) {
+  const { ok, data } = await apiRequest(path, { place });
+  if (!ok) throw new Error(data.error || "The request failed.");
+  return data;
+}
+
+// A download on the hosted viewer: Python builds the file, and the page saves it.
+async function downloadHosted(path) {
+  const answer = await hosted.request(view.place, "GET", path);
+  if (answer.status !== 200) {
+    window.alert(JSON.parse(new TextDecoder().decode(answer.body)).error);
+    return;
+  }
+  const link = element("a");
+  link.href = URL.createObjectURL(new Blob([answer.body], { type: answer.contentType }));
+  link.download = answer.downloadName;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+function placeList() {
+  return hosted ? hosted.placeList() : [{ id: LOCAL_PLACE, label: view.projectName || "This project", kind: null, branch: null }];
+}
+
+function placeInfo(id) {
+  return placeList().find((place) => place.id === id);
+}
+
+// A project in plain words: its path, then its kind and its branch when it is a git checkout.
+function placeText(place) {
+  if (!place) return "a folder that is no longer in the list";
+  return [place.label, place.kind === "folder" ? null : place.kind, place.branch].filter(Boolean).join(" · ");
+}
+
+// A list of projects, optionally with "All folders" first.
+function placePicker(value, withAll, onChange) {
+  const picker = element("select", null, "run-picker");
+  picker.setAttribute("aria-label", "Folder");
+  const options = withAll ? [{ id: "all", label: "All folders" }, ...placeList()] : placeList();
+  for (const place of options) {
+    const option = element("option", place.id === "all" ? place.label : placeText(place));
+    option.value = place.id;
+    option.selected = place.id === value;
+    picker.append(option);
+  }
+  picker.addEventListener("change", () => onChange(picker.value));
+  return picker;
+}
+
+function savedPlace() {
+  try {
+    return localStorage.getItem(PLACE_KEY);
+  } catch {
+    return null; // the browser blocks site data
+  }
+}
+
+function rememberPlace(place) {
+  view.lastPlace = place;
+  try {
+    localStorage.setItem(PLACE_KEY, place);
+  } catch {
+    // the browser blocks site data: the choice lasts until the reload
+  }
 }
 
 function topbar() {
@@ -245,16 +338,18 @@ function topbar() {
   const brand = element("a", "pskill", "brand");
   brand.href = "#/";
   const nav = element("nav", null, "nav");
-  for (const [text, href, screens] of [
+  const tabs = [
     ["Runs", "#/", ["runs", "run"]],
-    ["Skills", "#/skills", ["skills", "skill"]],
-    ["Agents", "#/agents", ["agents", "agent"]],
-  ]) {
+    ["Content", contentHref(view.lastPlace), ["content", "skill", "agent"]],
+  ];
+  if (hosted) tabs.push(["Folders", "#/folders", ["folders"]]);
+  for (const [text, href, screens] of tabs) {
     const link = element("a", text, "nav-link");
     link.href = href;
     if (screens.includes(view.screen)) link.setAttribute("aria-current", "page");
     nav.append(link);
   }
+  if (hosted?.needsAccess()) nav.append(button("Allow the folders again", allowFolders, "tool primary"));
   bar.append(brand, nav);
   return bar;
 }
@@ -266,12 +361,24 @@ function entityLink(text, href) {
   return link;
 }
 
-function skillHref(skillId) {
-  return `#/skill/${encodeURIComponent(skillId)}`;
+function encodedPath(...parts) {
+  return parts.map((part) => encodeURIComponent(part)).join("/");
 }
 
-function agentHref(name) {
-  return `#/agent/${encodeURIComponent(name)}`;
+function runHref(place, runId) {
+  return `#/run/${encodedPath(place, runId)}`;
+}
+
+function skillHref(skillId, place = view.place) {
+  return `#/skill/${encodedPath(place, skillId)}`;
+}
+
+function agentHref(name, place = view.place) {
+  return `#/agent/${encodedPath(place, name)}`;
+}
+
+function contentHref(place) {
+  return place ? `#/content/${encodedPath(place)}` : "#/content";
 }
 
 function isSkillScreen() {
@@ -292,9 +399,10 @@ const RUN_FILTERS = {
 };
 
 async function showRuns() {
-  const overview = await fetchJson("/api/runs");
+  const overview = await apiJson("/api/runs", hosted ? ALL_PLACES : LOCAL_PLACE);
   if (view.screen !== "runs") return; // the user moved on while it loaded
-  const text = JSON.stringify(overview) + view.runsFilter;
+  for (const run of overview.runs) run.place ??= LOCAL_PLACE;
+  const text = JSON.stringify(overview) + view.runsFilter + view.runsPlace;
   if (text !== view.detailText) {
     view.detailText = text;
     drawRuns(overview);
@@ -305,8 +413,9 @@ async function showRuns() {
 function drawRuns(overview) {
   const page = element("main", null, "runs-page");
   const filters = element("div", null, "filters");
+  const placeRuns = overview.runs.filter((run) => view.runsPlace === "all" || run.place === view.runsPlace);
   for (const [key, filter] of Object.entries(RUN_FILTERS)) {
-    const count = overview.runs.filter(filter.keep).length;
+    const count = placeRuns.filter(filter.keep).length;
     const chip = button(`${filter.label} · ${count}`, () => {
       view.runsFilter = key;
       view.detailText = null;
@@ -314,6 +423,15 @@ function drawRuns(overview) {
     });
     chip.setAttribute("aria-pressed", String(view.runsFilter === key));
     filters.append(chip);
+  }
+  if (placeList().length > 1) {
+    filters.append(
+      placePicker(view.runsPlace, true, (place) => {
+        view.runsPlace = place;
+        view.detailText = null;
+        render();
+      }),
+    );
   }
   const summaries = element("div", null, "summaries");
   for (const summary of overview.summaries) {
@@ -326,10 +444,16 @@ function drawRuns(overview) {
     summaries.append(card);
   }
   const cards = element("div", null, "run-cards");
-  const runs = overview.runs.filter(RUN_FILTERS[view.runsFilter].keep);
+  const runs = placeRuns.filter(RUN_FILTERS[view.runsFilter].keep);
+  const finished = runs.filter((run) => !UNFINISHED.includes(run.status));
+  if (finished.length) {
+    const cleanup = button(`Delete the ${finished.length} finished run${finished.length === 1 ? "" : "s"} shown`, () => deleteRuns(finished), "tool danger");
+    cleanup.title = "Remove their folders from .pskill/runs/, for cleanup. The unfinished runs stay.";
+    filters.append(cleanup);
+  }
   for (const run of runs) {
     const card = element("a", null, "run-card");
-    card.href = `#/run/${run.run_id}`;
+    card.href = runHref(run.place, run.run_id);
     const head = element("div", null, "run-card-head");
     head.append(element("span", run.skill_id), statusPill(run.status));
     card.append(
@@ -337,40 +461,67 @@ function drawRuns(overview) {
       element("span", `at ${run.current_block || "-"} · ${formatDuration(run.duration_ms)}`, "run-card-meta"),
       element("span", `${formatTime(run.created_at)} · ${run.harness} · ${run.mode} · ${run.run_id}`, "run-card-meta mono"),
     );
+    if (hosted) card.append(element("span", placeText(placeInfo(run.place)), "run-card-place"));
     cards.append(card);
   }
   page.append(element("h1", "Runs"), filters);
   if (overview.summaries.length) page.append(summaries);
-  page.append(runs.length ? cards : element("p", "No runs here yet.", "note"));
+  page.append(runs.length ? cards : element("p", hosted && !placeList().length ? "No folder yet: add one on the Folders tab." : "No runs here yet.", "note"));
   app.className = "";
   app.replaceChildren(topbar(), page, ...versionNote());
 }
 
-// --- the skills page ----------------------------------------------------------------------------
+// --- the content page: the skills and the agents of one project ----------------------------------
 
-async function showSkills() {
-  const overview = await fetchJson("/api/skills");
-  if (view.screen !== "skills") return; // the user moved on while it loaded
-  const text = JSON.stringify(overview);
+async function showContent(place) {
+  if (!place || !placeInfo(place)) {
+    // No project in the address, or one that is gone: the last one, or the first one.
+    const fallback = placeInfo(view.lastPlace) ?? placeList()[0];
+    if (fallback) location.replace(contentHref(fallback.id));
+    else drawEmptyContent();
+    return;
+  }
+  view.place = place;
+  rememberPlace(place);
+  const [skills, agents] = await Promise.all([apiJson("/api/skills", place), apiJson("/api/agents", place)]);
+  if (view.screen !== "content" || view.place !== place) return; // the user moved on while it loaded
+  const text = JSON.stringify([skills, agents]) + JSON.stringify(placeList());
   if (text === view.detailText) return;
   view.detailText = text;
   const page = element("main", null, "runs-page");
-  const internalSkills = overview.skills.filter((skill) => skill.invocation === "internal");
-  const mainSkills = overview.skills.filter((skill) => skill.invocation !== "internal");
+  const where = element("div", null, "filters");
+  if (placeList().length > 1) where.append(placePicker(place, false, (next) => (location.hash = contentHref(next))));
+  else where.append(element("span", placeText(placeInfo(place)), "note mono"));
+  const internalSkills = skills.skills.filter((skill) => skill.invocation === "internal");
+  const mainSkills = skills.skills.filter((skill) => skill.invocation !== "internal");
   page.append(
-    element("h1", "Skills"),
+    element("h1", "Content"),
+    where,
+    element("h2", "Skills"),
     element("p", "Every skill in .pskill/skills/. Open one to see its steps and how they connect.", "note"),
-    overview.skills.length ? skillCards(mainSkills) : element("p", "This project has no skills yet.", "note"),
+    skills.skills.length ? skillCards(mainSkills) : element("p", "This project has no skills yet.", "note"),
   );
   if (internalSkills.length) {
     page.append(
-      element("h2", "Internal skills"),
+      element("h3", "Internal skills"),
       element("p", "Only a call block of another skill starts these. Several skills can call the same one.", "note"),
       skillCards(internalSkills),
     );
   }
+  page.append(
+    element("h2", "Agents"),
+    element("p", "Every agent in .pskill/agents/. A parallel block gives its text to each subagent, before the task.", "note"),
+    agents.agents.length ? agentCards(agents.agents) : element("p", "This project has no agents yet.", "note"),
+  );
   app.className = "";
   app.replaceChildren(topbar(), page, ...versionNote());
+}
+
+function drawEmptyContent() {
+  const page = element("main", null, "runs-page");
+  page.append(element("h1", "Content"), element("p", "No folder yet: add one on the Folders tab.", "note"));
+  app.className = "";
+  app.replaceChildren(topbar(), page);
 }
 
 // The pskill version at the foot of the list screens (runs, skills, agents), or nothing when it is unknown.
@@ -382,7 +533,7 @@ function skillCards(skills) {
   const cards = element("div", null, "run-cards");
   for (const skill of skills) {
     const card = element("a", null, skill.error ? "run-card skill-card has-error" : "run-card skill-card");
-    card.href = `#/skill/${encodeURIComponent(skill.skill_id)}`;
+    card.href = skillHref(skill.skill_id);
     const head = element("div", null, "run-card-head");
     head.append(element("span", skill.skill_id));
     if (skill.error) head.append(element("span", "does not load", "pill state-failed"));
@@ -401,14 +552,11 @@ function skillCards(skills) {
   return cards;
 }
 
-// --- the agents page and the agent screen ------------------------------------------------------
+// --- the agents and the agent screen --------------------------------------------------------------
 
-async function showAgents() {
-  const overview = await fetchJson("/api/agents");
-  if (view.screen !== "agents") return; // the user moved on while it loaded
-  const page = element("main", null, "runs-page");
+function agentCards(agents) {
   const cards = element("div", null, "run-cards");
-  for (const agent of overview.agents) {
+  for (const agent of agents) {
     const card = element("a", null, "run-card skill-card");
     card.href = agentHref(agent.name);
     const head = element("div", null, "run-card-head");
@@ -417,17 +565,12 @@ async function showAgents() {
     card.append(head, element("span", agent.summary, "skill-card-description"), element("span", users, "run-card-meta"));
     cards.append(card);
   }
-  page.append(
-    element("h1", "Agents"),
-    element("p", "Every agent in .pskill/agents/. A parallel block gives its text to each subagent, before the task.", "note"),
-    overview.agents.length ? cards : element("p", "This project has no agents yet.", "note"),
-  );
-  app.className = "";
-  app.replaceChildren(topbar(), page, ...versionNote());
+  return cards;
 }
 
-async function showAgent(name) {
-  const agent = await fetchJson(`/api/agents/${encodeURIComponent(name)}`);
+async function showAgent(place, name) {
+  view.place = place;
+  const agent = await apiJson(`/api/agents/${encodeURIComponent(name)}`, place);
   if (view.screen !== "agent") return; // the user moved on while it loaded
   drawAgent(agent, false);
 }
@@ -443,7 +586,8 @@ function drawAgent(agent, editing) {
   const usedBy = agent.used_by.length
     ? users
     : element("p", "No skill names this agent where pskill validate can see it. A skill can still pick it from a list that a script returns.", "note");
-  page.append(element("h1", agent.name), element("p", `The file ${agent.file}.`, "note"), section("Used by", usedBy));
+  const file = hosted ? `The file ${agent.file} in ${placeText(placeInfo(view.place))}.` : `The file ${agent.file}.`;
+  page.append(element("h1", agent.name), element("p", file, "note"), section("Used by", usedBy));
   page.append(editing ? agentEditor(agent) : agentText(agent));
   app.className = "";
   app.replaceChildren(topbar(), page);
@@ -480,13 +624,11 @@ function agentEditor(agent) {
 }
 
 async function saveAgent(name, text, errorBox) {
-  const response = await fetch(`/api/agents/${encodeURIComponent(name)}/edit`, {
+  const { ok, data: body } = await apiRequest(`/api/agents/${encodeURIComponent(name)}/edit`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
   });
-  const body = await response.json();
-  if (!response.ok) {
+  if (!ok) {
     errorBox.textContent = `Not saved:\n${Array.isArray(body.error) ? body.error.join("\n") : String(body.error)}`;
     errorBox.hidden = false;
     return null;
@@ -501,7 +643,7 @@ function buildRunScreen() {
   const picker = element("select", null, "run-picker");
   picker.setAttribute("aria-label", "Run");
   picker.addEventListener("change", () => {
-    location.hash = `#/run/${picker.value}`;
+    location.hash = picker.value; // each option is the link to its run
   });
   const status = element("span", null, "run-status");
   const follow = button("Follow live", () => {
@@ -567,7 +709,7 @@ function buildSkillScreen() {
   const picker = element("select", null, "run-picker");
   picker.setAttribute("aria-label", "Skill");
   picker.addEventListener("change", () => {
-    location.hash = `#/skill/${encodeURIComponent(picker.value)}`;
+    location.hash = skillHref(picker.value);
   });
   const status = element("span", null, "run-status");
   const zoomLabel = element("span", "100 %", "note");
@@ -632,7 +774,7 @@ function drawSkillTopbar() {
       return option;
     }),
   );
-  const parts = [];
+  const parts = hosted ? [element("span", placeText(placeInfo(view.place)), "note")] : [];
   if (view.detail.skill.invocation) {
     const invocation = element("span", `invocation: ${view.detail.skill.invocation}`, "note");
     invocation.title = INVOCATION_MEANING[view.detail.skill.invocation] || "";
@@ -645,8 +787,15 @@ function drawSkillTopbar() {
   if (!view.detail.error && !errors) {
     // The server builds the export (skill_export.py); the page only offers the download.
     const exportLink = element("a", "Export as Markdown", "tool");
-    exportLink.href = `/api/skills/${encodeURIComponent(skillId)}/export`;
+    const exportPath = `/api/skills/${encodeURIComponent(skillId)}/export`;
+    exportLink.href = hosted ? "#" : exportPath;
     exportLink.download = `${skillId}.zip`;
+    if (hosted) {
+      exportLink.addEventListener("click", (event) => {
+        event.preventDefault();
+        downloadHosted(exportPath);
+      });
+    }
     exportLink.title =
       "Download this skill as a plain SKILL.md that any agent can follow without pskill, with its scripts, " +
       "its subagent roles, and its child skills. Nothing checks the order then: the agent follows the text.";
@@ -659,25 +808,70 @@ function drawSkillTopbar() {
 function drawTopbar() {
   const { picker, status } = view.parts;
   const info = view.detail.info;
-  const options = view.runs.length ? view.runs : [{ run_id: info.run_id, skill_id: info.skill_id, status: info.status }];
+  const current = { run_id: info.run_id, skill_id: info.skill_id, status: info.status, place: view.place };
+  const options = view.runs.length ? view.runs : [current];
   picker.replaceChildren(
     ...options.map((run) => {
-      const option = element("option", `${run.skill_id} · ${STATUS_TEXT[run.status] || run.status} · ${run.run_id}`);
-      option.value = run.run_id;
-      option.selected = run.run_id === info.run_id;
+      const where = hosted ? ` · ${placeInfo(run.place)?.label ?? run.location}` : "";
+      const option = element("option", `${run.skill_id} · ${STATUS_TEXT[run.status] || run.status}${where} · ${run.run_id}`);
+      option.value = runHref(run.place, run.run_id);
+      option.selected = run.run_id === info.run_id && run.place === view.place;
       return option;
     }),
   );
   const harnessAndMode = element("span", `${info.harness} · ${info.mode}`, "note");
   harnessAndMode.title = `Harness: ${info.harness}, the agent tool that runs the skill.\n${MODE_MEANING[info.mode] || ""}`;
   const parts = [statusPill(info.status), harnessAndMode];
+  if (hosted) parts.push(element("span", placeText(placeInfo(view.place)), "note"));
   if (info.pause_reason) parts.push(element("span", `paused: ${info.pause_reason}`, "note"));
   if (view.detail.skill_changed) parts.push(element("span", "The skill changed after this run started.", "note"));
   const skillLink = element("a", "Skill graph", "tool");
-  skillLink.href = `#/skill/${encodeURIComponent(info.skill_id)}`;
+  skillLink.href = skillHref(info.skill_id);
   skillLink.title = `See the skill ${info.skill_id} as it is now in .pskill/skills/, without this run.`;
   parts.push(skillLink);
+  if (UNFINISHED.includes(info.status)) parts.push(button("Cancel run", cancelOpenRun, "tool danger"));
+  else parts.push(button("Delete run", deleteOpenRun, "tool danger"));
   status.replaceChildren(...parts);
+}
+
+// --- cancelling and deleting runs ------------------------------------------------------------------
+
+// Cancel or delete one run. It returns the reason when the runner refuses, else null.
+async function runAction(place, runId, action) {
+  const { ok, data } = await apiRequest(`/api/runs/${encodeURIComponent(runId)}/${action}`, { place, method: "POST", body: "{}" });
+  return ok ? null : [].concat(data.error).join("\n");
+}
+
+async function cancelOpenRun() {
+  const runId = view.detail.info.run_id;
+  const question = `Cancel the run ${runId}? It cannot go on afterwards. The agent learns it at its next pskill command.`;
+  if (!window.confirm(question)) return;
+  const refusal = await runAction(view.place, runId, "cancel");
+  if (refusal) window.alert(`Not cancelled:\n${refusal}`);
+  view.detailText = null;
+  render();
+}
+
+async function deleteOpenRun() {
+  const runId = view.detail.info.run_id;
+  if (!window.confirm(`Delete the run ${runId}? Its folder .pskill/runs/${runId} goes for good.`)) return;
+  const refusal = await runAction(view.place, runId, "delete");
+  if (refusal) window.alert(`Not deleted:\n${refusal}`);
+  else location.hash = "#/";
+}
+
+// Delete finished runs, one by one, for cleanup. The page lists the runs that the runner refused.
+async function deleteRuns(runs) {
+  const question = `Delete these ${runs.length} finished runs? Their folders in .pskill/runs/ go for good. The unfinished runs stay.`;
+  if (!window.confirm(question)) return;
+  const refusals = [];
+  for (const run of runs) {
+    const refusal = await runAction(run.place, run.run_id, "delete");
+    if (refusal) refusals.push(`${run.run_id}: ${refusal}`);
+  }
+  if (refusals.length) window.alert(`Not deleted:\n${refusals.join("\n")}`);
+  view.detailText = null;
+  render();
 }
 
 // --- the run screen: which state each node has at the replay step ------------------------------
@@ -1466,13 +1660,11 @@ function choiceNextEditor(next, choicesEditor) {
 
 // Send one change to the server. On success, draw the new skill; on a problem, show it and keep the form.
 async function saveEdit(request, errorBox) {
-  const response = await fetch(`/api/skills/${encodeURIComponent(view.skillId)}/edit`, {
+  const { ok, data: body } = await apiRequest(`/api/skills/${encodeURIComponent(view.skillId)}/edit`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
-  const body = await response.json();
-  if (!response.ok) {
+  if (!ok) {
     const text = Array.isArray(body.error) ? body.error.join("\n") : String(body.error);
     if (errorBox) {
       errorBox.textContent = `Not saved:\n${text}`;
@@ -2119,9 +2311,11 @@ function togglePlay() {
 
 // --- the run screen: loading and live updates -----------------------------------------------------
 
-async function showRun(runId) {
-  if (view.runId !== runId || !view.parts) {
-    view.runId = runId;
+async function showRun(place, runId) {
+  const key = `${place}/${runId}`;
+  view.place = place;
+  if (view.runId !== key || !view.parts) {
+    view.runId = key;
     view.detail = null;
     view.detailText = null;
     view.fitted = false;
@@ -2131,10 +2325,11 @@ async function showRun(runId) {
     buildRunScreen();
   }
   const [detail, overview] = await Promise.all([
-    fetchJson(`/api/runs/${encodeURIComponent(runId)}`),
-    fetchJson("/api/runs").catch(() => ({ runs: [] })),
+    apiJson(`/api/runs/${encodeURIComponent(runId)}`, place),
+    apiJson("/api/runs", hosted ? ALL_PLACES : LOCAL_PLACE).catch(() => ({ runs: [] })),
   ]);
-  if (view.screen !== "run" || view.runId !== runId) return; // the user moved on while it loaded
+  if (view.screen !== "run" || view.runId !== key) return; // the user moved on while it loaded
+  for (const run of overview.runs) run.place ??= LOCAL_PLACE;
   const text = JSON.stringify(detail);
   if (text !== view.detailText) {
     view.detailText = text;
@@ -2151,8 +2346,10 @@ async function showRun(runId) {
 
 // --- the skill screen: loading ---------------------------------------------------------------------
 
-async function showSkill(skillId) {
-  if (view.skillId !== skillId || !view.parts) {
+async function showSkill(place, skillId) {
+  const changedPlace = view.place !== place;
+  view.place = place;
+  if (view.skillId !== skillId || changedPlace || !view.parts) {
     view.skillId = skillId;
     view.detail = null;
     view.detailText = null;
@@ -2162,10 +2359,10 @@ async function showSkill(skillId) {
     buildSkillScreen();
   }
   const [detail, overview] = await Promise.all([
-    fetchJson(`/api/skills/${encodeURIComponent(skillId)}`),
-    fetchJson("/api/skills").catch(() => ({ skills: [] })),
+    apiJson(`/api/skills/${encodeURIComponent(skillId)}`, place),
+    apiJson("/api/skills", place).catch(() => ({ skills: [] })),
   ]);
-  if (view.screen !== "skill" || view.skillId !== skillId) return; // the user moved on while it loaded
+  if (view.screen !== "skill" || view.skillId !== skillId || view.place !== place) return; // the user moved on
   const text = JSON.stringify(detail);
   if (text === view.detailText) return;
   view.detailText = text;
@@ -2176,15 +2373,97 @@ async function showSkill(skillId) {
   await drawCanvas();
 }
 
+// --- the folders screen (hosted viewer only) --------------------------------------------------------
+
+function showFolders() {
+  const page = element("main", null, "runs-page folders-page");
+  const actions = element("div", null, "filters");
+  actions.append(button("Add a folder", addFolder, "tool primary"), button("Look again", lookAgain));
+  page.append(element("h1", "Folders"), element("p", FOLDERS_INTRO, "note"), actions);
+  const sources = hosted.sourceList();
+  if (!sources.length) page.append(element("p", "No folder yet.", "note"));
+  for (const source of sources) page.append(folderCard(source));
+  app.className = "";
+  app.replaceChildren(topbar(), page, ...versionNote());
+}
+
+// One picked folder: its pattern, and the projects found in it.
+function folderCard(source) {
+  const card = element("section", null, "folder-card");
+  const head = element("div", null, "run-card-head");
+  head.append(element("strong", source.name));
+  if (!source.granted) head.append(element("span", "needs your permission again", "pill state-waiting"));
+  head.append(
+    button(
+      "Remove",
+      async () => {
+        await hosted.removeSource(source.id);
+        showFolders();
+      },
+      "tool small danger",
+    ),
+  );
+  const pattern = element("input", null, "edit-input mono");
+  pattern.value = source.pattern;
+  pattern.placeholder = "Every project (or a pattern, such as monorepo-clone-\\d+)";
+  pattern.setAttribute("aria-label", `Pattern for ${source.name}`);
+  pattern.addEventListener("change", async () => {
+    await hosted.setPattern(source.id, pattern.value.trim());
+    showFolders();
+  });
+  const patternRow = element("div", null, "edit-row");
+  patternRow.append(element("span", "Only the projects whose path matches this regular expression", "edit-label"), pattern);
+  card.append(head, patternRow);
+  if (source.patternError) card.append(element("p", `The pattern is not valid, so every project shows: ${source.patternError}`, "errors-text"));
+  const list = element("ul", null, "folder-places");
+  for (const place of source.places) {
+    const item = element("li");
+    item.append(entityLink(placeText(place), contentHref(place.id)));
+    list.append(item);
+  }
+  const count = source.places.length;
+  card.append(element("p", count ? `${count} project${count === 1 ? "" : "s"} with .pskill:` : "No project with .pskill in this folder.", "note"));
+  if (count) card.append(list);
+  return card;
+}
+
+async function addFolder() {
+  try {
+    await hosted.addSource();
+  } catch (error) {
+    if (error.name !== "AbortError") window.alert(`The folder could not be added: ${error.message}`);
+  }
+  view.detailText = null;
+  showFolders();
+}
+
+async function lookAgain() {
+  await hosted.rescan();
+  showFolders();
+}
+
+async function allowFolders() {
+  await hosted.allowAccess();
+  view.detailText = null;
+  render();
+}
+
 // --- routing ----------------------------------------------------------------------------------
+
+const SCREENS = { "": "runs", run: "run", content: "content", skill: "skill", agent: "agent", folders: "folders" };
+
+function route() {
+  try {
+    const [name = "", ...rest] = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
+    return { screen: SCREENS[name] ?? "runs", rest };
+  } catch {
+    return { screen: "runs", rest: [] }; // a broken address
+  }
+}
 
 async function render() {
   clearTimeout(view.pollTimer);
-  const runMatch = location.hash.match(/^#\/run\/(.+)$/);
-  const skillMatch = location.hash.match(/^#\/skill\/(.+)$/);
-  const agentMatch = location.hash.match(/^#\/agent\/(.+)$/);
-  const listScreens = { "#/skills": "skills", "#/agents": "agents" };
-  const screen = runMatch ? "run" : skillMatch ? "skill" : agentMatch ? "agent" : listScreens[location.hash] || "runs";
+  const { screen, rest } = route();
   if (screen !== view.screen) {
     view.parts = null; // another screen: build its layout again
     view.runId = null;
@@ -2192,22 +2471,36 @@ async function render() {
   }
   view.screen = screen;
   try {
-    if (runMatch) {
-      await showRun(decodeURIComponent(runMatch[1]));
-    } else if (skillMatch) {
-      await showSkill(decodeURIComponent(skillMatch[1]));
-    } else if (agentMatch) {
-      await showAgent(decodeURIComponent(agentMatch[1]));
-    } else if (screen === "skills") {
-      await showSkills();
-    } else if (screen === "agents") {
-      await showAgents();
-    } else {
-      await showRuns();
-    }
+    if (hosted && !(await hostedReady(screen))) return;
+    if (screen === "run") await showRun(rest[0], rest[1]);
+    else if (screen === "skill") await showSkill(rest[0], rest[1]);
+    else if (screen === "agent") await showAgent(rest[0], rest[1]);
+    else if (screen === "content") await showContent(rest[0]);
+    else if (screen === "folders") showFolders();
+    else await showRuns();
   } catch (error) {
     app.replaceChildren(topbar(), element("p", `The viewer could not load the data: ${error.message}`, "errors loading"));
   }
+}
+
+// On the hosted viewer, a screen with data needs a folder and Python first. False when the screen cannot show.
+async function hostedReady(screen) {
+  if (!hosted.supported()) {
+    app.replaceChildren(topbar(), element("p", UNSUPPORTED, "note loading"));
+    return false;
+  }
+  if (screen === "folders") return true;
+  if (!hosted.sourceList().length) {
+    location.replace("#/folders");
+    return false;
+  }
+  if (!view.pythonReady) {
+    app.replaceChildren(topbar(), element("p", PYTHON_LOADING, "note loading"));
+    await hosted.startPython();
+    view.pythonReady = true;
+    view.version = (await apiJson("/api/version", ALL_PLACES)).version;
+  }
+  return true;
 }
 
 window.addEventListener("resize", () => {
@@ -2231,9 +2524,21 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "ArrowRight") setStep(view.step + 1);
   else if (event.key === "ArrowLeft") setStep(view.step - 1);
 });
-fetchJson("/api/version")
-  .then((info) => {
+// The local server answers /api/version. Without it (GitHub Pages), the page is the hosted viewer.
+async function start() {
+  try {
+    const response = await fetch("/api/version", { cache: "no-store" });
+    if (!response.ok) throw new Error(response.statusText);
+    const info = await response.json();
     view.version = info.version;
-  })
-  .catch(() => {}) // an older server has no version: the screens show none
-  .finally(render);
+    view.projectName = info.project;
+  } catch {
+    hosted = await import("./hosted.js");
+    if (hosted.supported()) await hosted.load();
+    // Clones and worktrees come and go: look for projects again every minute, while the page is visible.
+    setInterval(() => document.visibilityState === "visible" && hosted.rescan(), 60_000);
+  }
+  render();
+}
+
+start();

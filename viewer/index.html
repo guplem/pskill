@@ -20,18 +20,22 @@
       crossorigin="anonymous"
     ></script>
     <!-- ELK (Mermaid's layout-elk package) lays the graph out top to bottom and keeps its main line straight.
-         It loads on the first graph, pinned with a hash per file. Without it, Mermaid's own layout draws the graph. -->
+         It loads on the first graph, pinned with a hash per file. Without it, Mermaid's own layout draws the graph.
+         Pyodide runs pskill's Python in the browser, only on the hosted viewer (GitHub Pages, hosted.js). -->
     <script type="importmap">
       {
         "imports": {
-          "mermaid-layout-elk": "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@1.0.1/dist/mermaid-layout-elk.esm.min.mjs"
+          "mermaid-layout-elk": "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@1.0.1/dist/mermaid-layout-elk.esm.min.mjs",
+          "pyodide": "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs"
         },
         "integrity": {
           "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@1.0.1/dist/mermaid-layout-elk.esm.min.mjs": "sha384-rn9t+ppxHcyMkuY3+pP6SuTi31DepbscPnhCa8S03c+vuNBBFSC4Wv0W8hTUwJRe",
           "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@1.0.1/dist/chunks/mermaid-layout-elk.esm.min/chunk-SP2CHFBE.mjs": "sha384-4u/55YQqYu4r82l3QSG2BuK71vzbS71A5BaqSgNzcAI4q0Vr/wW1QxkYuOYxHoZa",
           "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@1.0.1/dist/chunks/mermaid-layout-elk.esm.min/elk-MDRY34D3.mjs": "sha384-lzyZYy6UyW1tCfryPlf//IE3a6OLFKNuc4C7kjKONQJ6jNJ8/OSkcjrIHU4rZkLf",
           "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@1.0.1/dist/chunks/mermaid-layout-elk.esm.min/katex-ACDNIZYF.mjs": "sha384-y2PCy0bynu711oZLMNcYWFvN49h8rAchXNhJOqTQWlAeSlHvE4Zx9BweM9Og1Fqg",
-          "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@1.0.1/dist/chunks/mermaid-layout-elk.esm.min/sizeCapture-YC7IFIKW.mjs": "sha384-0YuCfvrJ1Eb3NN7+RpyLpsrVjQiyRPeZZEuOfi7gqi2OGiPs6EYsjLEXBWArjhRD"
+          "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@1.0.1/dist/chunks/mermaid-layout-elk.esm.min/sizeCapture-YC7IFIKW.mjs": "sha384-0YuCfvrJ1Eb3NN7+RpyLpsrVjQiyRPeZZEuOfi7gqi2OGiPs6EYsjLEXBWArjhRD",
+          "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs": "sha384-Lp79fMwxa4n2BLtugpUAoQMlbxIdg8iCUiP1r3h7nJLkQjwlXT1JzZTeHVL+f4Dg",
+          "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.asm.mjs": "sha384-/2281iaC0Iimw0B3Kagy1DBfZcJG3W4KYW+EmOqhsdY3fR9BJ88FE2Zt6y0KQKpa"
         }
       }
     </script>

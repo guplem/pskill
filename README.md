@@ -63,12 +63,15 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 | `current <run>` | Show the current step of a run. |
 | `task <run> <n>` | Show the full prompt of one parallel task. A subagent runs this first. |
 | `pause <run>`, `resume <run>`, `cancel <run>` | Pause, continue, or stop a run. A run survives when you close the session. |
+| `delete <run>` | Delete a finished run, for cleanup. |
 | `view` | Open the viewer in your browser (below). |
 | `validate` | Check the skills for mistakes. |
 | `test` | Run the skills' test cases with recorded answers. No AI model runs. |
 | `sync` | Update the small skill files, the hooks, and the permission rule. |
 
-**The viewer** shows each skill as a graph of steps, and each run as the path that it took. Click a step to see its details. You can edit skills and agents there, and replay a run step by step.
+**The viewer** shows each skill as a graph of steps, and each run as the path that it took. Click a step to see its details. You can edit skills and agents there, replay a run step by step, cancel a run, and delete finished runs.
+
+**The hosted viewer** shows the same screens without a command, for many projects at once: open [guplem.github.io/pskill](https://guplem.github.io/pskill/) in Chrome or Edge, and pick your project folders on the Folders tab. A folder of clones and worktrees works too: the viewer finds each project in it, and names the folder and the branch of every run. Your files stay on your computer.
 
 ## Write a skill
 

@@ -1144,7 +1144,9 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 
 ## 14. Viewer
 
-- `pskill view` starts a `ThreadingHTTPServer` on `127.0.0.1` only and opens the browser.
+- `pskill view` starts a `ThreadingHTTPServer` on `127.0.0.1` only and opens the browser. It shows one project.
+- **The hosted viewer** shows the same screens on GitHub Pages, for every folder that the user picks (section 14.3).
+- `viewer_api.py` answers the API for both: a request path in, an answer out.
 - **All logic lives in the Python server,** so pytest covers it. The server builds:
   - the canvas: one Mermaid template for the whole run. Each child skill that the run entered is a framed `subgraph`, linked by a dotted edge from its call block. Each parallel block that the run entered has a frame of task nodes next to it, one per task, in balanced rows of at most 4, linked by a dotted edge. Node ids are `f<frame>_<block>`, and `f<frame>_<block>_T<n>` for a task (upper case, which a block id cannot contain). Each node label is a token that the page replaces.
   - the timeline rows. Each row carries its node, the edge that it arrived by (matched from the logged `from` and `reason`), its node label after the step, whether a person decides it, and the edge that it left by. It also carries its input and output titles, the stdout of each script run parsed as JSON when it is JSON, and, for a parallel block, every task of its visit: its name (from `task_name`, logged on `block_started`), its state (done, rejected, or open), its prompt, its answers, and its output.
@@ -1157,12 +1159,12 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 - **Mermaid comes from a CDN.** `index.html` loads one exact, pinned version from jsDelivr (`https://cdn.jsdelivr.net/npm/mermaid@<version>/dist/mermaid.min.js`), with a Subresource Integrity hash.
 - **ELK lays the graph out.** Mermaid's `@mermaid-js/layout-elk` package draws the graph top to bottom. It comes from jsDelivr too: an import map in `index.html` pins its version, with a hash for each of its files. Each main-line edge asks ELK to stay straight (`elk.layered.priority.straightness`), so the main line is one straight column, and the side branches go beside it. Main-line edges are thicker; on the skill screen, the other edges are lighter. When ELK does not load, Mermaid's own layout draws the graph.
 - **Fonts:** Manrope and IBM Plex Mono from Google Fonts. The page falls back to the system fonts when they do not load.
-- **Offline:** the canvas shows "Graph unavailable offline (Mermaid did not load)" and the steps (or, on the skill screen, the blocks) as a list of cards in the node style. The side panel, the replay bar, and the Runs, Skills, and Agents screens still work, because they do not need Mermaid.
+- **Offline:** the canvas shows "Graph unavailable offline (Mermaid did not load)" and the steps (or, on the skill screen, the blocks) as a list of cards in the node style. The side panel, the replay bar, and the Runs, Content, and Folders screens still work, because they do not need Mermaid.
 - While the open run is unfinished, the page polls every second.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/version` | The version of the runner that serves the viewer. The Runs, Skills, and Agents screens show it at the bottom left. |
+| `GET /api/version` | The version of the runner that serves the viewer, and the project's folder name. The list screens show the version at the bottom left. |
 | `GET /api/runs?skill=` | Run rows, plus one summary row per skill: runs, success rate, median duration. |
 | `GET /api/runs/<id>` | `run.json`, the canvas, the timeline rows, and the current state. |
 | `GET /api/skills` | One row per skill in `.pskill/skills/`: description, invocation, block count, run count, and the load error of a skill that does not load. |
@@ -1172,13 +1174,17 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 | `GET /api/agents` | One row per agent in `.pskill/agents/`: its name, its first line, and the skills that use it. |
 | `GET /api/agents/<name>` | The agent's file path, its text, and each skill and parallel block that uses it. |
 | `POST /api/agents/<name>/edit` | The agent editor's one write: the new text of an existing agent file (`{"text": ...}`). Returns the new agent detail, or the problems. |
+| `POST /api/runs/<id>/cancel` | Cancel an unfinished run, as `pskill cancel` does. Returns the new run detail, or the runner's reason. |
+| `POST /api/runs/<id>/delete` | Delete a finished run, as `pskill delete` does. Returns `{"deleted": <id>}`, or the runner's reason. |
 
 **Style:** a light grey dotted ground, and one color per meaning: blue for done, orange for now, purple for waiting for the user, red for a problem, dashed grey for not visited, and teal for a block that the text under the pointer names. Taken edges are solid blue. Each block type has its own icon, drawn for pskill as inline SVG: on its node above the block name, and next to the type in the side panel. Below the name, a node shows its type; a call block's node shows `call: <child skill>`, so the flow reads without a click. The page follows the system's dark mode.
 
-**Six screens:**
-1. **Runs.**
-   - Run cards with the filters Unfinished, All, and Failed.
+**Two tabs, Runs and Content, and five screens.** Each address names its project, the place: for example `#/run/<place>/<run>` and `#/skill/<place>/<skill>`. `pskill view` has one place, `local`.
+1. **Runs** (the Runs tab).
+   - The runs of every project, newest first, with the filters Unfinished, All, and Failed, and a folder filter when there are several projects.
+   - On the hosted viewer, each run card names its project: its path, its kind (clone or worktree), and its branch.
    - Above the cards, the per-skill summary row.
+   - For cleanup, one button deletes the finished runs that the filters show. It asks first, and the unfinished runs stay.
 2. **Run.**
    - A top bar: a run switcher, the status, the harness and mode, a note when the skill changed after the run started, Follow live, Fit, and zoom.
    - The canvas: the graph fills the screen. Drag to pan, and use the wheel to zoom. It opens at a readable zoom, centered on the current step. With Follow live, it keeps the current step in view.
@@ -1194,8 +1200,11 @@ The three proof skills together must exercise every runtime feature. pytest fixt
 
      A close button at the panel's top right, or Escape, clears the selection: the panel shows the current step again. On the skill screen, it shows the skill again. On the run screen, "Arrived from" and "Went next to" name their blocks as references (see screen 4).
    - A link to the skill screen of the run's skill.
+   - "Cancel run" on an unfinished run, and "Delete run" on a finished one. Each asks first. The agent of a cancelled run learns it at its next pskill command.
    - A replay bar: one mark per step, with rejected answers and human decisions marked. Drag it, press play, or use the left and right arrow keys, and the canvas and the panel show the run as it was at that step. At its end, it follows the live run. This is the step-through replay (D14).
-3. **Skills.** One card per skill in `.pskill/skills/`, also a skill with no runs, with its description, block count, and run count. A skill that does not load shows its error. The `internal` skills come last, in their own section.
+3. **Content** (the Content tab). The skills and the agents of one project. With several projects, a picker chooses it, and the tab reopens the last one.
+   - One card per skill in `.pskill/skills/`, also a skill with no runs, with its description, block count, and run count. A skill that does not load shows its error. The `internal` skills come last, in their own section.
+   - One card per agent in `.pskill/agents/`, with its first line and the skills that use it. `agent_view.py` builds it.
 4. **Skill.** One skill's graph without a run, read from `.pskill/skills/` (never from a run copy). `skill_view.py` builds it.
    - The same canvas as the run screen, with every block and every edge, and no run parts: no status, no current step, no timeline, and no replay bar. Every node has the same plain style.
    - **Child skills:** each call block is drawn as a dashed frame that holds its child skill, in the call block's place. The edges into the call block end at the frame, and its exits leave from the frame. The frame's title, at its top left, is the call block's name, with `call: <child skill>` below it. A click on the title or on the frame's empty area selects the call block. A child's own call blocks are frames inside its frame. (The run screen keeps the call block as a node, with the child's frame next to it.) A child that does not load, or a call back into a skill of its own chain, gets no frame. A click on a block of a child frame shows its details read-only, with a link to the child skill's own screen, where it can be edited. The panel finds a child block by its node id, because its name can be the name of a block of the parent.
@@ -1210,8 +1219,7 @@ The three proof skills together must exercise every runtime feature. pytest fixt
    - A skill that does not load shows its load error instead of a graph.
    - An "Export as Markdown" button downloads the export (section 14.1).
    - An "Edit" button turns on the skill editor (section 14.2).
-5. **Agents.** One card per agent in `.pskill/agents/`, with its first line and the skills that use it. `agent_view.py` builds it.
-6. **Agent.** One agent: its file, a link to each skill that uses it (with the block names), and its text as Markdown.
+5. **Agent.** One agent: its file, a link to each skill that uses it (with the block names), and its text as Markdown.
    - "Used by" lists only the uses that `pskill validate` can see: a plain agent name, or the items of a fixed `for_each` list.
    - An "Edit" button shows the text in a plain text box. "Save" replaces the file; a CRLF file stays CRLF. The editor changes only an agent file that exists, so a name never points outside `.pskill/agents/`.
 
@@ -1240,6 +1248,20 @@ The skill screen can change a skill. `skill_editor.py` writes the change to `ski
 - **Only the viewer page may write.** The server is on 127.0.0.1, but any web page in the user's browser can send requests to it. So the edit endpoint takes only JSON (a browser asks first before it sends JSON to another site, and this server never allows it), a `Host` of this server (against DNS rebinding), and no `Origin` other than this server.
 - After an edit, run `pskill validate`, `pskill test`, and `pskill sync` as after any skill change.
 
+### 14.3 The hosted viewer
+
+The viewer also runs on GitHub Pages, with no server: <https://guplem.github.io/pskill/>. It shows the runs of many projects at once: clones, worktrees, and separate projects.
+
+- **Which mode:** the page asks `/api/version` first. When no local server answers, `app.js` loads `hosted.js`, and the page is the hosted viewer.
+- **Folders:** the Folders tab picks folders with the File System Access API (Chrome and Edge only). A folder is one project, or a folder of projects. IndexedDB keeps the picked folders, so a reload only asks the browser for permission again.
+- **Finding the projects:** each folder that holds `.pskill/` is a place. The scan looks at the picked folder, its subfolders up to 3 levels down (without hidden folders and folders such as `node_modules`), and the worktrees of each git checkout (`.claude/worktrees/`, `.worktrees/`, `worktrees/`). It does not go inside a checkout otherwise. It looks again every minute and on "Look again", so new clones and worktrees appear by themselves.
+- **A pattern per folder:** a regular expression that a place's path must match, such as `monorepo-clone-\d+`. An empty pattern keeps every place. An invalid pattern shows its error and keeps every place.
+- **The branch:** a clone's branch comes from `.git/HEAD`. A worktree's branch comes from its clone's `.git/worktrees/<name>/HEAD`, when the clone is in the same picked folder.
+- **Python in the browser:** Pyodide (pinned in the import map, with a hash per module) runs the runner from `pskill_runner.zip`. `micropip` installs `ruamel.yaml`, which Pyodide does not ship. The first visit downloads about 15 MB.
+- **A copy of each project:** `hosted.js` copies what a request reads into Pyodide's memory: `config.yaml`, every file of `skills/` and `agents/` (`folder_hash` counts every file), each run's `run.json`, and the whole folder of the open run. It skips a file whose size and time did not change, and a finished run after its last copy. It copies the same part of a project at most once a second.
+- **Edits reach the folder:** after a save, a cancel, or a delete, `hosted.js` writes each file that Python changed back to the picked folder, and removes each file that Python deleted (a deleted run removes its whole folder). Before a cancel, it copies the run's newest files. If the browser refuses, the page says so and reads the folder again.
+- **The site:** `pskill_runner/hosted_site.py` builds it (`viewer/` plus `pskill_runner.zip`). `.github/workflows/pages.yml` publishes it on every push to `main`.
+
 ---
 
 ## 15. CLI
@@ -1257,6 +1279,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `task <run> <n>` | Print the full prompt of task `<n>` of the current parallel block. A subagent runs it first. No state change. |
 | `submit <run> [--task <n>]` | Read the answer (YAML) from stdin, validate it, advance, and print the next packet. One call per block. |
 | `pause <run>` / `resume <run>` / `cancel <run>` | Lifecycle control. |
+| `delete <run>` | Delete the folder of a finished run, for cleanup. An unfinished run must be cancelled first. The id must name a folder right inside `runs/`. |
 | `runs [--open]` | List runs. |
 | `validate [<skill>]` | Section 11. |
 | `test [<skill>]` | Section 12. |

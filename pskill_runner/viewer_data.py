@@ -805,6 +805,7 @@ def run_row(info: RunInfo) -> dict[str, Any]:
         "harness": info["harness"],
         "mode": info["mode"],
         "created_at": info["created_at"],
+        "updated_at": info["updated_at"],
         "current_block": info["current_block"],
         "duration_ms": run_duration_ms(info),
     }
@@ -813,6 +814,16 @@ def run_row(info: RunInfo) -> dict[str, Any]:
 def runs_overview(project: Project) -> dict[str, Any]:
     """Every run as a table row, plus one summary row per skill."""
     rows = [run_row(info) for info in list_runs(project)]
+    return {"runs": rows, "summaries": skill_summaries(rows)}
+
+
+def locations_runs_overview(projects: dict[str, Project]) -> dict[str, Any]:
+    """The runs of several projects as one overview: each row names its location, newest first.
+
+    The hosted viewer shows every folder that the user picked at once (`viewer/hosted.js`).
+    """
+    rows = [{**run_row(info), "location": name} for name, project in projects.items() for info in list_runs(project)]
+    rows.sort(key=lambda row: row["updated_at"], reverse=True)
     return {"runs": rows, "summaries": skill_summaries(rows)}
 
 
