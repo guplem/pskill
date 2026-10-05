@@ -472,13 +472,22 @@ pre {
 }
 
 /* The node that the side panel shows: a ring in the ink color, outside the state frame, with a small gap.
-   A drop-shadow has no spread, so four shadows with no blur draw each ring. */
-.layer g.node.is-selected rect,
-.layer g.node.is-selected polygon,
-.layer g.node.is-selected circle {
-  filter: drop-shadow(2px 0 0 var(--ground)) drop-shadow(-2px 0 0 var(--ground)) drop-shadow(0 2px 0 var(--ground))
-    drop-shadow(0 -2px 0 var(--ground)) drop-shadow(2.5px 0 0 var(--ink)) drop-shadow(-2.5px 0 0 var(--ink))
-    drop-shadow(0 2.5px 0 var(--ink)) drop-shadow(0 -2.5px 0 var(--ink)) !important;
+   app.js draws the ring as one rounded rectangle around each node's box, so it has the same width on every
+   side and around the corners. Mermaid scopes its own node styles by id, so the ring needs !important. */
+.layer .selection-ring {
+  display: none;
+  fill: none !important;
+  stroke: var(--ink) !important;
+  stroke-width: 2.5px !important;
+}
+
+.layer g.node.is-selected .selection-ring {
+  display: inline;
+}
+
+/* Mermaid's soft shadow under the box would show in the ring's gap as a thicker bottom and right edge. */
+.layer g.node.is-selected > rect {
+  filter: none !important;
 }
 
 .layer path.flowchart-link {

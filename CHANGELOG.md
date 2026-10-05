@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.1 (2026-10-05)
+
+The selected step's ring is even.
+
+- **One ring, one width:** the ring around the step that the side panel shows has the same width on every side and around the corners. It was a stack of offset shadows, which came out uneven and thinner at the corners.
+- **No grey band in the gap:** the selected step drops its soft shadow, which looked like a thicker bottom and right edge.
+
 ## 0.24.0 (2026-10-05)
 
 New example skills for the daily work on a GitHub project, one export fix, and a cleaner viewer theme.
