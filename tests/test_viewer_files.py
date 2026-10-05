@@ -282,3 +282,59 @@ def test_the_page_has_a_tab_icon_that_the_local_server_can_serve() -> None:
     assert '<link rel="icon" href="icon.svg" type="image/svg+xml" />' in index  # relative: it works under /pskill/ too
     assert icon.startswith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">')
     assert ".svg" in CONTENT_TYPES
+
+
+def theme_colors(style: str) -> tuple[dict[str, str], dict[str, str]]:
+    """The color tokens of the light theme (:root) and of the dark theme."""
+    light_block = style.split(":root {", 1)[1].split("\n}", 1)[0]
+    dark_block = style.split("@media (prefers-color-scheme: dark) {", 1)[1].split(":root {", 1)[1].split("}", 1)[0]
+    pattern = r"(--[\w-]+):\s*(#[0-9a-fA-F]{6});"
+    return dict(re.findall(pattern, light_block)), dict(re.findall(pattern, dark_block))
+
+
+def contrast(first: str, second: str) -> float:
+    """The WCAG contrast ratio of two colors."""
+
+    def luminance(color: str) -> float:
+        channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+        linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4 for value in channels]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    high, low = sorted((luminance(first), luminance(second)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+# Each text color, and the backgrounds that the stylesheet puts it on.
+TEXT_PAIRS = [
+    ("--ink", "--ground"),
+    ("--ink", "--surface"),
+    ("--muted", "--ground"),
+    ("--muted", "--surface"),
+    ("--muted", "--code-bg"),
+    ("--ghost-ink", "--ground"),  # the label of a step that the run has not reached
+    ("--ghost-ink", "--code-bg"),
+    ("--done", "--surface"),
+    ("--done", "--done-bg"),
+    ("--now-ink", "--now-bg"),
+    ("--human", "--human-bg"),
+    ("--bad", "--bad-bg"),
+    ("--ref", "--surface"),
+    ("--on-done", "--done"),  # the text of a main button
+]
+
+
+def test_every_text_color_reaches_4_5_to_1_on_its_backgrounds_in_both_themes() -> None:
+    style = (VIEWER / "style.css").read_text(encoding="utf-8")
+
+    for theme in theme_colors(style):
+        for text, background in TEXT_PAIRS:
+            assert contrast(theme[text], theme[background]) >= 4.5, (text, background, theme[text], theme[background])
+
+
+def test_the_font_sizes_and_the_corner_radii_come_from_one_scale_each() -> None:
+    style = (VIEWER / "style.css").read_text(encoding="utf-8")
+    font_sizes = set(re.findall(r"font-size:\s*([\d.]+px)", style)) | set(re.findall(r"font:[^;]*?([\d.]+px)/", style))
+    radii = set(re.findall(r"border-radius:\s*([^;]+);", style))
+
+    assert font_sizes <= {"11px", "12px", "13px", "14px", "15px", "18px", "20px"}
+    assert radii <= {"4px", "8px", "12px", "999px", "50%"}
