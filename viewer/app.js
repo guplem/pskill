@@ -8,6 +8,7 @@ const POLL_MS = 1000;
 const PLAY_MS = 700;
 const FOLD_LINE_LIMIT = 3;
 const PANEL_WIDTH_KEY = "pskill.panelWidth";
+const REPOSITORY_URL = "https://github.com/guplem/pskill"; // the logo and the version note lead there
 const PLACE_KEY = "pskill.place"; // the project that the Content tab opens
 const EXPANDED_KEY = "pskill.expandChildSkills"; // only a choice to expand is kept: collapsed is the default
 const PANEL_MIN_WIDTH = 320;
@@ -335,8 +336,8 @@ function rememberPlace(place) {
 
 function topbar() {
   const bar = element("header", null, "topbar");
-  const brand = element("a", "pskill", "brand");
-  brand.href = "#/";
+  const brand = externalLink("pskill", REPOSITORY_URL, "pskill on GitHub: the code, the docs, and the releases");
+  brand.className = "brand";
   const nav = element("nav", null, "nav");
   const tabs = [
     ["Runs", "#/", ["runs", "run"]],
@@ -526,7 +527,20 @@ function drawEmptyContent() {
 
 // The pskill version at the foot of the list screens (runs, skills, agents), or nothing when it is unknown.
 function versionNote() {
-  return view.version ? [element("p", `pskill ${view.version}`, "version-note")] : [];
+  if (!view.version) return [];
+  const note = element("p", null, "version-note");
+  note.append(externalLink(`pskill ${view.version}`, `${REPOSITORY_URL}/releases/tag/v${view.version}`, "What changed in this version"));
+  return [note];
+}
+
+// A link that opens another site in a new tab, so the viewer stays open.
+function externalLink(text, href, hint) {
+  const link = element("a", text);
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.title = hint;
+  return link;
 }
 
 function skillCards(skills) {
