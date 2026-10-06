@@ -1040,7 +1040,11 @@ class Run:
         try:
             raw_answer = load_answer_yaml(answer_text)
         except Exception as error:  # PyYAML raises several error types; all mean "not valid YAML"
-            return {}, None, [f"The answer is not valid YAML: {error}"]
+            return (
+                {},
+                None,
+                [f"The answer is not valid YAML: {error}\nWrite free text as `field: |` with indented lines."],
+            )
         if isinstance(raw_answer, dict) and "$cannot_complete" in raw_answer:
             return {}, None, [f"You could not complete the block: {raw_answer['$cannot_complete']}"]
         answered_by = raw_answer.pop("$answered_by", None) if isinstance(raw_answer, dict) else None

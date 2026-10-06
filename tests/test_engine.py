@@ -598,3 +598,14 @@ def test_an_answer_that_is_not_yaml_is_rejected(tmp_path: Path) -> None:
 
     assert "- The answer is not valid YAML: " in packet.split("### Errors")[1]
     assert read_run_info(project, run_id)["attempts"] == 1
+
+
+def test_a_colon_in_plain_text_gets_the_free_text_hint(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    packet = submit_answer(project, run_id, "status: finished\nnote: getOneById(id): Promise<Group>\n")
+
+    errors = packet.split("### Errors")[1]
+    assert "- The answer is not valid YAML: " in errors
+    assert "Write free text as `field: |` with indented lines." in errors
