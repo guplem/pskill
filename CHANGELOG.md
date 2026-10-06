@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.29.1 (2026-10-06)
+
+An answer that is not valid YAML now says how to write free text.
+
+- **Free text hint:** the error adds "Write free text as `field: |` with indented lines." A plain value with a colon inside, such as `reason: getOneById(id): Promise<Group>`, is not valid YAML, and the agent had to guess the fix.
+
 ## 0.29.0 (2026-10-05)
 
 A child skill of a child skill shows inside its parent's frame on the run screen.
