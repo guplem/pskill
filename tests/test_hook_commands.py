@@ -85,3 +85,30 @@ def test_a_settings_file_that_holds_no_json_object_is_refused(tmp_path: Path) ->
 
     with pytest.raises(SettingsError, match="must hold a JSON object"):
         read_json_settings(settings_path)
+
+
+FAILING_RUNNER = "import sys\nprint('runner failed', file=sys.stderr)\nsys.exit(2)\n"
+
+
+@pytest.mark.parametrize(("hooks", "harness"), HOOKS)
+@pytest.mark.parametrize("event", ["Stop", "SessionStart"])
+def test_a_failing_runner_never_blocks_the_harness(
+    tmp_path: Path, hooks: dict[str, dict[str, object]], harness: str, event: str
+) -> None:
+    """Exit code 2 from a Stop hook means "do not stop". pskill blocks with JSON on stdout, never with 2."""
+    subfolder = make_repository(tmp_path)
+    (tmp_path / ".pskill").mkdir()
+    (tmp_path / ".pskill" / "pskill.py").write_text(FAILING_RUNNER, encoding="utf-8")
+
+    result = run_command(command_of(hooks, event), cwd=subfolder, project_dir=tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "runner failed" in result.stderr
+
+
+@pytest.mark.parametrize(("hooks", "harness"), HOOKS)
+def test_every_hook_has_a_timeout(hooks: dict[str, dict[str, object]], harness: str) -> None:
+    """A hung download or install must not hold a turn. The first session start may download the runner."""
+    timeouts = {event: group["hooks"][0]["timeout"] for event, group in hooks.items()}  # type: ignore[index]
+
+    assert timeouts == {"Stop": 30, "SessionStart": 120}

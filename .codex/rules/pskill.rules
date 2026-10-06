@@ -6,3 +6,10 @@ prefix_rule(
     justification = "pskill: the runner of this project's programmatic skills",
     match = ["uv run .pskill/pskill.py current"],
 )
+# The strictest matching rule wins, so a runner update or install asks first: `--from` can name any URL.
+prefix_rule(
+    pattern = ["uv", "run", ".pskill/pskill.py", ["update", "init"]],
+    decision = "prompt",
+    justification = "pskill: a runner update or install changes the code that runs every skill",
+    match = ["uv run .pskill/pskill.py update", "uv run .pskill/pskill.py update --from=https://example.com/pskill.zip"],
+)
