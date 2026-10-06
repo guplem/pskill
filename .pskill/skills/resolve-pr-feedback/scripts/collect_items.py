@@ -11,7 +11,8 @@ has a `kind`:
 
 A comment is addressed, and so left out, when a reply names its id with the marker
 `<!-- resolve-pr-feedback-reply: <id> -->`, when it carries the eyes reaction (someone is working on it), or when it
-is such a reply itself. The comments of `github-actions[bot]` are CI output, not review, so they never count.
+is such a reply itself. The comments of `github-actions[bot]` are CI output, and a Copilot review that says it was
+unable to review is a quota notice: neither is review, so they never count.
 """
 
 import json
@@ -22,6 +23,7 @@ from typing import Any
 
 REPLY_MARKER = re.compile(r"<!-- resolve-pr-feedback-reply: (\d+) -->")
 CI_NOTICE_AUTHOR = "github-actions[bot]"
+COPILOT_REVIEWER = "copilot-pull-request-reviewer[bot]"
 
 
 def run(command: list[str]) -> str:
@@ -36,6 +38,10 @@ def all_pages(endpoint: str) -> list[dict[str, Any]]:
 
 def answered_ids(bodies: list[str]) -> set[int]:
     return {int(match) for body in bodies for match in REPLY_MARKER.findall(body)}
+
+
+def is_copilot_notice(review: dict[str, Any]) -> bool:
+    return review["user"]["login"] == COPILOT_REVIEWER and "unable to review" in str(review["body"] or "")
 
 
 def comment_item(comment: dict[str, Any], comment_kind: str) -> dict[str, Any]:
@@ -60,7 +66,11 @@ def is_unaddressed(comment: dict[str, Any], answered: set[int]) -> bool:
 
 def unaddressed_comments(pr_number: str) -> list[dict[str, Any]]:
     inline = all_pages(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/comments")
-    reviews = all_pages(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews")
+    reviews = [
+        review
+        for review in all_pages(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews")
+        if not is_copilot_notice(review)
+    ]
     conversation = [
         comment
         for comment in all_pages(f"repos/{{owner}}/{{repo}}/issues/{pr_number}/comments")
