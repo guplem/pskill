@@ -11,7 +11,9 @@ Goal: Every real problem of the pull request, reported once by the reviewer whos
 1. Map the request to the inputs:
    - `pr` (integer): Number of the pull request.
    - `post_findings` (boolean, optional, default: true): false keeps the findings in the outputs only, with no comment on the pull request.
-   - `dismissed` (array, optional): Findings that earlier rounds dismissed. Each goes back only to the reviewer that reported it.
+   - `scope_sha` (string, optional, default: ""): The commit that ends the scope of the review: the scope is the code that the diff from the base to this commit changes. Later commits are review fixes: only their own lines are reviewed. Empty means the head commit.
+   - `since_sha` (string, optional, default: ""): Review only the lines that the commits after this commit add or change, and report only required findings. Empty reviews the whole pull request.
+   - `dismissed` (array, optional): Findings that earlier rounds dismissed, or fixed only in part. Every reviewer gets the full list.
    Ask the user for each required input that the request does not give, before you run `start`.
 2. Run: `uv run .pskill/pskill.py start review-pr --harness auto --input pr=<value>`
    Add `--input <name>=<value>` for each optional input that the request gives.

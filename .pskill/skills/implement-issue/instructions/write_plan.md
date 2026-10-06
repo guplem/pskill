@@ -19,10 +19,10 @@ The user's answers to the open questions: {{ steps.ask_user.answer }}
 {% endif %}{% if history.approve_plan | default([]) %}
 The user asked for changes to the last version of the plan: {{ steps.approve_plan.feedback | default('no details') }}
 {% endif %}
-**The plan** is the spec for every later step, so keep it short and concrete:
+**The plan** is the spec for every later step. Keep it short and concrete:
 1. **Goal** and the acceptance criteria.
 2. **Decisions:** each open question with its answer.
 3. **Approach:** the files to change, and the existing code that each change copies.
-4. **Steps:** the plan steps to build, in order. Each step is one red-green cycle.
+4. **Steps:** the steps to build, in order. Each step is one red-green cycle.
 5. **Checks:** the fast local checks to run, and the CI checks that prove the rest.
 6. **Out of scope.**

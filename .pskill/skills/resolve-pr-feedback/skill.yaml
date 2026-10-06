@@ -2,12 +2,12 @@ schema: pskill/v1
 id: resolve-pr-feedback
 description: >-
   Resolve the feedback on a GitHub pull request, one item at a time: the review findings given to it, and every pull
-  request comment that nobody addressed yet. It marks a comment with the eyes reaction when its work starts, fixes
-  the item or dismisses it with a reason, and replies to the comment. Use when the user asks to address, answer, or
+  request comment that nobody addressed yet. It marks a comment with the eyes reaction when the work on it starts,
+  fixes the item or dismisses it with a reason, and replies to the comment. Use when the user asks to address, answer, or
   resolve the comments or the review of a pull request. Starting it authorizes the commits and pushes on the branch
   of the pull request, the reactions, and the replies.
 goal: >-
-  Every given finding and every unaddressed comment has a verdict, fixed or dismissed with its reason, and every
+  Every given finding and every unaddressed comment has a verdict (fixed or dismissed) with its reason, and every
   comment has a reply.
 x-finding: &finding
   type: object
@@ -22,6 +22,11 @@ x-finding: &finding
 inputs:
   pr: {type: integer, description: "Number of the pull request."}
   findings: {type: array, items: *finding, optional: true, description: "Findings to resolve, for example from review-pr."}
+  scope_sha:
+    type: string
+    optional: true
+    default: ""
+    description: "The commit that ends the scope, as review-pr gives it. Empty means the head commit."
 outputs:
   decisions:
     type: array
@@ -40,7 +45,7 @@ entry: checkout
 blocks:
   checkout:
     type: call
-    description: Check out the latest commit of the pull request
+    description: Check out the head commit of the pull request
     skill: checkout-pr
     inputs: {pr: "{{ inputs.pr }}"}
     next: collect_items
@@ -58,7 +63,7 @@ blocks:
 
   claim_item:
     type: script
-    description: Mark a comment with the eyes reaction as its work starts
+    description: Mark a comment with the eyes reaction when the work on it starts
     run: [uv, run, "{{ skill.dir }}/scripts/claim_item.py"]
     input: {item: "{{ steps.collect_items.json.queue[history.claim_item | default([]) | length] }}"}
     max_visits: 100
@@ -70,8 +75,8 @@ blocks:
     description: Fix the item or dismiss it
     instruction: instructions/resolve_item.md
     output:
-      verdict: {type: string, enum: [fixed, dismissed], description: "fixed only when you pushed the fix or edited the pull request description."}
-      reason: {type: string, description: "What you changed, or why you dismissed it. A comment's author reads it as the reply."}
+      verdict: {type: string, enum: [fixed, dismissed], description: "fixed only when you pushed the whole fix or edited the pull request description. A partial fix is dismissed."}
+      reason: {type: string, description: "What you changed, or why you dismissed it."}
     next: finish_item
 
   finish_item:

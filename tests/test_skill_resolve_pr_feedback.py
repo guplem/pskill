@@ -80,6 +80,18 @@ def test_collect_items_leaves_out_the_addressed_comments(
     assert printed["queue"] == [{"kind": "finding", **FINDING}]
 
 
+def test_collect_items_leaves_out_a_copilot_notice_but_keeps_a_copilot_review(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    copilot = {"login": "copilot-pull-request-reviewer[bot]"}
+    notice = comment(7, "Copilot was unable to review this pull request because of a quota limit.", user=copilot)
+    review = comment(8, "The guard misses None.", user=copilot)
+
+    printed = collect(monkeypatch, capsys, [], [notice, review], [])
+
+    assert [item.get("id") for item in printed["queue"]] == [None, 8]
+
+
 def test_claim_item_adds_the_eyes_reaction_to_a_comment_that_can_take_one(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

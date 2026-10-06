@@ -796,7 +796,7 @@ The example skills are a base that almost any software project on GitHub can cop
 
 | Skill | What it does | Its blocks, in order |
 |---|---|---|
-| `implement-issue` | An issue (or a described change) to a pull request that is ready to merge. It never merges. | `create_new_issue` (call `create-issue`, for a described change only), `read_issue`, `checkout_default`, `understand`, `checkout_base`, `research_code` and `research_gaps` (parallel), `ask_user`, `write_plan`, `approve_plan`, `open_draft_pr`, `implement_step` (one red-green cycle per visit), `write_description`, then the loop `review` (call `review-pr`) and `resolve` (call `resolve-pr-feedback`) while a round fixes something, then `ready`, `get_ci_green` (call `fix-ci`), `answer_comments` (call `resolve-pr-feedback`), `rereview`, `finish`. |
+| `implement-issue` | An issue (or a described change) to a pull request that is ready to merge. It never merges. | `create_new_issue` (call `create-issue`, for a described change only), `read_issue`, `checkout_default`, `understand`, `checkout_base`, `research_code` and `research_gaps` (parallel), `ask_user`, `write_plan`, `approve_plan`, `open_draft_pr`, `implement_step` (one red-green cycle per visit), `write_description`, then the loop `review` (call `review-pr`) and `resolve` (call `resolve-pr-feedback`), then `ready`, `get_ci_green` (call `fix-ci`), `answer_comments` (call `resolve-pr-feedback`), `check_unreviewed`, the required-only loop `final_review` and `final_resolve`, and `finish`. |
 | `review-pr` | One review round: five reviewer subagents (correctness, tests, completeness, conventions, docs) in parallel. It finds problems only. | `checkout` (call `checkout-pr`), `read_pr`, `review` (parallel over a fixed list, with a `when` per angle), `collect_findings`, `confirm_post`, `post_findings`. |
 | `resolve-pr-feedback` | Each given finding and each unaddressed pull request comment, one at a time: fix it or dismiss it, and reply to the comment. | `checkout`, `collect_items`, then per item `claim_item` (the 👀 reaction), `resolve_item`, `finish_item` (the reply). |
 | `fix-ci` | The CI checks of a pull request green, or a reason why the pull request cannot fix them. | `checkout`, `wait_ci`, `fix_ci`, in a loop. |
@@ -810,12 +810,15 @@ The pskill agents: `reviewer` (one review angle, no quote no finding), `explorer
 - **Low coupling to the project.** The skills need git, `gh`, and `uv`, a remote named `origin`, and the repository's default branch. They read the project's own rules from its `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, README, and ADR files. They hard-code no command, folder, or label beyond the conventions in the README section "Recommended setup for the example skills".
 - **Scripts do the mechanical work.** Checking out, naming the branch, opening the draft, marking it ready, collecting comments, adding reactions, and posting replies are scripts with typed JSON output. An agent never runs those steps by hand.
 - **The plan lives in the draft.** `implement-issue` writes a plan file, the user approves it, and a script pushes it as the only change of a draft pull request. Every later step reads it. `ready` removes it before CI runs on the ready pull request.
-- **Find and fix are separate.** `review-pr` only reports; `resolve-pr-feedback` only resolves. The loop between them ends when a round fixes nothing, with a cap of 7 rounds. A dismissed finding goes back only to the reviewer that reported it.
+- **Find and fix are separate.** `review-pr` only reports; `resolve-pr-feedback` only resolves. The loop between them ends when a round fixes nothing, after the 4th round with no required finding, or at a cap of 7 rounds. Every reviewer sees every dismissed finding.
+- **A fixed review scope.** The first review round's commit ends the scope. A changed line brings in its innermost function (or, outside any function, its section or block). An older problem is fixed only when the new code runs the broken part, it blocks the goal, or its fix stays inside the changed function.
+- **Severity.** `required`: wrong code, a broken written rule, or a broken clear project pattern. `suggestion`: a better way that no rule or pattern asks for.
+- **Every late fix gets a review.** After CI and the late comments, `check_unreviewed` (a script) lists the commits that no review saw, without the plan removal and clean merges. Each such commit gets a required-only round, up to 5 rounds; then `finish` labels the pull request.
 - **No quote, no finding.** `collect_findings` drops a finding whose quote is not in its file.
 - **One item at a time.** `resolve-pr-feedback` claims each comment with the 👀 reaction before its work starts, and its reply carries the marker `<!-- resolve-pr-feedback-reply: <id> -->`, so a later round never answers it twice.
 - **Change the code, not the rule.** A finding that the code breaks a written rule is fixed in the code. The rule changes only when the rule itself is wrong.
 - **Wait in the foreground.** `fix-ci` waits for CI inside the turn, so the Stop hook never sees an agent that ends its turn to wait.
-- **A human label, not a merge.** `finish` adds `waiting-for-human-review` when a human must look (a risky area, a visible change, a cap reached, a dismissed finding, CI not green). The run never merges.
+- **A human label, not a merge.** `finish` adds `waiting-for-human-review` when a human must look (a risky area, a visible change, a cap reached, a dismissed finding, CI not green), with a short note at the top of the description that says what to check. The run never merges.
 
 ### 13.3 Feature coverage
 
@@ -824,7 +827,7 @@ The example skills together must exercise every runtime feature. pytest fixtures
 | Feature | Covered by |
 |---|---|
 | `task` | `implement-issue.understand`, `resolve-pr-feedback.resolve_item` |
-| Agent `decision` | `implement-issue.rereview`, `create-issue.judge_duplicates` |
+| Agent `decision` | `create-issue.judge_duplicates` |
 | Human `decision` with choices | `implement-issue.approve_plan`, `review-pr.confirm_post` |
 | Human `decision` without choices (a question) | `implement-issue.ask_user`, `create-issue.ask_clarify` |
 | A revision loop through a human decision | `implement-issue`: `write_plan` to `approve_plan` to `write_plan` |
@@ -851,7 +854,7 @@ The example skills together must exercise every runtime feature. pytest fixtures
 
 ### 13.4 Tests to ship
 
-Each skill has test cases in `tests/`, for each of its paths: for example a clean run, a review loop that converges, the review round cap, a comment after CI, a CI failure that the base branch has too, a question for the user and a plan change, autonomous mode, `$cannot_complete` that pauses the run, and each reason to hold or stop. The scripts have pytest tests in `tests/test_skill_<skill>.py`, with a fake shell.
+Each skill has test cases in `tests/`, for each of its paths: for example a clean run, a review loop that converges, the review round cap, the required-only rounds and their cap, a fix after CI, a CI failure that the base branch has too, a question for the user and a plan change, autonomous mode, `$cannot_complete` that pauses the run, and each reason to hold or stop. The scripts have pytest tests in `tests/test_skill_<skill>.py`, with a fake shell.
 
 ---
 

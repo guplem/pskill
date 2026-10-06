@@ -1,4 +1,4 @@
-name: a fixed finding gets a second review round, and a round that fixes nothing ends the loop
+name: a comment fix after CI gets a required-only review round, then CI runs on the new head
 inputs: {request: "#42"}
 scripts:
   read_issue:
@@ -14,18 +14,23 @@ scripts:
     - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/octo/app/pull/9"}'}
   ready:
     - {exit_code: 0, stdout: '{"head_sha": "h1"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "h2"}'}
   check_unreviewed:
-    - {exit_code: 0, stdout: '{"unreviewed": false, "commits": [], "head_sha": "h1"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": true, "commits": ["c1"], "head_sha": "h2"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": false, "commits": [], "head_sha": "h2"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": false, "commits": [], "head_sha": "h2"}'}
 calls:
   review:
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r1, scope_sha: r1}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r2, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: r1, scope_sha: r1}}
   resolve:
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test for the guard, verdict: fixed, reason: Added it.}], fixed: 1}}
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test for the guard, verdict: dismissed, reason: The test exists.}], fixed: 0}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+  final_review:
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: h2, scope_sha: r1}}
   get_ci_green:
     - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h1, fixes: 0}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h2, fixes: 0}}
   answer_comments:
+    - {status: succeeded, outputs: {decisions: [{kind: comment, reviewer: '', title: Rename the error, verdict: fixed, reason: Done.}], fixed: 1}}
     - {status: succeeded, outputs: {decisions: [], fixed: 0}}
 answers:
   understand:
@@ -42,8 +47,8 @@ answers:
   write_description:
     - {summary: Saving a file with no name shows an error instead of crashing.}
   finish:
-    - {labels: [], reasons: A small bug fix with a test.}
+    - {labels: [], reasons: "A small bug fix with a test."}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, finish, done]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, finish, done]
   status: succeeded
   outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9"}

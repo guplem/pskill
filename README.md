@@ -85,7 +85,7 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 
 | Skill | What it does |
 |---|---|
-| `implement-issue` | From an issue (or a described change) to a pull request that is ready to merge. It understands the issue, asks you only what the code cannot answer, and shows you a plan. Then it opens a draft pull request and builds the change test-first. Fresh reviewers check it, round after round, until a round finds nothing to fix. Then it marks the pull request ready, gets CI green, and answers late comments. It never merges. |
+| `implement-issue` | From an issue (or a described change) to a pull request that is ready to merge. It understands the issue, asks you only what the code cannot answer, and shows you a plan. Then it opens a draft pull request and builds the change test-first. Fresh reviewers check it, round after round, until a round finds nothing to fix. Then it marks the pull request ready, gets CI green, answers late comments, and gives each later fix a short review for real problems only. It never merges. |
 | `review-pr` | One review of a pull request by five reviewers at once: correctness, tests, completeness, conventions, and docs. Each finding quotes the code line. It posts them when you agree. |
 | `resolve-pr-feedback` | Answers each open comment of a pull request, one at a time: it fixes the code or explains why not, and replies. |
 | `fix-ci` | Waits for the CI checks of a pull request, and fixes the failures that the pull request causes. |

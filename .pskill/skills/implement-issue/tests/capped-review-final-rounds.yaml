@@ -1,0 +1,70 @@
+name: after the review loop ends at its cap of 7 rounds, required-only rounds review the last fixes until one finds nothing
+inputs: {request: "#42"}
+scripts:
+  read_issue:
+    - exit_code: 0
+      stdout: >-
+        {"number": 42, "title": "Saving a file crashes", "body": "Saving a file with no name crashes.", "labels": ["bug"],
+        "comments": [], "cross_references": [], "hold_reason": null, "existing_branches": []}
+  checkout_default:
+    - {exit_code: 0, stdout: '{"ok": true, "default_branch": "main"}'}
+  checkout_base:
+    - {exit_code: 0, stdout: '{"ok": true, "base": "main", "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}'}
+  open_draft_pr:
+    - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/octo/app/pull/9"}'}
+  ready:
+    - {exit_code: 0, stdout: '{"head_sha": "h7"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "h8"}'}
+  check_unreviewed:
+    - {exit_code: 0, stdout: '{"unreviewed": true, "commits": ["c1"], "head_sha": "h7"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": true, "commits": ["c1"], "head_sha": "h8"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": false, "commits": [], "head_sha": "h8"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": false, "commits": [], "head_sha": "h8"}'}
+calls:
+  review:
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r1, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r2, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r3, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r4, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r5, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r6, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r7, scope_sha: r1}}
+  resolve:
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
+  final_review:
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: h7, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: h8, scope_sha: r1}}
+  final_resolve:
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
+  get_ci_green:
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h7, fixes: 0}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h8, fixes: 0}}
+  answer_comments:
+    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+answers:
+  understand:
+    - {title: Fix the crash when a file is saved with no name, slug: fix-save, brief: Guard the save., base: main, gaps: []}
+  research_code:
+    - {report: The rename guard in files.py is the closest code.}
+    - {report: No recorded decision affects this work.}
+  write_plan:
+    - {summary: "1. Guard the save. 2. Test it."}
+  approve_plan:
+    - {choice: approve, rationale: The user approved., $answered_by: human}
+  implement_step:
+    - {behavior: A file with no name is not saved., red: The new test crashed., commit: a1, done: true}
+  write_description:
+    - {summary: Saving a file with no name shows an error instead of crashing.}
+  finish:
+    - {labels: [], reasons: "The last fixes got a required-only review."}
+expect:
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, finish, done]
+  status: succeeded
+  outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9"}

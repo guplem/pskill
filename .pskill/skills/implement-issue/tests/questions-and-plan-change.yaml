@@ -14,9 +14,11 @@ scripts:
     - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/octo/app/pull/9"}'}
   ready:
     - {exit_code: 0, stdout: '{"head_sha": "h1"}'}
+  check_unreviewed:
+    - {exit_code: 0, stdout: '{"unreviewed": false, "commits": [], "head_sha": "h1"}'}
 calls:
   review:
-    - {status: succeeded, outputs: {findings: [], reviewed_sha: r1}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: r1, scope_sha: r1}}
   resolve:
     - {status: succeeded, outputs: {decisions: [], fixed: 0}}
   get_ci_green:
@@ -52,5 +54,5 @@ answers:
 expect:
   path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, ask_user, write_plan, approve_plan, write_plan,
          approve_plan, open_draft_pr, implement_step, write_description, review, resolve, ready, get_ci_green,
-         answer_comments, finish, done]
+         answer_comments, check_unreviewed, finish, done]
   status: succeeded
