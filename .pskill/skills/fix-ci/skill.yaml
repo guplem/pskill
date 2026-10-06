@@ -20,7 +20,7 @@ entry: checkout
 blocks:
   checkout:
     type: call
-    description: Check out the latest commit of the pull request
+    description: Check out the head commit of the pull request
     skill: checkout-pr
     inputs: {pr: "{{ inputs.pr }}"}
     next: wait_ci
@@ -48,7 +48,7 @@ blocks:
       cause:
         type: string
         enum: [this_pr, flaky, unrelated]
-        description: "unrelated only when every failure that is left also fails on the base branch. Otherwise the cause of the main failure."
+        description: "unrelated only when every failure that is left also fails on the base branch. Otherwise, this_pr when any failure comes from this pull request, else flaky."
       summary: {type: string, description: "The cause and what you did, per failed check."}
     next:
       - when: "{{ steps.fix_ci.cause == 'unrelated' }}"

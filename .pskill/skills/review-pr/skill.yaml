@@ -24,10 +24,24 @@ inputs:
     optional: true
     default: true
     description: "false keeps the findings in the outputs only, with no comment on the pull request."
+  scope_sha:
+    type: string
+    optional: true
+    default: ""
+    description: >-
+      The commit that ends the scope of the review: the scope is the code that the diff from the base to this commit
+      changes. Later commits are review fixes: only their own lines are reviewed. Empty means the head commit.
+  since_sha:
+    type: string
+    optional: true
+    default: ""
+    description: >-
+      Review only the lines that the commits after this commit add or change, and report only required findings.
+      Empty reviews the whole pull request.
   dismissed:
     type: array
     optional: true
-    description: "Findings that earlier rounds dismissed. Each goes back only to the reviewer that reported it."
+    description: "Findings that earlier rounds dismissed, or fixed only in part. Every reviewer gets the full list."
     items:
       type: object
       properties:
@@ -49,12 +63,13 @@ outputs:
         summary: {type: string}
         quote: {type: string}
   reviewed_sha: {type: string, description: "The head commit that the round reviewed."}
+  scope_sha: {type: string, description: "The commit that ended the scope of the round."}
 entry: checkout
 
 blocks:
   checkout:
     type: call
-    description: Check out the latest commit of the pull request
+    description: Check out the head commit of the pull request
     skill: checkout-pr
     inputs: {pr: "{{ inputs.pr }}"}
     next: read_pr
@@ -107,7 +122,7 @@ blocks:
     task_name: "{{ item.name }}"
     instruction: instructions/review.md
     output:
-      reviewer: {type: string, description: "Your reviewer name, as your task gives it."}
+      reviewer: {type: string, description: "Your reviewer name, from the first line of your task."}
       findings: {type: array, items: *finding, description: "Your findings, for your angle only."}
     next: collect_findings
 
@@ -158,6 +173,7 @@ blocks:
     outputs:
       findings: "{{ steps.collect_findings.json.findings }}"
       reviewed_sha: "{{ steps.checkout.outputs.head_sha }}"
+      scope_sha: "{{ inputs.scope_sha or steps.checkout.outputs.head_sha }}"
     report: >-
       Tell the user the findings of the review of pull request #{{ inputs.pr }}, one line each, with its severity, file,
       and line{% if steps.post_findings is defined %} (they are posted on the pull request){% endif %}:

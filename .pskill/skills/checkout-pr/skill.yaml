@@ -1,7 +1,7 @@
 schema: pskill/v1
 id: checkout-pr
 description: >-
-  Check out the branch of a pull request at its latest commit, for each skill that works on a pull request. It
+  Check out the branch of a pull request at its head commit, for each skill that works on a pull request. It
   changes nothing when the checkout is already there, and it never discards a change: it pauses the run with the
   reason when the checkout has uncommitted changes or unpushed commits, or when the pull request is not open.
 goal: The checkout is on the branch of the pull request, at the commit that GitHub has, with no local change.
@@ -27,7 +27,7 @@ blocks:
 
   checked_out:
     type: end
-    description: The checkout is on the latest commit of the pull request
+    description: The checkout is on the head commit of the pull request
     status: succeeded
     outputs:
       branch: "{{ steps.checkout_pr.json.branch }}"

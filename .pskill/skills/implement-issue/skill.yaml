@@ -1,15 +1,15 @@
 schema: pskill/v1
 id: implement-issue
 description: >-
-  Implement a GitHub issue, or a described change, end to end: understand it, settle the open questions (asking the
-  user only what the code cannot answer), agree on a plan, open a draft pull request with it, and build it in
-  red-green commits. Then review it with fresh subagents and resolve the findings and the pull request comments, round
-  after round, until a round fixes nothing. Then mark it ready, get CI green, and label it when a human must look. It
-  never merges. Use when the user asks to implement, fix, or work on an issue or a change. Starting it authorizes the
-  issue assignment, the branch, the commits, the pushes, the pull request, and the replies to its comments.
+  Implement a GitHub issue, or a described change, end to end. Settle its open questions (ask the user only what the
+  code cannot answer), agree on a plan, open a draft pull request with it, and build it in red-green commits. Then
+  review it with fresh subagents and resolve the findings and comments, round after round. Then mark it ready, get CI
+  green, give each later fix a review for required findings only, and label it when a human must look. It never
+  merges. Use when the user asks to implement, fix, or work on an issue or a change. Starting it authorizes the issue
+  assignment, the branch, the commits and pushes, the pull request, and the replies to its comments.
 goal: >-
-  A pull request that is ready to merge as it is: every CI check green, no finding left from a fresh review of the
-  final code, no plan file, and the waiting-for-human-review label only when a human must look before the merge.
+  A pull request that is ready to merge as it is: every CI check green, every review finding fixed or dismissed, no
+  plan file, and the waiting-for-human-review label only when a human must look before the merge.
 inputs:
   request: {type: string, description: "The issue number or link ('#123' too), or a description of the change to build."}
 outputs:
@@ -64,13 +64,13 @@ blocks:
       base: {type: string, description: "The branch to start from and to target: the default branch, or an unmerged branch that the work needs."}
       gaps:
         type: array
-        description: "The open questions whose answer changes the plan, one research task each (often empty)."
+        description: "The open questions whose answer changes the plan. One research task each. Often empty."
         items:
           type: object
           properties:
             name: {type: string, description: "2 to 4 words, for the viewer."}
             question: {type: string, description: "The question, with what the request already says."}
-      blocker: {type: string, optional: true, description: "Why the work must not start. Leave it out when it can start."}
+      blocker: {type: string, optional: true, description: "Why the work must not start. Leave it out when the work can start."}
     next:
       - when: "{{ (steps.understand.blocker | default('')) != '' }}"
         to: held
@@ -108,11 +108,11 @@ blocks:
     agent: explorer
     task_name: "{{ item.name }}"
     instruction: >-
-      Answer this open question about "{{ steps.understand.title }}": {{ item.question }}
+      Answer this open question about "{{ steps.understand.title }}" (issue #{{ steps.read_issue.json.number }}): {{ item.question }}
       Look in the code, the docs, the recorded decisions, the issue and its comments, and the git history.
       The brief: {{ steps.understand.brief }}
     output:
-      status: {type: string, enum: [resolved, needs_user], description: "needs_user only when nothing you found answers it."}
+      status: {type: string, enum: [resolved, needs_user], description: "needs_user only when nothing that you found answers it."}
       answer: {type: string, description: "The answer, or what you found when it stays open."}
       evidence: {type: string, description: "The files, lines, comments, or commits that support the answer."}
       options: {type: array, items: {type: string}, optional: true, description: "For needs_user: the answers to offer, the recommended one first."}
@@ -177,7 +177,7 @@ blocks:
       red: {type: string, description: "The failure that the new test showed, or why this cycle has no test."}
       commit: {type: string, description: "The short hash of the pushed commit."}
       plan_update: {type: string, optional: true, description: "What changed in the plan and why, when it changed."}
-      done: {type: boolean, description: "true when every step of the plan is built."}
+      done: {type: boolean, description: "true when every plan step is built."}
     next:
       - when: "{{ steps.implement_step.done }}"
         to: write_description
@@ -198,20 +198,30 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       post_findings: false
+      # The commit of the first round (the code that the build left) ends the scope of every round.
+      scope_sha: "{{ (history.review | default([]) | map(attribute='outputs') | map(attribute='scope_sha') | first) | default('', true) }}"
       dismissed: "{{ history.resolve | default([]) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
+    # The arrow from resolve already limits the loop to 7 rounds. This cap is only a safety net.
     max_visits: 7
     on_max_visits: ready
     next: resolve
 
   resolve:
     type: call
-    description: Resolve the findings and the open comments
+    description: Resolve the findings and the unaddressed comments
     skill: resolve-pr-feedback
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       findings: "{{ steps.review.outputs.findings }}"
+      scope_sha: "{{ steps.review.outputs.scope_sha }}"
     next:
-      - when: "{{ steps.resolve.outputs.fixed > 0 }}"
+      # Review again, unless this round fixed nothing, the loop used its 7 rounds, or 4 rounds in total had no
+      # required finding.
+      - when: >-
+          {{ steps.resolve.outputs.fixed > 0
+          and (history.resolve | map(attribute='outputs') | selectattr('fixed', 'gt', 0) | list | length) <= 6
+          and (history.review | map(attribute='outputs') | map(attribute='findings')
+          | map('selectattr', 'severity', 'equalto', 'required') | map('list') | reject | list | length) < 4 }}
         to: review
       - to: ready
 
@@ -236,29 +246,53 @@ blocks:
     type: call
     description: Resolve the comments that arrived during CI
     skill: resolve-pr-feedback
-    inputs: {pr: "{{ steps.open_draft_pr.json.pr_number }}"}
-    next:
-      - when: "{{ steps.answer_comments.outputs.fixed > 0 }}"
-        to: review
-      - when: "{{ steps.get_ci_green.outputs.head_sha == steps.ready.json.head_sha and steps.resolve.outputs.fixed == 0 }}"
-        to: finish
-      - to: rereview
+    inputs: {pr: "{{ steps.open_draft_pr.json.pr_number }}", scope_sha: "{{ steps.review.outputs.scope_sha }}"}
+    next: check_unreviewed
 
-  rereview:
-    type: decision
-    description: Decide if the commits after the review need a new review
-    decider: agent
-    instruction: >-
-      The last review round saw commit `{{ steps.review.outputs.reviewed_sha }}`{% if steps.resolve.outputs.fixed > 0 %},
-      and the review stopped at its round cap, so the last fixes had no review{% endif %}. Read
-      `git diff {{ steps.review.outputs.reviewed_sha }}..HEAD` and decide if it needs a new review. A merge of the
-      base branch needs a review only for its conflict resolutions.
-    max_visits: 3
+  check_unreviewed:
+    type: script
+    description: Find the code that no review saw yet
+    run: [uv, run, "{{ skill.dir }}/scripts/check_unreviewed.py"]
+    input:
+      pr: "{{ steps.open_draft_pr.json.pr_number }}"
+      last_reviewed: "{{ steps.final_review.outputs.reviewed_sha if steps.final_review is defined else steps.review.outputs.reviewed_sha }}"
+      plan_file: "{{ steps.checkout_base.json.plan_file }}"
+    parse: json
+    next:
+      - when: "{{ steps.check_unreviewed.json.unreviewed and (history.final_review | default([]) | length) < 5 }}"
+        to: final_review
+      # Finish when the 5 extra rounds are used, or when nothing is unreviewed and CI ran on the head commit.
+      - when: "{{ steps.check_unreviewed.json.unreviewed or steps.check_unreviewed.json.head_sha == steps.get_ci_green.outputs.head_sha }}"
+        to: finish
+      - to: ready
+
+  final_review:
+    type: call
+    description: Review the code that no review saw, for required findings only
+    skill: review-pr
+    inputs:
+      pr: "{{ steps.open_draft_pr.json.pr_number }}"
+      post_findings: false
+      scope_sha: "{{ steps.review.outputs.scope_sha }}"
+      since_sha: "{{ steps.final_review.outputs.reviewed_sha if steps.final_review is defined else steps.review.outputs.reviewed_sha }}"
+      dismissed: "{{ (history.resolve + (history.final_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
+    # The arrow from check_unreviewed already limits these rounds to 5. This cap is only a safety net.
+    max_visits: 5
     on_max_visits: finish
-    choices:
-      review: The changes alter behavior or add real code. Review the pull request again.
-      finish: The changes only remove the plan file or are small and safe (a format fix, a test fixture, a typo).
-    next: {review: review, finish: finish}
+    next:
+      - when: "{{ (steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list | length) > 0 }}"
+        to: final_resolve
+      - to: check_unreviewed
+
+  final_resolve:
+    type: call
+    description: Fix the required findings of the extra round
+    skill: resolve-pr-feedback
+    inputs:
+      pr: "{{ steps.open_draft_pr.json.pr_number }}"
+      findings: "{{ steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list }}"
+      scope_sha: "{{ steps.review.outputs.scope_sha }}"
+    next: check_unreviewed
 
   finish:
     type: task

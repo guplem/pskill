@@ -213,3 +213,60 @@ def test_mark_ready_a_second_time_only_pushes(
     assert not shell.ran("gh pr ready")
     assert not shell.ran("git rm")
     assert shell.ran("git push --quiet")
+
+
+def unreviewed_shell(commits: str, merge_diff: str = "") -> FakeShell:
+    """A branch whose commits after the review are a code fix (c1), the plan removal (c2), and a merge (c3)."""
+    return FakeShell(
+        {
+            "gh pr view 9 --json headRefName": "42-saving-crash",
+            "gh pr view 9 --json headRefOid": "c3full",
+            "git rev-list --reverse --first-parent r1..c3full": commits,
+            "git rev-list --parents -n 1 c3": "c3 c2 m1",
+            "git rev-list --parents -n 1": "c0 p0",
+            "git diff-tree --no-commit-id --name-status -r c1": "M\tsrc/save.py",
+            "git diff-tree --no-commit-id --name-status -r c2": "D\timplementation-plan-42.md",
+            "git diff-tree --no-commit-id --name-status -r c3": "M\tsrc/other.py",
+            "git show --cc --format= c3": merge_diff,
+        }
+    )
+
+
+def test_check_unreviewed_skips_the_plan_removal_and_a_clean_merge(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "check_unreviewed")
+    shell = install_shell(monkeypatch, script, unreviewed_shell("c1\nc2\nc3"))
+
+    printed = run_main(
+        monkeypatch, capsys, script, {"pr": 9, "last_reviewed": "r1", "plan_file": "implementation-plan-42.md"}
+    )
+
+    assert printed == {"unreviewed": True, "commits": ["c1"], "head_sha": "c3full"}
+    assert shell.ran("git fetch --quiet origin 42-saving-crash")
+
+
+def test_check_unreviewed_counts_a_merge_with_a_conflict_resolution(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "check_unreviewed")
+    install_shell(monkeypatch, script, unreviewed_shell("c2\nc3", merge_diff="++resolved line"))
+
+    printed = run_main(
+        monkeypatch, capsys, script, {"pr": 9, "last_reviewed": "r1", "plan_file": "implementation-plan-42.md"}
+    )
+
+    assert printed == {"unreviewed": True, "commits": ["c3"], "head_sha": "c3full"}
+
+
+def test_check_unreviewed_finds_nothing_when_no_commit_follows_the_review(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "check_unreviewed")
+    install_shell(monkeypatch, script, unreviewed_shell(""))
+
+    printed = run_main(
+        monkeypatch, capsys, script, {"pr": 9, "last_reviewed": "r1", "plan_file": "implementation-plan-42.md"}
+    )
+
+    assert printed == {"unreviewed": False, "commits": [], "head_sha": "c3full"}

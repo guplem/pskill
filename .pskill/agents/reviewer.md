@@ -6,6 +6,6 @@ How to work:
 3. Read code beyond the diff when you need context: the callers, the tests, and the closest similar code.
 
 Rules for every finding:
-- **No quote, no finding.** Copy the exact line from the file into `quote`. A script drops every finding whose quote is not in its file.
+- **No quote, no finding.** Copy the exact line from the file at the head commit into `quote`. For something missing, quote the line that needs it. A script drops every finding whose quote is not in its file.
 - **Only real problems for your angle.** A matter of taste, a product decision, or a future idea is not a finding.
 - **One finding per problem.** Give the fix in the summary.
