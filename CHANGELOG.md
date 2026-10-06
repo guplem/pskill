@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+The hooks can never block a turn, and Codex asks before a runner update.
+
+- **A failing hook never blocks a turn:** the hook command now always exits 0. Before, a failed `uv run` (for example, no network on a cold cache) exited 2, and Claude Code and Codex read exit code 2 from a Stop hook as "do not stop". The runner still blocks a stop the normal way, with JSON on stdout.
+- **Hook timeouts:** the Stop hook has a 30 s timeout and the session-start hook 120 s, so a hung download never holds a session.
+- **Codex asks before `update` and `init`:** a second Codex rule prompts for them, because `--from` can name any URL. Every other pskill command still runs without a prompt. Run `pskill sync` to get the new hooks and rule.
+
 ## 0.29.1 (2026-10-06)
 
 An answer that is not valid YAML now says how to write free text.

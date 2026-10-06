@@ -563,7 +563,7 @@ class HarnessAdapter(Protocol):
 - The "Stub folder" row only says which folder each harness reads. `config.stub_folders` decides where `sync` writes.
 - Claude Code reads project skills only from `.claude/skills/`, not from `.agents/skills/` (verified on 2026-09-28), so the default `stub_folders` shows no duplicates.
 - Claude Code verified facts, with the doc URLs, live in `pskill_runner/claude_code.py`. Hook commands read the `CLAUDE_PROJECT_DIR` environment variable, which Claude Code sets, so they work from any folder.
-- **Every hook command is one `uv run --no-project python -c "..."` call** (`hook_command` in `pskill_runner/hook_settings.py`). It runs the runner's `hook` subcommand only when `.pskill/pskill.py` exists, and otherwise exits 0 with no output. A failed `uv run` exits 2, and Claude Code and Codex read exit code 2 from a Stop hook as "block the stop". The command text holds no `$`, backslash, or percent sign inside its double quotes, so bash, PowerShell, and cmd read it the same.
+- **Every hook command is one `uv run --no-project python -c "..."` call** (`hook_command` in `pskill_runner/hook_settings.py`). It runs the runner's `hook` subcommand only when `.pskill/pskill.py` exists, and otherwise exits 0 with no output. It always exits 0: Claude Code and Codex read exit code 2 from a Stop hook as "block the stop", and a failed `uv run` (for example, no network on a cold cache) exits 2. The runner blocks a stop with JSON on stdout instead. Each hook has a `timeout`: 30 s for Stop, 120 s for session start, which may download the runner. The command text holds no `$`, backslash, or percent sign inside its double quotes, so bash, PowerShell, and cmd read it the same.
 
 ### 9.2 Hooks (two only)
 
@@ -583,7 +583,7 @@ class HarnessAdapter(Protocol):
 
 `sync` adds exactly one allow rule for each target harness, and nothing else:
 - **Claude Code** (`.claude/settings.json`, key `permissions.allow`): `Bash(uv run .pskill/pskill.py *)` (verified: the `*` form matches the whole command, including a heredoc).
-- **Codex** (`.codex/rules/pskill.rules`): `prefix_rule(pattern = ["uv", "run", ".pskill/pskill.py"], decision = "allow")`. Codex runs an allowed command **outside its sandbox** (limitation L7). The rule matches only a plain command: the `submit` form with an answer on stdin does not match (verified in #24), so Codex needs Full access (L7).
+- **Codex** (`.codex/rules/pskill.rules`): `prefix_rule(pattern = ["uv", "run", ".pskill/pskill.py"], decision = "allow")`, plus `prefix_rule(pattern = ["uv", "run", ".pskill/pskill.py", ["update", "init"]], decision = "prompt")`. The strictest matching rule wins, so a runner update or install asks first, in every spelling: `--from` can name any URL. Codex runs an allowed command **outside its sandbox** (limitation L7). The rule matches only a plain command: the `submit` form with an answer on stdin does not match (verified in #24), so Codex needs Full access (L7).
 
 Rules:
 - `sync` finds its own rule by its exact text. It never removes or changes other rules.

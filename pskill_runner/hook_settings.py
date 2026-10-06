@@ -29,9 +29,10 @@ def read_json_settings(path: Path) -> dict[str, Any]:
 def hook_command(root_code: str, subcommand: str, harness: str) -> str:
     """A hook command that runs `pskill.py hook <subcommand>` only when the runner file exists.
 
-    Without the file, the command exits 0 with no output. A failed `uv run` exits 2, and exit code 2
-    tells Claude Code and Codex to block the stop. `root_code` is the Python expression for the project
-    root. The command is one `python -c` call through uv, so bash, PowerShell, and cmd read it the same:
+    Without the file, the command exits 0 with no output. It always exits 0: exit code 2 tells Claude
+    Code and Codex to block the stop, and a failed `uv run` (no network on a cold cache) exits 2. pskill
+    blocks a stop with JSON on stdout instead (see `stop_response`). `root_code` is the Python expression
+    for the project root. The command is one `python -c` call through uv, so bash, PowerShell, and cmd read it the same:
     its double quotes hold no `$`, backslash, or percent sign, only single quotes.
     """
     code = "; ".join(
@@ -40,7 +41,8 @@ def hook_command(root_code: str, subcommand: str, harness: str) -> str:
             f"root = {root_code}",
             "runner = root + '/.pskill/pskill.py'",
             f"arguments = ['uv', 'run', runner, 'hook', '{subcommand}', '--harness', '{harness}']",
-            "sys.exit(subprocess.call(arguments) if os.path.isfile(runner) else 0)",
+            "os.path.isfile(runner) and subprocess.call(arguments)",
+            "sys.exit(0)",
         ]
     )
     return f'uv run --no-project python -c "{code}"'
@@ -50,13 +52,20 @@ def hook_command(root_code: str, subcommand: str, harness: str) -> str:
 GIT_ROOT_CODE = "subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()"
 
 
+# Seconds. A hung download must not hold a turn; the first session start may download the runner.
+STOP_TIMEOUT_S = 30
+SESSION_START_TIMEOUT_S = 120
+
+
 def pskill_hooks(root_code: str, harness: str) -> dict[str, dict[str, Any]]:
     """pskill's two hook groups, as they appear in a hooks file."""
+    stop_command = hook_command(root_code, "stop", harness)
+    session_start_command = hook_command(root_code, "session-start", harness)
     return {
-        "Stop": {"hooks": [{"type": "command", "command": hook_command(root_code, "stop", harness)}]},
+        "Stop": {"hooks": [{"type": "command", "command": stop_command, "timeout": STOP_TIMEOUT_S}]},
         "SessionStart": {
             "matcher": "startup|resume|clear|compact",
-            "hooks": [{"type": "command", "command": hook_command(root_code, "session-start", harness)}],
+            "hooks": [{"type": "command", "command": session_start_command, "timeout": SESSION_START_TIMEOUT_S}],
         },
     }
 
