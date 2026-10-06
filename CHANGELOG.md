@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.30.0 (2026-10-06)
 
 The hooks can never block a turn, and Codex asks before a runner update.
 
