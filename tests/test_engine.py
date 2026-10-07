@@ -90,6 +90,19 @@ def test_packets_name_an_answer_file_in_a_folder_that_exists(tmp_path: Path) -> 
     assert (project.runs_folder / run_id / "answers").is_dir()
 
 
+def test_a_run_outside_the_project_names_its_answer_file_by_its_absolute_path(tmp_path: Path) -> None:
+    project = make_project(tmp_path / "project")
+    outside_runs = tmp_path / "pskill-test-runs"  # where `pskill test` keeps its runs
+
+    run_id, packet = start_run(
+        project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic", runs_folder=outside_runs
+    )
+
+    answers = outside_runs / run_id / "answers"
+    assert f"--file {answers.as_posix()}/create_plan.yaml`" in packet
+    assert answers.is_dir()
+
+
 def test_a_task_then_an_end_finishes_the_run_with_its_outputs(tmp_path: Path) -> None:
     project = make_project(tmp_path, "small", SMALL_SKILL)
     run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
