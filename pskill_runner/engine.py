@@ -371,12 +371,13 @@ def repository_state(root: Path) -> tuple[str | None, bool | None]:
 
 
 def runner_command(project: Project) -> str:
-    """How the agent calls the runner, for example `uv run .pskill/pskill.py`."""
-    entry_script = Path(pskill_runner.__file__).resolve().parent.parent / ENTRY_SCRIPT_NAME
-    try:
-        return f"uv run {entry_script.relative_to(project.root.resolve()).as_posix()}"
-    except ValueError:
-        return f"uv run {entry_script.as_posix()}"
+    """How the agent calls the runner: the project launcher, `uv run .pskill/pskill.py`.
+
+    Never the runner's own folder: in a cached install that is an absolute path that the permission rule
+    does not match.
+    """
+    entry_script = project.pskill_folder / ENTRY_SCRIPT_NAME
+    return f"uv run {entry_script.relative_to(project.root).as_posix()}"
 
 
 def decision_fields(block: DecisionBlock, asks_the_human: bool) -> FieldMap:

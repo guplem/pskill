@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.30.1 (2026-10-07)
+
+Packets call the runner through the project launcher, so an autonomous run needs no permission prompt.
+
+- **Project launcher in packets:** every command in a packet now starts with `uv run .pskill/pskill.py`. Before, a project with a pinned release printed the absolute path of the runner cache, and the pskill repository printed `uv run pskill.py`. The Claude Code allow rule `Bash(uv run .pskill/pskill.py *)` matched neither, so every `submit` asked for permission and a headless run stopped.
+
 ## 0.30.0 (2026-10-06)
 
 The hooks can never block a turn, and Codex asks before a runner update.
