@@ -248,6 +248,21 @@ def test_submit_with_a_file_records_a_long_answer_with_quotes_backslashes_and_do
     assert not answer_file.exists()  # a later visit can never send this answer again
 
 
+def test_submit_with_a_file_keeps_a_rejected_answer_for_the_fix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("status: bogus\nplan: A long plan.\n", encoding="utf-8")
+
+    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", "answer.yaml")
+
+    assert exit_code == cli.EXIT_OK
+    assert "Your last answer was rejected" in capsys.readouterr().out
+    assert answer_file.exists()  # the agent fixes one field, not the whole long answer
+
+
 def test_submit_with_a_file_and_a_task_number_records_the_task_answer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

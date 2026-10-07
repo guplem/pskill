@@ -90,6 +90,29 @@ def test_packets_name_an_answer_file_in_a_folder_that_exists(tmp_path: Path) -> 
     assert (project.runs_folder / run_id / "answers").is_dir()
 
 
+def test_a_recorded_answer_keeps_its_file_when_another_program_holds_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("text: Hello\n", encoding="utf-8")
+
+    real_unlink = Path.unlink
+
+    def held_open(self: Path, missing_ok: bool = False) -> None:
+        if self == answer_file:
+            raise PermissionError("another program holds the file")
+        real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", held_open)
+
+    packet = submit_answer(project, run_id, "text: Hello\n", answer_file=answer_file)
+
+    assert "finished with status succeeded" in packet  # the next packet still prints
+    assert answer_file.exists()
+
+
 def test_a_run_outside_the_project_names_its_answer_file_by_its_absolute_path(tmp_path: Path) -> None:
     project = make_project(tmp_path / "project")
     outside_runs = tmp_path / "pskill-test-runs"  # where `pskill test` keeps its runs

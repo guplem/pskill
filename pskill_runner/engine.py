@@ -5,6 +5,7 @@ save it, and return the text to print. A `Run` object lives only for one command
 change a run hold the run's lock, because parallel subagents submit at the same time.
 """
 
+import contextlib
 import json
 import os
 import shutil
@@ -182,7 +183,13 @@ def submit_answer(
     runs_folder: Path | None = None,
     harness: str | None = None,
     session_id: str | None = None,
+    answer_file: Path | None = None,
 ) -> str:
+    """Take an answer. With `answer_file` (`submit --file`), delete that file once the run records the answer.
+
+    A later visit of the block then never sends the old answer again. A rejected answer keeps its file, so
+    the agent fixes only the wrong fields.
+    """
     folder = run_folder(project, run_id, runs_folder)
     with run_lock(folder):
         run = Run.load(project, run_id, executor, runs_folder)
@@ -191,7 +198,15 @@ def submit_answer(
             run.use_session(session_id)
         text = run.submit(answer_text, task)
         run.save()
+    if answer_file is not None and run.answer_recorded:
+        delete_answer_file(answer_file)
     return text
+
+
+def delete_answer_file(answer_file: Path) -> None:
+    """Delete a recorded answer's file. A file that another program holds open stays: the answer is safe."""
+    with contextlib.suppress(OSError):
+        answer_file.unlink(missing_ok=True)
 
 
 def task_packet(project: Project, run_id: str, index: int) -> str:
@@ -455,6 +470,7 @@ class Run:
         self.executor: InlineExecutor = executor or RealExecutor()
         self.skills: dict[str, Skill] = {}
         self.adapter = adapter_for(info["harness"])
+        self.answer_recorded = False  # set by `submit` when it keeps the answer, not when it rejects it
 
     @classmethod
     def load(
@@ -1022,6 +1038,7 @@ class Run:
             return self.reject(errors, answer_text)
         decided_by = self.decided_by(block, answered_by)
         duration_ms = elapsed_ms_since(self.info["packet_issued_at"])
+        self.answer_recorded = True
         return self.guarded(lambda: self.accept(block, answer, decided_by, duration_ms))
 
     def submit_task(self, block: ParallelBlock, answer_text: str, task: int | None) -> str:
@@ -1031,6 +1048,7 @@ class Run:
         answer, _, errors = self.read_answer(answer_text, block)
         if errors:
             return self.reject(errors, answer_text, task)
+        self.answer_recorded = True
         return self.guarded(lambda: self.accept_task(block, task, answer))
 
     def record_task_while_paused(self, answer_text: str, task: int) -> str:
@@ -1042,6 +1060,7 @@ class Run:
         if errors:
             return task_not_recorded(task, errors)
         self.record_task(block, task, answer)
+        self.answer_recorded = True
         tasks = self.frame["tasks"] or []
         done = len(tasks) - len(self.open_task_indexes())
         return f"Task {task} is recorded while the run is paused. {done} of {len(tasks)} tasks are done.\n"
