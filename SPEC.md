@@ -446,7 +446,7 @@ done:
     '@ | uv run .pskill/pskill.py submit r-20260927-1432-ab12
     ```
   - Both forms are literal: the shell changes nothing inside them (no quote, `$`, or backtick handling).
-- **A long answer goes in a file** (D16). Each packet ends with one line that names an answer file and the full command: `uv run .pskill/pskill.py submit <run> [--task <n>] --file <path>`. The agent uses it for an answer over about 5 KB.
+- **A long answer goes in a file** (D16). The Return section of each packet, and each task prompt, has one line after the submit command that names an answer file and the full command: `uv run .pskill/pskill.py submit <run> [--task <n>] --file <path>`. The agent uses it for an answer over about 5 KB.
   - The path is `.pskill/runs/<run>/answers/<block>.yaml`, or `<block>-task-<n>.yaml` for a parallel task, so parallel subagents never write the same file. The runner creates the `answers/` folder when it prints the packet.
   - The command has no stdin, so it is the same in bash and PowerShell.
   - The runner reads the file as UTF-8 and drops a byte order mark. It then handles the text exactly like the same text on stdin. A missing or empty file is a usage error (exit code 1). With `--file`, the runner never reads stdin.
