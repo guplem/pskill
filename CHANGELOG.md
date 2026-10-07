@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.31.0 (2026-10-07)
+
+A long answer can go in a file, so it reaches the runner on Windows too.
+
+- **`submit --file <path>`:** reads the answer from a file instead of stdin, and handles it exactly like the same text on stdin. In Claude Code on Windows, a heredoc command over about 7.3 KB with an apostrophe fails before the runner starts (`unexpected EOF while looking for matching '`).
+- **The answer file in every packet:** each packet and task prompt ends with one line that names a file, `.pskill/runs/<run>/answers/<block>.yaml` (`<block>-task-<n>.yaml` for a parallel task), and the full `--file` command. The agent uses it for an answer over about 5 KB. Short answers still go in the heredoc, in one command.
+
 ## 0.30.0 (2026-10-06)
 
 The hooks can never block a turn, and Codex asks before a runner update.
