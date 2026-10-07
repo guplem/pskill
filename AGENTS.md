@@ -29,7 +29,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `field_types.py` | Field maps, and checking answers and outputs against them. |
 | `computed_values.py` | Everything inside `{{ }}`. |
 | `yaml_loading.py` | YAML 1.2 booleans for skills; plain text for answers. |
-| `shells.py`, `answer_input.py` | The stdin forms of `submit`, and reading stdin with a timeout. |
+| `shells.py`, `answer_input.py` | The stdin forms of `submit`, reading stdin with a timeout, and reading an answer file (`submit --file`). |
 | `adapters.py` | Harness-specific wording and abilities. |
 | `inline_executor.py` | Runs `script` commands and child skills; `pskill test` swaps in recorded results. |
 | `skill_tests.py` | `pskill test`: replays a case file's answers against a skill. |
