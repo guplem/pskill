@@ -16,6 +16,7 @@ from pskill_runner.engine import (
     read_run_state,
     register_stop_attempt,
     resume_run,
+    runner_command,
     start_run,
     submit_answer,
     task_packet,
@@ -79,6 +80,21 @@ def test_start_prints_the_first_block_and_records_the_run(tmp_path: Path) -> Non
     assert (project.runs_folder / run_id / "skills" / "plan-work" / "skill.yaml").is_file()
     assert event_types(project, run_id) == ["run_started", "block_started"]
     assert "Write a plan for the login page." in read_events(project.runs_folder / run_id)[1]["packet"]
+
+
+def test_runner_command_calls_the_project_launcher(tmp_path: Path) -> None:
+    project = make_project(tmp_path)  # the runner package is outside the project, as in the user cache
+
+    assert runner_command(project) == "uv run .pskill/pskill.py"
+
+
+def test_packets_call_the_project_launcher(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    run_id, packet = start_run(project, "plan-work", {"topic": "the login page"}, mode="interactive", harness="generic")
+
+    assert f"uv run .pskill/pskill.py submit {run_id}" in packet
+    assert f"uv run .pskill/pskill.py pause {run_id}" in current_packet(project, run_id)
 
 
 def test_packets_name_an_answer_file_in_a_folder_that_exists(tmp_path: Path) -> None:
