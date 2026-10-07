@@ -30,7 +30,10 @@ def read_answer_file(path: Path) -> str:
     """Read the answer from a file, for `submit --file`. A byte order mark at the start is dropped."""
     if not path.is_file():
         raise AnswerInputError(f"No answer file at {path}. Write the answer there first.")
-    text = path.read_text(encoding="utf-8-sig")
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except (UnicodeDecodeError, OSError) as error:  # for example UTF-16, which Windows PowerShell 5.1 writes
+        raise AnswerInputError(f"Could not read the answer file {path} ({error}). Save it as UTF-8 text.") from error
     if not text.strip():
         raise AnswerInputError(f"The answer file {path} is empty. Write the answer there first.")
     return text

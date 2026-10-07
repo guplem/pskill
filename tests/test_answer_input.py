@@ -62,6 +62,14 @@ def test_read_answer_file_drops_a_byte_order_mark(tmp_path: Path) -> None:
     assert read_answer_file(answer_file) == "status: finished\n"
 
 
+def test_read_answer_file_refuses_a_file_that_is_not_utf8(tmp_path: Path) -> None:
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("status: finished\n", encoding="utf-16")  # what Windows PowerShell 5.1 writes with >
+
+    with pytest.raises(AnswerInputError, match="Save it as UTF-8 text"):
+        read_answer_file(answer_file)
+
+
 def test_read_answer_file_refuses_a_missing_file(tmp_path: Path) -> None:
     with pytest.raises(AnswerInputError, match="No answer file at"):
         read_answer_file(tmp_path / "missing.yaml")
