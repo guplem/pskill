@@ -912,10 +912,21 @@ class Run:
             runner_command=runner_command(self.project),
             shell=detect_shell(),
             question_wording=self.adapter.question_wording,
+            answers_folder=self.answers_folder(),
             task_index=task_index,
             subagent_wording=self.adapter.subagent_wording,
             work_folder=self.project.root.as_posix(),
         )
+
+    def answers_folder(self) -> str:
+        """Create the run's folder for answer files, and return it as the agent writes it.
+
+        Relative to the project root, except for `pskill test`, whose runs live in a temp folder.
+        """
+        folder = self.folder / "answers"
+        folder.mkdir(exist_ok=True)
+        shown = folder.relative_to(self.project.root) if folder.is_relative_to(self.project.root) else folder
+        return shown.as_posix()
 
     def return_fields(self, block: AgentBlock) -> FieldMap:
         if isinstance(block, DecisionBlock):

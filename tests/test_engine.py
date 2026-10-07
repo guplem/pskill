@@ -81,6 +81,15 @@ def test_start_prints_the_first_block_and_records_the_run(tmp_path: Path) -> Non
     assert "Write a plan for the login page." in read_events(project.runs_folder / run_id)[1]["packet"]
 
 
+def test_packets_name_an_answer_file_in_a_folder_that_exists(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    run_id, packet = start_run(project, "plan-work", {"topic": "the login page"}, mode="interactive", harness="generic")
+
+    assert f"--file .pskill/runs/{run_id}/answers/create_plan.yaml`" in packet
+    assert (project.runs_folder / run_id / "answers").is_dir()
+
+
 def test_a_task_then_an_end_finishes_the_run_with_its_outputs(tmp_path: Path) -> None:
     project = make_project(tmp_path, "small", SMALL_SKILL)
     run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
