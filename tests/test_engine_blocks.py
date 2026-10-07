@@ -580,6 +580,9 @@ def test_a_run_paused_by_stop_attempts_still_records_task_answers(tmp_path: Path
     assert read_run_info(project, run_id)["pause_reason"] == "agent_stopped"
 
     answer_file = project.runs_folder / run_id / "answers" / "check-task-1.yaml"
+    answer_file.write_text("wrongs: [x]\n", encoding="utf-8")
+    rejected = submit_answer(project, run_id, "wrongs: [x]\n", task=1, answer_file=answer_file)
+    assert "not recorded" in rejected and answer_file.exists()  # a rejected answer keeps its file
     answer_file.write_text("wrong: [x]\n", encoding="utf-8")
 
     first = submit_answer(project, run_id, "wrong: [x]\n", task=1, answer_file=answer_file)

@@ -283,6 +283,10 @@ def test_submit_with_a_file_and_a_task_number_records_the_task_answer(
     run_cli(monkeypatch, "start", "spell")
     run_id = run_id_of(capsys.readouterr().out)
     answers = f".pskill/runs/{run_id}/answers"
+    (tmp_path / answers / "spell-task-0.yaml").write_text("letters: t\n", encoding="utf-8")
+    run_cli(monkeypatch, "submit", run_id, "--task", "0", "--file", f"{answers}/spell-task-0.yaml")
+    assert "letter" in capsys.readouterr().out  # rejected: `letter` is missing
+    assert (tmp_path / answers / "spell-task-0.yaml").exists()  # so the file stays for the fix
     (tmp_path / answers / "spell-task-0.yaml").write_text("letter: t\n", encoding="utf-8")
     (tmp_path / answers / "spell-task-1.yaml").write_text("letter: e\n", encoding="utf-8")
 
