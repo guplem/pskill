@@ -119,7 +119,7 @@ Harness features change fast. Every statement tagged **VERIFY** comes from resea
 **The loop for one agent block:**
 1. The runner prints a packet.
 2. The agent does the work with its own tools.
-3. The agent runs `submit` once, with its answer on stdin.
+3. The agent runs `submit` once, with its answer on stdin (a long answer: in the file that the packet names, with `--file`).
 4. The runner validates the answer. If it is invalid, the runner prints the same packet with the errors.
 5. If it is valid, the runner stores it, records the duration, follows the edge, executes every following `script`, `call`, and `end` block by itself, and stops at the next agent block.
 6. The runner prints the next packet, as the output of the same command.
