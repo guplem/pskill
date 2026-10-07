@@ -248,18 +248,28 @@ def test_submit_with_a_file_records_a_long_answer_with_quotes_backslashes_and_do
     assert not answer_file.exists()  # a later visit can never send this answer again
 
 
+@pytest.mark.parametrize(
+    ("answer", "error"),
+    [
+        ("status: bogus\nplan: A long plan.\n", "status"),
+        ("$cannot_complete: The page does not exist.\n", "You could not complete the block: The page does not exist."),
+    ],
+    ids=["invalid field", "cannot complete"],
+)
 def test_submit_with_a_file_keeps_a_rejected_answer_for_the_fix(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    answer: str, error: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     make_project(tmp_path, monkeypatch)
     run_id = start_plan(monkeypatch, capsys)
     answer_file = tmp_path / "answer.yaml"
-    answer_file.write_text("status: bogus\nplan: A long plan.\n", encoding="utf-8")
+    answer_file.write_text(answer, encoding="utf-8")
 
     exit_code = run_cli(monkeypatch, "submit", run_id, "--file", "answer.yaml")
 
     assert exit_code == cli.EXIT_OK
-    assert "Your last answer was rejected" in capsys.readouterr().out
+    packet = capsys.readouterr().out
+    assert "Your last answer was rejected" in packet
+    assert error in packet
     assert answer_file.exists()  # the agent fixes one field, not the whole long answer
 
 
