@@ -245,6 +245,7 @@ def test_submit_with_a_file_records_a_long_answer_with_quotes_backslashes_and_do
 
     assert exit_code == cli.EXIT_OK
     assert f"Show the plan:\n\n{plan.strip()}" in capsys.readouterr().out
+    assert not answer_file.exists()  # a later visit can never send this answer again
 
 
 def test_submit_with_a_file_and_a_task_number_records_the_task_answer(

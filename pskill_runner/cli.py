@@ -163,9 +163,10 @@ def run_command(options: argparse.Namespace) -> int:
         return print_text(task_packet(project, options.run_id, options.index))
     if command == "submit":
         answer = read_answer_file(options.file) if options.file else read_answer(sys.stdin)
-        return print_text(
-            submit_answer(project, options.run_id, answer, options.task, harness=harness, session_id=session_id)
-        )
+        packet = submit_answer(project, options.run_id, answer, options.task, harness=harness, session_id=session_id)
+        if options.file:  # the runner has the answer: a later visit of the block can never send it again
+            options.file.unlink()
+        return print_text(packet)
     if command == "pause":
         return print_text(pause_run(project, options.run_id))
     if command == "resume":
