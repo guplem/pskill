@@ -103,9 +103,13 @@ def submit_command(packet: AgentPacket, fields: FieldMap, task_index: int | None
     body_lines = example_lines(fields, indent="")
     if asks_the_human:
         body_lines.append("$answered_by: human")
+    return stdin_command(packet.shell, plain_submit_command(packet, task_index), "\n".join(body_lines))
+
+
+def plain_submit_command(packet: AgentPacket, task_index: int | None) -> str:
+    """`<runner> submit <run>`, with `--task <n>` for one task of a parallel block."""
     task_option = f" --task {task_index}" if task_index is not None else ""
-    command = f"{packet.runner_command} submit {packet.run_id}{task_option}"
-    return stdin_command(packet.shell, command, "\n".join(body_lines))
+    return f"{packet.runner_command} submit {packet.run_id}{task_option}"
 
 
 def answer_file_line(packet: AgentPacket, task_index: int | None) -> str:
@@ -116,8 +120,7 @@ def answer_file_line(packet: AgentPacket, task_index: int | None) -> str:
     """
     task_suffix = f"-task-{task_index}" if task_index is not None else ""
     path = f"{packet.answers_folder}/{packet.block_id}{task_suffix}.yaml"
-    task_option = f" --task {task_index}" if task_index is not None else ""
-    command = f"{packet.runner_command} submit {packet.run_id}{task_option} --file {path}"
+    command = f"{plain_submit_command(packet, task_index)} --file {path}"
     return f"For an answer over about 5 KB, write it to the file `{path}` instead, then run: `{command}`"
 
 
