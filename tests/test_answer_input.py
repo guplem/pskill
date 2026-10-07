@@ -3,10 +3,11 @@
 import io
 import os
 import time
+from pathlib import Path
 
 import pytest
 
-from pskill_runner.answer_input import AnswerInputError, read_answer
+from pskill_runner.answer_input import AnswerInputError, read_answer, read_answer_file
 
 
 def test_read_answer_returns_the_piped_text() -> None:
@@ -45,3 +46,30 @@ def test_a_stream_that_never_ends_fails_after_the_timeout() -> None:
     time.sleep(0.2)
     never_ending_stream.close()
     assert elapsed_s < 5
+
+
+def test_read_answer_file_returns_the_file_text(tmp_path: Path) -> None:
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("reason: it's 5 o'clock, C:\\temp costs $5\n", encoding="utf-8")
+
+    assert read_answer_file(answer_file) == "reason: it's 5 o'clock, C:\\temp costs $5\n"
+
+
+def test_read_answer_file_drops_a_byte_order_mark(tmp_path: Path) -> None:
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("status: finished\n", encoding="utf-8-sig")
+
+    assert read_answer_file(answer_file) == "status: finished\n"
+
+
+def test_read_answer_file_refuses_a_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(AnswerInputError, match="No answer file at"):
+        read_answer_file(tmp_path / "missing.yaml")
+
+
+def test_read_answer_file_refuses_an_empty_file(tmp_path: Path) -> None:
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("  \n", encoding="utf-8")
+
+    with pytest.raises(AnswerInputError, match="is empty"):
+        read_answer_file(answer_file)
