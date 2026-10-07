@@ -95,7 +95,7 @@ def test_a_recorded_answer_keeps_its_file_when_another_program_holds_it(
 ) -> None:
     project = make_project(tmp_path, "small", SMALL_SKILL)
     run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
-    answer_file = tmp_path / "answer.yaml"
+    answer_file = project.runs_folder / run_id / "answers" / "greet.yaml"
     answer_file.write_text("text: Hello\n", encoding="utf-8")
 
     real_unlink = Path.unlink

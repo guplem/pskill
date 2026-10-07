@@ -238,10 +238,11 @@ def test_submit_with_a_file_records_a_long_answer_with_quotes_backslashes_and_do
     run_id = start_plan(monkeypatch, capsys)
     long_line = "It's 5 o'clock in C:\\temp, and it costs $5. "
     plan = long_line * 500  # about 22 KB: the size that breaks a heredoc in Claude Code on Windows
-    answer_file = tmp_path / "answer.yaml"
+    answer_path = f".pskill/runs/{run_id}/answers/create_plan.yaml"  # the path that the packet names
+    answer_file = tmp_path / answer_path
     answer_file.write_text(f"status: finished\nplan: |\n  {plan}\n", encoding="utf-8")
 
-    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", "answer.yaml")  # no stdin: the file only
+    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", answer_path)  # no stdin: the file only
 
     assert exit_code == cli.EXIT_OK
     assert f"Show the plan:\n\n{plan.strip()}" in capsys.readouterr().out
@@ -261,10 +262,11 @@ def test_submit_with_a_file_keeps_a_rejected_answer_for_the_fix(
 ) -> None:
     make_project(tmp_path, monkeypatch)
     run_id = start_plan(monkeypatch, capsys)
-    answer_file = tmp_path / "answer.yaml"
+    answer_path = f".pskill/runs/{run_id}/answers/create_plan.yaml"
+    answer_file = tmp_path / answer_path
     answer_file.write_text(answer, encoding="utf-8")
 
-    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", "answer.yaml")
+    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", answer_path)
 
     assert exit_code == cli.EXIT_OK
     packet = capsys.readouterr().out
@@ -280,13 +282,29 @@ def test_submit_with_a_file_and_a_task_number_records_the_task_answer(
     monkeypatch.chdir(tmp_path)
     run_cli(monkeypatch, "start", "spell")
     run_id = run_id_of(capsys.readouterr().out)
-    (tmp_path / "first.yaml").write_text("letter: t\n", encoding="utf-8")
-    (tmp_path / "last.yaml").write_text("letter: e\n", encoding="utf-8")
+    answers = f".pskill/runs/{run_id}/answers"
+    (tmp_path / answers / "spell-task-0.yaml").write_text("letter: t\n", encoding="utf-8")
+    (tmp_path / answers / "spell-task-1.yaml").write_text("letter: e\n", encoding="utf-8")
 
-    run_cli(monkeypatch, "submit", run_id, "--task", "0", "--file", "first.yaml")
-    run_cli(monkeypatch, "submit", run_id, "--task", "1", "--file", "last.yaml")
+    run_cli(monkeypatch, "submit", run_id, "--task", "0", "--file", f"{answers}/spell-task-0.yaml")
+    run_cli(monkeypatch, "submit", run_id, "--task", "1", "--file", f"{answers}/spell-task-1.yaml")
 
     assert "finished with status succeeded" in capsys.readouterr().out
+    assert not list((tmp_path / answers).iterdir())  # each recorded task answer lost its file
+
+
+def test_submit_with_a_file_outside_the_answers_folder_never_deletes_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+    own_file = tmp_path / "plan.yaml"  # a file of the user's, maybe tracked in git
+    own_file.write_text("status: finished\nplan: Build it.\n", encoding="utf-8")
+
+    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", "plan.yaml")
+
+    assert exit_code == cli.EXIT_OK
+    assert own_file.exists()
 
 
 def test_submit_with_a_missing_file_exits_with_code_1(

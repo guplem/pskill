@@ -199,12 +199,17 @@ def submit_answer(
         text = run.submit(answer_text, task)
         run.save()
     if answer_file is not None and run.answer_recorded:
-        delete_answer_file(answer_file)
+        delete_answer_file(answer_file, folder / "answers")
     return text
 
 
-def delete_answer_file(answer_file: Path) -> None:
-    """Delete a recorded answer's file. A file that another program holds open stays: the answer is safe."""
+def delete_answer_file(answer_file: Path, answers_folder: Path) -> None:
+    """Delete a recorded answer's file, only inside the run's `answers/` folder: never a file of the user's.
+
+    A file that another program holds open stays: the answer is safe in the run.
+    """
+    if not answer_file.resolve().is_relative_to(answers_folder.resolve()):
+        return
     with contextlib.suppress(OSError):
         answer_file.unlink(missing_ok=True)
 
