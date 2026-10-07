@@ -14,7 +14,7 @@ from typing import Any
 import pskill_runner
 from pskill_runner import __version__, claude_code, codex
 from pskill_runner.adapters import GENERIC, AdapterError, detect_harness, detect_hook_harness, detect_session_id
-from pskill_runner.answer_input import AnswerInputError, read_answer
+from pskill_runner.answer_input import AnswerInputError, read_answer, read_answer_file
 from pskill_runner.engine import (
     RunError,
     cancel_run,
@@ -70,9 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
     task.add_argument("run_id")
     task.add_argument("index", type=int, help="The task number.")
 
-    submit = commands.add_parser("submit", help="Send the answer (YAML on stdin) and print the next block.")
+    submit = commands.add_parser("submit", help="Send the answer (YAML on stdin, or in a file) and print the next block.")
     submit.add_argument("run_id")
     submit.add_argument("--task", type=int, help="The task number, for a block with several tasks.")
+    submit.add_argument("--file", type=Path, help="Read the answer from this file instead of stdin (a long answer).")
 
     for name, help_text in (
         ("pause", "Pause a run."),
@@ -161,7 +162,7 @@ def run_command(options: argparse.Namespace) -> int:
     if command == "task":
         return print_text(task_packet(project, options.run_id, options.index))
     if command == "submit":
-        answer = read_answer(sys.stdin)
+        answer = read_answer_file(options.file) if options.file else read_answer(sys.stdin)
         return print_text(
             submit_answer(project, options.run_id, answer, options.task, harness=harness, session_id=session_id)
         )

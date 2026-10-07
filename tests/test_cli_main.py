@@ -231,6 +231,50 @@ def test_submit_without_an_answer_exits_with_code_1(
     assert "pskill: No answer on stdin." in capsys.readouterr().err
 
 
+def test_submit_with_a_file_records_a_long_answer_with_quotes_backslashes_and_dollars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+    long_line = "It's 5 o'clock in C:\\temp, and it costs $5. "
+    plan = long_line * 500  # about 22 KB: the size that breaks a heredoc in Claude Code on Windows
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text(f"status: finished\nplan: |\n  {plan}\n", encoding="utf-8")
+
+    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", "answer.yaml")  # no stdin: the file only
+
+    assert exit_code == cli.EXIT_OK
+    assert f"Show the plan:\n\n{plan.strip()}" in capsys.readouterr().out
+
+
+def test_submit_with_a_file_and_a_task_number_records_the_task_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "spell", SPELL_SKILL)
+    monkeypatch.chdir(tmp_path)
+    run_cli(monkeypatch, "start", "spell")
+    run_id = run_id_of(capsys.readouterr().out)
+    (tmp_path / "first.yaml").write_text("letter: t\n", encoding="utf-8")
+    (tmp_path / "last.yaml").write_text("letter: e\n", encoding="utf-8")
+
+    run_cli(monkeypatch, "submit", run_id, "--task", "0", "--file", "first.yaml")
+    run_cli(monkeypatch, "submit", run_id, "--task", "1", "--file", "last.yaml")
+
+    assert "finished with status succeeded" in capsys.readouterr().out
+
+
+def test_submit_with_a_missing_file_exits_with_code_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+
+    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", "missing.yaml")
+
+    assert exit_code == cli.EXIT_USAGE_ERROR
+    assert "pskill: No answer file at missing.yaml." in capsys.readouterr().err
+
+
 def test_current_from_a_known_harness_moves_the_run_to_that_harness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
