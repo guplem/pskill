@@ -70,6 +70,19 @@ def test_read_answer_file_refuses_a_file_that_is_not_utf8(tmp_path: Path) -> Non
         read_answer_file(answer_file)
 
 
+def test_read_answer_file_refuses_a_file_that_cannot_be_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("status: finished\n", encoding="utf-8")
+
+    def locked_file(self: Path, encoding: str) -> str:
+        raise PermissionError("the file is locked")
+
+    monkeypatch.setattr(Path, "read_text", locked_file)
+
+    with pytest.raises(AnswerInputError, match="the file is locked"):
+        read_answer_file(answer_file)
+
+
 def test_read_answer_file_refuses_a_missing_file(tmp_path: Path) -> None:
     with pytest.raises(AnswerInputError, match="No answer file at"):
         read_answer_file(tmp_path / "missing.yaml")
