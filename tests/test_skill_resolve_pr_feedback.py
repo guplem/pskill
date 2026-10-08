@@ -35,6 +35,9 @@ def collect(
         "gh api repos/{owner}/{repo}/pulls/9/comments": json.dumps([inline]),
         "gh api repos/{owner}/{repo}/pulls/9/reviews": json.dumps([reviews]),
         "gh api repos/{owner}/{repo}/issues/9/comments": json.dumps([conversation]),
+        "gh api user": json.dumps({"login": "me"}),
+        "gh api repos/{owner}/{repo}/pulls/comments/5/reactions": json.dumps([[{"user": {"login": "me"}}]]),
+        "gh api repos/{owner}/{repo}/pulls/comments/7/reactions": json.dumps([[{"user": {"login": "bea"}}]]),
     }
     install_shell(monkeypatch, script, FakeShell(outputs))
     printed: dict[str, Any] = run_main(monkeypatch, capsys, script, {"pr": 9, "findings": [FINDING]})
@@ -70,7 +73,7 @@ def test_collect_items_leaves_out_the_addressed_comments(
     inline = [
         comment(1, "Rename this.", path="a.py", line=4),
         comment(4, reply, path="a.py", line=4, in_reply_to_id=1),
-        comment(5, "Someone works on it.", path="a.py", line=8, reactions={"eyes": 1}),
+        comment(5, "A run of mine works on it.", path="a.py", line=8, reactions={"eyes": 1}),
     ]
     reviews = [comment(2, "")]
     conversation = [comment(6, "CI passed.", user={"login": "github-actions[bot]"})]
@@ -78,6 +81,16 @@ def test_collect_items_leaves_out_the_addressed_comments(
     printed = collect(monkeypatch, capsys, inline, reviews, conversation)
 
     assert printed["queue"] == [{"kind": "finding", **FINDING}]
+
+
+def test_collect_items_keeps_a_comment_with_the_eyes_of_another_person(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    inline = [comment(7, "Rename this.", path="a.py", line=4, reactions={"eyes": 1})]
+
+    printed = collect(monkeypatch, capsys, inline, [], [])
+
+    assert [item.get("id") for item in printed["queue"]] == [None, 7]
 
 
 def test_collect_items_leaves_out_a_copilot_notice_but_keeps_a_copilot_review(
@@ -158,7 +171,23 @@ def test_finish_item_quotes_a_review_comment_in_a_new_conversation_comment(
     assert printed["decision"]["title"] == "Nice."
     assert shell.commands[-1] == (
         "gh api repos/{owner}/{repo}/issues/9/comments "
-        "-f body=> \n> Nice.\n> Thanks.\n\n**Dismissed**. Thanks!\n\n<!-- resolve-pr-feedback-reply: 2 -->"
+        "-f body=> Nice.\n\n**Dismissed**. Thanks!\n\n<!-- resolve-pr-feedback-reply: 2 -->"
+    )
+
+
+def test_finish_item_cuts_a_long_first_line_of_the_quoted_comment(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "finish_item")
+    shell = install_shell(monkeypatch, script, FakeShell())
+    item = {"kind": "comment", "id": 3, "comment_kind": "conversation", "author": "ana", "body": "x" * 250}
+
+    run_main(
+        monkeypatch, capsys, script, {"pr": 9, "item": item, "decision": {"verdict": "dismissed", "reason": "No."}}
+    )
+
+    assert shell.commands[-1].startswith(
+        "gh api repos/{owner}/{repo}/issues/9/comments -f body=> " + "x" * 200 + "\n\n"
     )
 
 

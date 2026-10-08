@@ -11,7 +11,7 @@ Prints {"replied": true|false, "decision": {kind, reviewer, title, verdict, reas
 A reply ends with the marker `<!-- resolve-pr-feedback-reply: <id> -->`, so collect_items.py never lists the comment
 or the reply again. An inline comment gets its reply in its thread, through the thread's first comment: GitHub
 accepts a reply only to that comment. A review or conversation comment gets a new conversation comment that quotes
-it. The block has no retries: a second try would post the reply twice.
+its first line. The block has no retries: a second try would post the reply twice.
 """
 
 import json
@@ -28,8 +28,9 @@ def run(command: list[str]) -> str:
 
 def reply_body(item: dict[str, Any], decision: dict[str, Any], head_sha: str) -> str:
     verdict = f"**Fixed** in {head_sha}." if decision["verdict"] == "fixed" else "**Dismissed**."
-    lines = str(item["body"]).splitlines()
-    quote = "" if item["comment_kind"] == "inline" else "\n".join(f"> {line}" for line in lines) + "\n\n"
+    # Quote only the first line, to name the comment: the reply stays short.
+    first_line = next((line.strip() for line in str(item["body"]).splitlines() if line.strip()), "")
+    quote = "" if item["comment_kind"] == "inline" else f"> {first_line[:200]}\n\n"
     return f"{quote}{verdict} {decision['reason']}\n\n<!-- resolve-pr-feedback-reply: {item['id']} -->"
 
 

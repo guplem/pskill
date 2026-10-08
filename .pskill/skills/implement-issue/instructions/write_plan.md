@@ -24,5 +24,5 @@ The user asked for changes to the last version of the plan: {{ steps.approve_pla
 2. **Decisions:** each open question with its answer.
 3. **Approach:** the files to change, and the existing code that each change copies.
 4. **Steps:** the steps to build, in order. Each step is one red-green cycle.
-5. **Checks:** the fast local checks to run, and the CI checks that prove the rest.
+5. **Checks:** each test to add, the fast local checks to run, and the CI checks that prove the rest.
 6. **Out of scope.**

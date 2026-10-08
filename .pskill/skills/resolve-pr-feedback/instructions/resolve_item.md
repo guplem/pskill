@@ -5,14 +5,18 @@
 {% endif %}
 **The spec:** the pull request description and its linked issue{% if steps.checkout.outputs.plan_file %}, and the plan file `{{ steps.checkout.outputs.plan_file }}`. Read its last version with `git show $(git log -1 --format=%H --diff-filter=AM HEAD -- {{ steps.checkout.outputs.plan_file }}):{{ steps.checkout.outputs.plan_file }}`: the plan file is removed from the branch before the pull request is ready{% endif %}.
 
-1. **Check it** in the code. Read the code around it. A reviewer can be wrong.
+1. **Check it** in the code. Read the code around it. A reviewer can be wrong. Findings on the same file and line come one after another: when this one is the same problem as an earlier item, give it the verdict of that item and name it.
 {% set scope_sha = inputs.scope_sha or steps.checkout.outputs.head_sha %}2. **Fix it** when it is true and belongs in this pull request: it is about the issue or the plan, or about a line that the pull request added, even when the fix is in another place. An older problem belongs here only in one of these cases:
    - The new code runs the broken part, or the problem stops the pull request from reaching its goal. Fix it, wherever the fix goes.
    - It is inside the scope, and its fix stays inside the same function, section, or block. The scope is the code that `git diff origin/{{ steps.checkout.outputs.base }}...{{ scope_sha }}` changes. For each changed line, the scope is the innermost function, method, or constructor around it. For a changed line outside any function, it is the section or block of that line.
    - The new code copies an old pattern from code around it, in a file or class that the pull request changes or that its plan names. Change that old code to the new pattern.
 
    **How to fix:** follow the `AGENTS.md` and `CLAUDE.md` files of the touched code.
-   - Read the context that the fix needs first. Then make the fix that adds the least new code.
+   - Plan the fix before you change code:
+     - Read the context that the fix needs.
+     - Find how the codebase already solves the same problem, and reuse that pattern. Do not make a new one.
+     - List the cases that the fix touches: each value of an input, a save that fails half way, and the other places that share the code. Make the fix right in each case.
+   - Make the fix that adds the least new code.
    - When the code breaks a written rule (a recorded decision, an `AGENTS.md` rule), change the code. Change the rule only when the rule itself is wrong.
    - Write a failing test first when the fix changes behavior.
    - Run the fast local checks that the `AGENTS.md`, `CLAUDE.md`, or README files name for the touched code. Run formatters only on the files that you changed.

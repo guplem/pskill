@@ -7,7 +7,8 @@
 Usage: uv run read_issue.py, with {"request"} on stdin: an issue number, "#123", or an issue link.
 Prints number, title, body, labels, comments, cross_references, hold_reason, existing_branches.
 `hold_reason` says why the work must not start, or is null: the issue is closed, is a parent issue, is assigned to
-someone else, or has a `waiting-for-*` label (it waits for something, such as a decision or a check).
+someone else, or has a `waiting-for-*` label (it waits for something, such as a decision or a check). A link to an
+issue of another repository is held before any read: the same number in this repository is another issue.
 """
 
 import json
@@ -17,6 +18,7 @@ import sys
 from typing import Any
 
 BLOCKING_LABEL_PREFIX = "waiting-for-"
+ISSUE_LINK = re.compile(r"github[.]com/([^/ ]+/[^/ ]+)/issues/[0-9]+")
 
 
 def run(command: list[str]) -> str:
@@ -55,8 +57,27 @@ def hold_reason(issue: dict[str, Any], sub_issues: int, me: str) -> str | None:
     return None
 
 
+def linked_repository(request: str) -> str | None:
+    """The owner/name of an issue link, or None for a plain issue number."""
+    link = ISSUE_LINK.search(request)
+    return link.group(1) if link else None
+
+
+def held_elsewhere(number: str, linked: str, current: str) -> dict[str, Any]:
+    reason = f"is in the repository {linked}, not in {current}: start the skill from a checkout of {linked}"
+    empty: dict[str, Any] = {"title": "", "body": "", "labels": [], "comments": [], "cross_references": []}
+    return {"number": int(number), **empty, "hold_reason": reason, "existing_branches": []}
+
+
 def main() -> None:
-    number = re.findall(r"[0-9]+", str(json.load(sys.stdin)["request"]))[-1]
+    request = str(json.load(sys.stdin)["request"])
+    number = re.findall(r"[0-9]+", request)[-1]
+    linked = linked_repository(request)
+    if linked is not None:
+        current = run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
+        if linked.lower() != current.lower():
+            print(json.dumps(held_elsewhere(number, linked, current)))
+            return
     fields = "number,title,body,labels,comments,state,assignees"
     issue: dict[str, Any] = json.loads(run(["gh", "issue", "view", number, "--json", fields]))
     sub_issues = int(

@@ -52,6 +52,7 @@ def test_read_issue_prints_the_issue_with_its_links_and_branches(
         "gh api repos/{owner}/{repo}/issues/42/timeline": json.dumps(timeline),
         "gh api repos/{owner}/{repo}/issues/42 ": "0",
         "gh api user": "me",
+        "gh repo view": "O/R",
         "git ls-remote": "abc\trefs/heads/42-old-try\n",
     }
     install_shell(monkeypatch, script, FakeShell(outputs))
@@ -68,6 +69,21 @@ def test_read_issue_prints_the_issue_with_its_links_and_branches(
         "hold_reason": None,
         "existing_branches": ["42-old-try"],
     }
+
+
+def test_read_issue_holds_a_link_to_an_issue_of_another_repository(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "read_issue")
+    shell = install_shell(monkeypatch, script, FakeShell({"gh repo view": "o/r"}))
+
+    printed = run_main(monkeypatch, capsys, script, {"request": "https://github.com/other/tool/issues/42"})
+
+    assert printed["number"] == 42
+    assert printed["hold_reason"] == (
+        "is in the repository other/tool, not in o/r: start the skill from a checkout of other/tool"
+    )
+    assert not shell.ran("gh issue view")
 
 
 def test_checkout_default_branch_detaches_at_its_latest_commit(
