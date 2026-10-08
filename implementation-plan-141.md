@@ -32,7 +32,7 @@ Acceptance criteria (issue #141):
 ## Approach
 
 - `.pskill/skills/implement-issue/skill.yaml`: `finish` edge list; new end `capped`; `capped` in the `result` enum; new optional output `limits`.
-- `.pskill/skills/implement-issue/instructions/`: `finish.md` gets a label reason for each limit (the build cap and the required-only rounds have one today; add the review limit, the CI limit, and the item cap). The `capped` report names each limit and its skipped work; it shares the stats lines of `report_done.md` (one file with an `{% if %}` block, so the lines are not copied). The "ended at the cap" clause moves out of the `done` text.
+- `.pskill/skills/implement-issue/instructions/`: `finish.md` gets a label reason for each limit (the build cap and the required-only rounds have one today; add the review limit, the CI limit, and the item cap). The `capped` report names each limit and its skipped work; `done` and `capped` share one report file, `report.md` (renamed from `report_done.md`), with an `{% if %}` block, so the stats lines are not copied. The "ended at the cap" clause moves out of the `done` text.
 - `.pskill/skills/resolve-pr-feedback/skill.yaml`: `claim_item.on_max_visits: capped`; new end `capped`, copied from `resolved`.
 - Copy the report style of implement-issue `stopped` (`{% if %}` per case) and the cap end of fix-ci `failed` (all outputs given).
 - `AUTHORING.md` line 155; `SPEC.md` 13.3 row "`max_visits` with and without `on_max_visits`" (cite `implement-issue.implement_step`, a cap that fires); `CHANGELOG.md`; version in `pskill_runner/__init__.py` and `pyproject.toml`.

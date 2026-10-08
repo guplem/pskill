@@ -1,4 +1,4 @@
-name: after the review loop ends at its cap of 7 rounds, required-only rounds review the last fixes until one finds nothing
+name: after the review loop ends at its limit of 7 rounds, required-only rounds review the last fixes, and the run ends capped with the review limit
 inputs: {request: "#42"}
 scripts:
   read_issue:
@@ -65,6 +65,6 @@ answers:
   finish:
     - {labels: [], reasons: "The last fixes got a required-only review."}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, finish, done]
-  status: succeeded
-  outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9"}
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, finish, capped]
+  status: failed
+  outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9", limits: [review]}
