@@ -17,6 +17,9 @@ outputs:
   pr_number: {type: integer, optional: true, description: "Number of the pull request, when one exists."}
   pr_url: {type: string, optional: true, description: "URL of the pull request, when one exists."}
   limits: {type: array, items: {type: string}, optional: true, description: "The limits that cut work short, for the capped result."}
+# Each limit that cut work short, for the finish edge and the capped end. report.md and finish.md copy it (a test checks
+# the copies).
+x-limits: &limits "{{ (['implement_step'] if not steps.implement_step.done else []) + (['review'] if steps.resolve.outputs.fixed > 0 and (history.resolve | map(attribute='outputs') | selectattr('fixed', 'gt', 0) | list | length) > 6 else []) + (['get_ci_green'] if (history.ready | length) > (history.get_ci_green | length) else []) + (['final_review'] if steps.check_unreviewed.json.unreviewed else []) + (['resolve_items'] if (history.resolve + history.answer_comments + history.final_resolve) | selectattr('status', 'equalto', 'failed') | list else []) }}"
 entry:
   - when: "{{ inputs.request is matches('^ *#?[0-9]+ *$|^ *https://github[.]com/[^ ]+/issues/[0-9]+ *$') }}"
     to: read_issue
@@ -301,8 +304,7 @@ blocks:
       labels: {type: array, items: {type: string}, description: "The labels that you added."}
       reasons: {type: string, description: "Why each label was added, or why none was."}
     next:
-      # Each limit that cut work short. report.md and finish.md copy this list (a test checks the copies).
-      - when: &limits "{{ (['implement_step'] if not steps.implement_step.done else []) + (['review'] if steps.resolve.outputs.fixed > 0 and (history.resolve | map(attribute='outputs') | selectattr('fixed', 'gt', 0) | list | length) > 6 else []) + (['get_ci_green'] if (history.ready | length) > (history.get_ci_green | length) else []) + (['final_review'] if steps.check_unreviewed.json.unreviewed else []) + (['resolve_items'] if (history.resolve + history.answer_comments + history.final_resolve) | selectattr('status', 'equalto', 'failed') | list else []) }}"
+      - when: *limits
         to: capped
       - to: done
 
