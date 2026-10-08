@@ -96,7 +96,10 @@ blocks:
         focus: >-
           Correctness and safety: wrong results, unhandled errors and edge cases, broken contracts between callers and
           the changed code, security holes (unchecked input, injection, leaked secrets, missing permission checks),
-          data loss, and races.
+          data loss, and races. Try each changed form, action, or endpoint the way a user does, in at least these
+          cases: each value of each input or toggle; a save that fails half way, after an earlier write succeeded
+          (what is stored, what the user sees, what a retry does); and the size of each new read (a whole list
+          loaded to show a few items).
       - name: tests
         when: "{{ steps.read_pr.json.code_paths }}"
         focus: >-
