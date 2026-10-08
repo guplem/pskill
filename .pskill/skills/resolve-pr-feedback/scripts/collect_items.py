@@ -10,9 +10,10 @@ has a `kind`:
 - comment: id, comment_kind (inline, review, or conversation), author, path, line, thread_id, body.
 
 A comment is addressed, and so left out, when a reply names its id with the marker
-`<!-- resolve-pr-feedback-reply: <id> -->`, when it carries the eyes reaction (someone is working on it), or when it
-is such a reply itself. The comments of `github-actions[bot]` are CI output, and a Copilot review that says it was
-unable to review is a quota notice: neither is review, so they never count.
+`<!-- resolve-pr-feedback-reply: <id> -->`, when it carries the eyes reaction of the current `gh` user (a run of
+theirs works on it), or when it is such a reply itself. Another person's eyes say nothing about this run. The
+comments of `github-actions[bot]` are CI output, and a Copilot review that says it was unable to review is a quota
+notice: neither is review, so they never count.
 """
 
 import json
@@ -58,10 +59,23 @@ def comment_item(comment: dict[str, Any], comment_kind: str) -> dict[str, Any]:
     }
 
 
-def is_unaddressed(comment: dict[str, Any], answered: set[int]) -> bool:
+def claimed_by(login: str, comment: dict[str, Any], comment_kind: str) -> bool:
+    """True when this user put the eyes reaction on the comment: a run of theirs works on it."""
+    if (comment.get("reactions") or {}).get("eyes", 0) == 0:  # a review body has no reactions
+        return False
+    kind_path = "pulls/comments" if comment_kind == "inline" else "issues/comments"
+    reactions = all_pages(f"repos/{{owner}}/{{repo}}/{kind_path}/{comment['id']}/reactions?content=eyes")
+    return any(reaction["user"]["login"] == login for reaction in reactions)
+
+
+def is_unaddressed(comment: dict[str, Any], comment_kind: str, answered: set[int], login: str) -> bool:
     body = str(comment["body"] or "")
-    has_eyes = (comment.get("reactions") or {}).get("eyes", 0) > 0  # a review body has no reactions
-    return bool(body.strip()) and comment["id"] not in answered and not REPLY_MARKER.search(body) and not has_eyes
+    return (
+        bool(body.strip())
+        and comment["id"] not in answered
+        and not REPLY_MARKER.search(body)
+        and not claimed_by(login, comment, comment_kind)
+    )
 
 
 def unaddressed_comments(pr_number: str) -> list[dict[str, Any]]:
@@ -77,11 +91,12 @@ def unaddressed_comments(pr_number: str) -> list[dict[str, Any]]:
         if comment["user"]["login"] != CI_NOTICE_AUTHOR
     ]
     answered = answered_ids([str(comment["body"] or "") for comment in [*inline, *conversation]])
+    login = str(json.loads(run(["gh", "api", "user"]))["login"])
     return [
         comment_item(comment, comment_kind)
         for comment_kind, comments in (("inline", inline), ("review", reviews), ("conversation", conversation))
         for comment in comments
-        if is_unaddressed(comment, answered)
+        if is_unaddressed(comment, comment_kind, answered, login)
     ]
 
 
