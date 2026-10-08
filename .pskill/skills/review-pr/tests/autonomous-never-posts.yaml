@@ -1,0 +1,27 @@
+name: an autonomous run asks no doubt and posts nothing, it ends with the draft
+mode: autonomous
+inputs: {pr: 700}
+calls:
+  check_head_before_round:
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+  review:
+    - {status: succeeded, outputs: {reviewed_sha: g7, scope_sha: g7, findings: [{reviewer: conventions, file: src/app.py, line: 5, severity: required, title: Breaks recorded decision 4, summary: S, quote: q}]}}
+    - {status: succeeded, outputs: {reviewed_sha: g7, scope_sha: g7, findings: []}}
+scripts:
+  read_earlier:
+    - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  final:
+    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "conventions", "file": "src/app.py", "line": 5, "severity": "required", "title": "Breaks recorded decision 4", "summary": "S", "quote": "q"}], "has_required": true}'}
+answers:
+  triage:
+    - findings: []
+      dropped: []
+      still_open: []
+      doubts:
+        - {finding: {reviewer: conventions, file: src/app.py, line: 5, severity: required, title: Breaks recorded decision 4, summary: S, quote: q}, doubt: Test 3 fails, recommendation: required}
+  draft:
+    - {body: "Changes requested."}
+expect:
+  path: [read_earlier, review, check_head_before_round, review, triage, final, draft, not_posted]
+  status: succeeded
+  outputs: {result: not_posted}

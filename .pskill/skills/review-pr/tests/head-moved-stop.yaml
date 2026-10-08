@@ -1,0 +1,23 @@
+name: a significant push after the confirm lets the user stop, and nothing is posted
+inputs: {pr: 700}
+calls:
+  review:
+    - {status: succeeded, outputs: {reviewed_sha: h1, scope_sha: h1, findings: []}}
+  check_head_before_post:
+    - {status: succeeded, outputs: {action: stop, head_sha: h2}}
+scripts:
+  read_earlier:
+    - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  final:
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": false}'}
+answers:
+  triage:
+    - {findings: [], dropped: [], still_open: [], doubts: []}
+  draft:
+    - {body: "OK to merge."}
+  confirm:
+    - {choice: post, rationale: The user picked it., $answered_by: human}
+expect:
+  path: [read_earlier, review, triage, final, draft, confirm, check_head_before_post, stopped]
+  status: succeeded
+  outputs: {result: not_posted}

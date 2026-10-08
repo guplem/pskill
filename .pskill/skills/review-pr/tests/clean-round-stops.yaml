@@ -1,0 +1,36 @@
+name: a round with no new finding ends the loop, and the review posts after the user confirms it
+inputs: {pr: 700}
+calls:
+  check_head_before_round:
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+  check_head_before_post:
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+  review:
+    - status: succeeded
+      outputs:
+        reviewed_sha: a1
+        scope_sha: a1
+        findings:
+          - {reviewer: correctness, file: src/app.py, line: 3, severity: required, title: Retry has no cap, summary: S, quote: q}
+    - {status: succeeded, outputs: {reviewed_sha: a1, scope_sha: a1, findings: []}}
+scripts:
+  read_earlier:
+    - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  final:
+    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Retry has no cap", "summary": "S", "quote": "q"}], "has_required": true}'}
+  post:
+    - {exit_code: 0, stdout: '{"result": "changes_requested", "review_url": "u1", "inline": 1, "in_body": 0, "fallback": false}'}
+answers:
+  triage:
+    - findings: [{reviewer: correctness, file: src/app.py, line: 3, severity: required, title: Retry has no cap, summary: S, quote: q}]
+      dropped: []
+      still_open: []
+      doubts: []
+  draft:
+    - {body: "Changes requested: one required finding is open."}
+  confirm:
+    - {choice: post, rationale: The user picked it., $answered_by: human}
+expect:
+  path: [read_earlier, review, check_head_before_round, review, triage, final, draft, confirm, check_head_before_post, post, reviewed]
+  status: succeeded
+  outputs: {result: changes_requested, review_url: u1}

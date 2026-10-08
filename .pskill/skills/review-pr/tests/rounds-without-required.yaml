@@ -1,0 +1,29 @@
+name: only rounds with no new required finding count toward rounds_without_required
+inputs: {pr: 700, rounds_without_required: 2, rounds_without_findings: 5}
+calls:
+  check_head_before_round:
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+  check_head_before_post:
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+  review:
+    - {status: succeeded, outputs: {reviewed_sha: d4, scope_sha: d4, findings: [{reviewer: completeness, file: sdk/a.py, line: 1, severity: required, title: A, summary: S, quote: q}]}}
+    - {status: succeeded, outputs: {reviewed_sha: d4, scope_sha: d4, findings: [{reviewer: completeness, file: sdk/a.py, line: 2, severity: suggestion, title: B, summary: S, quote: q}]}}
+    - {status: succeeded, outputs: {reviewed_sha: d4, scope_sha: d4, findings: [{reviewer: completeness, file: sdk/a.py, line: 3, severity: suggestion, title: C, summary: S, quote: q}]}}
+scripts:
+  read_earlier:
+    - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  final:
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": true}'}
+  post:
+    - {exit_code: 0, stdout: '{"result": "changes_requested", "review_url": "u", "inline": 3, "in_body": 0, "fallback": false}'}
+answers:
+  triage:
+    - {findings: [], dropped: [], still_open: [], doubts: []}
+  draft:
+    - {body: "Changes requested."}
+  confirm:
+    - {choice: post, rationale: The user picked it., $answered_by: human}
+expect:
+  path: [read_earlier, review, check_head_before_round, review, check_head_before_round, review, triage, final, draft, confirm, check_head_before_post, post, reviewed]
+  status: succeeded

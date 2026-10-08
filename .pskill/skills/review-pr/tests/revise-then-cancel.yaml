@@ -1,0 +1,25 @@
+name: the user can revise the draft, and cancel the review so that nothing is posted
+inputs: {pr: 700}
+calls:
+  review:
+    - {status: succeeded, outputs: {reviewed_sha: h8, scope_sha: h8, findings: []}}
+scripts:
+  read_earlier:
+    - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  final:
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": false}'}
+answers:
+  triage:
+    - {findings: [], dropped: [], still_open: [], doubts: []}
+  draft:
+    - {body: "OK to merge."}
+    - {body: "OK to merge, nice work."}
+  confirm:
+    - {choice: revise, rationale: The user picked it., $answered_by: human}
+    - {choice: cancel, rationale: The user picked it., $answered_by: human}
+  ask_revision:
+    - {answer: Thank the author., $answered_by: human}
+expect:
+  path: [read_earlier, review, triage, final, draft, confirm, ask_revision, draft, confirm, not_posted]
+  status: succeeded
+  outputs: {result: not_posted}
