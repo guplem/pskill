@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.32.0 (2026-10-08)
+
+A skill test can check the inputs that a call block sends to a child skill.
+
+- **`inputs` on a recorded call:** in a case file, a recorded call can state `inputs`, such as `{status: succeeded, outputs: {...}, inputs: {pr: 9}}`. The case fails when the call block sends another value on that visit, and the FAIL line names the block, the visit, the input, and the expected and actual values. The case checks only the named inputs. A recorded call without `inputs` checks nothing, so existing case files keep working. Before, `pskill test` ignored the inputs of a call, so a broken or deleted input gave no test signal.
+
 ## 0.31.0 (2026-10-07)
 
 A long answer can go in a file, so it reaches the runner on Windows too.
