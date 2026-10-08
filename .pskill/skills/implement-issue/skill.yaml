@@ -194,10 +194,9 @@ blocks:
   review:
     type: call
     description: Run one review round
-    skill: review-pr
+    skill: review-round
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
-      post_findings: false
       # The commit of the first round (the code that the build left) ends the scope of every round.
       scope_sha: "{{ (history.review | default([]) | map(attribute='outputs') | map(attribute='scope_sha') | first) | default('', true) }}"
       dismissed: "{{ history.resolve | default([]) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
@@ -269,10 +268,9 @@ blocks:
   final_review:
     type: call
     description: Review the code that no review saw, for required findings only
-    skill: review-pr
+    skill: review-round
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
-      post_findings: false
       scope_sha: "{{ steps.review.outputs.scope_sha }}"
       since_sha: "{{ steps.final_review.outputs.reviewed_sha if steps.final_review is defined else steps.review.outputs.reviewed_sha }}"
       dismissed: "{{ (history.resolve + (history.final_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"

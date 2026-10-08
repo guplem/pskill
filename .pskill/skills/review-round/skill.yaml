@@ -1,13 +1,14 @@
 schema: pskill/v1
-id: review-pr
+id: review-round
 description: >-
-  Review a GitHub pull request in one round: fresh reviewer subagents read it in parallel, each from one angle
-  (correctness, tests, completeness, conventions, docs), and report the real problems, each backed by a quote from the
-  code. It posts them as pull request comments when the user agrees, unless told not to post. It changes no file and
-  answers no comment: resolve-pr-feedback deals with the findings. Use when the user asks to review a pull request.
+  One review round of a pull request: fresh reviewer subagents read it in parallel, each from one angle (correctness,
+  tests, completeness, conventions, docs), and report the real problems, each backed by a quote from the code. It
+  posts nothing, changes no file, and answers no comment: review-pr turns its findings into a GitHub review, and
+  resolve-pr-feedback fixes them.
 goal: >-
-  Every real problem of the pull request, reported once by the reviewer whose angle covers it, with the exact line as
-  proof.
+  Every new real problem of the pull request, reported once by the reviewer whose angle covers it, with the exact line
+  as proof.
+invocation: internal
 x-finding: &finding
   type: object
   properties:
@@ -19,11 +20,6 @@ x-finding: &finding
     quote: {type: string, description: "The exact line from the code. No quote, no finding."}
 inputs:
   pr: {type: integer, description: "Number of the pull request."}
-  post_findings:
-    type: boolean
-    optional: true
-    default: true
-    description: "false keeps the findings in the outputs only, with no comment on the pull request."
   scope_sha:
     type: string
     optional: true
@@ -41,13 +37,20 @@ inputs:
   dismissed:
     type: array
     optional: true
-    description: "Findings that earlier rounds dismissed, or fixed only in part. Every reviewer gets the full list."
+    description: >-
+      Findings that earlier rounds or reviews raised and that must not come back: dismissed, fixed only in part, or
+      posted and still open. Every reviewer gets the full list.
     items:
       type: object
       properties:
         reviewer: {type: string, description: "The reviewer that reported it."}
         title: {type: string, description: "The title of the finding."}
-        reason: {type: string, description: "Why it was dismissed."}
+        reason: {type: string, description: "What became of it, and why."}
+  reported:
+    type: array
+    optional: true
+    description: "Findings that earlier rounds of the same review reported. The reviewers look for other problems."
+    items: *finding
 outputs:
   findings:
     type: array
@@ -138,35 +141,6 @@ blocks:
       head_sha: "{{ steps.checkout.outputs.head_sha }}"
       base: "{{ steps.checkout.outputs.base }}"
     parse: json
-    next:
-      - when: "{{ inputs.post_findings and steps.collect_findings.json.count > 0 }}"
-        to: confirm_post
-      - to: reviewed
-
-  confirm_post:
-    type: decision
-    description: Ask whether to post the findings
-    decider: human
-    instruction: >-
-      Show the user the findings, one line each:
-      {% for finding in steps.collect_findings.json.findings %}[{{ finding.severity }}] `{{ finding.file }}:{{ finding.line }}`
-      {{ finding.title }}{% if not loop.last %}; {% endif %}{% endfor %}. Ask whether to post them as comments on pull
-      request #{{ inputs.pr }}.
-    choices:
-      post: Post the findings as pull request comments.
-      skip: Do not post. Only report them here.
-    next: {post: post_findings, skip: reviewed}
-
-  post_findings:
-    type: script
-    description: Post the findings as pull request comments
-    run: [uv, run, "{{ skill.dir }}/scripts/post_findings.py"]
-    input:
-      pr: "{{ inputs.pr }}"
-      head_sha: "{{ steps.checkout.outputs.head_sha }}"
-      findings: "{{ steps.collect_findings.json.findings }}"
-    parse: json
-    retries: 0
     next: reviewed
 
   reviewed:
@@ -178,8 +152,8 @@ blocks:
       reviewed_sha: "{{ steps.checkout.outputs.head_sha }}"
       scope_sha: "{{ inputs.scope_sha or steps.checkout.outputs.head_sha }}"
     report: >-
-      Tell the user the findings of the review of pull request #{{ inputs.pr }}, one line each, with its severity, file,
-      and line{% if steps.post_findings is defined %} (they are posted on the pull request){% endif %}:
+      Tell the user the findings of the review round of pull request #{{ inputs.pr }}, one line each, with its
+      severity, file, and line:
       {% for finding in steps.collect_findings.json.findings %}[{{ finding.severity }}] `{{ finding.file }}:{{ finding.line }}`
       {{ finding.title }}{% if not loop.last %}; {% endif %}{% else %}no finding{% endfor %}.{% if steps.collect_findings.json.dropped %}
       Also say that {{ steps.collect_findings.json.dropped | length }} findings were dropped, because their quote is

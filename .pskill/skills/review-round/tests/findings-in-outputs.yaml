@@ -1,4 +1,4 @@
-name: the user agrees, so the findings get posted on the pull request
+name: the findings stay in the outputs, with their reviewer, and nothing is posted
 inputs: {pr: 9}
 calls:
   checkout:
@@ -7,21 +7,18 @@ scripts:
   read_pr:
     - {exit_code: 0, stdout: '{"paths": ["src/app.py"], "code_paths": ["src/app.py"]}'}
   collect_findings:
-    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Wrong operator", "summary": "S.", "quote": "return a - b"}], "count": 1, "dropped": []}'}
-  post_findings:
-    - {exit_code: 0, stdout: '{"inline": 1, "in_conversation": 0}'}
+    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Wrong operator", "summary": "S.", "quote": "return a - b"}], "count": 1, "dropped": [{"reviewer": "tests", "title": "No quote"}]}'}
 answers:
   review:
     - reviewer: correctness
       findings: [{file: src/app.py, line: 3, severity: required, title: Wrong operator, summary: S., quote: return a - b}]
-    - {reviewer: tests, findings: []}
+    - reviewer: tests
+      findings: [{file: src/app.py, line: 9, severity: suggestion, title: No quote, summary: S., quote: not in the file}]
     - {reviewer: completeness, findings: []}
     - {reviewer: conventions, findings: []}
     - {reviewer: docs, findings: []}
-  confirm_post:
-    - {choice: post, rationale: The user agreed., $answered_by: human}
 expect:
-  path: [checkout, read_pr, review, collect_findings, confirm_post, post_findings, reviewed]
+  path: [checkout, read_pr, review, collect_findings, reviewed]
   status: succeeded
   outputs:
     reviewed_sha: abc

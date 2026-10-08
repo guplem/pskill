@@ -21,12 +21,12 @@ x-finding: &finding
     quote: {type: string}
 inputs:
   pr: {type: integer, description: "Number of the pull request."}
-  findings: {type: array, items: *finding, optional: true, description: "Findings to resolve, for example from review-pr."}
+  findings: {type: array, items: *finding, optional: true, description: "Findings to resolve, for example from review-round."}
   scope_sha:
     type: string
     optional: true
     default: ""
-    description: "The commit that ends the scope, as review-pr gives it. Empty means the head commit."
+    description: "The commit that ends the scope, as review-round gives it. Empty means the head commit."
 outputs:
   decisions:
     type: array
