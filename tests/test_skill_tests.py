@@ -179,7 +179,16 @@ def test_a_recorded_input_that_the_call_does_not_send_fails_the_case(tmp_path: P
 
     [result] = run_skill_tests(project, "parent")
 
-    assert result.problem == "the call block 'child' sent the input 'age' = None on visit 1, but the case expects 3"
+    assert result.problem == "the call block 'child' did not send the input 'age' on visit 1, but the case expects 3"
+
+
+def test_a_recorded_null_input_that_the_call_does_not_send_fails_the_case(tmp_path: Path) -> None:
+    case = call_inputs_case("{age: null}")
+    project = project_with(tmp_path, "parent", PARENT_SKILL, {"inputs": case}, child=CHILD_SKILL)
+
+    [result] = run_skill_tests(project, "parent")
+
+    assert result.problem == "the call block 'child' did not send the input 'age' on visit 1, but the case expects None"
 
 
 def test_the_input_check_names_the_visit_of_the_call_block() -> None:

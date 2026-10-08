@@ -76,9 +76,14 @@ class RecordedExecutor:
 def check_call_inputs(block_id: str, visit: int, expected: dict[str, Any], actual: dict[str, Any]) -> None:
     """Fail the case when the call block sent another value for an input that the recorded call names."""
     for name, expected_value in expected.items():
-        if actual.get(name) != expected_value:
+        if name not in actual:
             raise SkillTestError(
-                f"the call block {block_id!r} sent the input {name!r} = {actual.get(name)!r} on visit {visit}, "
+                f"the call block {block_id!r} did not send the input {name!r} on visit {visit}, "
+                f"but the case expects {expected_value!r}"
+            )
+        if actual[name] != expected_value:
+            raise SkillTestError(
+                f"the call block {block_id!r} sent the input {name!r} = {actual[name]!r} on visit {visit}, "
                 f"but the case expects {expected_value!r}"
             )
 
