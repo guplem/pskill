@@ -1,6 +1,8 @@
 """Tests for the implement-issue skill's scripts."""
 
 import json
+import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -231,8 +233,11 @@ def test_mark_ready_a_second_time_only_pushes(
     assert shell.ran("git push --quiet")
 
 
-def unreviewed_shell(commits: str, merge_diff: str = "") -> FakeShell:
-    """A branch whose commits after the review are a code fix (c1), the plan removal (c2), and a merge (c3)."""
+def unreviewed_shell(commits: str, merged_tree: str = "t3") -> FakeShell:
+    """A branch whose commits after the review are a code fix (c1), the plan removal (c2), and a merge (c3).
+
+    The merge is clean when git's own merge of its parents gives its tree, t3.
+    """
     return FakeShell(
         {
             "gh pr view 9 --json headRefName": "42-saving-crash",
@@ -243,7 +248,8 @@ def unreviewed_shell(commits: str, merge_diff: str = "") -> FakeShell:
             "git diff-tree --no-commit-id --name-status -r c1": "M\tsrc/save.py",
             "git diff-tree --no-commit-id --name-status -r c2": "D\timplementation-plan-42.md",
             "git diff-tree --no-commit-id --name-status -r c3": "M\tsrc/other.py",
-            "git show --cc --format= c3": merge_diff,
+            "git merge-tree --write-tree c2 m1": merged_tree,
+            "git rev-parse c3^{tree}": "t3",
         }
     )
 
@@ -266,7 +272,7 @@ def test_check_unreviewed_counts_a_merge_with_a_conflict_resolution(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     script = load_skill_script(SKILL, "check_unreviewed")
-    install_shell(monkeypatch, script, unreviewed_shell("c2\nc3", merge_diff="++resolved line"))
+    install_shell(monkeypatch, script, unreviewed_shell("c2\nc3", merged_tree="t4"))
 
     printed = run_main(
         monkeypatch, capsys, script, {"pr": 9, "last_reviewed": "r1", "plan_file": "implementation-plan-42.md"}
@@ -286,3 +292,35 @@ def test_check_unreviewed_finds_nothing_when_no_commit_follows_the_review(
     )
 
     assert printed == {"unreviewed": False, "commits": [], "head_sha": "c3full"}
+
+
+def test_check_unreviewed_lists_a_conflict_merge_that_takes_the_base_side(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`git show --cc` prints nothing for this merge, yet it drops the change of the pull request."""
+    monkeypatch.chdir(tmp_path)
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(["git", *arguments], capture_output=True, text=True, encoding="utf-8", check=False)
+        return completed.stdout.strip()
+
+    def commit_file(text: str) -> str:
+        Path("feature.txt").write_text(text, encoding="utf-8")
+        git("add", "feature.txt")
+        git("commit", "--quiet", "-m", "change")
+        return git("rev-parse", "HEAD")
+
+    git("init", "--quiet", "--initial-branch=main")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+    commit_file("base\n")
+    git("checkout", "--quiet", "-b", "feature")
+    reviewed = commit_file("feature\n")
+    git("checkout", "--quiet", "main")
+    commit_file("base version\n")
+    git("checkout", "--quiet", "feature")
+    git("merge", "--quiet", "main")
+    head = commit_file("base version\n")
+    script = load_skill_script(SKILL, "check_unreviewed")
+
+    assert script.unreviewed_commits(reviewed, head, "implementation-plan-42.md") == [head[:10]]

@@ -25,9 +25,16 @@ def only_deletes(commit: str, path: str) -> bool:
 
 
 def is_clean_merge(commit: str) -> bool:
-    is_merge = len(run(["git", "rev-list", "--parents", "-n", "1", commit]).split()) > 2
-    # `--cc` shows only the lines that differ from every parent: a conflict resolution, or code added in the merge.
-    return is_merge and run(["git", "show", "--cc", "--format=", commit]) == ""
+    parents = run(["git", "rev-list", "--parents", "-n", "1", commit]).split()[1:]
+    if len(parents) < 2:
+        return False
+    # Clean only when git's own merge of the parents gives the same tree. `git show --cc` is not enough: a conflict
+    # resolved by taking the base side prints nothing there, yet it drops the change of the pull request.
+    try:
+        merged_tree = run(["git", "merge-tree", "--write-tree", *parents]).split()[0]
+    except subprocess.CalledProcessError:  # git merge-tree exits 1 when the parents conflict
+        return False
+    return merged_tree == run(["git", "rev-parse", f"{commit}^{{tree}}"])
 
 
 def unreviewed_commits(last_reviewed: str, head: str, plan_file: str) -> list[str]:
