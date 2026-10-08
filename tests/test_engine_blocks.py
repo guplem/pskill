@@ -197,6 +197,45 @@ def test_a_json_script_over_the_output_limit_keeps_its_whole_value(tmp_path: Pat
 
     assert "finished with status succeeded" in packet
     assert read_run_info(project, run_id)["outputs"] == {"count": 2000}
+    step = read_run_state(project, run_id)["frames"][0]["steps"]["list_files"]
+    assert len(step["stdout"]) > engine.OUTPUT_LIMIT_CHARACTERS
+    script_ran = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
+    assert script_ran[0]["stdout"] == step["stdout"]
+
+
+CUT_NOTE = "\n[pskill cut this output: it keeps the first 65536 of 100001 characters.]\n"
+
+
+def test_a_text_output_over_the_limit_is_cut_with_a_note(tmp_path: Path) -> None:
+    long_text = (
+        SCRIPT_SKILL.replace(
+            "\"import json; print(json.dumps({'files': ['a.md', 'b.md']}))\"",
+            "\"import sys; print('x' * 100_000); print('y' * 100_000, file=sys.stderr)\"",
+        )
+        .replace("    parse: json\n", "")
+        .replace("steps.list_files.json.files | length", "steps.list_files.exit_code")
+    )
+    project = make_project(tmp_path, {"scripted": long_text})
+
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+
+    step = read_run_state(project, run_id)["frames"][0]["steps"]["list_files"]
+    assert step["stdout"] == "x" * 65536 + CUT_NOTE
+    assert step["stderr"] == "y" * 65536 + CUT_NOTE
+    script_ran = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
+    assert (script_ran[0]["stdout"], script_ran[0]["stderr"]) == (step["stdout"], step["stderr"])
+
+
+def test_a_failed_script_over_the_limit_shows_the_real_end_of_its_stderr(tmp_path: Path) -> None:
+    failing = SCRIPT_SKILL.replace(
+        "\"import json; print(json.dumps({'files': ['a.md', 'b.md']}))\"",
+        "\"import sys; print('y' * 100_000 + ' the real end', file=sys.stderr); sys.exit(3)\"",
+    )
+    project = make_project(tmp_path, {"scripted": failing})
+
+    _, packet = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+
+    assert "the real end" in packet
 
 
 STDIN_SKILL = """\
