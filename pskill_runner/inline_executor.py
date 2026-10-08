@@ -12,8 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-OUTPUT_LIMIT_CHARACTERS = 64 * 1024
-
 
 @dataclass(frozen=True)
 class ScriptResult:
@@ -82,8 +80,8 @@ class RealExecutor:
             return ScriptResult(None, "", "", elapsed_ms(started), problem=f"it did not finish within {timeout_s} s")
         return ScriptResult(
             exit_code=completed.returncode,
-            stdout=completed.stdout[:OUTPUT_LIMIT_CHARACTERS],
-            stderr=completed.stderr[:OUTPUT_LIMIT_CHARACTERS],
+            stdout=completed.stdout,
+            stderr=completed.stderr,
             duration_ms=elapsed_ms(started),
         )
 

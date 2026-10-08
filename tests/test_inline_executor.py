@@ -38,3 +38,11 @@ def test_a_command_without_stdin_text_reads_an_empty_stdin(tmp_path: Path) -> No
     result = RealExecutor().run_script("check", argv, tmp_path, dict(os.environ), timeout_s=30)
 
     assert result.stdout == "''\n"
+
+
+def test_a_long_output_is_kept_whole(tmp_path: Path) -> None:
+    argv = [sys.executable, "-c", "import sys; print('x' * 100_000); print('y' * 100_000, file=sys.stderr)"]
+
+    result = RealExecutor().run_script("check", argv, tmp_path, dict(os.environ), timeout_s=30)
+
+    assert (len(result.stdout), len(result.stderr)) == (100_001, 100_001)

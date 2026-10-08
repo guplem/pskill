@@ -75,6 +75,7 @@ from pskill_runner.yaml_loading import load_answer_yaml
 ENTRY_SCRIPT_NAME = "pskill.py"
 INLINE_BLOCK_LIMIT = 1000
 TASK_NAME_LIMIT = 60  # characters: a task name is a short label
+OUTPUT_LIMIT_CHARACTERS = 64 * 1024  # characters: the most of a text output or a stderr that a run keeps
 
 
 class RunError(Exception):
@@ -434,6 +435,20 @@ def script_problem(result: ScriptResult, parse: str) -> str | None:
     return None
 
 
+def stored_result(result: ScriptResult, parse: str) -> ScriptResult:
+    """The result that the run keeps: a JSON stdout whole (it is the block's value), any other output limited."""
+    stdout = result.stdout if parse == "json" else limited_output(result.stdout)
+    return replace(result, stdout=stdout, stderr=limited_output(result.stderr))
+
+
+def limited_output(text: str) -> str:
+    """The text, or its first OUTPUT_LIMIT_CHARACTERS and a note that says it was cut, so no step takes it as whole."""
+    if len(text) <= OUTPUT_LIMIT_CHARACTERS:
+        return text
+    note = f"[pskill cut this output: it keeps the first {OUTPUT_LIMIT_CHARACTERS} of {len(text)} characters.]"
+    return f"{text[:OUTPUT_LIMIT_CHARACTERS]}\n{note}\n"
+
+
 def load_json_text(text: str) -> Any:
     return json.loads(text)
 
@@ -756,7 +771,9 @@ class Run:
         problem = None
         timeout_s = block.timeout_s if block.timeout_s is not None else self.project.config.script_timeout_s
         for _ in range(self.retries_of(block) + 1):
-            result = self.executor.run_script(block.id, argv, self.project.root, env, timeout_s, stdin_text)
+            whole_result = self.executor.run_script(block.id, argv, self.project.root, env, timeout_s, stdin_text)
+            problem = script_problem(whole_result, block.parse)
+            result = stored_result(whole_result, block.parse)
             self.log(
                 "script_ran",
                 block=block.id,
@@ -768,7 +785,6 @@ class Run:
                 duration_ms=result.duration_ms,
                 problem=result.problem,
             )
-            problem = script_problem(result, block.parse)
             if problem is None:
                 value: dict[str, Any] = {
                     "exit_code": result.exit_code,
