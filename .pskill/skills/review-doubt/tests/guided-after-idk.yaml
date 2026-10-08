@@ -1,0 +1,22 @@
+name: an "I don't know" answer starts guided questions, and their answers settle the finding
+inputs:
+  pr: 700
+  finding: {reviewer: testing-gaps, file: sdk/a.py, line: 9, severity: suggestion, title: No test for the empty list, summary: S, quote: q}
+  doubt: The empty list may never reach this function.
+  recommendation: suggestion
+answers:
+  ask:
+    - {choice: idk, rationale: The user picked it., $answered_by: human}
+  next_question:
+    - {status: question, question: "Q1 of ~2. Should every public function have a test for an empty input?"}
+    - {status: question, question: "Q2 of ~2. Can a user send an empty list to this function today?"}
+    - {status: done}
+  ask_question:
+    - {choice: 'no', rationale: The user picked it., $answered_by: human}
+    - {choice: 'no', rationale: The user picked it., $answered_by: human}
+  decide:
+    - {verdict: drop, reason: "No user reaches the empty case, and the user wants no test for every edge."}
+expect:
+  path: [ask, next_question, ask_question, next_question, ask_question, next_question, decide, settled]
+  status: succeeded
+  outputs: {verdict: drop, reason: "No user reaches the empty case, and the user wants no test for every edge."}
