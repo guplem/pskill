@@ -17,12 +17,14 @@ answers:
   confirm_draft:
     - {choice: create, rationale: Looks good., $answered_by: human}
 scripts:
+  resolve_repo:
+    - {exit_code: 0, stdout: '{"nameWithOwner": "guplem/pskill"}'}
   search_duplicates:
     - {exit_code: 0, stdout: "[]"}
   create:
     - {exit_code: 0, stdout: "https://github.com/guplem/pskill/issues/31\n"}
 expect:
-  path: [assess_clarity, ask_clarify, assess_clarity, ask_clarify, assess_clarity, extract_terms, search_duplicates,
-         judge_duplicates, draft_issue, confirm_draft, create, created]
+  path: [resolve_repo, assess_clarity, ask_clarify, assess_clarity, ask_clarify, assess_clarity, extract_terms,
+         search_duplicates, judge_duplicates, draft_issue, confirm_draft, create, created]
   status: succeeded
   outputs: {issue_number: 31}

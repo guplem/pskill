@@ -14,11 +14,26 @@ inputs:
     description: >-
       false when a person asked for the issue and will act on it at once, so it needs no waiting-for-human-check label
       even in autonomous mode.
+  repo:
+    type: string
+    optional: true
+    default: ""
+    description: >-
+      The repository that gets the issue, as owner/name. Empty means the repository of the current folder. Set it when
+      the issue belongs to another repository than the one you work in.
 outputs:
   issue_number: {type: integer, optional: true, description: "The new or reused issue. None when cancelled."}
-entry: assess_clarity
+entry: resolve_repo
 
 blocks:
+  resolve_repo:
+    type: script
+    description: Find the repository that gets the issue
+    # An empty repo argument makes gh use the repository of the current folder.
+    run: [gh, repo, view, "{{ inputs.repo }}", --json, nameWithOwner]
+    parse: json
+    next: assess_clarity
+
   assess_clarity:
     type: task
     description: Check that the request is clear
@@ -52,8 +67,8 @@ blocks:
   search_duplicates:
     type: script
     description: Search the existing issues
-    run: [gh, issue, list, --state, all, --limit, "30", --search, "{{ steps.extract_terms.terms | join(' ') }}",
-          --json, "number,title,state,url"]
+    run: [gh, issue, list, --repo, "{{ steps.resolve_repo.json.nameWithOwner }}", --state, all, --limit, "30",
+          --search, "{{ steps.extract_terms.terms | join(' ') }}", --json, "number,title,state,url"]
     parse: json
     next: judge_duplicates
 
@@ -94,7 +109,9 @@ blocks:
     type: decision
     description: Ask the user to approve the draft
     decider: human
-    instruction: "Show the user the draft: the title \"{{ steps.draft_issue.title }}\", then the full body. Ask whether to create it."
+    instruction: >-
+      Show the user the draft for the repository {{ steps.resolve_repo.json.nameWithOwner }}: the title
+      "{{ steps.draft_issue.title }}", then the full body. Ask whether to create it.
     choices:
       create: Create the issue as drafted.
       edit: Change the draft first.
@@ -106,7 +123,8 @@ blocks:
   create:
     type: script
     description: Create the issue on GitHub
-    run: [gh, issue, create, --title, "{{ steps.draft_issue.title }}", --body-file, "-"]
+    run: [gh, issue, create, --repo, "{{ steps.resolve_repo.json.nameWithOwner }}",
+          --title, "{{ steps.draft_issue.title }}", --body-file, "-"]
     input: "{{ steps.draft_issue.body }}"
     next:
       - when: "{{ run.mode == 'autonomous' and inputs.mark_unchecked }}"
@@ -116,14 +134,17 @@ blocks:
   ensure_label:
     type: script
     description: Make sure the label for unchecked issues exists
-    run: [gh, label, create, waiting-for-human-check, --color, D93F0B, --force,
+    run: [gh, label, create, waiting-for-human-check, --repo, "{{ steps.resolve_repo.json.nameWithOwner }}",
+          --color, D93F0B, --force,
           --description, "No human has verified this yet: direct AI output"]
     next: label_issue
 
   label_issue:
     type: script
     description: Label the issue, because no human approved its draft
-    run: [gh, issue, edit, "{{ steps.create.stdout.strip().split('/')[-1] }}", --add-label, waiting-for-human-check]
+    run: [gh, issue, edit, "{{ steps.create.stdout.strip().split('/')[-1] }}",
+          --repo, "{{ steps.resolve_repo.json.nameWithOwner }}",
+          --add-label, waiting-for-human-check]
     next: created
 
   created:

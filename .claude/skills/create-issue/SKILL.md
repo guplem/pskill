@@ -11,6 +11,7 @@ Goal: File one clear GitHub issue that the user approved, or reuse an existing i
 1. Map the request to the inputs:
    - `description` (string): What the issue is about, in the user's words.
    - `mark_unchecked` (boolean, optional, default: true): false when a person asked for the issue and will act on it at once, so it needs no waiting-for-human-check label even in autonomous mode.
+   - `repo` (string, optional, default: ""): The repository that gets the issue, as owner/name. Empty means the repository of the current folder. Set it when the issue belongs to another repository than the one you work in.
    Ask the user for each required input that the request does not give, before you run `start`.
 2. Run: `uv run .pskill/pskill.py start create-issue --harness auto --input description=<value>`
    Add `--input <name>=<value>` for each optional input that the request gives.

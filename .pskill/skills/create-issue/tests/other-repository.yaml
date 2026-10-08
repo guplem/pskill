@@ -1,0 +1,25 @@
+name: an issue for another repository is searched for and created there
+inputs: {description: The OpenAPI export drops enum values., repo: Galtea-AI/monorepo}
+answers:
+  assess_clarity:
+    - {clear: true}
+  extract_terms:
+    - {terms: [openapi, prisma]}
+  judge_duplicates:
+    - {choice: none, rationale: Nothing similar.}
+  draft_issue:
+    - {title: The OpenAPI export drops enum values, body: The draft.}
+  confirm_draft:
+    - {choice: create, rationale: Create it., $answered_by: human}
+scripts:
+  resolve_repo:
+    - {exit_code: 0, stdout: '{"nameWithOwner": "Galtea-AI/monorepo"}'}
+  search_duplicates:
+    - {exit_code: 0, stdout: "[]"}
+  create:
+    - {exit_code: 0, stdout: "https://github.com/Galtea-AI/monorepo/issues/5877\n"}
+expect:
+  path: [resolve_repo, assess_clarity, extract_terms, search_duplicates, judge_duplicates, draft_issue, confirm_draft,
+         create, created]
+  status: succeeded
+  outputs: {issue_number: 5877}
