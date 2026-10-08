@@ -30,7 +30,7 @@ inputs:
 outputs:
   decisions:
     type: array
-    description: "One decision per item, in order: its kind, its reviewer (empty for a comment), title, verdict, and reason."
+    description: "One decision per resolved item, in order (the capped end leaves out the items past 100): its kind, its reviewer (empty for a comment), title, verdict, and reason."
     items:
       type: object
       properties:
@@ -116,5 +116,5 @@ blocks:
     report: >-
       Tell the user that the skill stopped at its cap of 100 items: {{ steps.collect_items.json.count - 100 }} of the
       {{ steps.collect_items.json.count }} items of pull request #{{ inputs.pr }} have no verdict and no reply yet. Run
-      the skill again to resolve them. The 100 resolved items: {{ history.finish_item | map(attribute='json')
+      the skill again for them, with the findings that are left. The 100 resolved items: {{ history.finish_item | map(attribute='json')
       | map(attribute='decision') | selectattr('verdict', 'equalto', 'fixed') | list | length }} fixed, the rest dismissed.
