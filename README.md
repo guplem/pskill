@@ -89,7 +89,7 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 | `review-pr` | One review of a pull request by five reviewers at once: correctness, tests, completeness, conventions, and docs. Each finding quotes the code line. It posts them when you agree. |
 | `resolve-pr-feedback` | Answers each open comment of a pull request, one at a time: it fixes the code or explains why not, and replies. |
 | `fix-ci` | Waits for the CI checks of a pull request, and fixes the failures that the pull request causes. |
-| `create-issue` | Writes a clear issue with you, after a check for duplicates. |
+| `create-issue` | Writes a clear issue with you, after a check for duplicates. It files the issue in the current repository, or in the one that you name. |
 
 ### Recommended setup for the example skills
 

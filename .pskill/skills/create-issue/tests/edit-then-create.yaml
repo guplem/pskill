@@ -14,6 +14,8 @@ answers:
     - {choice: edit, rationale: The title is vague., feedback: Name the viewer in the title., $answered_by: human}
     - {choice: create, rationale: Good now., $answered_by: human}
 scripts:
+  resolve_repo:
+    - {exit_code: 0, stdout: '{"nameWithOwner": "guplem/pskill"}'}
   search_duplicates:
     - {exit_code: 0, stdout: "[]"}
   create:

@@ -10,9 +10,11 @@ answers:
   confirm_duplicate:
     - {choice: use_existing, rationale: Same request., $answered_by: human}
 scripts:
+  resolve_repo:
+    - {exit_code: 0, stdout: '{"nameWithOwner": "guplem/pskill"}'}
   search_duplicates:
     - {exit_code: 0, stdout: '[{"number": 12, "title": "Dark theme for the viewer", "state": "OPEN", "url": "https://github.com/guplem/pskill/issues/12"}]'}
 expect:
-  path: [assess_clarity, extract_terms, search_duplicates, judge_duplicates, confirm_duplicate, existing]
+  path: [resolve_repo, assess_clarity, extract_terms, search_duplicates, judge_duplicates, confirm_duplicate, existing]
   status: succeeded
   outputs: {issue_number: 12}
