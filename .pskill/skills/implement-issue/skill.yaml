@@ -177,7 +177,7 @@ blocks:
       red: {type: string, description: "The failure that the new test showed, or why this cycle has no test."}
       commit: {type: string, description: "The short hash of the pushed commit."}
       plan_update: {type: string, optional: true, description: "What changed in the plan and why, when it changed."}
-      done: {type: boolean, description: "true when every plan step is built."}
+      done: {type: boolean, description: "true when every plan step and every planned test is built."}
     next:
       - when: "{{ steps.implement_step.done }}"
         to: write_description
