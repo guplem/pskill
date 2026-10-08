@@ -137,6 +137,62 @@ def test_calls_use_the_recorded_child_results(tmp_path: Path) -> None:
     assert run_skill_tests(project, "parent")[0].passed
 
 
+def call_inputs_case(recorded_inputs: str) -> str:
+    """A case for PARENT_SKILL whose recorded call states the inputs that it expects."""
+    case = f"""\
+    name: recorded call inputs
+    answers:
+      greet:
+        - {{text: Hi.}}
+    calls:
+      child:
+        - {{status: succeeded, outputs: {{greeting: Hello.}}, inputs: {recorded_inputs}}}
+    expect:
+      status: succeeded
+    """
+    return textwrap.dedent(case)
+
+
+def test_a_call_that_sends_the_recorded_inputs_passes(tmp_path: Path) -> None:
+    case = call_inputs_case("{name: Ada}")
+    project = project_with(tmp_path, "parent", PARENT_SKILL, {"inputs": case}, child=CHILD_SKILL)
+
+    [result] = run_skill_tests(project, "parent")
+
+    assert result.passed, result.problem
+
+
+def test_a_call_that_sends_other_inputs_fails_with_the_difference(tmp_path: Path) -> None:
+    case = call_inputs_case("{name: Bob}")
+    project = project_with(tmp_path, "parent", PARENT_SKILL, {"inputs": case}, child=CHILD_SKILL)
+
+    [result] = run_skill_tests(project, "parent")
+
+    assert (
+        result.problem == "the call block 'child' sent the input 'name' = 'Ada' on visit 1, but the case expects 'Bob'"
+    )
+
+
+def test_a_recorded_input_that_the_call_does_not_send_fails_the_case(tmp_path: Path) -> None:
+    case = call_inputs_case("{age: 3}")
+    project = project_with(tmp_path, "parent", PARENT_SKILL, {"inputs": case}, child=CHILD_SKILL)
+
+    [result] = run_skill_tests(project, "parent")
+
+    assert result.problem == "the call block 'child' sent the input 'age' = None on visit 1, but the case expects 3"
+
+
+def test_the_input_check_names_the_visit_of_the_call_block() -> None:
+    recorded = {"status": "succeeded", "inputs": {"round": 2}}
+    executor = skill_tests.RecordedExecutor({}, {"review": [recorded, recorded]})
+    executor.call_result("review", "review-pr", {"round": 2})
+
+    with pytest.raises(skill_tests.SkillTestError) as error:
+        executor.call_result("review", "review-pr", {"round": 1})
+
+    assert "on visit 2" in str(error.value)
+
+
 def test_parallel_answers_are_listed_task_by_task(tmp_path: Path) -> None:
     case = """\
     name: two documents
