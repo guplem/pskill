@@ -165,6 +165,7 @@ blocks:
 
 ## Writing instructions
 
+- Keep a skill self-contained. Its instructions, briefs, scripts, and agent roles live under `.pskill/`. Never send the agent to another skill, or to a subagent role outside `.pskill/agents/`. Copy what the skill needs into its own folder instead. The project's own rules (`AGENTS.md`, recorded decisions) are fine to read.
 - An instruction is one block's job only. Do not describe the return format: the packet adds it from `output`.
 - Do not write rules about order ("never skip", "before X do Y"): the graph enforces order.
 - One or two lines can stay inline in `skill.yaml`. Put anything longer in `instructions/<block>.md`.
