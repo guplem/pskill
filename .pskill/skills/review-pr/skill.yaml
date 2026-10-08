@@ -1,186 +1,249 @@
 schema: pskill/v1
 id: review-pr
 description: >-
-  Review a GitHub pull request in one round: fresh reviewer subagents read it in parallel, each from one angle
-  (correctness, tests, completeness, conventions, docs), and report the real problems, each backed by a quote from the
-  code. It posts them as pull request comments when the user agrees, unless told not to post. It changes no file and
-  answers no comment: resolve-pr-feedback deals with the findings. Use when the user asks to review a pull request.
+  Review a pull request in depth, and post one GitHub review on it after the user confirms it. Fresh review subagents
+  review it round after round. Each round skips the findings of the earlier rounds and of earlier runs of this skill on
+  the pull request, to find new problems. Then check and merge the findings, and ask the user about each finding in
+  real doubt. The review requests changes when a new or an earlier required finding is still open, and approves
+  otherwise; on the user's own pull request it only comments. A finding goes inline when the diff shows its line, and
+  into the review body otherwise. When the head moves in a significant way, ask the user to restart, continue, or stop.
+  It changes no file. An autonomous run posts nothing: it ends with the draft. Starting it authorizes the review that
+  the user confirms.
 goal: >-
-  Every real problem of the pull request, reported once by the reviewer whose angle covers it, with the exact line as
-  proof.
+  One review on the pull request that the user confirmed: it holds every new real problem once, with the right
+  severity, and its verdict follows from the findings.
+invocation: manual
 x-finding: &finding
   type: object
   properties:
+    reviewer: {type: string}
     file: {type: string}
     line: {type: integer}
     severity: {type: string, enum: [required, suggestion]}
-    title: {type: string, description: "One line."}
-    summary: {type: string, description: "The problem, why it matters, and the fix."}
-    quote: {type: string, description: "The exact line from the code. No quote, no finding."}
+    title: {type: string}
+    summary: {type: string}
+    quote: {type: string}
 inputs:
   pr: {type: integer, description: "Number of the pull request."}
-  post_findings:
-    type: boolean
+  max_rounds:
+    type: integer
     optional: true
-    default: true
-    description: "false keeps the findings in the outputs only, with no comment on the pull request."
-  scope_sha:
-    type: string
+    default: 7
+    description: "The most review rounds to run. The runner stops at 20 rounds in any case."
+  rounds_without_required:
+    type: integer
     optional: true
-    default: ""
-    description: >-
-      The commit that ends the scope of the review: the scope is the code that the diff from the base to this commit
-      changes. Later commits are review fixes: only their own lines are reviewed. Empty means the head commit.
-  since_sha:
-    type: string
+    default: 4
+    description: "Stop when this many rounds in total found no new required finding."
+  rounds_without_findings:
+    type: integer
     optional: true
-    default: ""
-    description: >-
-      Review only the lines that the commits after this commit add or change, and report only required findings.
-      Empty reviews the whole pull request.
-  dismissed:
-    type: array
-    optional: true
-    description: "Findings that earlier rounds dismissed, or fixed only in part. Every reviewer gets the full list."
-    items:
-      type: object
-      properties:
-        reviewer: {type: string, description: "The reviewer that reported it."}
-        title: {type: string, description: "The title of the finding."}
-        reason: {type: string, description: "Why it was dismissed."}
+    default: 1
+    description: "Stop when this many rounds in total found no new finding."
 outputs:
-  findings:
-    type: array
-    description: "Every finding of the round with a real quote, each with the reviewer that reported it."
-    items:
-      type: object
-      properties:
-        reviewer: {type: string}
-        file: {type: string}
-        line: {type: integer}
-        severity: {type: string, enum: [required, suggestion]}
-        title: {type: string}
-        summary: {type: string}
-        quote: {type: string}
-  reviewed_sha: {type: string, description: "The head commit that the round reviewed."}
-  scope_sha: {type: string, description: "The commit that ended the scope of the round."}
-entry: checkout
+  result:
+    type: string
+    enum: [changes_requested, approved, commented, not_posted, restarted]
+    description: >-
+      The event of the posted review: commented on the user's own pull request, which GitHub does not let the user
+      approve or block. not_posted when the user did not confirm the review or stopped it, or in an autonomous run.
+      restarted when the user restarted the review after the head moved: a new run does the review.
+  review_url: {type: string, optional: true, description: "URL of the posted review, when one was posted."}
+entry: read_earlier
 
 blocks:
-  checkout:
-    type: call
-    description: Check out the head commit of the pull request
-    skill: checkout-pr
-    inputs: {pr: "{{ inputs.pr }}"}
-    next: read_pr
-
-  read_pr:
+  read_earlier:
     type: script
-    description: List the changed files
-    run: [uv, run, "{{ skill.dir }}/scripts/read_pr.py"]
-    input:
-      base: "{{ steps.checkout.outputs.base }}"
-      head_sha: "{{ steps.checkout.outputs.head_sha }}"
-      plan_file: "{{ steps.checkout.outputs.plan_file }}"
+    description: List the findings that earlier reviews already posted on the pull request
+    run: [uv, run, "{{ skill.dir }}/scripts/read_earlier_reviews.py"]
+    input: {pr: "{{ inputs.pr }}"}
     parse: json
     next: review
 
   review:
-    type: parallel
-    description: Review with fresh subagents, one per angle
-    # One row per reviewer. A row with a `when` runs only when its condition is true. Add a row for an angle that
-    # your project needs, for example a database reviewer with a condition on the changed paths.
-    for_each:
-      - name: correctness
-        when: "{{ steps.read_pr.json.code_paths }}"
-        focus: >-
-          Correctness and safety: wrong results, unhandled errors and edge cases, broken contracts between callers and
-          the changed code, security holes (unchecked input, injection, leaked secrets, missing permission checks),
-          data loss, and races. Try each changed form, action, or endpoint the way a user does, in at least these
-          cases: each value of each input or toggle; a save that fails half way, after an earlier write succeeded
-          (what is stored, what the user sees, what a retry does); and the size of each new read (a whole list
-          loaded to show a few items).
-      - name: tests
-        when: "{{ steps.read_pr.json.code_paths }}"
-        focus: >-
-          Tests: each changed behavior has a test that fails without the change, the tests check outcomes and not
-          implementation details, they follow the test conventions of the repository, and no test was weakened or
-          deleted to pass.
-      - name: completeness
-        focus: >-
-          Completeness: the change does everything that the issue, the plan, and the pull request description promise,
-          and nothing that they rule out. The description matches the code. Every caller, setting, migration, and
-          generated file that the change needs is updated.
-      - name: conventions
-        focus: >-
-          Conventions and architecture: the change follows the rules of the AGENTS.md, CLAUDE.md, and CONTRIBUTING.md
-          files, the recorded decisions (ADRs), and the patterns of the closest existing code. A broken written rule
-          is a finding. So is new code that duplicates code that already exists.
-      - name: docs
-        focus: >-
-          Docs: every doc that the change makes false or leaves out: README files, the docs folder, AGENTS.md and
-          CLAUDE.md, the comments and docstrings near the change, API descriptions, and the changelog when the
-          repository keeps one.
-    agent: reviewer
-    task_name: "{{ item.name }}"
-    instruction: instructions/review.md
-    output:
-      reviewer: {type: string, description: "Your reviewer name, from the first line of your task."}
-      findings: {type: array, items: *finding, description: "Your findings, for your angle only."}
-    next: collect_findings
-
-  collect_findings:
-    type: script
-    description: Join the findings, and keep the ones with a real quote
-    run: [uv, run, "{{ skill.dir }}/scripts/collect_findings.py"]
-    input:
-      results: "{{ steps.review.results }}"
-      head_sha: "{{ steps.checkout.outputs.head_sha }}"
-      base: "{{ steps.checkout.outputs.base }}"
-    parse: json
+    type: call
+    description: Run one review round, with the findings of the earlier rounds and reviews to skip
+    skill: review-round
+    inputs:
+      pr: "{{ inputs.pr }}"
+      # The commit of the first round ends the scope of every round.
+      scope_sha: "{{ (history.review | map(attribute='outputs') | map(attribute='scope_sha') | first) | default('', true) }}"
+      reported: "{{ history.review | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) }}"
+      dismissed: "{{ steps.read_earlier.json.dismissed }}"
+    # The arrow below already stops at max_rounds. This cap is only a safety net.
+    max_visits: 20
+    on_max_visits: triage
     next:
-      - when: "{{ inputs.post_findings and steps.collect_findings.json.count > 0 }}"
-        to: confirm_post
-      - to: reviewed
+      - when: >-
+          {{ (history.review | length) < inputs.max_rounds
+          and (history.review | map(attribute='outputs') | map(attribute='findings')
+          | map('selectattr', 'severity', 'equalto', 'required') | map('list') | reject | list | length) < inputs.rounds_without_required
+          and (history.review | map(attribute='outputs') | map(attribute='findings') | reject | list | length) < inputs.rounds_without_findings }}
+        to: check_head_before_round
+      - to: triage
 
-  confirm_post:
-    type: decision
-    description: Ask whether to post the findings
-    decider: human
-    instruction: >-
-      Show the user the findings, one line each:
-      {% for finding in steps.collect_findings.json.findings %}[{{ finding.severity }}] `{{ finding.file }}:{{ finding.line }}`
-      {{ finding.title }}{% if not loop.last %}; {% endif %}{% endfor %}. Ask whether to post them as comments on pull
-      request #{{ inputs.pr }}.
-    choices:
-      post: Post the findings as pull request comments.
-      skip: Do not post. Only report them here.
-    next: {post: post_findings, skip: reviewed}
+  check_head_before_round:
+    type: call
+    description: Check if the head moved before the next round
+    skill: review-head-check
+    inputs: {pr: "{{ inputs.pr }}", reviewed_sha: "{{ steps.review.outputs.reviewed_sha }}"}
+    max_visits: 20
+    on_max_visits: triage
+    next:
+      - when: "{{ steps.check_head_before_round.outputs.action == 'restart' }}"
+        to: restarted
+      - when: "{{ steps.check_head_before_round.outputs.action == 'stop' }}"
+        to: stopped
+      - to: review
 
-  post_findings:
+  triage:
+    type: task
+    description: Check and merge the findings of every round, and mark the ones in real doubt
+    instruction: instructions/triage.md
+    output:
+      findings: {type: array, items: *finding, description: "The findings to post, each with its final severity."}
+      dropped:
+        type: array
+        description: "The findings that are not real, that repeat another one, or that an earlier review already posted."
+        items:
+          type: object
+          properties:
+            title: {type: string}
+            reason: {type: string}
+      still_open:
+        type: array
+        description: "The findings of earlier reviews that the head does not fix. The review does not post them again."
+        items:
+          type: object
+          properties:
+            title: {type: string}
+            severity: {type: string, enum: [required, suggestion]}
+            location: {type: string}
+      doubts:
+        type: array
+        description: "The findings in real doubt, for the user to settle. Empty when nothing is in real doubt."
+        items:
+          type: object
+          properties:
+            finding: *finding
+            doubt: {type: string, description: "The test of the decision gate that failed, and why the answer is not clear."}
+            recommendation: {type: string, enum: [required, suggestion, drop]}
+    next:
+      # An autonomous run asks no human: the recommendation of the triage settles each doubt.
+      - when: "{{ steps.triage.doubts and run.mode != 'autonomous' }}"
+        to: settle_doubt
+      - to: final
+
+  settle_doubt:
+    type: call
+    description: Ask the user about the next finding in doubt
+    skill: review-doubt
+    inputs:
+      pr: "{{ inputs.pr }}"
+      finding: "{{ steps.triage.doubts[history.settle_doubt | length].finding }}"
+      doubt: "{{ steps.triage.doubts[history.settle_doubt | length].doubt }}"
+      recommendation: "{{ steps.triage.doubts[history.settle_doubt | length].recommendation }}"
+    max_visits: 50
+    on_max_visits: final
+    next:
+      - when: "{{ (history.settle_doubt | length) < (steps.triage.doubts | length) }}"
+        to: settle_doubt
+      - to: final
+
+  final:
     type: script
-    description: Post the findings as pull request comments
-    run: [uv, run, "{{ skill.dir }}/scripts/post_findings.py"]
+    description: Build the final list of findings from the triage and the settled doubts
+    run: [uv, run, "{{ skill.dir }}/scripts/final_findings.py"]
+    input:
+      findings: "{{ steps.triage.findings }}"
+      still_open: "{{ steps.triage.still_open }}"
+      doubts: "{{ steps.triage.doubts }}"
+      verdicts: "{{ history.settle_doubt | map(attribute='outputs') | list }}"
+    parse: json
+    next: draft
+
+  draft:
+    type: task
+    description: Write the body of the review
+    instruction: instructions/draft.md
+    output:
+      body: {type: string, description: "The body of the review, as Markdown."}
+    next:
+      # Posting is never automatic: an autonomous run has no human to confirm the review.
+      - when: "{{ run.mode == 'autonomous' }}"
+        to: not_posted
+      - to: confirm
+
+  confirm:
+    type: decision
+    description: Show the review and ask the user to confirm it
+    decider: human
+    instruction: instructions/confirm.md
+    max_visits: 5
+    on_max_visits: not_posted
+    choices:
+      post: Post the review as it is.
+      revise: Change the review first.
+      cancel: Do not post the review.
+    next: {post: check_head_before_post, revise: ask_revision, cancel: not_posted}
+
+  ask_revision:
+    type: decision
+    description: Ask what to change in the review
+    decider: human
+    instruction: Ask the user what to change in the review.
+    next: draft
+
+  check_head_before_post:
+    type: call
+    description: Check if the head moved before the post
+    skill: review-head-check
+    inputs: {pr: "{{ inputs.pr }}", reviewed_sha: "{{ steps.review.outputs.reviewed_sha }}"}
+    next:
+      - when: "{{ steps.check_head_before_post.outputs.action == 'restart' }}"
+        to: restarted
+      - when: "{{ steps.check_head_before_post.outputs.action == 'stop' }}"
+        to: stopped
+      - to: post
+
+  post:
+    type: script
+    description: Post the review, inline where the diff shows the line of a finding
+    run: [uv, run, "{{ skill.dir }}/scripts/post_review.py"]
     input:
       pr: "{{ inputs.pr }}"
-      head_sha: "{{ steps.checkout.outputs.head_sha }}"
-      findings: "{{ steps.collect_findings.json.findings }}"
+      commit: "{{ steps.review.outputs.reviewed_sha }}"
+      body: "{{ steps.draft.body }}"
+      findings: "{{ steps.final.json.findings }}"
+      has_required: "{{ steps.final.json.has_required }}"
     parse: json
     retries: 0
     next: reviewed
 
   reviewed:
     type: end
-    description: The round is reviewed
+    description: The review is on the pull request
     status: succeeded
-    outputs:
-      findings: "{{ steps.collect_findings.json.findings }}"
-      reviewed_sha: "{{ steps.checkout.outputs.head_sha }}"
-      scope_sha: "{{ inputs.scope_sha or steps.checkout.outputs.head_sha }}"
-    report: >-
-      Tell the user the findings of the review of pull request #{{ inputs.pr }}, one line each, with its severity, file,
-      and line{% if steps.post_findings is defined %} (they are posted on the pull request){% endif %}:
-      {% for finding in steps.collect_findings.json.findings %}[{{ finding.severity }}] `{{ finding.file }}:{{ finding.line }}`
-      {{ finding.title }}{% if not loop.last %}; {% endif %}{% else %}no finding{% endfor %}.{% if steps.collect_findings.json.dropped %}
-      Also say that {{ steps.collect_findings.json.dropped | length }} findings were dropped, because their quote is
-      not in the code.{% endif %}
+    outputs: {result: "{{ steps.post.json.result }}", review_url: "{{ steps.post.json.review_url }}"}
+    report: instructions/report_reviewed.md
+
+  not_posted:
+    type: end
+    description: The review is drafted, but not posted
+    status: succeeded
+    outputs: {result: not_posted}
+    report: instructions/report_not_posted.md
+
+  stopped:
+    type: end
+    description: The user stopped the review after the head moved
+    status: succeeded
+    outputs: {result: not_posted}
+    report: instructions/report_stopped.md
+
+  restarted:
+    type: end
+    description: The user restarted the review after the head moved
+    status: succeeded
+    outputs: {result: restarted}
+    report: instructions/report_restarted.md

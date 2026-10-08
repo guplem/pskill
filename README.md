@@ -86,7 +86,7 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 | Skill | What it does |
 |---|---|
 | `implement-issue` | From an issue (or a described change) to a pull request that is ready to merge. It understands the issue, asks you only what the code cannot answer, and shows you a plan. Then it opens a draft pull request and builds the change test-first. Fresh reviewers check it, round after round, until a round finds nothing to fix. Then it marks the pull request ready, gets CI green, answers late comments, and gives each later fix a short review for real problems only. It never merges. |
-| `review-pr` | One review of a pull request by five reviewers at once: correctness, tests, completeness, conventions, and docs. Each finding quotes the code line. It posts them when you agree. |
+| `review-pr` | A deep review of a pull request. Five reviewers (correctness, tests, completeness, conventions, and docs) read it round after round, each round looking for new problems. A triage checks every finding against the code, merges repeats, and asks you only about the findings in real doubt. Then it shows you one GitHub review, with a verdict, and posts it when you confirm. A second run skips what earlier reviews posted. |
 | `resolve-pr-feedback` | Answers each open comment of a pull request, one at a time: it fixes the code or explains why not, and replies. |
 | `fix-ci` | Waits for the CI checks of a pull request, and fixes the failures that the pull request causes. |
 | `create-issue` | Writes a clear issue with you, after a check for duplicates. It files the issue in the current repository, or in the one that you name. |
@@ -115,7 +115,7 @@ The skills read your project's rules from its own files, so they work in most re
 - **Protect the default branch:** require the CI checks and one approval. The skills never merge, so a person always does.
 - **Record your decisions** in `adr/` or `docs/adr/` (one file per decision). The skills check a change against them.
 - **Work in a clean checkout.** The skills stop when the checkout has uncommitted changes, because those changes are yours. They expect the GitHub remote to be named `origin`.
-- **Add your own reviewers.** Each reviewer is one row in the `review` block of `review-pr`, with an optional `when`, for example a database reviewer when the change touches your migrations.
+- **Add your own reviewers.** Each reviewer is one row in the `review` block of `review-round` (the one round that `review-pr` and `implement-issue` run), with an optional `when`, for example a database reviewer when the change touches your migrations.
 
 This repository follows the same setup, with two differences: it requires no approval (it has one maintainer), and its decisions live in `SPEC.md` section 3, which `AGENTS.md` names.
 

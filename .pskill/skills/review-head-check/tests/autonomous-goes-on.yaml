@@ -1,0 +1,13 @@
+name: an autonomous run goes on after a significant new commit, and asks no question
+mode: autonomous
+inputs: {pr: 700, reviewed_sha: a1}
+scripts:
+  read_head:
+    - {exit_code: 0, stdout: '{"head_sha": "b2", "commits": ["b2"]}'}
+answers:
+  judge:
+    - {significant: true, summary: The retry loop is rewritten.}
+expect:
+  path: [read_head, judge, go_on]
+  status: succeeded
+  outputs: {action: continue, head_sha: b2}

@@ -1,0 +1,14 @@
+name: a significant push between rounds lets the user restart, and the run ends without a post
+inputs: {pr: 700}
+calls:
+  review:
+    - {status: succeeded, outputs: {reviewed_sha: h1, scope_sha: h1, findings: [{reviewer: completeness, file: sdk/a.py, line: 1, severity: required, title: A, summary: S, quote: q}]}}
+  check_head_before_round:
+    - {status: succeeded, outputs: {action: restart, head_sha: h2}}
+scripts:
+  read_earlier:
+    - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+expect:
+  path: [read_earlier, review, check_head_before_round, restarted]
+  status: succeeded
+  outputs: {result: restarted}

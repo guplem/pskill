@@ -1,0 +1,83 @@
+schema: pskill/v1
+id: review-doubt
+description: >-
+  Settle one review finding that is in real doubt: post it as required, post it as a suggestion, or drop it. Ask the
+  user. When the user does not know, ask simple guided questions, one at a time, and deduce what the user wants from
+  the answers. It posts nothing and changes no file.
+goal: One verdict for the finding that matches what the user wants, with its reason.
+invocation: internal
+inputs:
+  pr: {type: integer, description: "Number of the pull request."}
+  finding:
+    type: object
+    description: "The finding in doubt, as the triage of review-pr gives it."
+    properties:
+      reviewer: {type: string}
+      file: {type: string}
+      line: {type: integer}
+      severity: {type: string, enum: [required, suggestion]}
+      title: {type: string}
+      summary: {type: string}
+      quote: {type: string}
+  doubt: {type: string, description: "Why it is not clear that the finding is real, or what its severity is."}
+  recommendation: {type: string, enum: [required, suggestion, drop], description: "What the reviewing agent recommends."}
+outputs:
+  verdict: {type: string, enum: [required, suggestion, drop], description: "Post the finding as required, post it as a suggestion, or drop it."}
+  reason: {type: string, description: "Why, in the user's words when the user gave a reason."}
+entry: ask
+
+blocks:
+  ask:
+    type: decision
+    description: Ask the user what to do with the finding
+    decider: human
+    instruction: instructions/ask.md
+    choices:
+      required: Post it as a required finding. It requests changes, except on the user's own pull request, where the review only comments.
+      suggestion: Post it as a suggestion. It does not block the merge.
+      drop: Do not post it.
+      idk: The user does not know. Ask simple questions to find out what the user wants.
+    next: {required: settled, suggestion: settled, drop: settled, idk: next_question}
+
+  next_question:
+    type: task
+    description: Pick the next guided question, or stop when the answers are enough
+    instruction: instructions/next_question.md
+    max_visits: 6
+    on_max_visits: decide
+    output:
+      status: {type: string, enum: [question, done], description: "question when one more answer can change the verdict; done when it cannot."}
+      question: {type: string, optional: true, description: "For question: the full question, with all the context that the user needs to answer it."}
+    next:
+      - when: "{{ steps.next_question.status == 'question' }}"
+        to: ask_question
+      - to: decide
+
+  ask_question:
+    type: decision
+    description: Ask one guided question
+    decider: human
+    instruction: "Ask the user, with the answers yes, no, maybe and I don't know: {{ steps.next_question.question }} Put any words that the user adds in `rationale`, as they wrote them."
+    choices:
+      'yes': The user agrees.
+      'no': The user disagrees.
+      maybe: The user agrees only in part or with a condition.
+      idk: The user does not know and follows your recommendation.
+    next: {'yes': next_question, 'no': next_question, maybe: next_question, idk: next_question}
+
+  decide:
+    type: task
+    description: Deduce the verdict from the answers
+    instruction: instructions/decide.md
+    output:
+      verdict: {type: string, enum: [required, suggestion, drop], description: "The verdict that the answers point to."}
+      reason: {type: string, description: "One sentence: which answers lead to the verdict."}
+    next: settled
+
+  settled:
+    type: end
+    description: The finding has a verdict
+    status: succeeded
+    outputs:
+      verdict: "{{ steps.decide.verdict if steps.decide is defined else steps.ask.choice }}"
+      reason: "{{ steps.decide.reason if steps.decide is defined else steps.ask.rationale }}"

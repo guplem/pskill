@@ -1,0 +1,29 @@
+name: an agent that keeps asking stops after 6 guided questions, and the answers so far settle the finding
+inputs:
+  pr: 700
+  finding: {reviewer: testing-gaps, file: sdk/a.py, line: 9, severity: suggestion, title: No test for the empty list, summary: S, quote: q}
+  doubt: The empty list may never reach this function.
+  recommendation: suggestion
+answers:
+  ask:
+    - {choice: idk, rationale: The user picked it., $answered_by: human}
+  next_question:
+    - {status: question, question: "Q1. A?"}
+    - {status: question, question: "Q2. B?"}
+    - {status: question, question: "Q3. C?"}
+    - {status: question, question: "Q4. D?"}
+    - {status: question, question: "Q5. E?"}
+    - {status: question, question: "Q6. F?"}
+  ask_question:
+    - {choice: 'yes', rationale: The user picked it., $answered_by: human}
+    - {choice: 'no', rationale: The user picked it., $answered_by: human}
+    - {choice: maybe, rationale: The user picked it., $answered_by: human}
+    - {choice: idk, rationale: The user picked it., $answered_by: human}
+    - {choice: 'yes', rationale: The user picked it., $answered_by: human}
+    - {choice: 'no', rationale: The user picked it., $answered_by: human}
+  decide:
+    - {verdict: suggestion, reason: The answers are split.}
+expect:
+  path: [ask, next_question, ask_question, next_question, ask_question, next_question, ask_question, next_question, ask_question, next_question, ask_question, next_question, ask_question, decide, settled]
+  status: succeeded
+  outputs: {verdict: suggestion, reason: The answers are split.}

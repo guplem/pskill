@@ -132,7 +132,8 @@ def test_an_update_keeps_an_alias_as_an_alias(tmp_path: Path) -> None:
     ("skill_id", "middle_block"),
     [
         ("implement-issue", "understand"),
-        ("review-pr", "read_pr"),
+        ("review-pr", "triage"),
+        ("review-round", "read_pr"),
         ("resolve-pr-feedback", "claim_item"),
         ("fix-ci", "fix_ci"),
         ("create-issue", "judge_duplicates"),
@@ -160,18 +161,20 @@ def test_editing_an_example_skill_block_changes_nothing_else(tmp_path: Path, ski
 
 
 def test_changing_the_last_key_of_a_middle_block_keeps_the_blank_line_after_it(tmp_path: Path) -> None:
-    shutil.copytree(REPOSITORY / ".pskill" / "skills" / "review-pr", tmp_path / ".pskill" / "skills" / "review-pr")
+    shutil.copytree(
+        REPOSITORY / ".pskill" / "skills" / "review-round", tmp_path / ".pskill" / "skills" / "review-round"
+    )
     project = find_project(tmp_path)
-    before = skill_text(project, "review-pr")
+    before = skill_text(project, "review-round")
 
     update_block(
         project,
-        "review-pr",
+        "review-round",
         "read_pr",
         {"next": [{"when": "{{ inputs.pr > 0 }}", "to": "review"}, {"to": "reviewed"}]},
     )
 
-    assert changed_lines(before, skill_text(project, "review-pr")) == [
+    assert changed_lines(before, skill_text(project, "review-round")) == [
         "-    next: review",
         "+    next:",
         '+      - when: "{{ inputs.pr > 0 }}"',

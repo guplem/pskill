@@ -1,0 +1,25 @@
+name: on the own pull request of the user the review only comments, and the report names the dropped findings
+inputs: {pr: 700}
+calls:
+  check_head_before_post:
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+  review:
+    - {status: succeeded, outputs: {reviewed_sha: e5, scope_sha: e5, findings: []}}
+scripts:
+  read_earlier:
+    - {exit_code: 0, stdout: '{"dismissed": [{"reviewer": "earlier review", "title": "Old", "severity": "suggestion", "reason": "Posted."}], "count": 1}'}
+  final:
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": false}'}
+  post:
+    - {exit_code: 0, stdout: '{"result": "commented", "review_url": "u5", "inline": 0, "in_body": 1, "fallback": true}'}
+answers:
+  triage:
+    - {findings: [], dropped: [{title: Old, reason: An earlier review already posted it.}], still_open: [], doubts: []}
+  draft:
+    - {body: "OK to merge."}
+  confirm:
+    - {choice: post, rationale: The user picked it., $answered_by: human}
+expect:
+  path: [read_earlier, review, triage, final, draft, confirm, check_head_before_post, post, reviewed]
+  status: succeeded
+  outputs: {result: commented, review_url: u5}

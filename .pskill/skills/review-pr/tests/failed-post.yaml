@@ -1,0 +1,24 @@
+name: a post that GitHub refuses is not retried, and the run never reaches its end
+inputs: {pr: 700}
+calls:
+  check_head_before_post:
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+  review:
+    - {status: succeeded, outputs: {reviewed_sha: f6, scope_sha: f6, findings: []}}
+scripts:
+  read_earlier:
+    - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  final:
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": false}'}
+  post:
+    - {exit_code: 1, stdout: '', stderr: 'The review could not be posted: HTTP 403'}
+answers:
+  triage:
+    - {findings: [], dropped: [], still_open: [], doubts: []}
+  draft:
+    - {body: "OK to merge."}
+  confirm:
+    - {choice: post, rationale: The user picked it., $answered_by: human}
+expect:
+  path: [read_earlier, review, triage, final, draft, confirm, check_head_before_post, post]
+  status: paused

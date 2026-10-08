@@ -1,0 +1,14 @@
+name: a significant new commit asks the user, and the answer restart starts the review again
+inputs: {pr: 700, reviewed_sha: a1}
+scripts:
+  read_head:
+    - {exit_code: 0, stdout: '{"head_sha": "b2", "commits": ["b2"]}'}
+answers:
+  judge:
+    - {significant: true, summary: The retry loop is rewritten.}
+  ask:
+    - {choice: restart, rationale: The user picked it., $answered_by: human}
+expect:
+  path: [read_head, judge, ask, restart]
+  status: succeeded
+  outputs: {action: restart, head_sha: b2}

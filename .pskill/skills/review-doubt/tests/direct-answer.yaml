@@ -1,0 +1,13 @@
+name: the user picks a severity at once, so no guided question runs
+inputs:
+  pr: 700
+  finding: {reviewer: quality-safety, file: api/src/app.ts, line: 3, severity: required, title: Retry has no cap, summary: S, quote: q}
+  doubt: The caller may already cap the retries.
+  recommendation: suggestion
+answers:
+  ask:
+    - {choice: suggestion, rationale: The caller caps it today., $answered_by: human}
+expect:
+  path: [ask, settled]
+  status: succeeded
+  outputs: {verdict: suggestion, reason: The caller caps it today.}
