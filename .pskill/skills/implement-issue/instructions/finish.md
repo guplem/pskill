@@ -1,11 +1,14 @@
-Decide whether a human must check pull request #{{ steps.open_draft_pr.json.pr_number }} before the merge. When yes, add the label: `gh pr edit {{ steps.open_draft_pr.json.pr_number }} --add-label waiting-for-human-review`. When the repository has no such label yet, create it first: `gh label create waiting-for-human-review --color FBCA04 --description "A human must review this before the merge"`.
+{% set limits = (['implement_step'] if not steps.implement_step.done else []) + (['review'] if steps.resolve.outputs.fixed > 0 and (history.resolve | map(attribute='outputs') | selectattr('fixed', 'gt', 0) | list | length) > 6 else []) + (['get_ci_green'] if (history.ready | length) > (history.get_ci_green | length) else []) + (['final_review'] if steps.check_unreviewed.json.unreviewed else []) + (['resolve_items'] if (history.resolve + history.answer_comments + history.final_resolve) | selectattr('status', 'equalto', 'failed') | list else []) %}Decide whether a human must check pull request #{{ steps.open_draft_pr.json.pr_number }} before the merge. When yes, add the label: `gh pr edit {{ steps.open_draft_pr.json.pr_number }} --add-label waiting-for-human-review`. When the repository has no such label yet, create it first: `gh label create waiting-for-human-review --color FBCA04 --description "A human must review this before the merge"`.
 
 Add **`waiting-for-human-review`** when any of these is true:
 - The change is risky or large: a data migration, authentication or permissions, payments, a public contract (an API, an SDK, a command, a file format), a recorded decision or a new architecture pattern, a CI workflow, or many areas at once.
 - The change alters what a user sees. A human must check it visually.
-{% if not steps.implement_step.done %}- The build ended at its cap of 40 red-green cycles, so plan steps can be missing.
+{% if 'implement_step' in limits %}- The build used its 40 red-green cycles, so plan steps can be missing.
+{% endif %}{% if 'review' in limits %}- The review loop used its 7 rounds, so the last fixes got only required-only review rounds.
+{% endif %}{% if 'get_ci_green' in limits %}- CI used its 7 rounds, so CI did not run on the head commit.
 {% endif %}{% if steps.get_ci_green.outputs.state == 'failed' %}- CI is not green: {{ steps.get_ci_green.outputs.failed_checks | join('; ') }}.
-{% endif %}{% if steps.check_unreviewed.json.unreviewed %}- The 5 required-only review rounds are used, and the last fixes had no review.
+{% endif %}{% if 'final_review' in limits %}- The required-only review rounds used their 5 rounds, so the last fixes have no review.
+{% endif %}{% if 'resolve_items' in limits %}- A feedback round used its 100 items, so some findings or comments have no verdict.
 {% endif %}{% set dismissed = (history.resolve + (history.final_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list %}{% if dismissed %}- The resolution dismissed these findings: {% for finding in dismissed %}"{{ finding.title }}" ({{ finding.reason }}){% if not loop.last %}; {% endif %}{% endfor %}. Add the label when a human must confirm one of them.
 {% endif %}- CI did not run on the head commit: `gh pr view {{ steps.open_draft_pr.json.pr_number }} --json headRefOid` is not `{{ steps.get_ci_green.outputs.head_sha }}`.
 
