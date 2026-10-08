@@ -186,6 +186,19 @@ def test_a_script_with_bad_json_fails(tmp_path: Path) -> None:
     assert "not valid JSON" in packet
 
 
+def test_a_json_script_over_the_output_limit_keeps_its_whole_value(tmp_path: Path) -> None:
+    big_list = "\"import json; print(json.dumps({'files': ['x' * 40] * 2000}))\""
+    project = make_project(
+        tmp_path,
+        {"scripted": SCRIPT_SKILL.replace("\"import json; print(json.dumps({'files': ['a.md', 'b.md']}))\"", big_list)},
+    )
+
+    run_id, packet = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+
+    assert "finished with status succeeded" in packet
+    assert read_run_info(project, run_id)["outputs"] == {"count": 2000}
+
+
 STDIN_SKILL = """\
 schema: pskill/v1
 id: piped
