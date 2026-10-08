@@ -60,6 +60,7 @@ def test_the_plan_file_is_the_newest_one_that_the_branch_added(
         ({}, {"outputs": {"git status --porcelain": "M a.py\n?? b.py"}}, "uncommitted changes: a.py, b.py"),
         ({}, {"failing": ["git fetch"]}, "cannot be fetched"),
         ({}, {"failing": ["git merge-base"]}, "has commits that GitHub does not have"),
+        ({}, {"failing": ["git cat-file -e origin/42-fix-save:.pskill/pskill.py"]}, "has no .pskill/ yet"),
     ],
 )
 def test_a_problem_pauses_the_run_and_changes_nothing(

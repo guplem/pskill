@@ -14,7 +14,8 @@ pauses until the user fixes the cause and resumes) when:
 - the pull request is closed, is merged, or comes from a fork (this checkout cannot push to it),
 - the checkout has uncommitted changes (they belong to the user),
 - a branch cannot be fetched,
-- the local branch has commits that GitHub does not have.
+- the local branch has commits that GitHub does not have,
+- the branch has no `.pskill/` yet: switching to it would delete the runner of this run.
 """
 
 import json
@@ -57,6 +58,8 @@ def blocking_reason(pr_number: str, pr: dict[str, Any]) -> str | None:
         return f"The branches {branch} and {base} cannot be fetched from GitHub."
     if has_local_branch(branch) and not succeeds(["git", "merge-base", "--is-ancestor", branch, f"origin/{branch}"]):
         return f"The local branch {branch} has commits that GitHub does not have: push or remove them."
+    if not succeeds(["git", "cat-file", "-e", f"origin/{branch}:.pskill/pskill.py"]):
+        return f"The branch {branch} has no .pskill/ yet: merge {base} into it first."
     return None
 
 
