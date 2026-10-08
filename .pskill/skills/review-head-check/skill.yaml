@@ -1,0 +1,71 @@
+schema: pskill/v1
+id: review-head-check
+description: >-
+  Check if the head of a pull request moved since the review saw it. When the new commits change the pull request in a
+  significant way, ask the user to restart the review, continue it, or stop it. A clean merge of the base branch, or a
+  small change, continues without a question. It posts nothing and changes no file.
+goal: The review goes on, starts again, or stops, as the user wants when the new commits matter.
+invocation: internal
+inputs:
+  pr: {type: integer, description: "Number of the pull request."}
+  reviewed_sha: {type: string, description: "The commit that the review saw last."}
+outputs:
+  action: {type: string, enum: [continue, restart, stop], description: "What the review does next."}
+  head_sha: {type: string, description: "The head commit of the pull request on GitHub."}
+entry: read_head
+
+blocks:
+  read_head:
+    type: script
+    description: List the commits after the reviewed commit that change the pull request
+    run: [uv, run, "{{ skill.dir }}/scripts/check_head.py"]
+    input: {pr: "{{ inputs.pr }}", reviewed_sha: "{{ inputs.reviewed_sha }}"}
+    parse: json
+    next:
+      - when: "{{ steps.read_head.json.commits }}"
+        to: judge
+      - to: go_on
+
+  judge:
+    type: task
+    description: Judge if the new commits change the pull request in a significant way
+    instruction: instructions/judge.md
+    output:
+      significant: {type: boolean, description: "true when the new commits change what the review says, or what it must check."}
+      summary: {type: string, description: "One or two sentences: what the new commits change."}
+    next:
+      # An autonomous run asks no human, and it never posts the review: it goes on.
+      - when: "{{ steps.judge.significant and run.mode != 'autonomous' }}"
+        to: ask
+      - to: go_on
+
+  ask:
+    type: decision
+    description: Ask the user what to do about the new commits
+    decider: human
+    instruction: >-
+      Tell the user that the head of pull request #{{ inputs.pr }} moved from `{{ inputs.reviewed_sha }}` to
+      `{{ steps.read_head.json.head_sha }}`, with significant changes: {{ steps.judge.summary }} Ask what to do.
+    choices:
+      restart: Start the review again on the new head. The earlier rounds are lost.
+      continue: Go on with the review. A next round reviews the new head; a post goes on the reviewed commit.
+      stop: Stop the review. Post nothing.
+    next: {restart: restart, continue: go_on, stop: stop}
+
+  go_on:
+    type: end
+    description: The review goes on
+    status: succeeded
+    outputs: {action: continue, head_sha: "{{ steps.read_head.json.head_sha }}"}
+
+  restart:
+    type: end
+    description: The review starts again
+    status: succeeded
+    outputs: {action: restart, head_sha: "{{ steps.read_head.json.head_sha }}"}
+
+  stop:
+    type: end
+    description: The review stops
+    status: succeeded
+    outputs: {action: stop, head_sha: "{{ steps.read_head.json.head_sha }}"}

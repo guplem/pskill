@@ -1,0 +1,9 @@
+name: a head with no new commit that changes the pull request goes on without a question
+inputs: {pr: 700, reviewed_sha: a1}
+scripts:
+  read_head:
+    - {exit_code: 0, stdout: '{"head_sha": "b2", "commits": []}'}
+expect:
+  path: [read_head, go_on]
+  status: succeeded
+  outputs: {action: continue, head_sha: b2}
