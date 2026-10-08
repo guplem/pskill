@@ -27,13 +27,15 @@ class FakeShell:
     """Answers each command of a script from tables, and records every command in order.
 
     A command matches the first key that its text (the words joined by spaces) starts with. A command in `failing`
-    fails: `run` raises, and `succeeds` returns False. Any other command succeeds with an empty output.
+    fails: `run` raises with `failure_stderr` as the error text, and `succeeds` returns False. Any other command
+    succeeds with an empty output.
     """
 
     def __init__(self, outputs: dict[str, str] | None = None, failing: list[str] | None = None) -> None:
         self.outputs: dict[str, str] = outputs or {}
         self.failing: list[str] = failing or []
         self.commands: list[str] = []
+        self.failure_stderr = "failed"
 
     def fails(self, text: str) -> bool:
         return any(text.startswith(prefix) for prefix in self.failing)
@@ -42,7 +44,7 @@ class FakeShell:
         text = " ".join(command)
         self.commands.append(text)
         if self.fails(text):
-            raise subprocess.CalledProcessError(1, command, stderr="failed")
+            raise subprocess.CalledProcessError(1, command, stderr=self.failure_stderr)
         return next((output for prefix, output in self.outputs.items() if text.startswith(prefix)), "")
 
     def succeeds(self, command: list[str]) -> bool:

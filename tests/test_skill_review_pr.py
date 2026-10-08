@@ -1,5 +1,6 @@
 """Tests for the review-pr skill's scripts."""
 
+import subprocess
 from typing import Any
 
 import pytest
@@ -85,13 +86,43 @@ def test_a_finding_without_a_real_quote_is_dropped(
     assert len(printed["dropped"]) == 1
 
 
+def test_collect_findings_sorts_the_findings_by_file_and_line_so_that_copies_come_together(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "collect_findings")
+    install_shell(monkeypatch, script, FakeShell({"git show abc:": APP_AT_HEAD}))
+    results = [
+        {
+            "reviewer": "correctness",
+            "findings": [finding("return a - b", "b.py"), {**finding("def add(a, b):", "a.py"), "line": 9}],
+        },
+        {
+            "reviewer": "tests",
+            "findings": [{**finding("def add(a, b):", "a.py"), "line": 1}, finding("return a - b", "b.py")],
+        },
+    ]
+
+    printed = run_main(monkeypatch, capsys, script, {"results": results, "head_sha": "abc", "base": "main"})
+
+    order = [(item["file"], item["line"], item["reviewer"]) for item in printed["findings"]]
+    assert order == [("a.py", 1, "tests"), ("a.py", 9, "correctness"), ("b.py", 2, "correctness"), ("b.py", 2, "tests")]
+
+
+INLINE_ENDPOINT = "gh api repos/{owner}/{repo}/pulls/9/comments"
+
+
+def outside_diff_shell(title: str) -> FakeShell:
+    """GitHub refuses an inline comment on a line that the diff does not show with HTTP 422."""
+    shell = FakeShell(failing=[f"{INLINE_ENDPOINT} -f body=**required: {title}"])
+    shell.failure_stderr = "gh: Validation Failed (HTTP 422)"
+    return shell
+
+
 def test_post_findings_posts_inline_and_puts_lines_outside_the_diff_in_one_comment(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     script = load_skill_script(SKILL, "post_findings")
-    shell = install_shell(
-        monkeypatch, script, FakeShell(failing=["gh api repos/{owner}/{repo}/pulls/9/comments -f body=**required: Far"])
-    )
+    shell = install_shell(monkeypatch, script, outside_diff_shell("Far"))
     findings = [
         {"reviewer": "tests", **finding("q"), "title": "Near"},
         {"reviewer": "docs", **finding("q", "README.md"), "title": "Far"},
@@ -99,16 +130,54 @@ def test_post_findings_posts_inline_and_puts_lines_outside_the_diff_in_one_comme
 
     printed = run_main(monkeypatch, capsys, script, {"pr": 9, "head_sha": "abc", "findings": findings})
 
-    assert printed == {"inline": 1, "in_conversation": 1}
-    conversation = next(command for command in shell.commands if "issues/9/comments" in command)
+    assert printed == {"inline": 1, "in_conversation": 1, "already_posted": 0}
+    conversation = next(
+        command for command in shell.commands if command.startswith("gh api repos/{owner}/{repo}/issues/9/comments -f")
+    )
     assert "**required: Far** at `README.md:2` (docs reviewer)" in conversation
+
+
+def test_post_findings_stops_on_an_inline_failure_that_is_not_a_line_outside_the_diff(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "post_findings")
+    shell = install_shell(monkeypatch, script, FakeShell(failing=[f"{INLINE_ENDPOINT} -f"]))
+    shell.failure_stderr = "gh: Bad credentials (HTTP 401)"
+
+    with pytest.raises(subprocess.CalledProcessError):
+        run_main(
+            monkeypatch,
+            capsys,
+            script,
+            {"pr": 9, "head_sha": "abc", "findings": [{"reviewer": "tests", **finding("q")}]},
+        )
+    assert not shell.ran("gh api repos/{owner}/{repo}/issues/9/comments -f")
+
+
+def test_post_findings_skips_the_findings_that_an_earlier_try_already_posted(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "post_findings")
+    near = {"reviewer": "tests", **finding("q"), "title": "Near"}
+    far = {"reviewer": "docs", **finding("q", "README.md"), "title": "Far"}
+    shell = install_shell(monkeypatch, script, outside_diff_shell("Far"))
+    run_main(monkeypatch, capsys, script, {"pr": 9, "head_sha": "abc", "findings": [near, far]})
+    posted_bodies = "\n".join(command for command in shell.commands if " -f body=" in command)
+
+    resumed = install_shell(monkeypatch, script, FakeShell({f"{INLINE_ENDPOINT} --paginate": posted_bodies}))
+    printed = run_main(monkeypatch, capsys, script, {"pr": 9, "head_sha": "abc", "findings": [near, far]})
+
+    assert printed == {"inline": 0, "in_conversation": 0, "already_posted": 2}
+    assert not resumed.ran(f"{INLINE_ENDPOINT} -f")
+    assert not resumed.ran("gh api repos/{owner}/{repo}/issues/9/comments -f")
 
 
 def test_post_findings_fails_when_the_conversation_comment_fails(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     script = load_skill_script(SKILL, "post_findings")
-    install_shell(monkeypatch, script, FakeShell(failing=["gh api"]))
+    shell = install_shell(monkeypatch, script, outside_diff_shell("Wrong operator"))
+    shell.failing.append("gh api repos/{owner}/{repo}/issues/9/comments -f")
 
     with pytest.raises(SystemExit, match="1 findings could not be posted"):
         run_main(
