@@ -18,8 +18,8 @@ scripts:
     - {exit_code: 0, stdout: '{"unreviewed": false, "commits": [], "head_sha": "h1"}'}
 calls:
   review:
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r1, scope_sha: r1}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r2, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r1, scope_sha: r1}, inputs: {pr: 9, scope_sha: "", dismissed: []}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r2, scope_sha: r1}, inputs: {scope_sha: r1}}
   resolve:
     - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test for the guard, verdict: fixed, reason: Added it.}], fixed: 1}}
     - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test for the guard, verdict: dismissed, reason: The test exists.}], fixed: 0}}

@@ -1,8 +1,8 @@
 """`pskill test`: run a skill's test cases with a scripted fake agent (SPEC.md section 12).
 
 A case file `tests/<case>.yaml` gives the inputs, the agent's answers, the recorded script results,
-the recorded child results, and the expected path, status, and outputs. No harness and no LLM take
-part. Scripts and child skills never run for real.
+the recorded child results (each can name the inputs that its call must send), and the expected path, status, and
+outputs. No harness and no LLM take part. Scripts and child skills never run for real.
 """
 
 import tempfile
@@ -41,6 +41,7 @@ class RecordedExecutor:
     def __init__(self, scripts: dict[str, list[dict[str, Any]]], calls: dict[str, list[dict[str, Any]]]) -> None:
         self.scripts = {block_id: list(results) for block_id, results in scripts.items()}
         self.calls = {block_id: list(results) for block_id, results in calls.items()}
+        self.call_visits: dict[str, int] = {}
 
     def run_script(
         self,
@@ -67,7 +68,28 @@ class RecordedExecutor:
         if not results:
             raise SkillTestError(f"the call block {block_id!r} ran, but the case has no recorded result for it")
         recorded = results.pop(0)
+        self.call_visits[block_id] = self.call_visits.get(block_id, 0) + 1
+        check_call_inputs(block_id, self.call_visits[block_id], recorded.get("inputs", {}), inputs)
         return CallResult(status=str(recorded.get("status", "succeeded")), outputs=dict(recorded.get("outputs", {})))
+
+
+def check_call_inputs(block_id: str, visit: int, expected: Any, actual: dict[str, Any]) -> None:
+    """Fail the case when the call block sent another value for an input that the recorded call names."""
+    if not isinstance(expected, dict):
+        raise SkillTestError(
+            f"the recorded call {block_id!r} on visit {visit} has inputs that are not a mapping, such as {{pr: 9}}"
+        )
+    for name, expected_value in expected.items():
+        if name not in actual:
+            raise SkillTestError(
+                f"the call block {block_id!r} did not send the input {name!r} on visit {visit}, "
+                f"but the case expects {expected_value!r}"
+            )
+        if actual[name] != expected_value:
+            raise SkillTestError(
+                f"the call block {block_id!r} sent the input {name!r} = {actual[name]!r} on visit {visit}, "
+                f"but the case expects {expected_value!r}"
+            )
 
 
 def run_skill_tests(project: Project, skill_id: str) -> list[SkillTestResult]:

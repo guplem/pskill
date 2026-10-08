@@ -777,7 +777,7 @@ scripts:                      # per script block: one result per visit
     - {exit_code: 0, stdout: '{"number": 42, "title": "Crash on save", "body": "", "labels": []}'}
   close_issue:
     - {exit_code: 0, stdout: ""}
-calls: {}                     # per call block: one {status, outputs} per visit
+calls: {}                     # per call block: one {status, outputs, inputs} per visit (inputs is optional)
 expect:
   path: [read_issue, check_applies, confirm_close, close_issue, closed]   # or path_contains
   status: succeeded
@@ -786,6 +786,7 @@ expect:
 
 Rules:
 - Scripts and calls are always mocked in tests. A called skill has its own tests.
+- A recorded call can state `inputs`: the values that the call block must send on that visit. The case checks only the named inputs, and an input that the block does not send is a mismatch. The FAIL line names the block, the visit, the input, and the expected and actual values. A recorded call without `inputs` checks nothing.
 - For a `parallel` block, list the answers of its tasks in task order, as for any other block. The test runner uses the one-by-one mode, so each task takes the next answer in the queue.
 - An answer that fails validation is rejected, as in a real run, and the next answer is used. This lets a test prove that the schema catches bad output.
 - When a case runs out of answers, it fails and names the block that asked for more.
