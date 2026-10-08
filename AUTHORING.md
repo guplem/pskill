@@ -171,6 +171,12 @@ blocks:
 - One or two lines can stay inline in `skill.yaml`. Put anything longer in `instructions/<block>.md`.
 - Split a block where agents deviated in real runs (skipped a check, ran ahead). Keep a block whole where the work has no fixed order.
 
+## Asking the user
+
+- Ask only when the answer changes what the skill does next, and only the user can give it. Decide everything else, and show it.
+- Offer "I don't know" as a choice. Then ask simple yes/no questions, one at a time, and deduce the answer. The example `review-doubt` shows the loop: a `decision` with an `idk` choice, a capped `task` that picks the next question, and a last `task` that reads `history` and decides.
+- In autonomous mode, take the agent's recommendation instead of asking.
+
 ## Porting a prose skill
 
 | In the prose skill | In the programmatic skill |
