@@ -832,7 +832,7 @@ The pskill agents: `reviewer` (one review angle, no quote no finding), `explorer
 - **Change the code, not the rule.** A finding that the code breaks a written rule is fixed in the code. The rule changes only when the rule itself is wrong.
 - **Wait in the foreground.** `fix-ci` waits for CI inside the turn, so the Stop hook never sees an agent that ends its turn to wait.
 - **A human label, not a merge.** `finish` adds `waiting-for-human-review` when a human must look (a risky area, a visible change, a cap reached, a dismissed finding, CI not green), with a short note at the top of the description that says what to check. The run never merges.
-- **A limit says so.** A visit limit that cuts work short never ends the run as `succeeded`. `implement-issue` still runs to `finish`, then ends on `capped` (failed), whose `limits` output and report name each limit and the work it skipped. `resolve-pr-feedback` ends on its own `capped` past 100 items.
+- **A limit says so.** In `implement-issue` and `resolve-pr-feedback`, a visit limit that cuts work short never ends the run as `succeeded`. `implement-issue` still runs to `finish`, then ends on `capped` (failed), whose `limits` output and report name each limit and the work it skipped. `resolve-pr-feedback` ends on its own `capped` past 100 items.
 
 ### 13.3 Feature coverage
 
