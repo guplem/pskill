@@ -68,7 +68,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D13 | A run survives the session. Any session in any harness in the same checkout can resume it. | State is in files, not in the chat. |
 | D14 | "Replay" means visual step-through of past runs in the viewer. | User scope. |
 | D15 | No up-front checks for required tools. A missing tool fails its block, and D12 applies. | User choice. |
-| D16 | Transport is the CLI: `uv run .pskill/pskill.py <command>`. **One tool call per block:** the agent pipes its answer into `submit` through a literal block on stdin (a bash heredoc, or a PowerShell here-string), and the same call prints the next packet. The answer is YAML (JSON also works, because JSON is valid YAML). | Every harness can run a shell command. One call per block saves usage. A literal stdin block needs no escaping in any shell. YAML takes multi-line text (plans, comments) with no `\n` escapes. |
+| D16 | Transport is the CLI: `uv run .pskill/pskill.py <command>`. **One tool call per block:** the agent pipes its answer into `submit` through a literal block on stdin (a bash heredoc, or a PowerShell here-string), and the same call prints the next packet. The answer is YAML (JSON also works, because JSON is valid YAML). **A long answer goes in a file:** for an answer over about 5 KB, the agent writes it to the file that the packet names and runs `submit --file <path>`. Changed in 0.31.0 (#132): before, stdin was the only way. | Every harness can run a shell command. One call per block saves usage. A literal stdin block needs no escaping in any shell. YAML takes multi-line text (plans, comments) with no `\n` escapes. The file form exists because Claude Code's Bash tool on Windows breaks long heredocs: a command over about 7.3 KB with an apostrophe in the body fails before the runner starts (`unexpected EOF while looking for matching '`). It failed 56 of 64 times in one user's transcripts, and 12 pskill submits hit it. The same text runs in plain bash, so the cause is the tool, which pskill cannot fix. |
 | D17 | For a `parallel` block, the harness spawns the subagents. The runner only says what to spawn. Without subagent support, the agent runs the tasks one by one. | Same harness, same permissions. Works everywhere. |
 | D18 | The trace records the packet text given to the agent, the submission returned, and durations. | Enough for step-through, simple analytics, and later comparison. |
 | D19 | `skill.yaml` holds the graph. An `instruction` (or `report`) is either a path that ends in `.md` or the text itself. Long prose goes in `instructions/<block-id>.md`; one or two lines can stay inline. | Readable large skills, small diffs, and no tiny files for one-line steps. |
@@ -119,7 +119,7 @@ Harness features change fast. Every statement tagged **VERIFY** comes from resea
 **The loop for one agent block:**
 1. The runner prints a packet.
 2. The agent does the work with its own tools.
-3. The agent runs `submit` once, with its answer on stdin.
+3. The agent runs `submit` once, with its answer on stdin (a long answer: in the file that the packet names, with `--file`).
 4. The runner validates the answer. If it is invalid, the runner prints the same packet with the errors.
 5. If it is valid, the runner stores it, records the duration, follows the edge, executes every following `script`, `call`, and `end` block by itself, and stops at the next agent block.
 6. The runner prints the next packet, as the output of the same command.
@@ -446,6 +446,10 @@ done:
     '@ | uv run .pskill/pskill.py submit r-20260927-1432-ab12
     ```
   - Both forms are literal: the shell changes nothing inside them (no quote, `$`, or backtick handling).
+- **A long answer goes in a file** (D16). The Return section of each packet, and each task prompt, has one line after the submit command that names an answer file and the full command: `uv run .pskill/pskill.py submit <run> [--task <n>] --file <path>`. The agent uses it for an answer over about 5 KB.
+  - The path is `.pskill/runs/<run>/answers/<block>.yaml`, or `<block>-task-<n>.yaml` for a parallel task, so parallel subagents never write the same file. The runner creates the `answers/` folder when it prints the packet.
+  - The command has no stdin, so it is the same in bash and PowerShell.
+  - The runner reads the file as UTF-8 and drops a byte order mark. It then handles the text exactly like the same text on stdin. A missing, empty, or non-UTF-8 file (such as UTF-16, which Windows PowerShell 5.1 writes) is a usage error (exit code 1). With `--file`, the runner never reads stdin. After it records the answer, it deletes the file (a file that another program holds open stays), so a later visit of the block does not send an old answer. It deletes only a file inside the run's `answers/` folder, never a file of the user's. A rejected answer keeps its file, so the agent fixes only the wrong fields.
 - **Shell detection.** On macOS and Linux, use the bash form. On Windows, use the bash form when the env var `MSYSTEM` is set (Git Bash), else the PowerShell form. The adapter may override this (VERIFY which shell Codex uses on Windows). When `submit` fails to parse, its error message shows the other form too.
 - **No answer.** When stdin is a terminal, or no data arrives within 10 s, `submit` fails at once with the correct command form. It never hangs.
 - **Parsing.** Read the answer with PyYAML's `BaseLoader`, so every value arrives as text. Then convert each field to its declared type from the block's output schema: `integer`, `number`, `boolean` (only `true` or `false`), arrays and objects field by field. So `choice: no` stays the text `no`, and `question: 1.10` stays `1.10`. A value that does not convert is a validation error that names the field.
@@ -507,6 +511,7 @@ plan: |                 # required, text: the full plan, or the draft so far whe
   ...
 question: ...           # optional, text: the single most important open question.
 PSKILL
+For an answer over about 5 KB, write it to the file `.pskill/runs/r-20260927-1432-ab12/answers/create_plan.yaml` instead, then run: `uv run .pskill/pskill.py submit r-20260927-1432-ab12 --file .pskill/runs/r-20260927-1432-ab12/answers/create_plan.yaml`
 ```
 
 The stub gives the goal and the rules (section 9.3), so a normal packet has neither (D8). Two cases add them:
@@ -524,7 +529,7 @@ Additions by block type:
 - **Decision with choices:** the Return section lists each choice and its meaning.
 - **Human decision, interactive:** "Ask the user and wait. Submit the user's answer with `"$answered_by": "human"`. Do not decide for the user." The adapter adds the wording for its question tool (section 9).
 - **Human decision, autonomous:** "This run is autonomous. Decide as the user would, from the goal, this session, and the project. Explain why in `rationale`."
-- **Parallel with subagents:** the packet lists every open task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with a one-line prompt: "You are a subagent of pskill run <run>. In the folder `<project root>`, run `pskill task <run> <n>`, and do what it prints." `pskill task` prints the task's full prompt: the work folder, the agent role, the goal, the instruction, the return format, and its own submit command with `--task <n>`. The packet says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each subagent exactly the one-line prompt of its task. When every subagent has finished, run `pskill current <run>`." The same line restarts a task whose subagent stalled. Changed in 0.12.0: before, the packet held every full prompt, which the main agent copied by hand.
+- **Parallel with subagents:** the packet lists every open task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with a one-line prompt: "You are a subagent of pskill run <run>. In the folder `<project root>`, run `pskill task <run> <n>`, and do what it prints." `pskill task` prints the task's full prompt: the work folder, the agent role, the goal, the instruction, the return format, and its own submit command with `--task <n>`, plus its `--file` line. The packet says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each subagent exactly the one-line prompt of its task. When every subagent has finished, run `pskill current <run>`." The same line restarts a task whose subagent stalled. Changed in 0.12.0: before, the packet held every full prompt, which the main agent copied by hand.
 - **Parallel without subagents:** the packet gives one task at a time, like a normal block.
 - **Final packet:** the status, the rendered `report`, the outputs, and "The run is finished."
 
@@ -695,7 +700,8 @@ runs/<run-id>/
 ├── state.json     # the call stack: per frame, skill id, inputs, steps, history, visits
 ├── events.jsonl   # the trace
 ├── skills/        # copies of every skill that this run can reach through calls
-└── agents/        # copies of every pskill agent in `.pskill/agents/`
+├── agents/        # copies of every pskill agent in `.pskill/agents/`
+└── answers/       # the files for long answers, one per block or task (section 7.3)
 ```
 
 `run.json` fields:
@@ -996,7 +1002,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h]` | Validate the skill (errors 1 to 16 only; a stale stub never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. |
 | `current [<run>]` | Print the current packet. No state change. |
 | `task <run> <n>` | Print the full prompt of task `<n>` of the current parallel block. A subagent runs it first. No state change. |
-| `submit <run> [--task <n>]` | Read the answer (YAML) from stdin, validate it, advance, and print the next packet. One call per block. |
+| `submit <run> [--task <n>] [--file <path>]` | Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. |
 | `pause <run>` / `resume <run>` / `cancel <run>` | Lifecycle control. |
 | `delete <run>` | Delete the folder of a finished run, for cleanup. An unfinished run must be cancelled first. The id must name a folder right inside `runs/`. |
 | `runs [--open]` | List runs. |
@@ -1093,7 +1099,7 @@ Each of these was in an earlier draft. Each one added complexity for little user
 | Real scripts and real child calls in skill tests | Mocks; each skill has its own tests |
 | Static-flow warnings ("a step can run before its source") | The runtime error for missing values, plus skill tests |
 | Bare expressions without braces (`when: "a == b"`, `result: "'text'"`) | One syntax: `{{ }}` means computed, everything else is plain text |
-| Submissions through files (`outbox/`), JSON-only answers, `--file`, `--inputs-file` | One `submit` call with a literal YAML block on stdin |
+| Submissions through an `outbox/` folder, JSON-only answers, `--inputs-file` | One `submit` call with a literal YAML block on stdin. `submit --file` is back since 0.31.0, only for a long answer (D16). |
 | Harness agent files (`.claude/agents/`, `.codex/agents/`) as subagents | pskill agents in `.pskill/agents/`, versioned with the skills |
 | Token counts per block | Durations only. Harness session files are private formats that change without notice. |
 | Mermaid copied into every project (about 3 MB) | A pinned CDN copy; the viewer works without the graph when offline |

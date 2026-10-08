@@ -3,10 +3,11 @@
 import io
 import os
 import time
+from pathlib import Path
 
 import pytest
 
-from pskill_runner.answer_input import AnswerInputError, read_answer
+from pskill_runner.answer_input import AnswerInputError, read_answer, read_answer_file
 
 
 def test_read_answer_returns_the_piped_text() -> None:
@@ -45,3 +46,51 @@ def test_a_stream_that_never_ends_fails_after_the_timeout() -> None:
     time.sleep(0.2)
     never_ending_stream.close()
     assert elapsed_s < 5
+
+
+def test_read_answer_file_returns_the_file_text(tmp_path: Path) -> None:
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("reason: it's 5 o'clock, C:\\temp costs $5\n", encoding="utf-8")
+
+    assert read_answer_file(answer_file) == "reason: it's 5 o'clock, C:\\temp costs $5\n"
+
+
+def test_read_answer_file_drops_a_byte_order_mark(tmp_path: Path) -> None:
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("status: finished\n", encoding="utf-8-sig")
+
+    assert read_answer_file(answer_file) == "status: finished\n"
+
+
+def test_read_answer_file_refuses_a_file_that_is_not_utf8(tmp_path: Path) -> None:
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("status: finished\n", encoding="utf-16")  # what Windows PowerShell 5.1 writes with >
+
+    with pytest.raises(AnswerInputError, match="Save it as UTF-8 text"):
+        read_answer_file(answer_file)
+
+
+def test_read_answer_file_refuses_a_file_that_cannot_be_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("status: finished\n", encoding="utf-8")
+
+    def locked_file(self: Path, encoding: str) -> str:
+        raise PermissionError("the file is locked")
+
+    monkeypatch.setattr(Path, "read_text", locked_file)
+
+    with pytest.raises(AnswerInputError, match="the file is locked"):
+        read_answer_file(answer_file)
+
+
+def test_read_answer_file_refuses_a_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(AnswerInputError, match="No answer file at"):
+        read_answer_file(tmp_path / "missing.yaml")
+
+
+def test_read_answer_file_refuses_an_empty_file(tmp_path: Path) -> None:
+    answer_file = tmp_path / "answer.yaml"
+    answer_file.write_text("  \n", encoding="utf-8")
+
+    with pytest.raises(AnswerInputError, match="is empty"):
+        read_answer_file(answer_file)

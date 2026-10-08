@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.31.0 (2026-10-07)
+
+A long answer can go in a file, so it reaches the runner on Windows too.
+
+- **`submit --file <path>`:** reads the answer from a file instead of stdin, and handles it exactly like the same text on stdin. After it records the answer, the runner deletes the file, so a later visit does not send an old answer. A rejected answer keeps its file. In Claude Code on Windows, a heredoc command over about 7.3 KB with an apostrophe fails before the runner starts (`unexpected EOF while looking for matching '`).
+- **The answer file in every packet:** the Return section of each packet, and each task prompt, has one line after the submit command that names a file, `.pskill/runs/<run>/answers/<block>.yaml` (`<block>-task-<n>.yaml` for a parallel task), and the full `--file` command. The agent uses it for an answer over about 5 KB. Short answers still go in the heredoc, in one command.
+
 ## 0.30.1 (2026-10-07)
 
 Packets call the runner through the project launcher, so an autonomous run needs no permission prompt.

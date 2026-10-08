@@ -579,10 +579,17 @@ def test_a_run_paused_by_stop_attempts_still_records_task_answers(tmp_path: Path
     stop_until_paused(project, run_id)
     assert read_run_info(project, run_id)["pause_reason"] == "agent_stopped"
 
-    first = submit_answer(project, run_id, "wrong: [x]\n", task=1)
+    answer_file = project.runs_folder / run_id / "answers" / "check-task-1.yaml"
+    answer_file.write_text("wrongs: [x]\n", encoding="utf-8")
+    rejected = submit_answer(project, run_id, "wrongs: [x]\n", task=1, answer_file=answer_file)
+    assert "not recorded" in rejected and answer_file.exists()  # a rejected answer keeps its file
+    answer_file.write_text("wrong: [x]\n", encoding="utf-8")
+
+    first = submit_answer(project, run_id, "wrong: [x]\n", task=1, answer_file=answer_file)
     last = submit_answer(project, run_id, "wrong: []\n", task=0)
 
     assert "Task 1 is recorded" in first and "Task 0 is recorded" in last
+    assert not answer_file.exists()  # a task answer recorded while paused loses its file too
     assert read_run_info(project, run_id)["status"] == "paused"  # only resume advances
     assert "finished with status succeeded" in resume_run(project, run_id)
     assert read_run_info(project, run_id)["outputs"] == {"wrong_count": 1}

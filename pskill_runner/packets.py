@@ -37,6 +37,7 @@ class AgentPacket:
     runner_command: str  # for example "uv run .pskill/pskill.py"
     shell: str
     question_wording: str
+    answers_folder: str  # for example ".pskill/runs/<run>/answers", where a long answer goes
     task_index: int | None = None  # set for one task of a parallel block
     subagent_wording: str = ""  # how this harness spawns subagents, for parallel packets
     work_folder: str = ""  # the project root, where every subagent of a parallel block works
@@ -102,14 +103,30 @@ def submit_command(packet: AgentPacket, fields: FieldMap, task_index: int | None
     body_lines = example_lines(fields, indent="")
     if asks_the_human:
         body_lines.append("$answered_by: human")
+    return stdin_command(packet.shell, plain_submit_command(packet, task_index), "\n".join(body_lines))
+
+
+def plain_submit_command(packet: AgentPacket, task_index: int | None) -> str:
+    """`<runner> submit <run>`, with `--task <n>` for one task of a parallel block."""
     task_option = f" --task {task_index}" if task_index is not None else ""
-    command = f"{packet.runner_command} submit {packet.run_id}{task_option}"
-    return stdin_command(packet.shell, command, "\n".join(body_lines))
+    return f"{packet.runner_command} submit {packet.run_id}{task_option}"
+
+
+def answer_file_line(packet: AgentPacket, task_index: int | None) -> str:
+    """The `--file` form of the submit command, for a long answer (SPEC.md section 7.3).
+
+    A long heredoc fails in Claude Code's Bash tool on Windows. Each task gets its own file, so parallel
+    subagents never write the same one.
+    """
+    task_suffix = f"-task-{task_index}" if task_index is not None else ""
+    path = f"{packet.answers_folder}/{packet.block_id}{task_suffix}.yaml"
+    command = f"{plain_submit_command(packet, task_index)} --file {path}"
+    return f"For an answer over about 5 KB, write it to the file `{path}` instead, then run: `{command}`"
 
 
 def return_section(packet: AgentPacket) -> str:
     command = submit_command(packet, packet.return_fields, packet.task_index, packet.asks_the_human)
-    return f"### Return\n{RETURN_HELP}\n{command}"
+    return f"### Return\n{RETURN_HELP}\n{command}\n{answer_file_line(packet, packet.task_index)}"
 
 
 @dataclass(frozen=True)
@@ -166,6 +183,7 @@ def task_prompt_text(packet: AgentPacket, task: TaskPrompt) -> str:
     parts.append(f"Your task:\n{task.instruction.strip()}")
     parts.append(RETURN_HELP)
     parts.append(submit_command(packet, task.return_fields, task.index, asks_the_human=False))
+    parts.append(answer_file_line(packet, task.index))
     parts.append("If you cannot do it, submit only the line `$cannot_complete: <reason>`.")
     return "\n\n".join(parts)
 

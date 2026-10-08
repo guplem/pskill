@@ -34,6 +34,14 @@ PLAN_PACKET = AgentPacket(
     runner_command="uv run .pskill/pskill.py",
     shell="bash",
     question_wording="Ask the user in chat, then wait for the answer.",
+    answers_folder=".pskill/runs/r-20260927-1432-ab12/answers",
+)
+
+ANSWER_FILE_LINE = (
+    "For an answer over about 5 KB, write it to the file "
+    "`.pskill/runs/r-20260927-1432-ab12/answers/create_plan.yaml` instead, then run: "
+    "`uv run .pskill/pskill.py submit r-20260927-1432-ab12 --file "
+    ".pskill/runs/r-20260927-1432-ab12/answers/create_plan.yaml`"
 )
 
 DECISION_PACKET = replace(
@@ -78,6 +86,18 @@ def test_the_return_section_is_one_submit_command_with_an_annotated_example() ->
     assert "plan: ...  # required, text: The plan so far.\n" in text
     assert "question: ...  # optional, text: The open question.\n" in text
     assert "\nPSKILL\n" in text
+
+
+def test_the_return_section_names_the_answer_file_for_a_long_answer() -> None:
+    text = render_agent_packet(PLAN_PACKET)
+
+    assert text.endswith(f"\nPSKILL\n{ANSWER_FILE_LINE}\n")
+
+
+def test_the_powershell_form_names_the_same_answer_file_command() -> None:
+    text = render_agent_packet(replace(PLAN_PACKET, shell="powershell"))
+
+    assert f"'@ | uv run .pskill/pskill.py submit r-20260927-1432-ab12\n{ANSWER_FILE_LINE}\n" in text
 
 
 def test_the_rules_name_the_escape_and_the_pause_command() -> None:
@@ -167,6 +187,11 @@ def test_a_task_packet_submits_with_its_task_number() -> None:
     text = render_agent_packet(replace(PLAN_PACKET, task_index=3))
 
     assert "uv run .pskill/pskill.py submit r-20260927-1432-ab12 --task 3 <<'PSKILL'" in text
+    assert (
+        "write it to the file `.pskill/runs/r-20260927-1432-ab12/answers/create_plan-task-3.yaml` instead, then run: "
+        "`uv run .pskill/pskill.py submit r-20260927-1432-ab12 --task 3 --file "
+        ".pskill/runs/r-20260927-1432-ab12/answers/create_plan-task-3.yaml`" in text
+    )
 
 
 def test_the_parallel_packet_gives_each_open_task_a_one_line_prompt() -> None:
@@ -201,6 +226,7 @@ def test_a_task_prompt_has_the_work_folder_the_role_the_task_and_its_submit_comm
     assert "Goal: Produce a plan that the user approved." in text
     assert "Check c.md." in text
     assert "submit r-20260927-1432-ab12 --task 2 <<'PSKILL'" in text
+    assert "submit r-20260927-1432-ab12 --task 2 --file .pskill/runs/r-20260927-1432-ab12/answers/" in text
 
 
 def test_the_parallel_packet_names_the_harness_spawn_tool() -> None:
