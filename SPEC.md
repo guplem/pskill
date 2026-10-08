@@ -218,7 +218,7 @@ In form 3b the runner first follows the choice, then the first matching edge of 
 
 ```yaml
 max_visits: 3          # optional, on any block
-on_max_visits: done    # optional
+on_max_visits: capped  # optional: an end whose report names the cap
 ```
 
 A transition into a block that already has `max_visits` visits goes to `on_max_visits` instead. With no `on_max_visits`, the block fails (section 7.4).
