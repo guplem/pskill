@@ -1,7 +1,7 @@
 """`pskill test`: run a skill's test cases with a scripted fake agent (SPEC.md section 12).
 
 A case file `tests/<case>.yaml` gives the inputs, the agent's answers, the recorded script results,
-the recorded child results with the inputs that each call must send, and the expected path, status, and
+the recorded child results (each can name the inputs that its call must send), and the expected path, status, and
 outputs. No harness and no LLM take part. Scripts and child skills never run for real.
 """
 
