@@ -302,7 +302,7 @@ blocks:
       reasons: {type: string, description: "Why each label was added, or why none was."}
     next:
       # Each limit that cut work short. The report and finish.md list the same limits.
-      - when: "{{ (['implement_step'] if not steps.implement_step.done else []) + (['review'] if steps.resolve.outputs.fixed > 0 and (history.resolve | map(attribute='outputs') | selectattr('fixed', 'gt', 0) | list | length) > 6 else []) + (['final_review'] if steps.check_unreviewed.json.unreviewed else []) }}"
+      - when: "{{ (['implement_step'] if not steps.implement_step.done else []) + (['review'] if steps.resolve.outputs.fixed > 0 and (history.resolve | map(attribute='outputs') | selectattr('fixed', 'gt', 0) | list | length) > 6 else []) + (['get_ci_green'] if (history.ready | length) > (history.get_ci_green | length) else []) + (['final_review'] if steps.check_unreviewed.json.unreviewed else []) }}"
         to: capped
       - to: done
 
@@ -321,7 +321,7 @@ blocks:
       result: capped
       pr_number: "{{ steps.open_draft_pr.json.pr_number }}"
       pr_url: "{{ steps.open_draft_pr.json.pr_url }}"
-      limits: "{{ (['implement_step'] if not steps.implement_step.done else []) + (['review'] if steps.resolve.outputs.fixed > 0 and (history.resolve | map(attribute='outputs') | selectattr('fixed', 'gt', 0) | list | length) > 6 else []) + (['final_review'] if steps.check_unreviewed.json.unreviewed else []) }}"
+      limits: "{{ (['implement_step'] if not steps.implement_step.done else []) + (['review'] if steps.resolve.outputs.fixed > 0 and (history.resolve | map(attribute='outputs') | selectattr('fixed', 'gt', 0) | list | length) > 6 else []) + (['get_ci_green'] if (history.ready | length) > (history.get_ci_green | length) else []) + (['final_review'] if steps.check_unreviewed.json.unreviewed else []) }}"
     report: instructions/report.md
 
   held:
