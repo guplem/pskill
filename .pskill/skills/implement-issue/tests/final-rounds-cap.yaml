@@ -1,4 +1,4 @@
-name: required-only rounds stop after 5, and the run goes to finish with the last fixes unreviewed
+name: required-only rounds stop after 5, and the run ends capped with the last fixes unreviewed
 inputs: {request: "#42"}
 scripts:
   read_issue:
@@ -59,6 +59,6 @@ answers:
   finish:
     - {labels: [], reasons: "Required findings are still left after 5 extra rounds."}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, finish, done]
-  status: succeeded
-  outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9"}
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, finish, capped]
+  status: failed
+  outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9", limits: [final_review]}
