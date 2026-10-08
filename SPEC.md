@@ -832,6 +832,7 @@ The pskill agents: `reviewer` (one review angle, no quote no finding), `explorer
 - **Change the code, not the rule.** A finding that the code breaks a written rule is fixed in the code. The rule changes only when the rule itself is wrong.
 - **Wait in the foreground.** `fix-ci` waits for CI inside the turn, so the Stop hook never sees an agent that ends its turn to wait.
 - **A human label, not a merge.** `finish` adds `waiting-for-human-review` when a human must look (a risky area, a visible change, a cap reached, a dismissed finding, CI not green), with a short note at the top of the description that says what to check. The run never merges.
+- **A limit says so.** A visit limit that cuts work short never ends the run as `succeeded`. `implement-issue` still runs to `finish`, then ends on `capped` (failed), whose `limits` output and report name each limit and the work it skipped. `resolve-pr-feedback` ends on its own `capped` past 100 items.
 
 ### 13.3 Feature coverage
 
@@ -853,7 +854,7 @@ The example skills together must exercise every runtime feature. pytest fixtures
 | A script that enforces a rule | `review-round.collect_findings` (no quote, no finding) |
 | Nested `call`, with typed outputs, several levels deep | `review-pr.review` calls `review-round`, which calls `checkout-pr` |
 | Branch on a child's `status` | `implement-issue.create_new_issue` |
-| `max_visits` with and without `on_max_visits` | `implement-issue.review`; `create-issue.assess_clarity` |
+| `max_visits` with and without `on_max_visits` | `implement-issue.implement_step`; `create-issue.assess_clarity` |
 | `history` | `resolve-pr-feedback.claim_item` (the next item), `implement-issue.review` (the dismissed findings) |
 | Conditional `entry` | `implement-issue` |
 | A script's `input` on stdin, as JSON and as text | `implement-issue.checkout_base`; `create-issue.create` |

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.32.2 (2026-10-08)
+
+The loop-limit example in `AUTHORING.md` ends on a step that says the limit was reached.
+
+- **A limit says so:** the example `max_visits: 3` now goes to `on_max_visits: capped`, an end whose report names the limit and the work it skipped. Before, it went to `done`, so a run that a limit cut short still ended as if the work was complete (#141).
+- **Example skills:** each visit limit that skips work now ends the run on `capped` (failed). `implement-issue` still reviews, runs CI, and labels the pull request, then names each limit in its new `limits` output: the 40 build cycles, the 7 review rounds, the 7 CI rounds, the 5 required-only rounds, and a feedback round's 100 items. `resolve-pr-feedback` ends on `capped` past 100 items.
+
 ## 0.32.1 (2026-10-08)
 
 A script with `parse: json` can print a value over 64 KiB, and a cut text output says it was cut.

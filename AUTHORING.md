@@ -152,7 +152,7 @@ blocks:
   ```
   While the block is open, `history.ask_finding` holds the earlier answers only. After the answer, it holds this one too, so the edges count every answer.
   `history` spans the whole run of the skill, not one pass through the loop. So when an earlier block can lead back into the loop (a second review round), the count starts at the first pass's answers and reads past the new list. Put such a loop in its own `internal` skill and run it with a `call` block: each call starts with an empty `history`.
-- `max_visits: 3` with `on_max_visits: done` caps a loop. Without `on_max_visits`, reaching the cap pauses the run. The validator warns about a loop with no cap.
+- `max_visits: 3` with `on_max_visits: capped` caps a loop. `capped` is an end whose report names the limit and the work it skipped. Without `on_max_visits`, reaching the cap pauses the run. The validator warns about a loop with no cap.
 
 ## Computed values
 
