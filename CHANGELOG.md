@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.32.1 (2026-10-08)
+
+A script with `parse: json` can print a value over 64 KiB, and a cut text output says it was cut.
+
+- **No output limit for `parse: json`:** the runner keeps the whole stdout, so the value parses. Before, the runner cut stdout to 64 KiB with no sign, and the run paused with a misleading "not valid JSON: Unterminated string" error on every resume (#139).
+- **A cut says so:** a text stdout or a stderr over 64 KiB keeps its first 64 KiB and ends with a note, such as `[pskill cut this output: it keeps the first 65536 of 100001 characters.]`. A failed script's error message still shows the real end of its stderr.
+
 ## 0.32.0 (2026-10-08)
 
 A skill test can check the inputs that a call block sends to a child skill.

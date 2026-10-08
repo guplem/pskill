@@ -352,6 +352,7 @@ verify_quotes:
 - The working directory is the project root. The environment adds `PSKILL_RUN_DIR` (the run folder) and `PYTHONIOENCODING=utf-8`, so a Python script reads and writes UTF-8 on every system, as the runner does.
 - Changed in 0.20.0: before, a long value went to a script as a file path (the `to_file` filter), and a script could read a copy of the whole run state (`PSKILL_STATE_FILE`).
 - Output: `steps.<id>.stdout`, and `steps.<id>.json` with `parse: json`.
+- **Output limit.** With `parse: json`, the runner keeps the whole stdout: it is the block's value. It keeps the first 64 KiB of any other stdout, and of stderr, and appends a note on its own line: `[pskill cut this output: it keeps the first 65536 of <size> characters.]`. So no later step takes a cut text as whole. The runner checks the whole result first, so a failure message shows the real end of stderr. Changed in 0.32.1 (#139): before, the runner cut stdout and stderr to 64 KiB with no note, so a JSON value over 64 KiB failed as "not valid JSON".
 - A non-zero exit code, a timeout (config `script_timeout_s`, default 300, or the block's own `timeout_s: <seconds>`), or bad JSON is a block failure. A script that wants to report a normal "no" result exits 0 and prints JSON.
 
 ### 6.5 `call`
@@ -720,7 +721,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 | `block_started` | `block`, `block_type`, `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null), `skipped_tasks?` (a parallel block: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a parallel block with subagents: the full prompt of each task, which the viewer shows; since schema version 4) |
 | `submission_rejected` | `block`, `task?`, `errors`, `raw` |
 | `block_completed` | `block`, `task?`, `output`, `decided_by` (`agent`, `human`, `agent_autonomous`, `runner`), `duration_ms` |
-| `script_ran` | `block`, `argv`, `input` (what the script read on stdin, or null; since schema version 5), `exit_code`, `stdout`, `stderr` (each cut to 64 KiB), `duration_ms` |
+| `script_ran` | `block`, `argv`, `input` (what the script read on stdin, or null; since schema version 5), `exit_code`, `stdout` (whole with `parse: json`, else limited as in 6.4), `stderr` (limited as in 6.4), `duration_ms` |
 | `run_paused` / `run_resumed` | `reason` |
 | `harness_changed` | `from`, `to` |
 | `session_changed` | `from`, `to` |
