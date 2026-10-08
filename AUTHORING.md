@@ -182,7 +182,7 @@ blocks:
 
 ## The edit loop (red-green)
 
-1. Write or change a test case in `tests/<case>.yaml`: the answers per block, the recorded script and call results, and the expected `path`, `status`, and `outputs`. Inside `{ }`, put a value with `?` or `: ` in quotes: `{question: "Which database?"}`. Without quotes, YAML fails to parse the case.
+1. Write or change a test case in `tests/<case>.yaml`: the answers per block, the recorded script and call results, and the expected `path`, `status`, and `outputs`. A recorded call can also state the `inputs` that the call block must send: `{status: succeeded, outputs: {...}, inputs: {pr: 9}}`. The case then fails when the block sends another value. Inside `{ }`, put a value with `?` or `: ` in quotes: `{question: "Which database?"}`. Without quotes, YAML fails to parse the case.
 2. Run `uv run .pskill/pskill.py test <skill-id>` and see it fail.
 3. Edit the skill.
 4. Run `uv run .pskill/pskill.py test <skill-id>` and `uv run .pskill/pskill.py validate` until both pass.
