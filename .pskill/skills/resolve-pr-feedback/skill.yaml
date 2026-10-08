@@ -67,7 +67,7 @@ blocks:
     run: [uv, run, "{{ skill.dir }}/scripts/claim_item.py"]
     input: {item: "{{ steps.collect_items.json.queue[history.claim_item | default([]) | length] }}"}
     max_visits: 100
-    on_max_visits: resolved
+    on_max_visits: capped
     next: resolve_item
 
   resolve_item:
@@ -105,3 +105,16 @@ blocks:
       Tell the user how each item of pull request #{{ inputs.pr }} was resolved, one line per item:
       {% for decision in history.finish_item | default([]) | map(attribute='json') | map(attribute='decision') %}{{ decision.verdict }}
       "{{ decision.title }}" ({{ decision.reason }}){% if not loop.last %}; {% endif %}{% else %}there was nothing to resolve{% endfor %}.
+
+  capped:
+    type: end
+    description: The cap of 100 items left items with no verdict
+    status: failed
+    outputs:
+      decisions: "{{ history.finish_item | map(attribute='json') | map(attribute='decision') | list }}"
+      fixed: "{{ history.finish_item | map(attribute='json') | map(attribute='decision') | selectattr('verdict', 'equalto', 'fixed') | list | length }}"
+    report: >-
+      Tell the user that the skill stopped at its cap of 100 items: {{ steps.collect_items.json.count - 100 }} of the
+      {{ steps.collect_items.json.count }} items of pull request #{{ inputs.pr }} have no verdict and no reply yet. Run
+      the skill again to resolve them. The 100 resolved items: {{ history.finish_item | map(attribute='json')
+      | map(attribute='decision') | selectattr('verdict', 'equalto', 'fixed') | list | length }} fixed, the rest dismissed.
