@@ -191,6 +191,15 @@ def test_a_recorded_null_input_that_the_call_does_not_send_fails_the_case(tmp_pa
     assert result.problem == "the call block 'child' did not send the input 'age' on visit 1, but the case expects None"
 
 
+def test_recorded_call_inputs_that_are_not_a_mapping_fail_the_case(tmp_path: Path) -> None:
+    case = call_inputs_case("[name]")
+    project = project_with(tmp_path, "parent", PARENT_SKILL, {"inputs": case}, child=CHILD_SKILL)
+
+    [result] = run_skill_tests(project, "parent")
+
+    assert result.problem == "the recorded call 'child' on visit 1 has inputs that are not a mapping, such as {pr: 9}"
+
+
 def test_the_input_check_names_the_visit_of_the_call_block() -> None:
     recorded = {"status": "succeeded", "inputs": {"round": 2}}
     executor = skill_tests.RecordedExecutor({}, {"review": [recorded, recorded]})

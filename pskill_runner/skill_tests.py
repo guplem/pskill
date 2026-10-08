@@ -73,8 +73,12 @@ class RecordedExecutor:
         return CallResult(status=str(recorded.get("status", "succeeded")), outputs=dict(recorded.get("outputs", {})))
 
 
-def check_call_inputs(block_id: str, visit: int, expected: dict[str, Any], actual: dict[str, Any]) -> None:
+def check_call_inputs(block_id: str, visit: int, expected: Any, actual: dict[str, Any]) -> None:
     """Fail the case when the call block sent another value for an input that the recorded call names."""
+    if not isinstance(expected, dict):
+        raise SkillTestError(
+            f"the recorded call {block_id!r} on visit {visit} has inputs that are not a mapping, such as {{pr: 9}}"
+        )
     for name, expected_value in expected.items():
         if name not in actual:
             raise SkillTestError(
