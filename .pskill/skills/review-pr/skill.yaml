@@ -70,9 +70,10 @@ blocks:
       scope_sha: "{{ (history.review | map(attribute='outputs') | map(attribute='scope_sha') | first) | default('', true) }}"
       reported: "{{ history.review | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) }}"
       dismissed: "{{ steps.read_earlier.json.dismissed }}"
-    # The arrow below already stops at max_rounds. This cap is only a safety net.
+    # The arrow below already stops at max_rounds. This cap is only a safety net, so it never asks.
     max_visits: 20
     on_max_visits: triage
+    ask_on_max_visits: false
     next:
       - when: >-
           {{ (history.review | length) < inputs.max_rounds
@@ -87,8 +88,10 @@ blocks:
     description: Check if the head moved before the next round
     skill: review-head-check
     inputs: {pr: "{{ inputs.pr }}", reviewed_sha: "{{ steps.review.outputs.reviewed_sha }}"}
+    # The same safety net as on review.
     max_visits: 20
     on_max_visits: triage
+    ask_on_max_visits: false
     next:
       - when: "{{ steps.check_head_before_round.outputs.action == 'restart' }}"
         to: restarted

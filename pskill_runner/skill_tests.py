@@ -1,6 +1,7 @@
 """`pskill test`: run a skill's test cases with a scripted fake agent (SPEC.md section 12).
 
-A case file `tests/<case>.yaml` gives the inputs, the agent's answers, the recorded script results,
+A case file `tests/<case>.yaml` gives the inputs, the agent's answers, the answers to visit cap questions, the
+recorded script results,
 the recorded child results (each can name the inputs that its call must send), and the expected path, status, and
 outputs. No harness and no LLM take part. Scripts and child skills never run for real.
 """
@@ -19,7 +20,7 @@ from pskill_runner.run_records import ACTIVE_STATUSES
 from pskill_runner.run_store import read_events
 from pskill_runner.yaml_loading import load_answer_yaml, load_skill_yaml
 
-CASE_KEYS = ("answers", "calls", "expect", "inputs", "mode", "name", "scripts")
+CASE_KEYS = ("answers", "calls", "caps", "expect", "inputs", "mode", "name", "scripts")
 MAX_SUBMISSIONS = 1000
 
 
@@ -152,6 +153,7 @@ def as_text_values(values: dict[str, Any]) -> dict[str, Any]:
 def run_case(project: Project, skill_id: str, case: dict[str, Any]) -> str | None:
     """Run one case. Return the first problem, or None when it passes."""
     answers: dict[str, list[Any]] = {block_id: list(queue) for block_id, queue in case.get("answers", {}).items()}
+    cap_answers: dict[str, list[Any]] = {block_id: list(queue) for block_id, queue in case.get("caps", {}).items()}
     executor = RecordedExecutor(case.get("scripts", {}), case.get("calls", {}))
     with tempfile.TemporaryDirectory(prefix="pskill-test-") as temp_folder:
         runs_folder = Path(temp_folder)
@@ -170,7 +172,12 @@ def run_case(project: Project, skill_id: str, case: dict[str, Any]) -> str | Non
             if info["status"] not in ACTIVE_STATUSES:
                 break
             block_id = info["current_block"] or ""
-            queue = answers.get(block_id)
+            at_cap = bool(read_run_state(project, run_id, runs_folder)["frames"][-1].get("visit_cap_question"))
+            queue = (cap_answers if at_cap else answers).get(block_id)
+            if not queue and at_cap:
+                raise SkillTestError(
+                    f"the block {block_id!r} reached its visit cap, but the case has no more caps answers for it"
+                )
             if not queue:
                 raise SkillTestError(
                     f"the block {block_id!r} asked for an answer, but the case has no more answers for it"
@@ -195,7 +202,10 @@ def run_path(run_folder: Path, skill_id: str) -> list[str]:
     return [
         event["block"]
         for event in read_events(run_folder)
-        if event["type"] == "block_started" and event["frame"] == skill_id and event.get("task") in (None, 0)
+        if event["type"] == "block_started"
+        and event["frame"] == skill_id
+        and event.get("task") in (None, 0)
+        and event["block_type"] != "visit_cap"
     ]
 
 
