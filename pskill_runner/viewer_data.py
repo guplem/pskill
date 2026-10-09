@@ -304,7 +304,7 @@ def block_edges(index: int, block: AnyBlock) -> list[CanvasEdge]:
         hint = (
             f"Taken when the run tries to enter {block.id} after its {block.max_visits} visits and the question at "
             "the cap says to move on (the visit cap)."
-            if block.ask_on_max_visits
+            if block.asks_at_cap
             else f"Taken instead when the run tries to enter {block.id} after its {block.max_visits} visits "
             "(the visit cap)."
         )
@@ -585,7 +585,7 @@ def arrival_text(row: dict[str, Any], called_by: str | None) -> str:
 
 def visit_cap_note(block: AnyBlock) -> str:
     """What happens at a block's visit cap (SPEC.md section 5.5)."""
-    then = "then asks whether to run more" if block.ask_on_max_visits else "then moves on"
+    then = "then asks whether to run more" if block.asks_at_cap else "then moves on"
     note = f"It runs at most {block.max_visits} times, {then}."
     if block.autonomous_max_visits is not None:
         note += f" In autonomous mode, at most {block.autonomous_max_visits} times."

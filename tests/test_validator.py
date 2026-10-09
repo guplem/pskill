@@ -187,7 +187,29 @@ def test_a_cap_whose_target_leads_back_to_it_is_an_error(tmp_path: Path) -> None
     skill_yaml = PLAN_SKILL.replace("    on_max_visits: stopped\n", "    on_max_visits: ask_user\n")
 
     assert messages(problems_for(tmp_path, skill_yaml), "error") == [
-        "blocks.create_plan: on_max_visits (ask_user) leads back to this block with no other cap on the way"
+        "blocks.ask_user: this loop (ask_user, create_plan) goes on after its caps: an on_max_visits block leads "
+        "back into it"
+    ]
+
+
+def test_a_cap_target_that_comes_back_through_another_capped_block_is_valid(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    on_max_visits: stopped\n", "    on_max_visits: ask_user\n").replace(
+        '    decider: human\n    instruction: "Ask the user',
+        '    decider: human\n    max_visits: 3\n    on_max_visits: stopped\n    instruction: "Ask the user',
+    )
+
+    assert messages(problems_for(tmp_path, skill_yaml), "error") == []
+
+
+def test_two_caps_that_send_the_run_to_each_other_are_an_error(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    on_max_visits: stopped\n", "    on_max_visits: ask_user\n").replace(
+        '    decider: human\n    instruction: "Ask the user',
+        '    decider: human\n    max_visits: 3\n    on_max_visits: create_plan\n    instruction: "Ask the user',
+    )
+
+    assert messages(problems_for(tmp_path, skill_yaml), "error") == [
+        "blocks.ask_user: this loop (ask_user, create_plan) goes on after its caps: an on_max_visits block leads "
+        "back into it"
     ]
 
 
@@ -202,7 +224,7 @@ def test_a_visit_cap_needs_a_block_to_go_to(tmp_path: Path) -> None:
 def test_the_other_cap_keys_need_max_visits(tmp_path: Path) -> None:
     skill_yaml = PLAN_SKILL.replace(
         "    type: end\n    status: succeeded",
-        "    type: end\n    on_max_visits: stopped\n    ask_on_max_visits: false\n    autonomous_max_visits: 5\n"
+        "    type: end\n    on_max_visits: stopped\n    ask_on_max_visits: true\n    autonomous_max_visits: 5\n"
         "    status: succeeded",
     )
 

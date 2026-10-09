@@ -331,7 +331,7 @@ def visit_cap_line(block: AnyBlock, numbers: dict[str, int]) -> str:
     if block.on_max_visits is None:  # export loads a skill without validating it
         return f"{limit} stop instead, and tell the user that this step reached its limit."
     target = step_link(block.on_max_visits, numbers)
-    if not block.ask_on_max_visits:
+    if not block.asks_at_cap:
         return f"{limit} go to {target} instead."
     return (
         f"{limit} ask the user whether to do it more times (in an autonomous run, decide yourself, and keep the "

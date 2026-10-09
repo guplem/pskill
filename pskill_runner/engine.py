@@ -662,7 +662,7 @@ class Run:
         if block.max_visits is not None and (visits >= block.max_visits + extra_visits or at_ceiling):
             if block.on_max_visits is None:  # a run started before 0.33.0 can have a cap with no target
                 raise RunnerStop(f"The block {block.id!r} reached its visit cap ({block.max_visits}).")
-            if block.ask_on_max_visits and not at_ceiling:
+            if block.asks_at_cap and not at_ceiling:
                 self.frame["visit_cap_question"] = True
                 self.arrive(target, from_block, reason)
                 return

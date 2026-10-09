@@ -106,7 +106,7 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
         "description": raw.get("description"),
         "max_visits": raw.get("max_visits"),
         "on_max_visits": raw.get("on_max_visits"),
-        "ask_on_max_visits": raw.get("ask_on_max_visits", True),
+        "ask_on_max_visits": raw.get("ask_on_max_visits"),
         "autonomous_max_visits": raw.get("autonomous_max_visits"),
     }
     block_type = raw["type"]

@@ -761,7 +761,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 15. A `succeeded` end that misses a required skill output. (`failed` and `cancelled` ends may give any subset.)
 16. A skill description longer than 1024 chars.
 17. A stub out of date.
-18. A loop with no `max_visits` on the way, also inside a capped loop; or an `on_max_visits` block that leads back to its capped block with no other cap on the way.
+18. A loop that can repeat after every cap is used up: a loop with no `max_visits` on the way (also inside a capped loop), or caps whose `on_max_visits` blocks lead back into the same loop.
 19. `max_visits` without `on_max_visits`; `on_max_visits`, `ask_on_max_visits`, or `autonomous_max_visits` without `max_visits`; `autonomous_max_visits` below `max_visits`.
 
 **Warnings:**
@@ -789,9 +789,8 @@ scripts:                      # per script block: one result per visit
   close_issue:
     - {exit_code: 0, stdout: ""}
 calls: {}                     # per call block: one {status, outputs, inputs} per visit (inputs is optional)
-caps:                         # per capped block: one answer per visit cap question, in order
-  check_applies:
-    - {choice: move_on, rationale: "Enough rounds", "$answered_by": human}
+caps: {}                      # per capped block: one answer per visit cap question, in order, such as
+                              # {choice: move_on, rationale: "Enough rounds", "$answered_by": human}
 expect:
   path: [read_issue, check_applies, confirm_close, close_issue, closed]   # or path_contains
   status: succeeded

@@ -35,7 +35,7 @@ export const FIELD_HELP = {
   },
   max_visits: {
     title: "max_visits (visits at most)",
-    short: "The most times a run may enter this block. It caps a loop.",
+    short: "How many times a run enters this block before it asks for more rounds or moves on. It caps a loop.",
     details: [
       "Optional, on every block type. The runner counts how many times a run entered the block.",
       "When a run tries to enter the block again after the last visit, the run asks: more rounds, or move on to `on_max_visits`? See `ask_on_max_visits` and `autonomous_max_visits`.",
