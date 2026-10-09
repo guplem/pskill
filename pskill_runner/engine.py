@@ -580,6 +580,14 @@ class Run:
             return visit_cap_question(block, self.frame["visits"].get(block_id, 0))
         return block
 
+    def autonomous_ceiling_of(self, block: AnyBlock) -> int:
+        """The most visits that the agent may allow: the block's own ceiling, or the `config.yaml` value.
+
+        Never below `max_visits`, so a config ceiling under a block's cap does not cut the block short.
+        """
+        ceiling = block.autonomous_max_visits or self.project.config.autonomous_max_visits
+        return max(ceiling, block.max_visits or 0)
+
     def retries_of(self, block: AnyBlock) -> int:
         """The block's own `retries`, or the global value from `config.yaml`."""
         if isinstance(block, RetryableBlock) and block.retries is not None:
@@ -656,8 +664,9 @@ class Run:
         block = self.skill_of(self.frame).blocks[target]
         visits = self.frame["visits"].get(target, 0)
         extra_visits = self.frame.get("extra_visits", {}).get(target, 0)
-        if block.max_visits is not None and visits >= block.max_visits + extra_visits:
-            if block.ask_on_max_visits:
+        at_ceiling = self.info["mode"] == "autonomous" and visits >= self.autonomous_ceiling_of(block)
+        if block.max_visits is not None and (visits >= block.max_visits + extra_visits or at_ceiling):
+            if block.ask_on_max_visits and not at_ceiling:
                 self.frame["visit_cap_question"] = True
                 self.arrive(target, from_block, reason)
                 return

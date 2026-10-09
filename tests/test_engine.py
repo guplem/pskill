@@ -297,6 +297,68 @@ def test_more_needs_at_least_one_round(tmp_path: Path) -> None:
     assert read_run_info(project, run_id)["status"] == "waiting_for_human"
 
 
+def test_in_autonomous_mode_the_agent_answers_the_cap_question_and_never_sees_the_ceiling(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project, mode="autonomous")
+
+    packet = reach_the_cap(project, run_id)
+    submit_answer(project, run_id, "choice: more\nrounds: 1\nrationale: One more plan can settle it.\n")
+
+    assert "it ran 3 times." in packet
+    assert "150" not in packet and "ceiling" not in packet
+    completed = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_completed"]
+    assert (completed[-1]["block"], completed[-1]["decided_by"]) == ("create_plan", "agent_autonomous")
+    assert read_run_info(project, run_id)["status"] == "active"
+
+
+@pytest.mark.parametrize(
+    ("block_ceiling", "config_text"),
+    [("    autonomous_max_visits: 4\n", ""), ("", "autonomous_max_visits: 4\n")],
+)
+def test_in_autonomous_mode_the_ceiling_moves_on_with_no_question(
+    tmp_path: Path, block_ceiling: str, config_text: str
+) -> None:
+    skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n" + block_ceiling)
+    make_project(tmp_path, skill_yaml=skill_yaml)
+    (tmp_path / ".pskill" / "config.yaml").write_text(config_text, encoding="utf-8")
+    project = find_project(tmp_path)
+    run_id = start(project, mode="autonomous")
+    reach_the_cap(project, run_id)
+
+    submit_answer(project, run_id, "choice: more\nrounds: 5\nrationale: More plans.\n")
+    submit_answer(project, run_id, QUESTION_PLAN)
+    packet = submit_answer(project, run_id, USER_ANSWER)
+
+    assert read_run_info(project, run_id)["status"] == "cancelled"
+    assert "finished with status cancelled" in packet
+
+
+def test_a_config_ceiling_below_the_cap_does_not_cut_the_block_short(tmp_path: Path) -> None:
+    make_project(tmp_path)
+    (tmp_path / ".pskill" / "config.yaml").write_text("autonomous_max_visits: 1\n", encoding="utf-8")
+    project = find_project(tmp_path)
+    run_id = start(project, mode="autonomous")
+
+    reach_the_cap(project, run_id)
+
+    assert read_run_info(project, run_id)["status"] == "cancelled"
+    assert len(read_run_state(project, run_id)["frames"][0]["history"]["create_plan"]) == 3
+
+
+def test_in_interactive_mode_the_human_can_go_past_the_ceiling(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    autonomous_max_visits: 3\n")
+    project = make_project(tmp_path, skill_yaml=skill_yaml)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    submit_answer(project, run_id, ONE_MORE)
+    submit_answer(project, run_id, QUESTION_PLAN)
+    packet = submit_answer(project, run_id, USER_ANSWER)
+
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+    assert "it ran 4 times." in packet
+
+
 @pytest.mark.parametrize("mode", ["interactive", "autonomous"])
 def test_a_block_that_opts_out_moves_on_at_its_cap_with_no_question(tmp_path: Path, mode: str) -> None:
     skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    ask_on_max_visits: false\n")
