@@ -137,6 +137,7 @@ blocks:
     decider: human
     instruction: "Show finding {{ (history.ask_finding | length) + 1 }} and ask what to do with it."
     max_visits: 50
+    on_max_visits: fix_findings
     choices:
       fix: Fix this finding.
       skip: Leave this finding.
@@ -152,7 +153,11 @@ blocks:
   ```
   While the block is open, `history.ask_finding` holds the earlier answers only. After the answer, it holds this one too, so the edges count every answer.
   `history` spans the whole run of the skill, not one pass through the loop. So when an earlier block can lead back into the loop (a second review round), the count starts at the first pass's answers and reads past the new list. Put such a loop in its own `internal` skill and run it with a `call` block: each call starts with an empty `history`.
-- `max_visits: 3` with `on_max_visits: done` caps a loop. Without `on_max_visits`, reaching the cap pauses the run. The validator warns about a loop with no cap.
+- `max_visits: 3` with `on_max_visits: done` caps a loop. Every cap needs `on_max_visits`.
+  - Every loop needs a cap, also a small loop inside a capped one. The `on_max_visits` block must not lead back into the same loop, or the loop goes on after its caps. `pskill validate` reports both.
+  - At the cap, the run asks "more rounds, or move on?". The user answers in interactive mode, the agent in autonomous mode. `move_on` goes to `on_max_visits`.
+  - `ask_on_max_visits: false` moves on with no question. Use it for a safety net that a later block covers.
+  - `autonomous_max_visits: 20` is the agent's hidden ceiling (default: 150 in `.pskill/config.yaml`).
 
 ## Computed values
 
@@ -189,7 +194,7 @@ blocks:
 
 ## The edit loop (red-green)
 
-1. Write or change a test case in `tests/<case>.yaml`: the answers per block, the recorded script and call results, and the expected `path`, `status`, and `outputs`. A recorded call can also state the `inputs` that the call block must send: `{status: succeeded, outputs: {...}, inputs: {pr: 9}}`. The case then fails when the block sends another value. Inside `{ }`, put a value with `?` or `: ` in quotes: `{question: "Which database?"}`. Without quotes, YAML fails to parse the case.
+1. Write or change a test case in `tests/<case>.yaml`: the answers per block, the recorded script and call results, and the expected `path`, `status`, and `outputs`. A visit cap question takes its answers from `caps: {<block>: [{choice: move_on, rationale: ..., $answered_by: human}]}`. A recorded call can also state the `inputs` that the call block must send: `{status: succeeded, outputs: {...}, inputs: {pr: 9}}`. The case then fails when the block sends another value. Inside `{ }`, put a value with `?` or `: ` in quotes: `{question: "Which database?"}`. Without quotes, YAML fails to parse the case.
 2. Run `uv run .pskill/pskill.py test <skill-id>` and see it fail.
 3. Edit the skill.
 4. Run `uv run .pskill/pskill.py test <skill-id>` and `uv run .pskill/pskill.py validate` until both pass.

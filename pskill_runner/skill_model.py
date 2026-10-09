@@ -29,6 +29,13 @@ class Block:
     description: str | None = None
     max_visits: int | None = None
     on_max_visits: str | None = None
+    ask_on_max_visits: bool | None = None  # as written; None (not written) means true
+    autonomous_max_visits: int | None = None  # the hidden ceiling for the agent; None: the config.yaml value
+
+    @property
+    def asks_at_cap(self) -> bool:
+        """At the cap, the run asks "more rounds, or move on?" (SPEC.md section 5.5), unless the block opts out."""
+        return self.ask_on_max_visits is not False
 
 
 @dataclass(frozen=True, kw_only=True)

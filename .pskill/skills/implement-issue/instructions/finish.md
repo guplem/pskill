@@ -3,7 +3,7 @@ Decide whether a human must check pull request #{{ steps.open_draft_pr.json.pr_n
 Add **`waiting-for-human-review`** when any of these is true:
 - The change is risky or large: a data migration, authentication or permissions, payments, a public contract (an API, an SDK, a command, a file format), a recorded decision or a new architecture pattern, a CI workflow, or many areas at once.
 - The change alters what a user sees. A human must check it visually.
-{% if not steps.implement_step.done %}- The build ended at its cap of 40 red-green cycles, so plan steps can be missing.
+{% if not steps.implement_step.done %}- The build ended at its visit cap after {{ history.implement_step | length }} red-green cycles, so plan steps can be missing.
 {% endif %}{% if steps.get_ci_green.outputs.state == 'failed' %}- CI is not green: {{ steps.get_ci_green.outputs.failed_checks | join('; ') }}.
 {% endif %}{% if steps.check_unreviewed.json.unreviewed %}- The 5 required-only review rounds are used, and the last fixes had no review.
 {% endif %}{% set dismissed = (history.resolve + (history.final_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list %}{% if dismissed %}- The resolution dismissed these findings: {% for finding in dismissed %}"{{ finding.title }}" ({{ finding.reason }}){% if not loop.last %}; {% endif %}{% endfor %}. Add the label when a human must confirm one of them.

@@ -2,9 +2,10 @@
 
 from typing import Any, TypedDict
 
-SCHEMA_VERSION = 5  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
+SCHEMA_VERSION = 6  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
 # 4: a parallel block with subagents logs the full prompt of each task (`task_prompts`).
 # 5: a `script_ran` event holds the `input` that the script read on stdin.
+# 6: `block_type` is `visit_cap` for the question at a visit cap.
 
 ACTIVE_STATUSES = ("active", "waiting_for_human")
 UNFINISHED_STATUSES = ("active", "waiting_for_human", "paused")
@@ -70,6 +71,8 @@ class Frame(TypedDict):
     skipped_tasks: list[SkippedTask] | None  # its items whose `when` was false; absent in runs before 0.11.0
     started_at: str
     goal_shown: bool  # a child skill's first packet showed its goal; absent in runs before 0.10.0
+    visit_cap_question: bool  # the current block's visit cap question is open; absent in runs before 0.33.0
+    extra_visits: dict[str, int]  # the rounds that "more" added to each capped block; absent before 0.33.0
 
 
 class RunState(TypedDict):
@@ -92,4 +95,6 @@ def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str) -> Frame:
         skipped_tasks=None,
         started_at=started_at,
         goal_shown=False,
+        visit_cap_question=False,
+        extra_visits={},
     )

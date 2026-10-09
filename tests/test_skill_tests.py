@@ -85,6 +85,49 @@ def test_running_out_of_answers_names_the_block(tmp_path: Path) -> None:
     assert result.problem == "the block 'approve_plan' asked for an answer, but the case has no more answers for it"
 
 
+CAPPED_CASE = """\
+name: three questions reach the cap; one more round, then move on
+inputs: {topic: the login page}
+answers:
+  create_plan:
+    - {status: question, plan: Draft., question: "Which database?"}
+    - {status: question, plan: Draft., question: "Which cache?"}
+    - {status: question, plan: Draft., question: "Which queue?"}
+    - {status: question, plan: Draft., question: "Which host?"}
+  ask_user:
+    - {answer: Postgres., $answered_by: human}
+    - {answer: Redis., $answered_by: human}
+    - {answer: None., $answered_by: human}
+    - {answer: Fly., $answered_by: human}
+caps:
+  create_plan:
+    - {choice: more, rounds: 1, rationale: One more., $answered_by: human}
+    - {choice: move_on, rationale: Enough., $answered_by: human}
+expect:
+  path: [create_plan, ask_user, create_plan, ask_user, create_plan, ask_user, create_plan, ask_user, stopped]
+  status: cancelled
+"""
+
+
+def test_a_case_answers_the_cap_question_from_caps_and_the_path_skips_it(tmp_path: Path) -> None:
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"capped": CAPPED_CASE})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert (result.passed, result.problem) == (True, None)
+
+
+def test_a_cap_question_with_no_caps_answer_names_the_block(tmp_path: Path) -> None:
+    case = CAPPED_CASE.replace("    - {choice: move_on, rationale: Enough., $answered_by: human}\n", "")
+    project = project_with(tmp_path, "plan-work", PLAN_SKILL, {"capped": case})
+
+    [result] = run_skill_tests(project, "plan-work")
+
+    assert (
+        result.problem == "the block 'create_plan' reached its visit cap, but the case has no more caps answers for it"
+    )
+
+
 def test_a_rejected_answer_is_followed_by_the_next_answer(tmp_path: Path) -> None:
     case = APPROVED_CASE.replace(
         "  create_plan:\n    - {status: question",
@@ -233,7 +276,7 @@ def test_an_unknown_key_in_a_case_is_reported(tmp_path: Path) -> None:
 
     [result] = run_skill_tests(project, "plan-work")
 
-    known_keys = "answers, calls, expect, inputs, mode, name, scripts"
+    known_keys = "answers, calls, caps, expect, inputs, mode, name, scripts"
     assert result.problem == f"the case file has an unknown key 'expected' (known keys: {known_keys})"
 
 

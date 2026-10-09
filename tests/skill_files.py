@@ -83,6 +83,7 @@ blocks:
     decider: agent
     instruction: "Decide about the next finding."
     max_visits: 10
+    on_max_visits: done
     choices:
       fix: Fix the finding.
       stop: Stop asking.

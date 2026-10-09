@@ -23,7 +23,7 @@ from pskill_runner.skill_model import next_targets
 from pskill_runner.skill_schema import BLOCK_ID_PATTERN, is_skill_id
 from pskill_runner.yaml_loading import load_skill_yaml
 
-COMMON_KEYS = ("description", "max_visits", "on_max_visits")
+COMMON_KEYS = ("description", "max_visits", "on_max_visits", "ask_on_max_visits", "autonomous_max_visits")
 EDITABLE_KEYS: dict[str, tuple[str, ...]] = {
     "task": ("instruction", "next", "retries"),
     "decision": ("decider", "instruction", "choices", "next", "retries"),
@@ -48,6 +48,8 @@ KEY_ORDER = (
     "inputs",
     "max_visits",
     "on_max_visits",
+    "ask_on_max_visits",
+    "autonomous_max_visits",
     "retries",
     "choices",
     "output",

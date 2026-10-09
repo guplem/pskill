@@ -21,6 +21,8 @@ from pskill_runner.computed_values import ComputedValueError, compute, is_true, 
 from pskill_runner.field_types import FieldMap, FieldSpec, check_answer, check_typed_values
 from pskill_runner.inline_executor import InlineExecutor, RealExecutor, ScriptResult
 from pskill_runner.packets import (
+    VISIT_CAP_CHOICES,
+    VISIT_CAP_ROUNDS,
     AgentPacket,
     TaskPrompt,
     render_agent_packet,
@@ -28,6 +30,7 @@ from pskill_runner.packets import (
     render_parallel_packet,
     render_pause_packet,
     task_prompt_text,
+    visit_cap_instruction,
 )
 from pskill_runner.project import Project
 from pskill_runner.run_records import (
@@ -83,7 +86,10 @@ class RunError(Exception):
 
 
 class RunnerStop(Exception):
-    """A runner-side failure (a computed value, no matching edge, a visit cap). It pauses the run."""
+    """A runner-side failure (a computed value, no matching edge, invalid end outputs, a cap with no target).
+
+    It pauses the run.
+    """
 
 
 # ---------------------------------------------------------------------------------------------
@@ -401,6 +407,19 @@ def runner_command(project: Project) -> str:
     return f"uv run {entry_script.relative_to(project.root).as_posix()}"
 
 
+def visit_cap_question(block: AnyBlock, visits: int, asks_the_human: bool) -> DecisionBlock:
+    """The question that the runner asks at a block's visit cap (SPEC.md section 5.5). It is not in `skill.yaml`."""
+    return DecisionBlock(
+        id=block.id,
+        decider="human",
+        instruction=visit_cap_instruction(block.id, visits, asks_the_human),
+        choices=VISIT_CAP_CHOICES,
+        output={"rounds": VISIT_CAP_ROUNDS},
+        # A script's `retries` means "run the command again", not "ask again", so only an agent block's counts.
+        retries=block.retries if isinstance(block, TaskBlock | DecisionBlock) else None,
+    )
+
+
 def decision_fields(block: DecisionBlock, asks_the_human: bool) -> FieldMap:
     """The fields that every decision returns, plus the block's own extra fields."""
     automatic: FieldMap
@@ -551,7 +570,19 @@ class Run:
         block_id = self.frame["current_block"]
         if block_id is None:
             raise RunError("The run has no current block.")
-        return self.skill_of(self.frame).blocks[block_id]
+        block = self.skill_of(self.frame).blocks[block_id]
+        if self.frame.get("visit_cap_question"):
+            interactive = self.info["mode"] == "interactive"
+            return visit_cap_question(block, self.frame["visits"].get(block_id, 0), interactive)
+        return block
+
+    def autonomous_ceiling_of(self, block: AnyBlock) -> int:
+        """The most visits that the agent may allow: the block's own ceiling, or the `config.yaml` value.
+
+        Never below `max_visits`, so a config ceiling under a block's cap does not cut the block short.
+        """
+        ceiling = block.autonomous_max_visits or self.project.config.autonomous_max_visits
+        return max(ceiling, block.max_visits or 0)
 
     def retries_of(self, block: AnyBlock) -> int:
         """The block's own `retries`, or the global value from `config.yaml`."""
@@ -628,15 +659,29 @@ class Run:
         """Enter a block, following its visit cap (SPEC.md section 5.5)."""
         block = self.skill_of(self.frame).blocks[target]
         visits = self.frame["visits"].get(target, 0)
-        if block.max_visits is not None and visits >= block.max_visits:
-            if block.on_max_visits is None:
-                raise RunnerStop(f"The block {target!r} reached its visit cap ({block.max_visits}).")
-            self.go_to(block.on_max_visits, from_block=target, reason=f"visit cap of {target} ({block.max_visits})")
+        extra_visits = self.frame.get("extra_visits", {}).get(target, 0)
+        at_ceiling = self.info["mode"] == "autonomous" and visits >= self.autonomous_ceiling_of(block)
+        if block.max_visits is not None and (visits >= block.max_visits + extra_visits or at_ceiling):
+            if block.on_max_visits is None:  # a run started before 0.33.0 can have a cap with no target
+                raise RunnerStop(f"The block {block.id!r} reached its visit cap ({block.max_visits}).")
+            if block.asks_at_cap and not at_ceiling:
+                self.frame["visit_cap_question"] = True
+                self.arrive(target, from_block, reason)
+                return
+            self.move_on_from_cap(block)
             return
         self.frame["visits"][target] = visits + 1
+        self.arrive(target, from_block, reason)
+
+    def arrive(self, target: str, from_block: str | None, reason: str) -> None:
         self.frame["current_block"] = target
         self.frame["arrived_from"] = from_block
         self.frame["arrival_reason"] = reason
+
+    def move_on_from_cap(self, block: AnyBlock) -> None:
+        """Leave a capped block for its `on_max_visits` block. `go_to` checked that the block has one."""
+        assert block.on_max_visits is not None
+        self.go_to(block.on_max_visits, from_block=block.id, reason=f"visit cap of {block.id} ({block.max_visits})")
 
     def follow_edges(self, block: AnyBlock, value: dict[str, Any]) -> None:
         """Go to the next block after a completed block."""
@@ -682,7 +727,11 @@ class Run:
     def log_block_started(self, block: AnyBlock, packet: str | None, task: int | None = None) -> None:
         fields: dict[str, Any] = {
             "block": block.id,
-            "block_type": type(block).__name__.removesuffix("Block").lower(),
+            "block_type": (
+                "visit_cap"
+                if self.frame.get("visit_cap_question")
+                else type(block).__name__.removesuffix("Block").lower()
+            ),
             "visit": self.frame["visits"].get(block.id, 0),
             "from": self.frame["arrived_from"],
             "reason": self.frame["arrival_reason"],
@@ -1101,11 +1150,19 @@ class Run:
             return {}, None, [f"You could not complete the block: {raw_answer['$cannot_complete']}"]
         answered_by = raw_answer.pop("$answered_by", None) if isinstance(raw_answer, dict) else None
         answer, errors = check_answer(raw_answer, self.return_fields(block))
+        if self.needs_more_rounds(errors, answer):
+            errors.append("For the choice `more`, give `rounds`: a whole number of at least 1.")
         if self.asks_the_human(block) and answered_by not in ("human", "agent"):
             errors.append(
                 "Add the line `$answered_by: human` (the user answered) or `$answered_by: agent` (you answered)."
             )
         return answer, answered_by, errors
+
+    def needs_more_rounds(self, errors: list[str], answer: dict[str, Any]) -> bool:
+        """A valid cap answer `more` with no `rounds`, or fewer than 1. `check_answer` already checked the type."""
+        if errors or not self.frame.get("visit_cap_question") or answer["choice"] != "more":
+            return False
+        return answer.get("rounds") is None or answer["rounds"] < 1
 
     def reject(self, errors: list[str], answer_text: str, task: int | None = None) -> str:
         """Count a failed attempt. Pause after the retries run out, else show the packet with the errors."""
@@ -1126,7 +1183,23 @@ class Run:
     def accept(
         self, block: TaskBlock | DecisionBlock, answer: dict[str, Any], decided_by: str, duration_ms: int
     ) -> str:
+        if self.frame.get("visit_cap_question"):
+            return self.answer_visit_cap(block.id, answer, decided_by, duration_ms)
         self.complete_block(block, answer, decided_by, duration_ms)
+        return self.advance()
+
+    def answer_visit_cap(self, block_id: str, answer: dict[str, Any], decided_by: str, duration_ms: int) -> str:
+        """Run the capped block more times, or leave it. The answer stays out of `steps` and `history`."""
+        self.frame["visit_cap_question"] = False
+        self.log("block_completed", block=block_id, output=answer, decided_by=decided_by, duration_ms=duration_ms)
+        self.info["attempts"] = 0
+        block = self.skill_of(self.frame).blocks[block_id]
+        if answer["choice"] == "more":
+            extra_visits = self.frame.setdefault("extra_visits", {})
+            extra_visits[block_id] = extra_visits.get(block_id, 0) + answer["rounds"]
+            self.go_to(block_id, from_block=self.frame["arrived_from"], reason=self.frame["arrival_reason"] or "")
+        else:
+            self.move_on_from_cap(block)
         return self.advance()
 
     def record_task(self, block: ParallelBlock, index: int, answer: dict[str, Any]) -> int:

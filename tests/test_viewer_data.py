@@ -75,6 +75,8 @@ blocks:
     type: call
     skill: child
     inputs: {name: Ada}
+    max_visits: 5
+    on_max_visits: done
     next:
       - when: "{{ (history.child | length) < 2 }}"
         to: child
@@ -137,6 +139,8 @@ blocks:
     type: parallel
     for_each: "{{ inputs.files if (history.check | default([]) | length) == 0 else inputs.files[:2] }}"
     instruction: "Check {{ item }}."
+    max_visits: 5
+    on_max_visits: done
     output:
       wrong: {type: array, items: {type: string}, description: "The wrong claims."}
     next:
@@ -160,6 +164,8 @@ blocks:
     skill: fanout
     inputs:
       files: "{{ ['a.md', 'b.md', 'c.md'] if (history.fan | default([]) | length) == 0 else ['x.md'] }}"
+    max_visits: 5
+    on_max_visits: done
     next:
       - when: "{{ (history.fan | length) < 2 }}"
         to: fan
@@ -432,7 +438,8 @@ def test_each_node_has_a_hint_that_explains_its_block(tmp_path: Path) -> None:
     long_hints = {node["block"]: node["hint"] for node in detail_of(project, long_run)["canvas"]["nodes"]}
 
     assert plan_hints["create_plan"] == (
-        "The agent does a piece of work and returns a typed answer.\nIt runs at most 3 times."
+        "The agent does a piece of work and returns a typed answer.\n"
+        "It runs at most 3 times, then asks whether to run more."
     )
     assert plan_hints["ask_user"] == (
         "One choice is picked from a list, or a question gets an answer.\n"
@@ -440,6 +447,19 @@ def test_each_node_has_a_hint_that_explains_its_block(tmp_path: Path) -> None:
     )
     assert plan_hints["done"] == "The skill finishes here with a status and outputs.\nStatus: succeeded."
     assert long_hints["work"].startswith("Does the one piece of work.\nThe agent does ")
+
+
+def test_the_visit_cap_edge_of_a_block_that_never_asks_is_taken_at_once(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    never_asks = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    ask_on_max_visits: false\n")
+    write_skill(tmp_path / ".pskill" / "skills", "plan-work", never_asks, PLAN_SKILL_FILES)
+    run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+
+    hints = {edge["id"]: edge["hint"] for edge in detail_of(project, run_id)["canvas"]["edges"]}
+
+    assert hints["L_f0_create_plan_f0_stopped_0"] == (
+        "Taken instead when the run tries to enter create_plan after its 3 visits (the visit cap)."
+    )
 
 
 def test_each_edge_has_a_hint_with_its_whole_condition(tmp_path: Path) -> None:
@@ -458,7 +478,8 @@ def test_each_edge_has_a_hint_with_its_whole_condition(tmp_path: Path) -> None:
     assert plan["L_f0_ask_user_f0_create_plan_0"] == "Always taken."
     assert plan["L_f0_approve_plan_f0_done_0"] == 'Taken when the decider picks "approve": Accept the plan.'
     assert plan["L_f0_create_plan_f0_stopped_0"] == (
-        "Taken instead when the run tries to enter create_plan after its 3 visits (the visit cap)."
+        "Taken when the run tries to enter create_plan after its 3 visits and the question at the cap says to move "
+        "on (the visit cap)."
     )
     long_condition = "steps.work.status == 'a very long status name that does not fit on the edge label'"
     assert hints(long_run)["L_f0_work_f0_done_0"] == f"Taken when {long_condition}."
@@ -493,13 +514,44 @@ def test_a_step_after_a_visit_cap_arrives_by_the_visit_cap_edge(tmp_path: Path) 
     for _ in range(3):
         submit_answer(project, run_id, QUESTION)
         submit_answer(project, run_id, USER_ANSWER)
+    submit_answer(project, run_id, "choice: move_on\nrationale: Enough.\n$answered_by: human\n")
 
     rows = detail_of(project, run_id)["timeline"]
 
     assert rows[-1]["node"] == "f0_stopped"
     assert rows[-1]["edge"] == "L_f0_create_plan_f0_stopped_0"
+    assert (rows[-2]["block_type"], rows[-2]["asks_human"]) == ("visit_cap", True)
+    assert rows[-2]["output_title"] == "Output: more rounds, or move on"
+    assert rows[-2]["summary"].startswith("visit cap question · ")
+    assert rows[-2]["summary"].endswith(" · move on · visit 3")
     assert rows[-2]["left_by"] == {"to": "stopped", "label": "visit cap of create_plan"}
     assert rows[-1]["arrival"] == "create_plan (visit cap of create_plan (3))"
+
+
+def test_a_cap_question_in_an_autonomous_run_does_not_ask_a_person(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="autonomous", harness="generic")
+    for _ in range(3):
+        submit_answer(project, run_id, QUESTION)
+        submit_answer(project, run_id, "answer: Postgres.\n")
+
+    rows = detail_of(project, run_id)["timeline"]
+
+    assert (rows[-1]["block_type"], rows[-1]["asks_human"]) == ("visit_cap", False)
+
+
+def test_a_more_answer_at_the_cap_shows_its_rounds_on_the_node(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+    for _ in range(3):
+        submit_answer(project, run_id, QUESTION)
+        submit_answer(project, run_id, USER_ANSWER)
+    submit_answer(project, run_id, "choice: more\nrounds: 2\nrationale: Two more.\n$answered_by: human\n")
+
+    rows = detail_of(project, run_id)["timeline"]
+
+    question = next(row for row in rows if row["block_type"] == "visit_cap")
+    assert " · 2 more" in question["summary"]
 
 
 def test_each_step_has_the_label_of_its_node_after_the_step(tmp_path: Path) -> None:
@@ -1242,7 +1294,7 @@ def test_each_node_sends_its_description_type_meaning_and_notes_apart(tmp_path: 
     assert work["description"] == "Does the one piece of work."
     assert work["type_meaning"] == "The agent does a piece of work and returns a typed answer."
     assert create_plan["description"] is None
-    assert create_plan["notes"] == "It runs at most 3 times."
+    assert create_plan["notes"] == "It runs at most 3 times, then asks whether to run more."
 
 
 def test_a_parallel_row_lists_the_items_that_its_when_skipped(tmp_path: Path) -> None:

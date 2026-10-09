@@ -1792,6 +1792,8 @@ const EDIT_LABELS = {
   description: "Description (a short label)",
   max_visits: "Visits at most",
   on_max_visits: "After the last visit, go to",
+  ask_on_max_visits: "At the cap, ask for more rounds",
+  autonomous_max_visits: "Autonomous ceiling (visits)",
   retries: "Retries after a failure",
   timeout_s: "Timeout (seconds)",
   decider: "Decider",
@@ -1893,8 +1895,14 @@ function editRow(label, control, field) {
 function editControl(key, value) {
   if (EDIT_CHOICES[key]) return selectControl(EDIT_CHOICES[key], value ?? EDIT_CHOICES[key][0], false);
   if (key === "on_max_visits") return selectControl(blockIds(), value, true);
+  if (key === "ask_on_max_visits") {
+    // Unset means true (ask); only false is written.
+    const control = selectControl(["yes", "no"], value === false ? "no" : "yes", false);
+    // Keep an explicit `true` as written, so a save of another key does not delete the line.
+    return { node: control.node, read: () => (control.read() === "no" ? false : value === true ? true : null) };
+  }
   if (key === "skill") return selectControl(view.skills.map((skill) => skill.skill_id), value, false);
-  if (["max_visits", "retries", "timeout_s"].includes(key)) {
+  if (["max_visits", "autonomous_max_visits", "retries", "timeout_s"].includes(key)) {
     const input = element("input", null, "edit-input");
     input.type = "number";
     input.min = key === "retries" ? "0" : "1";

@@ -39,6 +39,7 @@ blocks:
     description: Check that the request is clear
     instruction: instructions/assess_clarity.md
     max_visits: 6
+    on_max_visits: extract_terms
     output:
       clear: {type: boolean, description: "true when you understand exactly what the issue is about."}
       question: {type: string, optional: true, description: "The single most important open question."}
@@ -100,6 +101,7 @@ blocks:
     description: Draft the title and the body
     instruction: instructions/draft_issue.md
     max_visits: 5
+    on_max_visits: cancelled
     output:
       title: {type: string, description: "The issue title, under 80 characters, with no fix:/feat: prefix."}
       body: {type: string, description: "The full issue body in Markdown, starting with the TL;DR line."}

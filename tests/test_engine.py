@@ -1,5 +1,6 @@
 """Tests for pskill_runner.engine: running a skill block by block."""
 
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -233,13 +234,216 @@ def test_cannot_complete_counts_as_a_failed_attempt(tmp_path: Path) -> None:
     assert read_run_info(project, run_id)["attempts"] == 1
 
 
-def test_max_visits_redirects_to_on_max_visits(tmp_path: Path) -> None:
+USER_ANSWER = "answer: Postgres.\n$answered_by: human\n"
+MOVE_ON = "choice: move_on\nrationale: Three plans are enough.\n$answered_by: human\n"
+ONE_MORE = "choice: more\nrounds: 1\nrationale: One more try.\n$answered_by: human\n"
+
+
+def reach_the_cap(project: Project, run_id: str) -> str:
+    """Answer create_plan with a question 3 times: the 4th entry reaches its cap of 3."""
+    for _ in range(3):
+        submit_answer(project, run_id, QUESTION_PLAN)
+        packet = submit_answer(project, run_id, USER_ANSWER)
+    return packet
+
+
+def test_at_its_cap_a_block_asks_the_human_for_more_rounds_or_to_move_on(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id = start(project)
 
-    for _ in range(3):
-        submit_answer(project, run_id, QUESTION_PLAN)
-        packet = submit_answer(project, run_id, "answer: Postgres.\n$answered_by: human\n")
+    packet = reach_the_cap(project, run_id)
+
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+    assert "`create_plan` reached its visit limit: it ran 3 times." in packet
+    assert "- more:" in packet and "- move_on:" in packet
+    assert "`stopped`" not in packet  # the packet names no future block (SPEC.md D8)
+    started = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_started"]
+    assert (started[-1]["block"], started[-1]["block_type"]) == ("create_plan", "visit_cap")
+
+
+def test_move_on_goes_to_the_block_after_the_cap(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    packet = submit_answer(project, run_id, MOVE_ON)
+
+    assert read_run_info(project, run_id)["status"] == "cancelled"
+    assert "finished with status cancelled" in packet
+
+
+@pytest.mark.parametrize(
+    ("mode", "rounds_line"),
+    [
+        ("interactive", "For `more`, ask the user how many more runs, and give that number in `rounds`."),
+        ("autonomous", "For `more`, choose the smallest number of rounds that can do it."),
+    ],
+)
+def test_the_question_words_the_rounds_for_its_mode(tmp_path: Path, mode: str, rounds_line: str) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project, mode=mode)
+
+    packet = reach_the_cap(project, run_id)
+
+    assert rounds_line in packet
+    assert ("ask the user how many" in packet) == (mode == "interactive")
+
+
+def test_a_run_saved_before_the_cap_question_existed_still_goes_on(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    state_file = project.runs_folder / run_id / "state.json"
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    for frame in state["frames"]:
+        del frame["visit_cap_question"], frame["extra_visits"]
+    state_file.write_text(json.dumps(state), encoding="utf-8")
+
+    packet = reach_the_cap(project, run_id)
+
+    assert "`create_plan` reached its visit limit: it ran 3 times." in packet
+
+
+def test_more_rounds_run_the_block_again_then_ask_again(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    packet = submit_answer(project, run_id, ONE_MORE)
+
+    assert "Write a plan for the login page." in packet
+    assert "choice" not in read_run_state(project, run_id)["frames"][0]["steps"]["create_plan"]
+    submit_answer(project, run_id, QUESTION_PLAN)
+    packet = submit_answer(project, run_id, USER_ANSWER)
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+    assert "it ran 4 times." in packet
+    packet = submit_answer(project, run_id, ONE_MORE)  # the rounds add up: the block runs a 5th time
+    assert "Write a plan for the login page." in packet
+    assert read_run_state(project, run_id)["frames"][0]["visits"]["create_plan"] == 5
+
+
+def test_more_needs_at_least_one_round(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    packet = submit_answer(project, run_id, "choice: more\nrounds: 0\nrationale: Again.\n$answered_by: human\n")
+
+    assert "For the choice `more`, give `rounds`: a whole number of at least 1." in packet
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+    submit_answer(project, run_id, MOVE_ON)
+    assert read_run_info(project, run_id)["attempts"] == 0
+
+
+def test_a_cap_with_no_target_in_an_older_run_copy_pauses_before_the_block(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    copy = project.runs_folder / run_id / "skills" / "plan-work" / "skill.yaml"
+    copy.write_text(copy.read_text(encoding="utf-8").replace("    on_max_visits: stopped\n", ""), encoding="utf-8")
+
+    packet = reach_the_cap(project, run_id)
+
+    info = read_run_info(project, run_id)
+    assert (info["status"], info["pause_reason"], info["current_block"]) == ("paused", "runner_error", "ask_user")
+    assert "The block 'create_plan' reached its visit cap (3)." in packet
+
+
+def test_the_cap_question_uses_the_retries_of_its_block(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    retries: 0\n")
+    project = make_project(tmp_path, skill_yaml=skill_yaml)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    submit_answer(project, run_id, "choice: maybe\n$answered_by: human\n")
+
+    assert (read_run_info(project, run_id)["status"], read_run_info(project, run_id)["pause_reason"]) == (
+        "paused",
+        "block_failed",
+    )
+
+
+@pytest.mark.parametrize("rounds", ["lots", "2.5", "true", "null"])
+def test_rounds_that_are_not_a_whole_number_are_rejected(tmp_path: Path, rounds: str) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    packet = submit_answer(project, run_id, f"choice: more\nrounds: {rounds}\nrationale: Again.\n$answered_by: human\n")
+
+    errors = packet.split("### Errors", 1)[1].split("###", 1)[0]
+    assert "rounds" in errors
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+
+
+def test_in_autonomous_mode_the_agent_answers_the_cap_question_and_never_sees_the_ceiling(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project, mode="autonomous")
+
+    packet = reach_the_cap(project, run_id)
+    submit_answer(project, run_id, "choice: more\nrounds: 1\nrationale: One more plan can settle it.\n")
+
+    assert "it ran 3 times." in packet
+    assert "The user wants few extra runs." in packet
+    assert "150" not in packet and "ceiling" not in packet
+    completed = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_completed"]
+    assert (completed[-1]["block"], completed[-1]["decided_by"]) == ("create_plan", "agent_autonomous")
+    assert read_run_info(project, run_id)["status"] == "active"
+
+
+@pytest.mark.parametrize(
+    ("block_ceiling", "config_text"),
+    [("    autonomous_max_visits: 4\n", ""), ("", "autonomous_max_visits: 4\n")],
+)
+def test_in_autonomous_mode_the_ceiling_moves_on_with_no_question(
+    tmp_path: Path, block_ceiling: str, config_text: str
+) -> None:
+    skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n" + block_ceiling)
+    make_project(tmp_path, skill_yaml=skill_yaml)
+    (tmp_path / ".pskill" / "config.yaml").write_text(config_text, encoding="utf-8")
+    project = find_project(tmp_path)
+    run_id = start(project, mode="autonomous")
+    reach_the_cap(project, run_id)
+
+    submit_answer(project, run_id, "choice: more\nrounds: 5\nrationale: More plans.\n")
+    submit_answer(project, run_id, QUESTION_PLAN)
+    packet = submit_answer(project, run_id, USER_ANSWER)
+
+    assert read_run_info(project, run_id)["status"] == "cancelled"
+    assert "finished with status cancelled" in packet
+
+
+def test_a_config_ceiling_below_the_cap_does_not_cut_the_block_short(tmp_path: Path) -> None:
+    make_project(tmp_path)
+    (tmp_path / ".pskill" / "config.yaml").write_text("autonomous_max_visits: 1\n", encoding="utf-8")
+    project = find_project(tmp_path)
+    run_id = start(project, mode="autonomous")
+
+    reach_the_cap(project, run_id)
+
+    assert read_run_info(project, run_id)["status"] == "cancelled"
+    assert len(read_run_state(project, run_id)["frames"][0]["history"]["create_plan"]) == 3
+
+
+def test_in_interactive_mode_the_human_can_go_past_the_ceiling(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    autonomous_max_visits: 3\n")
+    project = make_project(tmp_path, skill_yaml=skill_yaml)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    submit_answer(project, run_id, ONE_MORE)
+    submit_answer(project, run_id, QUESTION_PLAN)
+    packet = submit_answer(project, run_id, USER_ANSWER)
+
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+    assert "it ran 4 times." in packet
+
+
+@pytest.mark.parametrize("mode", ["interactive", "autonomous"])
+def test_a_block_that_opts_out_moves_on_at_its_cap_with_no_question(tmp_path: Path, mode: str) -> None:
+    skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    ask_on_max_visits: false\n")
+    project = make_project(tmp_path, skill_yaml=skill_yaml)
+    run_id = start(project, mode=mode)
+
+    packet = reach_the_cap(project, run_id)
 
     assert read_run_info(project, run_id)["status"] == "cancelled"
     assert "finished with status cancelled" in packet
@@ -527,19 +731,6 @@ def test_a_run_outside_git_records_no_commit(tmp_path: Path) -> None:
     info = read_run_info(project, start(project))
 
     assert (info["repo_commit"], info["repo_dirty"]) == (None, None)
-
-
-def test_a_visit_cap_without_on_max_visits_pauses_the_run(tmp_path: Path) -> None:
-    project = make_project(tmp_path, skill_yaml=PLAN_SKILL.replace("    on_max_visits: stopped\n", ""))
-    run_id = start(project)
-
-    for _ in range(3):
-        submit_answer(project, run_id, QUESTION_PLAN)
-        packet = submit_answer(project, run_id, "answer: Postgres.\n$answered_by: human\n")
-
-    info = read_run_info(project, run_id)
-    assert (info["status"], info["pause_reason"]) == ("paused", "runner_error")
-    assert "The block 'create_plan' reached its visit cap (3)." in packet
 
 
 def test_a_run_that_matched_no_entry_edge_cannot_resume(tmp_path: Path) -> None:

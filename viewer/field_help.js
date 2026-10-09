@@ -35,15 +35,15 @@ export const FIELD_HELP = {
   },
   max_visits: {
     title: "max_visits (visits at most)",
-    short: "The most times a run may enter this block. It caps a loop.",
+    short: "How many times a run enters this block before it asks for more rounds or moves on. It caps a loop.",
     details: [
       "Optional, on every block type. The runner counts how many times a run entered the block.",
-      "When a run tries to enter the block again after the last visit, the runner goes to `on_max_visits` instead. With no `on_max_visits`, the block fails and the run pauses.",
-      "`pskill validate` warns about a loop that has no cap, because an agent could go round it forever.",
+      "When a run tries to enter the block again after the last visit, the run asks: more rounds, or move on to `on_max_visits`? See `ask_on_max_visits` and `autonomous_max_visits`.",
+      "Every loop needs a block with a cap, also a small loop inside a capped one, because an agent could go round it forever. The `on_max_visits` block must not lead back into the same loop. `pskill validate` gives an error for both.",
     ],
     examples: [
       {
-        caption: "At most 3 plans, then stop",
+        caption: "At 3 plans, ask for more or stop",
         code: "write_plan:\n  type: task\n  instruction: instructions/write_plan.md\n  max_visits: 3\n  on_max_visits: stopped\n  output:\n    plan: {type: string, description: \"The plan.\"}\n  next: approve",
       },
     ],
@@ -52,14 +52,42 @@ export const FIELD_HELP = {
     title: "on_max_visits",
     short: "The block to go to when this block has no visits left.",
     details: [
-      "Optional. It works together with `max_visits`. When a run tries to enter the block after its last visit, the run goes to this block instead.",
-      "Without it, the cap is a failure: the run pauses, and the user can resume it or cancel it.",
+      "Required with `max_visits`. When the run moves on at the cap, it goes to this block instead of entering the capped block again.",
       "Often it is an `end` block, so the skill stops in a clean way.",
     ],
     examples: [
       {
-        caption: "Stop after 5 questions",
+        caption: "At 5 questions, ask for more or stop",
         code: "ask_user:\n  type: decision\n  decider: human\n  instruction: Ask the next question.\n  max_visits: 5\n  on_max_visits: stopped\n  next: write_plan",
+      },
+    ],
+  },
+  ask_on_max_visits: {
+    title: "ask_on_max_visits",
+    short: "Whether the run asks \"more rounds, or move on?\" when this block reaches its cap. Default: true.",
+    details: [
+      "Optional, on a block with `max_visits`. At the cap, the run asks the user (or, in autonomous mode, the agent) whether to run more rounds or to go to `on_max_visits`.",
+      "`false` skips the question in both modes: the run goes to `on_max_visits` at once. Use it where a later block covers the work, such as a review loop whose last fixes get later review rounds.",
+    ],
+    examples: [
+      {
+        caption: "A safety net that never asks",
+        code: "review:\n  type: call\n  skill: review-round\n  max_visits: 7\n  on_max_visits: ready\n  ask_on_max_visits: false\n  next: resolve",
+      },
+    ],
+  },
+  autonomous_max_visits: {
+    title: "autonomous_max_visits",
+    short: "The most visits that the agent may allow in autonomous mode. The default comes from .pskill/config.yaml (150).",
+    details: [
+      "Optional, on a block with `max_visits`, and at least `max_visits`. It counts every visit of the block, the extra rounds too.",
+      "In autonomous mode the agent answers the cap question itself. At this ceiling the run goes to `on_max_visits` with no question. The agent never sees the number.",
+      "A user in interactive mode can go past it.",
+    ],
+    examples: [
+      {
+        caption: "Ask at 40 cycles; the agent may go on up to 60",
+        code: "implement_step:\n  type: task\n  instruction: instructions/implement_step.md\n  max_visits: 40\n  on_max_visits: write_description\n  autonomous_max_visits: 60\n  output:\n    done: {type: boolean, description: \"true when every step is built.\"}\n  next:\n    - when: \"{{ steps.implement_step.done }}\"\n      to: write_description\n    - to: implement_step",
       },
     ],
   },
@@ -413,5 +441,7 @@ export const FACT_FIELDS = {
   skill: "skill",
   status: "status",
   "visits at most": "max_visits",
+  "at the cap": "ask_on_max_visits",
+  "autonomous ceiling": "autonomous_max_visits",
   retries: "retries",
 };
