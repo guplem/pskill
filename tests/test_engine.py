@@ -297,6 +297,18 @@ def test_more_needs_at_least_one_round(tmp_path: Path) -> None:
     assert read_run_info(project, run_id)["status"] == "waiting_for_human"
 
 
+@pytest.mark.parametrize("mode", ["interactive", "autonomous"])
+def test_a_block_that_opts_out_moves_on_at_its_cap_with_no_question(tmp_path: Path, mode: str) -> None:
+    skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    ask_on_max_visits: false\n")
+    project = make_project(tmp_path, skill_yaml=skill_yaml)
+    run_id = start(project, mode=mode)
+
+    packet = reach_the_cap(project, run_id)
+
+    assert read_run_info(project, run_id)["status"] == "cancelled"
+    assert "finished with status cancelled" in packet
+
+
 def test_history_keeps_every_visit(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id = start(project)
