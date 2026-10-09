@@ -1,4 +1,4 @@
-name: checks that still fail after 10 waits end the skill as failed
+name: checks that still fail after 9 fixes end the skill as failed, with no 10th fix that no CI run would check
 inputs: {pr: 9}
 calls:
   checkout:
@@ -25,12 +25,10 @@ answers:
     - {cause: flaky, summary: Rerun 7.}
     - {cause: flaky, summary: Rerun 8.}
     - {cause: flaky, summary: Rerun 9.}
-    - {cause: flaky, summary: Rerun 10.}
 caps:
-  wait_ci:
-    - {choice: move_on, rationale: Ten waits are enough., $answered_by: human}
+  fix_ci:
+    - {choice: move_on, rationale: Nine fixes are enough., $answered_by: human}
 expect:
-  path: [checkout, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci,
-         fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, failed]
+  path: [checkout, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, failed]
   status: failed
-  outputs: {state: failed, failed_checks: ["e2e (slow): https://x/10"], head_sha: s10, fixes: 10}
+  outputs: {state: failed, failed_checks: ["e2e (slow): https://x/10"], head_sha: s10, fixes: 9}

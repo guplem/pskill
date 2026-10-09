@@ -218,7 +218,7 @@ In form 3b the runner first follows the choice, then the first matching edge of 
 
 ```yaml
 max_visits: 3              # optional, on any block; every loop needs one capped block
-on_max_visits: done        # required with max_visits
+on_max_visits: capped      # required with max_visits; often an end whose report names the cap
 ask_on_max_visits: false   # optional, default true
 autonomous_max_visits: 20  # optional, at least max_visits; default: `autonomous_max_visits` in config.yaml (150)
 ```
@@ -845,6 +845,8 @@ The pskill agents: `reviewer` (one review angle, no quote no finding), `explorer
 - **Change the code, not the rule.** A finding that the code breaks a written rule is fixed in the code. The rule changes only when the rule itself is wrong.
 - **Wait in the foreground.** `fix-ci` waits for CI inside the turn, so the Stop hook never sees an agent that ends its turn to wait.
 - **A human label, not a merge.** `finish` adds `waiting-for-human-review` when a human must look (a risky area, a visible change, a cap reached, a dismissed finding, CI not green), with a short note at the top of the description that says what to check. The run never merges.
+- **A limit says so.** In `implement-issue` and `resolve-pr-feedback`, a visit limit that cuts work short ends the run on `capped`, not on the plain end. The run still succeeds, because the pull request exists. `implement-issue` runs to `finish`, which adds an Incomplete warning at the top of the description for each limit whose skipped work matters (its own judgment). The `limits` output and the report name each limit and the work it skipped. `resolve-pr-feedback` ends on its own `capped` at its item cap, with the items `left`. A failed `fix-ci` is not such a limit: the run ends on `done`, and `finish` labels the pull request because CI is not green.
+- **No unchecked last fix.** Two caps push no fix that nothing would check. The 5th required-only round leaves its required findings open, and `finish` names them. `fix-ci` caps its fixes, not its waits, so it asks before a fix that no CI run would check.
 
 ### 13.3 Feature coverage
 
@@ -866,7 +868,7 @@ The example skills together must exercise every runtime feature. pytest fixtures
 | A script that enforces a rule | `review-round.collect_findings` (no quote, no finding) |
 | Nested `call`, with typed outputs, several levels deep | `review-pr.review` calls `review-round`, which calls `checkout-pr` |
 | Branch on a child's `status` | `implement-issue.create_new_issue` |
-| `max_visits` and `on_max_visits`, with the question at the cap | `fix-ci.wait_ci` (`tests/capped.yaml`) |
+| `max_visits` and `on_max_visits`, with the question at the cap | `fix-ci.fix_ci` (`tests/capped.yaml`) |
 | `ask_on_max_visits: false` (a safety net that never asks) | `implement-issue.review`, `review-pr.review` |
 | `history` | `resolve-pr-feedback.claim_item` (the next item), `implement-issue.review` (the dismissed findings) |
 | Conditional `entry` | `implement-issue` |

@@ -7,9 +7,12 @@ from typing import Any
 
 import pytest
 
-from tests.skill_scripts import FakeShell, install_shell, load_skill_script, run_main
+from pskill_runner.skill_loader import load_skill
+from pskill_runner.skill_model import EndBlock, TaskBlock
+from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
 
 SKILL = "implement-issue"
+LIMITS = ["implement_step", "review", "get_ci_green", "final_review", "resolve_items"]
 
 
 def issue(**changes: Any) -> dict[str, Any]:
@@ -324,3 +327,21 @@ def test_check_unreviewed_lists_a_conflict_merge_that_takes_the_base_side(
     script = load_skill_script(SKILL, "check_unreviewed")
 
     assert script.unreviewed_commits(reviewed, head, "implementation-plan-42.md") == [head[:10]]
+
+
+def test_the_report_and_the_label_reasons_read_the_same_limits_as_the_capped_end() -> None:
+    skill = load_skill(SKILLS_FOLDER / SKILL)
+    capped = skill.blocks["capped"]
+    finish = skill.blocks["finish"]
+    assert isinstance(capped, EndBlock) and isinstance(finish, TaskBlock)
+    limits_value: str = capped.outputs["limits"]
+    expression = limits_value.removeprefix("{{ ").removesuffix(" }}")
+
+    assert finish.next[0].when == limits_value
+    for name in LIMITS:
+        assert f"['{name}']" in expression
+    for instruction in ["report.md", "finish.md"]:
+        text = (SKILLS_FOLDER / SKILL / "instructions" / instruction).read_text(encoding="utf-8")
+        assert text.startswith(f"{{% set limits = {expression} %}}"), f"{instruction} lists other limits."
+        for name in LIMITS:
+            assert f"{{% if '{name}' in limits %}}" in text, f"{instruction} has no line for the limit {name}."

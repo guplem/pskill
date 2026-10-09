@@ -29,6 +29,7 @@ expect:
   status: succeeded
   outputs:
     fixed: 1
+    left: 0
     decisions:
       - {kind: finding, reviewer: completeness, title: Missing guard, verdict: fixed, reason: Added the guard.}
       - {kind: comment, reviewer: "", title: Looks good., verdict: dismissed, reason: Thanks!}

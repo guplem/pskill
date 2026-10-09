@@ -30,7 +30,7 @@ inputs:
 outputs:
   decisions:
     type: array
-    description: "One decision per item, in order: its kind, its reviewer (empty for a comment), title, verdict, and reason."
+    description: "One decision per resolved item, in order (the capped end leaves out the items past the cap): its kind, its reviewer (empty for a comment), title, verdict, and reason."
     items:
       type: object
       properties:
@@ -40,6 +40,7 @@ outputs:
         verdict: {type: string, enum: [fixed, dismissed]}
         reason: {type: string}
   fixed: {type: integer, description: "How many items were fixed."}
+  left: {type: integer, description: "How many items have no verdict, because the skill stopped at its cap. 0 when every item has one."}
 entry: checkout
 
 blocks:
@@ -67,7 +68,7 @@ blocks:
     run: [uv, run, "{{ skill.dir }}/scripts/claim_item.py"]
     input: {item: "{{ steps.collect_items.json.queue[history.claim_item | default([]) | length] }}"}
     max_visits: 100
-    on_max_visits: resolved
+    on_max_visits: capped
     next: resolve_item
 
   resolve_item:
@@ -101,7 +102,23 @@ blocks:
     outputs:
       decisions: "{{ history.finish_item | default([]) | map(attribute='json') | map(attribute='decision') | list }}"
       fixed: "{{ history.finish_item | default([]) | map(attribute='json') | map(attribute='decision') | selectattr('verdict', 'equalto', 'fixed') | list | length }}"
+      left: 0
     report: >-
       Tell the user how each item of pull request #{{ inputs.pr }} was resolved, one line per item:
       {% for decision in history.finish_item | default([]) | map(attribute='json') | map(attribute='decision') %}{{ decision.verdict }}
       "{{ decision.title }}" ({{ decision.reason }}){% if not loop.last %}; {% endif %}{% else %}there was nothing to resolve{% endfor %}.
+
+  capped:
+    type: end
+    description: The item cap left items with no verdict
+    status: succeeded
+    outputs:
+      decisions: "{{ history.finish_item | map(attribute='json') | map(attribute='decision') | list }}"
+      fixed: "{{ history.finish_item | map(attribute='json') | map(attribute='decision') | selectattr('verdict', 'equalto', 'fixed') | list | length }}"
+      left: "{{ steps.collect_items.json.count - (history.finish_item | length) }}"
+    report: >-
+      Tell the user that the skill stopped at its item cap: {{ steps.collect_items.json.count - (history.finish_item | length) }}
+      of the {{ steps.collect_items.json.count }} items of pull request #{{ inputs.pr }} have no verdict and no reply yet.
+      Run the skill again for them, with the findings that are left. The {{ history.finish_item | length }} resolved items:
+      {{ history.finish_item | map(attribute='json') | map(attribute='decision') | selectattr('verdict', 'equalto', 'fixed')
+      | list | length }} fixed, the rest dismissed.

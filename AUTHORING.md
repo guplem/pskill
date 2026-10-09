@@ -153,7 +153,7 @@ blocks:
   ```
   While the block is open, `history.ask_finding` holds the earlier answers only. After the answer, it holds this one too, so the edges count every answer.
   `history` spans the whole run of the skill, not one pass through the loop. So when an earlier block can lead back into the loop (a second review round), the count starts at the first pass's answers and reads past the new list. Put such a loop in its own `internal` skill and run it with a `call` block: each call starts with an empty `history`.
-- `max_visits: 3` with `on_max_visits: done` caps a loop. Every cap needs `on_max_visits`.
+- `max_visits: 3` with `on_max_visits: capped` caps a loop. `capped` is an end whose report names the limit and the work it skipped. Every cap needs `on_max_visits`.
   - Every loop needs a cap, also a small loop inside a capped one. The `on_max_visits` block must not lead back into the same loop, or the loop goes on after its caps. `pskill validate` reports both.
   - At the cap, the run asks "more rounds, or move on?". The user answers in interactive mode, the agent in autonomous mode. `move_on` goes to `on_max_visits`.
   - `ask_on_max_visits: false` moves on with no question. Use it for a safety net that a later block covers.
