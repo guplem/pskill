@@ -71,5 +71,5 @@ caps:
     - {choice: move_on, rationale: Seven CI rounds are enough., $answered_by: human}
 expect:
   path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, finish, capped]
-  status: failed
+  status: succeeded
   outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9", limits: [get_ci_green]}

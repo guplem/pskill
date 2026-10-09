@@ -9,4 +9,4 @@ scripts:
 expect:
   path: [checkout, collect_items, resolved]
   status: succeeded
-  outputs: {decisions: [], fixed: 0}
+  outputs: {decisions: [], fixed: 0, left: 0}

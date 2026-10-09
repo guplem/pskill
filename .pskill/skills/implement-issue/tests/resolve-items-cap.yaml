@@ -20,7 +20,7 @@ calls:
   review:
     - {status: succeeded, outputs: {findings: [], reviewed_sha: r1, scope_sha: r1}}
   resolve:
-    - {status: failed, outputs: {decisions: [], fixed: 0}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, left: 30}}
   get_ci_green:
     - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h1, fixes: 0}}
   answer_comments:
@@ -43,5 +43,5 @@ answers:
     - {labels: [waiting-for-human-review], reasons: Some review comments have no verdict.}
 expect:
   path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, finish, capped]
-  status: failed
+  status: succeeded
   outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9", limits: [resolve_items]}
