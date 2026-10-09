@@ -814,6 +814,8 @@ blocks:
     type: parallel
     for_each: "{{ inputs.files }}"
     instruction: "Check {{ item }}."
+    max_visits: 50
+    on_max_visits: done
     output:
       ok: {type: boolean, description: "True when done."}
     next: second

@@ -152,7 +152,7 @@ def test_a_choice_with_an_edge_list_shows_one_exit_per_condition(tmp_path: Path)
 
     exits = detail_of(project, "per-item")["blocks"]["ask_finding"]["exits"]
 
-    assert [exit["to"] for exit in exits] == ["ask_finding", "done", "done"]
+    assert [exit["to"] for exit in exits] == ["ask_finding", "done", "done", "done"]
     assert exits[0]["label"].startswith("fix: (history.ask_finding")
 
 
@@ -187,7 +187,7 @@ def test_the_skill_screen_lists_the_validation_problems(tmp_path: Path) -> None:
 
     problems = detail_of(project, "plan-work")["problems"]
 
-    assert [problem["level"] for problem in problems] == ["warning"]
+    assert [problem["level"] for problem in problems] == ["error"]
     assert "has no block with max_visits" in problems[0]["message"]
 
 

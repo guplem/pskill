@@ -529,19 +529,6 @@ def test_a_run_outside_git_records_no_commit(tmp_path: Path) -> None:
     assert (info["repo_commit"], info["repo_dirty"]) == (None, None)
 
 
-def test_a_visit_cap_without_on_max_visits_pauses_the_run(tmp_path: Path) -> None:
-    project = make_project(tmp_path, skill_yaml=PLAN_SKILL.replace("    on_max_visits: stopped\n", ""))
-    run_id = start(project)
-
-    for _ in range(3):
-        submit_answer(project, run_id, QUESTION_PLAN)
-        packet = submit_answer(project, run_id, "answer: Postgres.\n$answered_by: human\n")
-
-    info = read_run_info(project, run_id)
-    assert (info["status"], info["pause_reason"]) == ("paused", "runner_error")
-    assert "The block 'create_plan' reached its visit cap (3)." in packet
-
-
 def test_a_run_that_matched_no_entry_edge_cannot_resume(tmp_path: Path) -> None:
     skill_yaml = PLAN_SKILL.replace(
         "entry: create_plan", "entry:\n  - when: \"{{ inputs.topic == 'nothing' }}\"\n    to: create_plan"

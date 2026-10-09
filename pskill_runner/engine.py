@@ -629,7 +629,7 @@ class Run:
         block = self.skill_of(self.frame).blocks[target]
         visits = self.frame["visits"].get(target, 0)
         if block.max_visits is not None and visits >= block.max_visits:
-            if block.on_max_visits is None:
+            if block.on_max_visits is None:  # pragma: no cover - the validator requires it with max_visits
                 raise RunnerStop(f"The block {target!r} reached its visit cap ({block.max_visits}).")
             self.go_to(block.on_max_visits, from_block=target, reason=f"visit cap of {target} ({block.max_visits})")
             return

@@ -75,6 +75,8 @@ blocks:
     type: call
     skill: child
     inputs: {name: Ada}
+    max_visits: 5
+    on_max_visits: done
     next:
       - when: "{{ (history.child | length) < 2 }}"
         to: child
@@ -137,6 +139,8 @@ blocks:
     type: parallel
     for_each: "{{ inputs.files if (history.check | default([]) | length) == 0 else inputs.files[:2] }}"
     instruction: "Check {{ item }}."
+    max_visits: 5
+    on_max_visits: done
     output:
       wrong: {type: array, items: {type: string}, description: "The wrong claims."}
     next:
@@ -160,6 +164,8 @@ blocks:
     skill: fanout
     inputs:
       files: "{{ ['a.md', 'b.md', 'c.md'] if (history.fan | default([]) | length) == 0 else ['x.md'] }}"
+    max_visits: 5
+    on_max_visits: done
     next:
       - when: "{{ (history.fan | length) < 2 }}"
         to: fan
