@@ -906,3 +906,36 @@ def test_a_rejected_task_answer_tells_the_subagent_what_to_fix(tmp_path: Path) -
 
     assert reply.startswith("Task 1 is not recorded. Fix these problems and submit again:\n- wrong")
     assert read_run_info(project, run_id)["status"] == "active"
+
+
+SCRIPT_LOOP_SKILL = """\
+schema: pskill/v1
+id: script-loop
+description: Runs a script again and again.
+goal: Count.
+entry: count
+blocks:
+  count:
+    type: script
+    run: [python, -c, "print('one more')"]
+    max_visits: 2
+    on_max_visits: done
+    next: count
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_a_script_at_its_cap_asks_and_the_question_survives_current_and_resume(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"script-loop": SCRIPT_LOOP_SKILL})
+
+    run_id, packet = start_run(project, "script-loop", {}, mode="interactive", harness="generic")
+
+    assert "`count` reached its visit limit: it ran 2 times." in packet
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+    assert "`count` reached its visit limit" in current_packet(project, run_id)
+    pause_run(project, run_id)
+    assert "`count` reached its visit limit" in resume_run(project, run_id)
+    packet = submit_answer(project, run_id, "choice: move_on\nrationale: Two runs are enough.\n$answered_by: human\n")
+    assert read_run_info(project, run_id)["status"] == "succeeded"
