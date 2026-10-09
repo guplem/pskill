@@ -169,7 +169,7 @@ def node_notes(block: AnyBlock) -> str:
     if isinstance(block, EndBlock):
         lines.append(f"Status: {block.status}.")
     if block.max_visits is not None:
-        lines.append(f"It runs at most {block.max_visits} times.")
+        lines.append(visit_cap_note(block))
     if isinstance(block, RetryableBlock) and block.retries is not None:
         lines.append(
             "It does not try again when it fails."
@@ -575,6 +575,15 @@ def arrival_text(row: dict[str, Any], called_by: str | None) -> str:
     if reason.startswith("visit cap of "):
         return f"{row['from']} ({reason})"
     return f"{row['from']} ({condition_text(reason)})"
+
+
+def visit_cap_note(block: AnyBlock) -> str:
+    """What happens at a block's visit cap (SPEC.md section 5.5)."""
+    then = "then asks whether to run more" if block.ask_on_max_visits else "then moves on"
+    note = f"It runs at most {block.max_visits} times, {then}."
+    if block.autonomous_max_visits is not None:
+        note += f" In autonomous mode, at most {block.autonomous_max_visits} times."
+    return note
 
 
 def asks_human(block: AnyBlock | None, mode: str) -> bool:

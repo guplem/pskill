@@ -110,7 +110,7 @@ def test_a_block_shows_its_instruction_fields_and_exits(tmp_path: Path) -> None:
     }
     assert ["visits at most", "3"] in create_plan["facts"]
     assert create_plan["type_meaning"] == "The agent does a piece of work and returns a typed answer."
-    assert create_plan["notes"] == "It runs at most 3 times."
+    assert create_plan["notes"] == "It runs at most 3 times, then asks whether to run more."
     assert [exit["to"] for exit in create_plan["exits"]] == ["ask_user", "approve_plan", "stopped"]
     approve_plan = blocks["approve_plan"]
     assert approve_plan["instruction_file"] == "instructions/approve_plan.md"
@@ -220,7 +220,16 @@ def test_each_block_has_its_editable_keys_and_their_values_as_written(tmp_path: 
     blocks = detail_of(project, "plan-work")["blocks"]
 
     create_plan = blocks["create_plan"]["editable"]
-    assert create_plan["keys"] == ["description", "max_visits", "on_max_visits", "instruction", "next", "retries"]
+    assert create_plan["keys"] == [
+        "description",
+        "max_visits",
+        "on_max_visits",
+        "ask_on_max_visits",
+        "autonomous_max_visits",
+        "instruction",
+        "next",
+        "retries",
+    ]
     assert create_plan["values"]["max_visits"] == 3
     assert create_plan["values"]["next"] == [
         {"when": "{{ steps.create_plan.status == 'question' }}", "to": "ask_user"},
@@ -228,6 +237,20 @@ def test_each_block_has_its_editable_keys_and_their_values_as_written(tmp_path: 
     ]
     assert blocks["approve_plan"]["editable"]["values"]["next"] == {"approve": "done", "stop": "stopped"}
     assert "description" not in create_plan["values"]
+
+
+def test_a_cap_that_never_asks_and_a_ceiling_show_in_the_facts_and_notes(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    capped = PLAN_SKILL.replace(
+        "    max_visits: 3\n", "    max_visits: 3\n    ask_on_max_visits: false\n    autonomous_max_visits: 6\n"
+    )
+    write_skill(project.skills_folder, "plan-work", capped, PLAN_SKILL_FILES)
+
+    create_plan = detail_of(project, "plan-work")["blocks"]["create_plan"]
+
+    assert ["at the cap", "moves on with no question"] in create_plan["facts"]
+    assert ["autonomous ceiling", "6"] in create_plan["facts"]
+    assert create_plan["notes"] == "It runs at most 3 times, then moves on. In autonomous mode, at most 6 times."
 
 
 def test_a_parallel_block_shows_its_task_name(tmp_path: Path) -> None:

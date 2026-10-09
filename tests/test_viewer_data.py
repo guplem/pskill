@@ -438,7 +438,8 @@ def test_each_node_has_a_hint_that_explains_its_block(tmp_path: Path) -> None:
     long_hints = {node["block"]: node["hint"] for node in detail_of(project, long_run)["canvas"]["nodes"]}
 
     assert plan_hints["create_plan"] == (
-        "The agent does a piece of work and returns a typed answer.\nIt runs at most 3 times."
+        "The agent does a piece of work and returns a typed answer.\n"
+        "It runs at most 3 times, then asks whether to run more."
     )
     assert plan_hints["ask_user"] == (
         "One choice is picked from a list, or a question gets an answer.\n"
@@ -1251,7 +1252,7 @@ def test_each_node_sends_its_description_type_meaning_and_notes_apart(tmp_path: 
     assert work["description"] == "Does the one piece of work."
     assert work["type_meaning"] == "The agent does a piece of work and returns a typed answer."
     assert create_plan["description"] is None
-    assert create_plan["notes"] == "It runs at most 3 times."
+    assert create_plan["notes"] == "It runs at most 3 times, then asks whether to run more."
 
 
 def test_a_parallel_row_lists_the_items_that_its_when_skipped(tmp_path: Path) -> None:

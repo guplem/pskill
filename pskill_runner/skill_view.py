@@ -324,6 +324,10 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
         facts.append(["status", block.status])
     if block.max_visits is not None:
         facts.append(["visits at most", str(block.max_visits)])
+        if not block.ask_on_max_visits:
+            facts.append(["at the cap", "moves on with no question"])
+        if block.autonomous_max_visits is not None:
+            facts.append(["autonomous ceiling", str(block.autonomous_max_visits)])
     if isinstance(block, RetryableBlock) and block.retries is not None:
         facts.append(["retries", str(block.retries)])
     return facts

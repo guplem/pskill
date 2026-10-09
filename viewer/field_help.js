@@ -442,5 +442,7 @@ export const FACT_FIELDS = {
   skill: "skill",
   status: "status",
   "visits at most": "max_visits",
+  "at the cap": "ask_on_max_visits",
+  "autonomous ceiling": "autonomous_max_visits",
   retries: "retries",
 };
