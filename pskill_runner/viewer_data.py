@@ -44,6 +44,7 @@ INPUT_TITLES = {
     "script": "Input: the command the runner ran",
     "call": "Input: what the child skill got",
     "end": "Input: the report the agent got",
+    "visit_cap": "Input: the question at the visit cap",
 }
 OUTPUT_TITLES = {
     "task": "Output: the agent's answer",
@@ -52,6 +53,7 @@ OUTPUT_TITLES = {
     "script": "Output: the command's result",
     "call": "Output: the child skill's outputs",
     "end": "Output: the skill's outputs",
+    "visit_cap": "Output: more rounds, or move on",
 }
 # A packet before schema version 4 holds each task's full prompt; a later one holds a one-line prompt.
 TASK_HEADING = re.compile(
@@ -642,7 +644,7 @@ def annotate_rows(
                 "label": node_label(row["block"], details, badges),
                 "summary": " · ".join(details + badges),
                 "arrival": arrival_text(row, called_by),
-                "asks_human": asks_human(block, mode),
+                "asks_human": asks_human(block, mode) or (row["block_type"] == "visit_cap" and mode == "interactive"),
             }
         )
     edges_by_id = {edge.id: edge for edge in edges}

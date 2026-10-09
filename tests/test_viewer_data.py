@@ -499,11 +499,14 @@ def test_a_step_after_a_visit_cap_arrives_by_the_visit_cap_edge(tmp_path: Path) 
     for _ in range(3):
         submit_answer(project, run_id, QUESTION)
         submit_answer(project, run_id, USER_ANSWER)
+    submit_answer(project, run_id, "choice: move_on\nrationale: Enough.\n$answered_by: human\n")
 
     rows = detail_of(project, run_id)["timeline"]
 
     assert rows[-1]["node"] == "f0_stopped"
     assert rows[-1]["edge"] == "L_f0_create_plan_f0_stopped_0"
+    assert (rows[-2]["block_type"], rows[-2]["asks_human"]) == ("visit_cap", True)
+    assert rows[-2]["output_title"] == "Output: more rounds, or move on"
     assert rows[-2]["left_by"] == {"to": "stopped", "label": "visit cap of create_plan"}
     assert rows[-1]["arrival"] == "create_plan (visit cap of create_plan (3))"
 

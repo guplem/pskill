@@ -233,16 +233,68 @@ def test_cannot_complete_counts_as_a_failed_attempt(tmp_path: Path) -> None:
     assert read_run_info(project, run_id)["attempts"] == 1
 
 
-def test_max_visits_redirects_to_on_max_visits(tmp_path: Path) -> None:
+USER_ANSWER = "answer: Postgres.\n$answered_by: human\n"
+MOVE_ON = "choice: move_on\nrationale: Three plans are enough.\n$answered_by: human\n"
+ONE_MORE = "choice: more\nrounds: 1\nrationale: One more try.\n$answered_by: human\n"
+
+
+def reach_the_cap(project: Project, run_id: str) -> str:
+    """Answer create_plan with a question 3 times: the 4th entry reaches its cap of 3."""
+    for _ in range(3):
+        submit_answer(project, run_id, QUESTION_PLAN)
+        packet = submit_answer(project, run_id, USER_ANSWER)
+    return packet
+
+
+def test_at_its_cap_a_block_asks_the_human_for_more_rounds_or_to_move_on(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id = start(project)
 
-    for _ in range(3):
-        submit_answer(project, run_id, QUESTION_PLAN)
-        packet = submit_answer(project, run_id, "answer: Postgres.\n$answered_by: human\n")
+    packet = reach_the_cap(project, run_id)
+
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+    assert "`create_plan` reached its visit limit: it ran 3 times." in packet
+    assert "- more:" in packet and "- move_on:" in packet
+    assert "`stopped`" not in packet  # the packet names no future block (SPEC.md D8)
+    started = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_started"]
+    assert (started[-1]["block"], started[-1]["block_type"]) == ("create_plan", "visit_cap")
+
+
+def test_move_on_goes_to_the_block_after_the_cap(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    packet = submit_answer(project, run_id, MOVE_ON)
 
     assert read_run_info(project, run_id)["status"] == "cancelled"
     assert "finished with status cancelled" in packet
+
+
+def test_more_rounds_run_the_block_again_then_ask_again(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    packet = submit_answer(project, run_id, ONE_MORE)
+
+    assert "Write a plan for the login page." in packet
+    assert "choice" not in read_run_state(project, run_id)["frames"][0]["steps"]["create_plan"]
+    submit_answer(project, run_id, QUESTION_PLAN)
+    packet = submit_answer(project, run_id, USER_ANSWER)
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+    assert "it ran 4 times." in packet
+
+
+def test_more_needs_at_least_one_round(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    packet = submit_answer(project, run_id, "choice: more\nrounds: 0\nrationale: Again.\n$answered_by: human\n")
+
+    assert "For the choice `more`, give `rounds`: a whole number of at least 1." in packet
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
 
 
 def test_history_keeps_every_visit(tmp_path: Path) -> None:
