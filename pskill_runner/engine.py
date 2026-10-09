@@ -86,7 +86,10 @@ class RunError(Exception):
 
 
 class RunnerStop(Exception):
-    """A runner-side failure (a computed value, no matching edge, invalid end outputs). It pauses the run."""
+    """A runner-side failure (a computed value, no matching edge, invalid end outputs, a cap with no target).
+
+    It pauses the run.
+    """
 
 
 # ---------------------------------------------------------------------------------------------

@@ -315,6 +315,20 @@ def test_a_cap_with_no_target_in_an_older_run_copy_pauses_before_the_block(tmp_p
     assert "The block 'create_plan' reached its visit cap (3)." in packet
 
 
+def test_the_cap_question_uses_the_retries_of_its_block(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    retries: 0\n")
+    project = make_project(tmp_path, skill_yaml=skill_yaml)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    submit_answer(project, run_id, "choice: maybe\n$answered_by: human\n")
+
+    assert (read_run_info(project, run_id)["status"], read_run_info(project, run_id)["pause_reason"]) == (
+        "paused",
+        "block_failed",
+    )
+
+
 @pytest.mark.parametrize("rounds", ["lots", "2.5", "true", "null"])
 def test_rounds_that_are_not_a_whole_number_are_rejected(tmp_path: Path, rounds: str) -> None:
     project = make_project(tmp_path)

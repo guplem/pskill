@@ -289,21 +289,48 @@ def text_problems(skill: Skill, location: str, text: str) -> list[Problem]:
     return problems
 
 
+def reachable_past_no_cap(skill: Skill, start_ids: list[str]) -> set[str]:
+    """The blocks that a run can reach without passing a capped block. A capped block is reached, not passed."""
+    reached: set[str] = set()
+    to_visit = [block_id for block_id in start_ids if block_id in skill.blocks]
+    while to_visit:
+        block_id = to_visit.pop()
+        if block_id in reached:
+            continue
+        reached.add(block_id)
+        block = skill.blocks[block_id]
+        if block.max_visits is None:
+            to_visit += [target for target in next_targets(block) if target in skill.blocks]
+    return reached
+
+
 def loop_problems(skill: Skill) -> list[Problem]:
-    """One error per loop in which no block has max_visits (SPEC.md D11)."""
-    reach = {block_id: reachable_blocks(skill, next_targets(block)) for block_id, block in skill.blocks.items()}
+    """One error per loop that can repeat with no cap on the way (SPEC.md D11).
+
+    A loop of uncapped blocks repeats forever, even next to a capped loop. So does a capped block whose
+    `on_max_visits` block leads back to it with no other cap on the way: at its cap, the run goes round again.
+    """
+    uncapped = sorted(block_id for block_id, block in skill.blocks.items() if block.max_visits is None)
+    reach = {block_id: reachable_past_no_cap(skill, next_targets(skill.blocks[block_id])) for block_id in uncapped}
     problems = []
     seen_loops: set[frozenset[str]] = set()
-    for block_id in sorted(skill.blocks):
+    for block_id in uncapped:
         if block_id not in reach[block_id]:
             continue
-        members = frozenset(other for other in reach[block_id] if block_id in reach[other]) | {block_id}
+        members = frozenset(other for other in uncapped if other in reach[block_id] and block_id in reach[other])
         if members in seen_loops:
             continue
         seen_loops.add(members)
-        if all(skill.blocks[member].max_visits is None for member in members):
-            listed = ", ".join(sorted(members))
-            problems.append(error(f"blocks.{block_id}", f"this loop ({listed}) has no block with max_visits"))
+        listed = ", ".join(sorted(members | {block_id}))
+        problems.append(error(f"blocks.{block_id}", f"this loop ({listed}) has no block with max_visits"))
+    for block_id, block in sorted(skill.blocks.items()):
+        if block.on_max_visits is not None and block_id in reachable_past_no_cap(skill, [block.on_max_visits]):
+            problems.append(
+                error(
+                    f"blocks.{block_id}",
+                    f"on_max_visits ({block.on_max_visits}) leads back to this block with no other cap on the way",
+                )
+            )
     return problems
 
 

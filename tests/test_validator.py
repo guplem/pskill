@@ -141,6 +141,56 @@ def test_a_loop_with_no_visit_cap_is_an_error(tmp_path: Path) -> None:
     ]
 
 
+NESTED_LOOPS_SKILL = """\
+schema: pskill/v1
+id: plan-work
+description: An uncapped fix loop inside a capped outer loop.
+goal: Fix it.
+entry: fix
+blocks:
+  fix:
+    type: task
+    instruction: Fix it.
+    output: {ok: {type: boolean, description: "true when fixed."}}
+    next: check
+  check:
+    type: task
+    instruction: Check it.
+    output: {ok: {type: boolean, description: "true when it works."}}
+    next:
+      - when: "{{ steps.check.ok }}"
+        to: outer
+      - to: fix
+  outer:
+    type: task
+    instruction: Decide whether to go round again.
+    max_visits: 3
+    on_max_visits: done
+    output: {again: {type: boolean, description: "true to go round again."}}
+    next:
+      - when: "{{ steps.outer.again }}"
+        to: fix
+      - to: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_a_loop_with_no_cap_inside_a_capped_loop_is_an_error(tmp_path: Path) -> None:
+    assert messages(problems_for(tmp_path, NESTED_LOOPS_SKILL), "error") == [
+        "blocks.check: this loop (check, fix) has no block with max_visits"
+    ]
+
+
+def test_a_cap_whose_target_leads_back_to_it_is_an_error(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    on_max_visits: stopped\n", "    on_max_visits: ask_user\n")
+
+    assert messages(problems_for(tmp_path, skill_yaml), "error") == [
+        "blocks.create_plan: on_max_visits (ask_user) leads back to this block with no other cap on the way"
+    ]
+
+
 def test_a_visit_cap_needs_a_block_to_go_to(tmp_path: Path) -> None:
     skill_yaml = PLAN_SKILL.replace("    on_max_visits: stopped\n", "")
 

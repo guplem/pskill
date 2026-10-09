@@ -449,6 +449,19 @@ def test_each_node_has_a_hint_that_explains_its_block(tmp_path: Path) -> None:
     assert long_hints["work"].startswith("Does the one piece of work.\nThe agent does ")
 
 
+def test_the_visit_cap_edge_of_a_block_that_never_asks_is_taken_at_once(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    never_asks = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    ask_on_max_visits: false\n")
+    write_skill(tmp_path / ".pskill" / "skills", "plan-work", never_asks, PLAN_SKILL_FILES)
+    run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+
+    hints = {edge["id"]: edge["hint"] for edge in detail_of(project, run_id)["canvas"]["edges"]}
+
+    assert hints["L_f0_create_plan_f0_stopped_0"] == (
+        "Taken instead when the run tries to enter create_plan after its 3 visits (the visit cap)."
+    )
+
+
 def test_each_edge_has_a_hint_with_its_whole_condition(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     plan_run, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")

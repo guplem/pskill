@@ -474,7 +474,7 @@ done:
 
 Two kinds of failure exist:
 - **Retried failures** can succeed on a second try: an invalid submission, a `$cannot_complete`, and a failed script. The runner retries up to `retries` times (config, default 2): it reprints the packet with the errors, or it runs the script again. After that it pauses the run with the reason `block_failed`. A `task`, `decision`, `parallel`, or `script` block can set its own `retries: <n>` (0 means no second try), which overrides the config value for that block.
-- **Runner-side failures** fail the same way every time, because nothing changed: a computed value that fails, no matching edge, and invalid end outputs. The runner pauses the run at once with the reason `runner_error`.
+- **Runner-side failures** fail the same way every time, because nothing changed: a computed value that fails, no matching edge, invalid end outputs, and a visit cap with no `on_max_visits` (only in a run copy from before 0.33.0, because the validator now requires it). The runner pauses the run at once with the reason `runner_error`.
 
 The pause packet shows the error and three commands: `resume` (retry the block with a fresh count), `cancel`, and `current`.
 
@@ -761,7 +761,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 15. A `succeeded` end that misses a required skill output. (`failed` and `cancelled` ends may give any subset.)
 16. A skill description longer than 1024 chars.
 17. A stub out of date.
-18. A loop with no `max_visits`.
+18. A loop with no `max_visits` on the way, also inside a capped loop; or an `on_max_visits` block that leads back to its capped block with no other cap on the way.
 19. `max_visits` without `on_max_visits`; `on_max_visits`, `ask_on_max_visits`, or `autonomous_max_visits` without `max_visits`; `autonomous_max_visits` below `max_visits`.
 
 **Warnings:**
