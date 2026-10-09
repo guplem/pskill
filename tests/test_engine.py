@@ -272,13 +272,21 @@ def test_move_on_goes_to_the_block_after_the_cap(tmp_path: Path) -> None:
     assert "finished with status cancelled" in packet
 
 
-def test_the_interactive_question_tells_the_agent_to_ask_the_user_for_the_rounds(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("mode", "rounds_line"),
+    [
+        ("interactive", "For `more`, ask the user how many more runs, and give that number in `rounds`."),
+        ("autonomous", "For `more`, choose the smallest number of rounds that can do it."),
+    ],
+)
+def test_the_question_words_the_rounds_for_its_mode(tmp_path: Path, mode: str, rounds_line: str) -> None:
     project = make_project(tmp_path)
-    run_id = start(project)
+    run_id = start(project, mode=mode)
 
     packet = reach_the_cap(project, run_id)
 
-    assert "Give the number in `rounds`: the user's number (ask for it)" in packet
+    assert rounds_line in packet
+    assert ("ask the user how many" in packet) == (mode == "interactive")
 
 
 def test_a_run_saved_before_the_cap_question_existed_still_goes_on(tmp_path: Path) -> None:

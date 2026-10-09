@@ -407,12 +407,12 @@ def runner_command(project: Project) -> str:
     return f"uv run {entry_script.relative_to(project.root).as_posix()}"
 
 
-def visit_cap_question(block: AnyBlock, visits: int) -> DecisionBlock:
+def visit_cap_question(block: AnyBlock, visits: int, asks_the_human: bool) -> DecisionBlock:
     """The question that the runner asks at a block's visit cap (SPEC.md section 5.5). It is not in `skill.yaml`."""
     return DecisionBlock(
         id=block.id,
         decider="human",
-        instruction=visit_cap_instruction(block.id, visits),
+        instruction=visit_cap_instruction(block.id, visits, asks_the_human),
         choices=VISIT_CAP_CHOICES,
         output={"rounds": VISIT_CAP_ROUNDS},
         # A script's `retries` means "run the command again", not "ask again", so only an agent block's counts.
@@ -572,7 +572,8 @@ class Run:
             raise RunError("The run has no current block.")
         block = self.skill_of(self.frame).blocks[block_id]
         if self.frame.get("visit_cap_question"):
-            return visit_cap_question(block, self.frame["visits"].get(block_id, 0))
+            interactive = self.info["mode"] == "interactive"
+            return visit_cap_question(block, self.frame["visits"].get(block_id, 0), interactive)
         return block
 
     def autonomous_ceiling_of(self, block: AnyBlock) -> int:

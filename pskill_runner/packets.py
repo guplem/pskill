@@ -263,17 +263,20 @@ def render_pause_packet(
 
 
 VISIT_CAP_CHOICES = {
-    "more": "Run the block more times. Give the number in `rounds`: the user's number (ask for it), or yours in an "
-    "autonomous run.",
+    "more": "Run the block more times. Give the number in `rounds`.",
     "move_on": "Stop this loop, and go on with the skill.",
 }
 VISIT_CAP_ROUNDS = FieldSpec(type="integer", description="For `more`: how many more times.", optional=True)
 
 
-def visit_cap_instruction(block_id: str, visits: int) -> str:
+def visit_cap_instruction(block_id: str, visits: int, asks_the_human: bool) -> str:
     """The question at a visit cap. It never names the ceiling or the block after the cap (SPEC.md section 5.5)."""
+    rounds_line = (
+        "For `more`, ask the user how many more runs, and give that number in `rounds`."
+        if asks_the_human
+        else "For `more`, choose the smallest number of rounds that can do it."
+    )
     return (
         f"The block `{block_id}` reached its visit limit: it ran {visits} times. Decide whether it runs again.\n\n"
-        "The user wants few extra runs. Choose `more` only when more runs can finish work that matters, "
-        "with the smallest number of rounds that can do it."
+        "The user wants few extra runs. Choose `more` only when more runs can finish work that matters. " + rounds_line
     )
