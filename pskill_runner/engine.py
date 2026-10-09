@@ -673,7 +673,7 @@ class Run:
 
     def move_on_from_cap(self, block: AnyBlock) -> None:
         """Leave a capped block for its `on_max_visits` block."""
-        if block.on_max_visits is None:  # pragma: no cover - the validator requires it with max_visits
+        if block.on_max_visits is None:  # a run started before 0.33.0 can have a cap with no target
             raise RunnerStop(f"The block {block.id!r} reached its visit cap ({block.max_visits}).")
         self.go_to(block.on_max_visits, from_block=block.id, reason=f"visit cap of {block.id} ({block.max_visits})")
 
@@ -1144,15 +1144,19 @@ class Run:
             return {}, None, [f"You could not complete the block: {raw_answer['$cannot_complete']}"]
         answered_by = raw_answer.pop("$answered_by", None) if isinstance(raw_answer, dict) else None
         answer, errors = check_answer(raw_answer, self.return_fields(block))
-        if self.frame.get("visit_cap_question") and answer.get("choice") == "more":
-            rounds = answer.get("rounds")
-            if not isinstance(rounds, int) or isinstance(rounds, bool) or rounds < 1:
-                errors.append("For the choice `more`, give `rounds`: a whole number of at least 1.")
+        if self.needs_more_rounds(errors, answer):
+            errors.append("For the choice `more`, give `rounds`: a whole number of at least 1.")
         if self.asks_the_human(block) and answered_by not in ("human", "agent"):
             errors.append(
                 "Add the line `$answered_by: human` (the user answered) or `$answered_by: agent` (you answered)."
             )
         return answer, answered_by, errors
+
+    def needs_more_rounds(self, errors: list[str], answer: dict[str, Any]) -> bool:
+        """A valid cap answer `more` with no `rounds`, or fewer than 1. `check_answer` already checked the type."""
+        if errors or not self.frame.get("visit_cap_question") or answer["choice"] != "more":
+            return False
+        return answer.get("rounds") is None or answer["rounds"] < 1
 
     def reject(self, errors: list[str], answer_text: str, task: int | None = None) -> str:
         """Count a failed attempt. Pause after the retries run out, else show the packet with the errors."""

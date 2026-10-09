@@ -299,6 +299,20 @@ def test_more_needs_at_least_one_round(tmp_path: Path) -> None:
     assert read_run_info(project, run_id)["attempts"] == 0
 
 
+def test_a_cap_with_no_target_in_an_older_run_copy_pauses_on_move_on(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    copy = project.runs_folder / run_id / "skills" / "plan-work" / "skill.yaml"
+    copy.write_text(copy.read_text(encoding="utf-8").replace("    on_max_visits: stopped\n", ""), encoding="utf-8")
+    reach_the_cap(project, run_id)
+
+    packet = submit_answer(project, run_id, MOVE_ON)
+
+    info = read_run_info(project, run_id)
+    assert (info["status"], info["pause_reason"]) == ("paused", "runner_error")
+    assert "The block 'create_plan' reached its visit cap (3)." in packet
+
+
 @pytest.mark.parametrize("rounds", ["lots", "2.5", "true", "null"])
 def test_rounds_that_are_not_a_whole_number_are_rejected(tmp_path: Path, rounds: str) -> None:
     project = make_project(tmp_path)
@@ -307,7 +321,8 @@ def test_rounds_that_are_not_a_whole_number_are_rejected(tmp_path: Path, rounds:
 
     packet = submit_answer(project, run_id, f"choice: more\nrounds: {rounds}\nrationale: Again.\n$answered_by: human\n")
 
-    assert "For the choice `more`, give `rounds`: a whole number of at least 1." in packet
+    errors = packet.split("### Errors", 1)[1].split("###", 1)[0]
+    assert "rounds" in errors
     assert read_run_info(project, run_id)["status"] == "waiting_for_human"
 
 

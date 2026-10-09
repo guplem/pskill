@@ -509,8 +509,24 @@ def test_a_step_after_a_visit_cap_arrives_by_the_visit_cap_edge(tmp_path: Path) 
     assert rows[-1]["edge"] == "L_f0_create_plan_f0_stopped_0"
     assert (rows[-2]["block_type"], rows[-2]["asks_human"]) == ("visit_cap", True)
     assert rows[-2]["output_title"] == "Output: more rounds, or move on"
+    assert rows[-2]["summary"].startswith("visit cap question · ")
+    assert rows[-2]["summary"].endswith(" · move on · visit 3")
     assert rows[-2]["left_by"] == {"to": "stopped", "label": "visit cap of create_plan"}
     assert rows[-1]["arrival"] == "create_plan (visit cap of create_plan (3))"
+
+
+def test_a_more_answer_at_the_cap_shows_its_rounds_on_the_node(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+    for _ in range(3):
+        submit_answer(project, run_id, QUESTION)
+        submit_answer(project, run_id, USER_ANSWER)
+    submit_answer(project, run_id, "choice: more\nrounds: 2\nrationale: Two more.\n$answered_by: human\n")
+
+    rows = detail_of(project, run_id)["timeline"]
+
+    question = next(row for row in rows if row["block_type"] == "visit_cap")
+    assert " · 2 more" in question["summary"]
 
 
 def test_each_step_has_the_label_of_its_node_after_the_step(tmp_path: Path) -> None:

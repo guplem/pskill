@@ -531,6 +531,8 @@ def format_duration(milliseconds: int) -> str:
 def row_outcome(row: dict[str, Any]) -> str | None:
     """The short result shown on the node: a choice, a child status, an exit code, or a task count."""
     output = row["output"] if isinstance(row["output"], dict) else {}
+    if row["block_type"] == "visit_cap" and "choice" in output:
+        return f"{output['rounds']} more" if output["choice"] == "more" else "move on"
     if row["block_type"] == "decision" and "choice" in output:
         return str(output["choice"])
     if row["block_type"] == "call" and "status" in output:
@@ -638,8 +640,11 @@ def annotate_rows(
             1 for submission in row["submissions"] if not submission["accepted"]
         )
         block = frames[frame].skill.blocks.get(row["block"]) if frame is not None else None
+        type_text = "visit cap question" if row["block_type"] == "visit_cap" else None
         details, badges = row_details(
-            row, rejected_per_block[key], block_type_text(block) if block else str(row["block_type"])
+            row,
+            rejected_per_block[key],
+            type_text or (block_type_text(block) if block else str(row["block_type"])),
         )
         edge = arrival_edge(row, frame, edges) if frame is not None else None
         called_by = frames[frame].called_by if frame is not None else None
