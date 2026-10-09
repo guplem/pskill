@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.34.0 (2026-10-10)
+
+A `parallel` block can ask for a model tier for its subagents (#11).
+
+- **`tier`:** `fast`, `standard`, or `deep`, or a `{{ }}` value per item, so each task of one block can get its own tier. With no tier, a subagent uses the main agent's model, as before.
+- **Per harness:** Claude Code passes `model: haiku`, `sonnet`, or `opus` to each Agent call. Codex asks for the reasoning effort `low`, `medium`, or `high`. The generic adapter ignores the tier. No skill names a model, and pskill still writes no harness agent file.
+- **Checks:** `pskill validate` rejects a written value that is not a tier. A computed value that is not a tier fails the block, and an empty one means no tier.
+
 ## 0.33.1 (2026-10-09)
 
 The loop-limit example in `AUTHORING.md` ends on a step that says the limit was reached (#141).
