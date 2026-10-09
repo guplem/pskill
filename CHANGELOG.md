@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.33.1 (2026-10-09)
+
+The loop-limit example in `AUTHORING.md` ends on a step that says the limit was reached (#141).
+
+- **A limit says so:** the example `max_visits: 3` now goes to `on_max_visits: capped`, an end whose report names the limit and the work it skipped. Before, it went to `done`, so a run that a limit cut short still read as if the work was complete.
+- **Example skills:** in `implement-issue` and `resolve-pr-feedback`, a limit that cuts work short ends the run on `capped`, which still succeeds:
+  - `implement-issue` names each limit in its new `limits` output and its report, and `finish` adds an Incomplete warning at the top of the pull request for each limit whose skipped work matters.
+  - `resolve-pr-feedback` gives a new output `left`: the items with no verdict.
+  - The 5th required-only review round leaves its findings open instead of pushing a fix that no review would see.
+  - `fix-ci` caps its fixes (9), not its waits, so it asks before a fix that no CI run would check.
+
 ## 0.33.0 (2026-10-09)
 
 A visit cap asks before it moves on, and every loop must have a cap (#145).
