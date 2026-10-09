@@ -867,7 +867,7 @@ The example skills together must exercise every runtime feature. pytest fixtures
 | A script that enforces a rule | `review-round.collect_findings` (no quote, no finding) |
 | Nested `call`, with typed outputs, several levels deep | `review-pr.review` calls `review-round`, which calls `checkout-pr` |
 | Branch on a child's `status` | `implement-issue.create_new_issue` |
-| `max_visits` and `on_max_visits`, with the question at the cap | `fix-ci.wait_ci` (`tests/capped.yaml`) |
+| `max_visits` and `on_max_visits`, with the question at the cap | `fix-ci.fix_ci` (`tests/capped.yaml`) |
 | `ask_on_max_visits: false` (a safety net that never asks) | `implement-issue.review`, `review-pr.review` |
 | `history` | `resolve-pr-feedback.claim_item` (the next item), `implement-issue.review` (the dismissed findings) |
 | Conditional `entry` | `implement-issue` |

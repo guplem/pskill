@@ -29,8 +29,6 @@ blocks:
     type: task
     description: Wait for the CI checks
     instruction: instructions/wait_ci.md
-    max_visits: 10
-    on_max_visits: failed
     output:
       state: {type: string, enum: [passed, failed], description: "passed when every check passed or was skipped."}
       failed_checks: {type: array, items: {type: string}, description: "Each failed check as '<name>: <link>'."}
@@ -44,6 +42,9 @@ blocks:
     type: task
     description: Find why CI failed and fix it
     instruction: instructions/fix_ci.md
+    # The cap sits on the fix, not the wait: the run stops before a fix that no CI run would check.
+    max_visits: 9
+    on_max_visits: failed
     output:
       cause:
         type: string
