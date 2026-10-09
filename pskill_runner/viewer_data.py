@@ -302,7 +302,11 @@ def block_edges(index: int, block: AnyBlock) -> list[CanvasEdge]:
     if block.on_max_visits is not None:
         target = block.on_max_visits
         hint = (
-            f"Taken instead when the run tries to enter {block.id} after its {block.max_visits} visits (the visit cap)."
+            f"Taken when the run tries to enter {block.id} after its {block.max_visits} visits and the question at "
+            "the cap says to move on (the visit cap)."
+            if block.ask_on_max_visits
+            else f"Taken instead when the run tries to enter {block.id} after its {block.max_visits} visits "
+            "(the visit cap)."
         )
         edges.append(
             CanvasEdge(source, node_id(index, target), "visit cap", "visit_cap", index, block.id, target, hint)

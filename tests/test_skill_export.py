@@ -111,6 +111,16 @@ def test_a_step_has_its_instruction_its_fields_and_its_edges_in_plain_words(tmp_
     ) in markdown
 
 
+def test_a_cap_with_no_target_tells_the_agent_to_stop(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    uncapped = PLAN_SKILL.replace("    on_max_visits: stopped\n", "")
+    write_skill(project.skills_folder, "plan-work", uncapped, PLAN_SKILL_FILES)
+
+    markdown = skill_markdown(project, "plan-work")
+
+    assert "The 4th time, stop instead, and tell the user that this step reached its limit." in markdown
+
+
 def test_a_cap_that_never_asks_goes_on_at_once(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     capped = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    ask_on_max_visits: false\n")

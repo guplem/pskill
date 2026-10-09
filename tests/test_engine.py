@@ -295,6 +295,20 @@ def test_more_needs_at_least_one_round(tmp_path: Path) -> None:
 
     assert "For the choice `more`, give `rounds`: a whole number of at least 1." in packet
     assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+    submit_answer(project, run_id, MOVE_ON)
+    assert read_run_info(project, run_id)["attempts"] == 0
+
+
+@pytest.mark.parametrize("rounds", ["lots", "2.5", "true", "null"])
+def test_rounds_that_are_not_a_whole_number_are_rejected(tmp_path: Path, rounds: str) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    reach_the_cap(project, run_id)
+
+    packet = submit_answer(project, run_id, f"choice: more\nrounds: {rounds}\nrationale: Again.\n$answered_by: human\n")
+
+    assert "For the choice `more`, give `rounds`: a whole number of at least 1." in packet
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
 
 
 def test_in_autonomous_mode_the_agent_answers_the_cap_question_and_never_sees_the_ceiling(tmp_path: Path) -> None:
@@ -305,6 +319,7 @@ def test_in_autonomous_mode_the_agent_answers_the_cap_question_and_never_sees_th
     submit_answer(project, run_id, "choice: more\nrounds: 1\nrationale: One more plan can settle it.\n")
 
     assert "it ran 3 times." in packet
+    assert "The user wants few extra runs." in packet
     assert "150" not in packet and "ceiling" not in packet
     completed = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_completed"]
     assert (completed[-1]["block"], completed[-1]["decided_by"]) == ("create_plan", "agent_autonomous")

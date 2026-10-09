@@ -21,6 +21,8 @@ from pskill_runner.computed_values import ComputedValueError, compute, is_true, 
 from pskill_runner.field_types import FieldMap, FieldSpec, check_answer, check_typed_values
 from pskill_runner.inline_executor import InlineExecutor, RealExecutor, ScriptResult
 from pskill_runner.packets import (
+    VISIT_CAP_CHOICES,
+    VISIT_CAP_ROUNDS,
     AgentPacket,
     TaskPrompt,
     render_agent_packet,
@@ -28,6 +30,7 @@ from pskill_runner.packets import (
     render_parallel_packet,
     render_pause_packet,
     task_prompt_text,
+    visit_cap_instruction,
 )
 from pskill_runner.project import Project
 from pskill_runner.run_records import (
@@ -83,7 +86,7 @@ class RunError(Exception):
 
 
 class RunnerStop(Exception):
-    """A runner-side failure (a computed value, no matching edge, a visit cap). It pauses the run."""
+    """A runner-side failure (a computed value, no matching edge, invalid end outputs). It pauses the run."""
 
 
 # ---------------------------------------------------------------------------------------------
@@ -401,24 +404,12 @@ def runner_command(project: Project) -> str:
     return f"uv run {entry_script.relative_to(project.root).as_posix()}"
 
 
-VISIT_CAP_CHOICES = {
-    "more": "Run the block more times. Give the number in `rounds`.",
-    "move_on": "Stop this loop, and go on with the skill.",
-}
-VISIT_CAP_ROUNDS = FieldSpec(type="integer", description="For `more`: how many more times.", optional=True)
-
-
 def visit_cap_question(block: AnyBlock, visits: int) -> DecisionBlock:
     """The question that the runner asks at a block's visit cap (SPEC.md section 5.5). It is not in `skill.yaml`."""
-    instruction = (
-        f"The block `{block.id}` reached its visit limit: it ran {visits} times. Decide whether it runs again.\n\n"
-        "The user wants few extra runs. Choose `more` only when more runs can finish work that matters, "
-        "with the smallest number of rounds that can do it."
-    )
     return DecisionBlock(
         id=block.id,
         decider="human",
-        instruction=instruction,
+        instruction=visit_cap_instruction(block.id, visits),
         choices=VISIT_CAP_CHOICES,
         output={"rounds": VISIT_CAP_ROUNDS},
         retries=block.retries if isinstance(block, RetryableBlock) else None,
@@ -1153,8 +1144,10 @@ class Run:
             return {}, None, [f"You could not complete the block: {raw_answer['$cannot_complete']}"]
         answered_by = raw_answer.pop("$answered_by", None) if isinstance(raw_answer, dict) else None
         answer, errors = check_answer(raw_answer, self.return_fields(block))
-        if self.frame.get("visit_cap_question") and answer.get("choice") == "more" and answer.get("rounds", 0) < 1:
-            errors.append("For the choice `more`, give `rounds`: a whole number of at least 1.")
+        if self.frame.get("visit_cap_question") and answer.get("choice") == "more":
+            rounds = answer.get("rounds")
+            if not isinstance(rounds, int) or isinstance(rounds, bool) or rounds < 1:
+                errors.append("For the choice `more`, give `rounds`: a whole number of at least 1.")
         if self.asks_the_human(block) and answered_by not in ("human", "agent"):
             errors.append(
                 "Add the line `$answered_by: human` (the user answered) or `$answered_by: agent` (you answered)."

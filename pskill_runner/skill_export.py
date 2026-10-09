@@ -328,7 +328,7 @@ def choice_lines(choice: str, edges: list[Edge], numbers: dict[str, int]) -> str
 def visit_cap_line(block: AnyBlock, numbers: dict[str, int]) -> str:
     cap = block.max_visits or 0
     limit = f"Do this step at most {cap} time{'s' if cap != 1 else ''}. The {ordinal(cap + 1)} time,"
-    if block.on_max_visits is None:  # pragma: no cover - the validator requires it with max_visits
+    if block.on_max_visits is None:  # export loads a skill without validating it
         return f"{limit} stop instead, and tell the user that this step reached its limit."
     target = step_link(block.on_max_visits, numbers)
     if not block.ask_on_max_visits:

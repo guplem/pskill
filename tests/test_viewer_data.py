@@ -465,7 +465,8 @@ def test_each_edge_has_a_hint_with_its_whole_condition(tmp_path: Path) -> None:
     assert plan["L_f0_ask_user_f0_create_plan_0"] == "Always taken."
     assert plan["L_f0_approve_plan_f0_done_0"] == 'Taken when the decider picks "approve": Accept the plan.'
     assert plan["L_f0_create_plan_f0_stopped_0"] == (
-        "Taken instead when the run tries to enter create_plan after its 3 visits (the visit cap)."
+        "Taken when the run tries to enter create_plan after its 3 visits and the question at the cap says to move "
+        "on (the visit cap)."
     )
     long_condition = "steps.work.status == 'a very long status name that does not fit on the edge label'"
     assert hints(long_run)["L_f0_work_f0_done_0"] == f"Taken when {long_condition}."
