@@ -283,3 +283,14 @@ def test_a_script_input_is_loaded_and_has_none_by_default(tmp_path: Path) -> Non
     assert isinstance(with_input, ScriptBlock) and isinstance(without_input, ScriptBlock)
     assert with_input.input == {"pr": "{{ skill.id }}"}
     assert without_input.input is None
+
+
+def test_a_parallel_block_loads_its_tier(tmp_path: Path) -> None:
+    skill_yaml = ALL_BLOCKS_SKILL.replace("    agent: fact-checker\n", "    agent: fact-checker\n    tier: fast\n")
+
+    with_tier = load_skill(write_skill(tmp_path / "a", "all-blocks", skill_yaml)).blocks["check_docs"]
+    without_tier = load_skill(write_skill(tmp_path / "b", "all-blocks", ALL_BLOCKS_SKILL)).blocks["check_docs"]
+
+    assert isinstance(with_tier, ParallelBlock) and isinstance(without_tier, ParallelBlock)
+    assert with_tier.tier == "fast"
+    assert without_tier.tier is None

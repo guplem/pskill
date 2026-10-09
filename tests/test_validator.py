@@ -503,3 +503,27 @@ def test_an_item_without_an_agent_name_is_skipped_by_the_agent_file_check(tmp_pa
     assert agent_file_errors(catalog_problems(tmp_path, with_nameless_item)) == [
         "blocks.research: there is no agent file 'ghost.md' in .pskill/agents/"
     ]
+
+
+def with_tier(tier: str) -> str:
+    return CALLER_SKILL.replace(
+        '    agent: "{{ item.agent }}"\n', f'    agent: "{{{{ item.agent }}}}"\n    tier: {tier}\n'
+    )
+
+
+def test_a_tier_that_is_not_a_tier_is_an_error(tmp_path: Path) -> None:
+    assert "blocks.research: the tier 'medium' is not fast, standard, or deep" in catalog_problems(
+        tmp_path, with_tier("medium")
+    )
+
+
+def test_a_valid_or_computed_tier_has_no_tier_error(tmp_path: Path) -> None:
+    for index, tier in enumerate(["deep", '"{{ item.tier }}"']):
+        errors = catalog_problems(tmp_path / str(index), with_tier(tier))
+        assert not [message for message in errors if "tier" in message]
+
+
+def test_references_in_a_tier_are_checked(tmp_path: Path) -> None:
+    assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(
+        tmp_path, with_tier('"{{ steps.nowhere.x }}"')
+    )

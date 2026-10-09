@@ -45,6 +45,7 @@ class ParallelTask(TypedDict):
     item: Any
     agent: str | None
     name: str | None  # from the block's `task_name`; None shows as "task <n>"
+    tier: str | None  # from the block's `tier`; None: the subagent inherits the model
     output: dict[str, Any] | None  # None until a valid answer arrives
     attempts: int
 

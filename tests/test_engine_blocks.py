@@ -950,3 +950,80 @@ def test_the_cap_question_of_a_script_ignores_the_script_retries(tmp_path: Path)
 
     assert read_run_info(project, run_id)["status"] == "waiting_for_human"
     assert "`count` reached its visit limit" in packet
+
+
+def tiered_skill(tier: str) -> str:
+    return PARALLEL_SKILL.replace("    agent: checker\n", f"    agent: checker\n    tier: {tier}\n")
+
+
+def task_tiers(project: Project, run_id: str) -> list[str | None]:
+    return [task.get("tier") for task in read_run_state(project, run_id)["frames"][0]["tasks"] or []]
+
+
+def test_a_tier_asks_claude_code_for_its_model_on_each_agent_call(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": tiered_skill("standard")}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code"
+    )
+
+    assert packet.count("`model: sonnet`") == 2
+    assert task_tiers(project, run_id) == ["standard", "standard"]
+
+
+def test_a_tier_asks_codex_for_its_reasoning_effort(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": tiered_skill("deep")}, {"checker": "You check facts."})
+
+    _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="codex")
+
+    assert "`high`" in packet
+
+
+def test_a_block_with_no_tier_asks_for_no_model(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+
+    assert "`model:" not in packet
+    assert task_tiers(project, run_id) == [None]
+
+
+def test_each_item_can_ask_for_its_own_tier(tmp_path: Path) -> None:
+    skill_yaml = tiered_skill("\"{{ 'deep' if item == 'a.md' else 'fast' }}\"")
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code"
+    )
+
+    assert task_tiers(project, run_id) == ["deep", "fast"]
+    task_zero, task_one = packet.split("#### Task 1")
+    assert "`model: opus`" in task_zero.split("#### Task 0")[1]
+    assert "`model: haiku`" in task_one
+
+
+@pytest.mark.parametrize("tier", ["\"{{ '' }}\"", '"{{ none }}"'])
+def test_an_empty_computed_tier_inherits_the_model(tmp_path: Path, tier: str) -> None:
+    project = make_project(tmp_path, {"fanout": tiered_skill(tier)}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+
+    assert "`model:" not in packet
+    assert task_tiers(project, run_id) == [None]
+
+
+def test_a_computed_tier_that_is_not_a_tier_pauses_the_run(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": tiered_skill("\"{{ 'medium' }}\"")}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+    assert "The tier of 'check' must be fast, standard, or deep, not 'medium'." in packet
+
+
+def test_the_one_by_one_packet_ignores_the_tier(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": tiered_skill("fast")}, {"checker": "You check facts."})
+
+    _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="generic")
+
+    assert "model" not in packet and "fast" not in packet

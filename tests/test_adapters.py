@@ -3,6 +3,7 @@
 import pytest
 
 from pskill_runner.adapters import AdapterError, adapter_for, detect_harness, detect_hook_harness, detect_session_id
+from pskill_runner.skill_model import MODEL_TIERS
 
 
 def test_the_generic_adapter_asks_in_the_chat_and_has_no_subagents() -> None:
@@ -51,3 +52,25 @@ def test_claude_code_runs_parallel_subagents_in_the_foreground_so_the_turn_waits
 
     assert "`run_in_background: false`" in wording
     assert "all in one message" in wording
+
+
+def test_claude_code_asks_for_the_model_of_each_tier_on_the_agent_call() -> None:
+    wording = adapter_for("claude-code").tier_wording
+
+    assert "`model: haiku`" in wording["fast"]
+    assert "`model: sonnet`" in wording["standard"]
+    assert "`model: opus`" in wording["deep"]
+
+
+def test_codex_asks_for_the_reasoning_effort_of_each_tier() -> None:
+    wording = adapter_for("codex").tier_wording
+
+    assert "`low`" in wording["fast"]
+    assert "`medium`" in wording["standard"]
+    assert "`high`" in wording["deep"]
+
+
+def test_every_adapter_with_subagents_words_every_tier_and_generic_words_none() -> None:
+    assert set(adapter_for("claude-code").tier_wording) == set(MODEL_TIERS)
+    assert set(adapter_for("codex").tier_wording) == set(MODEL_TIERS)
+    assert adapter_for("generic").tier_wording == {}

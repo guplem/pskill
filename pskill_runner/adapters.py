@@ -6,7 +6,7 @@ command; every other adapter is optional.
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 class AdapterError(Exception):
@@ -19,6 +19,7 @@ class HarnessAdapter:
     question_wording: str
     can_spawn_subagents: bool
     subagent_wording: str = ""
+    tier_wording: Mapping[str, str] = field(default_factory=dict)  # model tier -> how to spawn a task with it
 
 
 GENERIC = HarnessAdapter(
@@ -39,6 +40,12 @@ CLAUDE_CODE = HarnessAdapter(
         "per task, all in one message. The calls run in parallel, and your turn waits until every subagent has "
         "finished."
     ),
+    # A per-invocation `model` overrides the subagent's own model: https://code.claude.com/docs/en/sub-agents
+    tier_wording={
+        "fast": "Pass `model: haiku` in this task's Agent call.",
+        "standard": "Pass `model: sonnet` in this task's Agent call.",
+        "deep": "Pass `model: opus` in this task's Agent call.",
+    },
 )
 
 CODEX = HarnessAdapter(
@@ -50,6 +57,13 @@ CODEX = HarnessAdapter(
         "Use the spawn_agent tool: one spawn_agent call per task, all at once, then wait_agent until every "
         "subagent has finished."
     ),
+    # An explicit spawn request can set the reasoning effort; Codex picks the model itself. VERIFY.
+    # https://learn.chatgpt.com/docs/agent-configuration/subagents
+    tier_wording={
+        "fast": "Spawn this task's subagent with the reasoning effort `low`.",
+        "standard": "Spawn this task's subagent with the reasoning effort `medium`.",
+        "deep": "Spawn this task's subagent with the reasoning effort `high`.",
+    },
 )
 
 ADAPTERS: dict[str, HarnessAdapter] = {adapter.name: adapter for adapter in (GENERIC, CLAUDE_CODE, CODEX)}
