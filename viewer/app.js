@@ -1898,7 +1898,8 @@ function editControl(key, value) {
   if (key === "ask_on_max_visits") {
     // Unset means true (ask); only false is written.
     const control = selectControl(["yes", "no"], value === false ? "no" : "yes", false);
-    return { node: control.node, read: () => (control.read() === "no" ? false : null) };
+    // Keep an explicit `true` as written, so a save of another key does not delete the line.
+    return { node: control.node, read: () => (control.read() === "no" ? false : value === true ? true : null) };
   }
   if (key === "skill") return selectControl(view.skills.map((skill) => skill.skill_id), value, false);
   if (["max_visits", "autonomous_max_visits", "retries", "timeout_s"].includes(key)) {

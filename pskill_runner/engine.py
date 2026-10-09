@@ -415,7 +415,8 @@ def visit_cap_question(block: AnyBlock, visits: int) -> DecisionBlock:
         instruction=visit_cap_instruction(block.id, visits),
         choices=VISIT_CAP_CHOICES,
         output={"rounds": VISIT_CAP_ROUNDS},
-        retries=block.retries if isinstance(block, RetryableBlock) else None,
+        # A script's `retries` means "run the command again", not "ask again", so only an agent block's counts.
+        retries=block.retries if isinstance(block, TaskBlock | DecisionBlock) else None,
     )
 
 

@@ -939,3 +939,14 @@ def test_a_script_at_its_cap_asks_and_the_question_survives_current_and_resume(t
     assert "`count` reached its visit limit" in resume_run(project, run_id)
     packet = submit_answer(project, run_id, "choice: move_on\nrationale: Two runs are enough.\n$answered_by: human\n")
     assert read_run_info(project, run_id)["status"] == "succeeded"
+
+
+def test_the_cap_question_of_a_script_ignores_the_script_retries(tmp_path: Path) -> None:
+    skill_yaml = SCRIPT_LOOP_SKILL.replace("    max_visits: 2\n", "    max_visits: 2\n    retries: 0\n")
+    project = make_project(tmp_path, {"script-loop": skill_yaml})
+    run_id, _ = start_run(project, "script-loop", {}, mode="interactive", harness="generic")
+
+    packet = submit_answer(project, run_id, "choice: maybe\n$answered_by: human\n")
+
+    assert read_run_info(project, run_id)["status"] == "waiting_for_human"
+    assert "`count` reached its visit limit" in packet
