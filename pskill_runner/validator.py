@@ -4,6 +4,7 @@ The loader already checked the structure of `skill.yaml`. The validator checks w
 cannot express: the graph, the references inside `{{ }}`, the files, and the descriptions.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from pskill_runner.computed_values import (
@@ -50,7 +51,7 @@ def validate_skill(skill: Skill, catalog: SkillCatalog | None = None) -> list[Pr
         problems += block_problems(skill, block)
         if catalog is not None:
             problems += catalog_problems(skill, block, catalog)
-    problems += loop_warnings(skill)
+    problems += loop_problems(skill)
     problems += unused_instruction_file_warnings(skill)
     return problems
 
@@ -91,7 +92,10 @@ def target_problems(skill: Skill) -> list[Problem]:
     return problems
 
 
-def reachable_blocks(skill: Skill, start_ids: list[str]) -> set[str]:
+def reachable_blocks(
+    skill: Skill, start_ids: list[str], targets_of: Callable[[AnyBlock], list[str]] = next_targets
+) -> set[str]:
+    """The blocks that a run can reach from `start_ids`, following `targets_of` each block."""
     reached: set[str] = set()
     to_visit = [block_id for block_id in start_ids if block_id in skill.blocks]
     while to_visit:
@@ -99,7 +103,7 @@ def reachable_blocks(skill: Skill, start_ids: list[str]) -> set[str]:
         if block_id in reached:
             continue
         reached.add(block_id)
-        to_visit += [target for target in next_targets(skill.blocks[block_id]) if target in skill.blocks]
+        to_visit += [target for target in targets_of(skill.blocks[block_id]) if target in skill.blocks]
     return reached
 
 
@@ -115,6 +119,7 @@ def reachability_problems(skill: Skill) -> list[Problem]:
 def block_problems(skill: Skill, block: AnyBlock) -> list[Problem]:
     location = f"blocks.{block.id}"
     problems: list[Problem] = []
+    problems += visit_cap_problems(location, block)
     if isinstance(block, DecisionBlock):
         problems += decision_problems(location, block)
     if isinstance(block, EndBlock):
@@ -128,6 +133,28 @@ def block_problems(skill: Skill, block: AnyBlock) -> list[Problem]:
         problems += field_description_problems(location, "the output field", output)
     for text in block_texts(skill, block, location, problems):
         problems += text_problems(skill, location, text)
+    return problems
+
+
+def visit_cap_problems(location: str, block: AnyBlock) -> list[Problem]:
+    """The cap keys work together (SPEC.md section 5.5): a cap needs a block to go to, and a ceiling above it."""
+    if block.max_visits is None:
+        keys_set = [
+            ("on_max_visits", block.on_max_visits is not None),
+            ("ask_on_max_visits", block.ask_on_max_visits is not None),
+            ("autonomous_max_visits", block.autonomous_max_visits is not None),
+        ]
+        return [error(location, f"{key} needs max_visits") for key, is_set in keys_set if is_set]
+    problems = []
+    if block.on_max_visits is None:
+        problems.append(error(location, "max_visits needs on_max_visits, the block to go to at the cap"))
+    if block.autonomous_max_visits is not None and block.autonomous_max_visits < block.max_visits:
+        problems.append(
+            error(
+                location,
+                f"autonomous_max_visits ({block.autonomous_max_visits}) is below max_visits ({block.max_visits})",
+            )
+        )
     return problems
 
 
@@ -266,9 +293,23 @@ def text_problems(skill: Skill, location: str, text: str) -> list[Problem]:
     return problems
 
 
-def loop_warnings(skill: Skill) -> list[Problem]:
-    """Warn once per loop in which no block has max_visits (SPEC.md D11)."""
-    reach = {block_id: reachable_blocks(skill, next_targets(block)) for block_id, block in skill.blocks.items()}
+def targets_after_the_caps(block: AnyBlock) -> list[str]:
+    """Where a block leads once every cap is used up: a capped block only to its `on_max_visits` block."""
+    if block.max_visits is not None:
+        return [block.on_max_visits] if block.on_max_visits is not None else []
+    return next_targets(block)
+
+
+def loop_problems(skill: Skill) -> list[Problem]:
+    """One error per loop that can still repeat after every cap is used up (SPEC.md D11).
+
+    It finds a loop with no capped block, also one inside a capped loop, and caps whose `on_max_visits`
+    blocks lead back into the same loop.
+    """
+    reach = {
+        block_id: reachable_blocks(skill, targets_after_the_caps(block), targets_after_the_caps)
+        for block_id, block in skill.blocks.items()
+    }
     problems = []
     seen_loops: set[frozenset[str]] = set()
     for block_id in sorted(skill.blocks):
@@ -278,9 +319,12 @@ def loop_warnings(skill: Skill) -> list[Problem]:
         if members in seen_loops:
             continue
         seen_loops.add(members)
+        listed = ", ".join(sorted(members))
         if all(skill.blocks[member].max_visits is None for member in members):
-            listed = ", ".join(sorted(members))
-            problems.append(warning(f"blocks.{block_id}", f"this loop ({listed}) has no block with max_visits"))
+            message = f"this loop ({listed}) has no block with max_visits"
+        else:
+            message = f"this loop ({listed}) goes on after its caps: an on_max_visits block leads back into it"
+        problems.append(error(f"blocks.{block_id}", message))
     return problems
 
 

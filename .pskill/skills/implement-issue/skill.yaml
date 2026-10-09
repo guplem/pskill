@@ -204,9 +204,10 @@ blocks:
       # The commit of the first round (the code that the build left) ends the scope of every round.
       scope_sha: "{{ (history.review | default([]) | map(attribute='outputs') | map(attribute='scope_sha') | first) | default('', true) }}"
       dismissed: "{{ history.resolve | default([]) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
-    # The arrow from resolve already limits the loop to 7 rounds. This cap is only a safety net.
+    # The arrow from resolve already limits the loop to 7 rounds. This cap is only a safety net, so it never asks.
     max_visits: 7
     on_max_visits: ready
+    ask_on_max_visits: false
     next: resolve
 
   resolve:
@@ -278,9 +279,11 @@ blocks:
       scope_sha: "{{ steps.review.outputs.scope_sha }}"
       since_sha: "{{ steps.final_review.outputs.reviewed_sha if steps.final_review is defined else steps.review.outputs.reviewed_sha }}"
       dismissed: "{{ (history.resolve + (history.final_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
-    # The arrow from check_unreviewed already limits these rounds to 5. This cap is only a safety net.
+    # The arrow from check_unreviewed already limits these rounds to 5. This cap is only a safety net, so it never
+    # asks.
     max_visits: 5
     on_max_visits: finish
+    ask_on_max_visits: false
     next:
       - when: "{{ (steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list | length) > 0 }}"
         to: final_resolve

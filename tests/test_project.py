@@ -43,6 +43,11 @@ def test_config_values_override_the_defaults(tmp_path: Path) -> None:
     assert project.config.script_timeout_s == 300
 
 
+def test_the_autonomous_visit_ceiling_defaults_to_150_and_can_be_set(tmp_path: Path) -> None:
+    assert Config().autonomous_max_visits == 150
+    assert find_project(make_project(tmp_path, "autonomous_max_visits: 40\n")).config.autonomous_max_visits == 40
+
+
 def test_an_unknown_config_key_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(ProjectError, match="unknown setting 'retry'"):
         find_project(make_project(tmp_path, "retry: 5\n"))

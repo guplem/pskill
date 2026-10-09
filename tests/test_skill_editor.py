@@ -277,6 +277,19 @@ def test_a_task_name_goes_after_the_agent(tmp_path: Path) -> None:
     assert block_lines.index('    task_name: "{{ item }}"') == block_lines.index("    agent: checker") + 1
 
 
+def test_the_cap_keys_go_after_on_max_visits(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    update_block(project, "plan-work", "create_plan", {"ask_on_max_visits": False, "autonomous_max_visits": 5})
+
+    block_lines = skill_text(project).split("  create_plan:  # the first block\n", 1)[1].splitlines()
+    cap_index = block_lines.index("    on_max_visits: stopped")
+    assert block_lines[cap_index + 1 : cap_index + 3] == [
+        "    ask_on_max_visits: false",
+        "    autonomous_max_visits: 5",
+    ]
+
+
 def test_a_new_block_needs_a_known_type(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     before = skill_text(project)

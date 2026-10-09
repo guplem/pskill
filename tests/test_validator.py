@@ -133,12 +133,116 @@ def test_a_long_description_is_an_error(tmp_path: Path) -> None:
     )
 
 
-def test_a_loop_with_no_visit_cap_is_a_warning(tmp_path: Path) -> None:
+def test_a_loop_with_no_visit_cap_is_an_error(tmp_path: Path) -> None:
     skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n    on_max_visits: stopped\n", "")
 
-    assert messages(problems_for(tmp_path, skill_yaml), "warning") == [
+    assert messages(problems_for(tmp_path, skill_yaml), "error") == [
         "blocks.ask_user: this loop (ask_user, create_plan) has no block with max_visits"
     ]
+
+
+NESTED_LOOPS_SKILL = """\
+schema: pskill/v1
+id: plan-work
+description: An uncapped fix loop inside a capped outer loop.
+goal: Fix it.
+entry: fix
+blocks:
+  fix:
+    type: task
+    instruction: Fix it.
+    output: {ok: {type: boolean, description: "true when fixed."}}
+    next: check
+  check:
+    type: task
+    instruction: Check it.
+    output: {ok: {type: boolean, description: "true when it works."}}
+    next:
+      - when: "{{ steps.check.ok }}"
+        to: outer
+      - to: fix
+  outer:
+    type: task
+    instruction: Decide whether to go round again.
+    max_visits: 3
+    on_max_visits: done
+    output: {again: {type: boolean, description: "true to go round again."}}
+    next:
+      - when: "{{ steps.outer.again }}"
+        to: fix
+      - to: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_a_loop_with_no_cap_inside_a_capped_loop_is_an_error(tmp_path: Path) -> None:
+    assert messages(problems_for(tmp_path, NESTED_LOOPS_SKILL), "error") == [
+        "blocks.check: this loop (check, fix) has no block with max_visits"
+    ]
+
+
+def test_a_cap_whose_target_leads_back_to_it_is_an_error(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    on_max_visits: stopped\n", "    on_max_visits: ask_user\n")
+
+    assert messages(problems_for(tmp_path, skill_yaml), "error") == [
+        "blocks.ask_user: this loop (ask_user, create_plan) goes on after its caps: an on_max_visits block leads "
+        "back into it"
+    ]
+
+
+def test_a_cap_target_that_comes_back_through_another_capped_block_is_valid(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    on_max_visits: stopped\n", "    on_max_visits: ask_user\n").replace(
+        '    decider: human\n    instruction: "Ask the user',
+        '    decider: human\n    max_visits: 3\n    on_max_visits: stopped\n    instruction: "Ask the user',
+    )
+
+    assert messages(problems_for(tmp_path, skill_yaml), "error") == []
+
+
+def test_two_caps_that_send_the_run_to_each_other_are_an_error(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    on_max_visits: stopped\n", "    on_max_visits: ask_user\n").replace(
+        '    decider: human\n    instruction: "Ask the user',
+        '    decider: human\n    max_visits: 3\n    on_max_visits: create_plan\n    instruction: "Ask the user',
+    )
+
+    assert messages(problems_for(tmp_path, skill_yaml), "error") == [
+        "blocks.ask_user: this loop (ask_user, create_plan) goes on after its caps: an on_max_visits block leads "
+        "back into it"
+    ]
+
+
+def test_a_visit_cap_needs_a_block_to_go_to(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("    on_max_visits: stopped\n", "")
+
+    assert messages(problems_for(tmp_path, skill_yaml), "error") == [
+        "blocks.create_plan: max_visits needs on_max_visits, the block to go to at the cap"
+    ]
+
+
+def test_the_other_cap_keys_need_max_visits(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "    type: end\n    status: succeeded",
+        "    type: end\n    on_max_visits: stopped\n    ask_on_max_visits: true\n    autonomous_max_visits: 5\n"
+        "    status: succeeded",
+    )
+
+    assert messages(problems_for(tmp_path, skill_yaml), "error") == [
+        "blocks.done: on_max_visits needs max_visits",
+        "blocks.done: ask_on_max_visits needs max_visits",
+        "blocks.done: autonomous_max_visits needs max_visits",
+    ]
+
+
+def test_the_autonomous_ceiling_is_at_least_the_visit_cap(tmp_path: Path) -> None:
+    lower = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    autonomous_max_visits: 2\n")
+    equal = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    autonomous_max_visits: 3\n")
+
+    assert messages(problems_for(tmp_path / "lower", lower), "error") == [
+        "blocks.create_plan: autonomous_max_visits (2) is below max_visits (3)"
+    ]
+    assert problems_for(tmp_path / "equal", equal) == []
 
 
 def test_a_condition_list_that_ends_with_a_when_is_a_warning(tmp_path: Path) -> None:

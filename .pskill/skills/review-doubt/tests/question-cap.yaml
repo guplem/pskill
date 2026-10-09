@@ -23,6 +23,9 @@ answers:
     - {choice: 'no', rationale: The user picked it., $answered_by: human}
   decide:
     - {verdict: suggestion, reason: The answers are split.}
+caps:
+  next_question:
+    - {choice: move_on, rationale: Six questions are enough., $answered_by: human}
 expect:
   path: [ask, next_question, ask_question, next_question, ask_question, next_question, ask_question, next_question, ask_question, next_question, ask_question, next_question, ask_question, decide, settled]
   status: succeeded

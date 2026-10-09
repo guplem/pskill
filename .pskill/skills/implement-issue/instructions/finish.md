@@ -3,7 +3,7 @@
 Add **`waiting-for-human-review`** when any of these is true:
 - The change is risky or large: a data migration, authentication or permissions, payments, a public contract (an API, an SDK, a command, a file format), a recorded decision or a new architecture pattern, a CI workflow, or many areas at once.
 - The change alters what a user sees. A human must check it visually.
-{% if 'implement_step' in limits %}- The build used its 40 red-green cycles, so plan steps can be missing.
+{% if 'implement_step' in limits %}- The build ended at its visit cap after {{ history.implement_step | length }} red-green cycles, so plan steps can be missing.
 {% endif %}{% if 'review' in limits %}- The review loop used its 7 rounds, so the last fixes got only required-only review rounds.
 {% endif %}{% if 'get_ci_green' in limits %}- CI used its 7 rounds, so CI did not run on the head commit.
 {% endif %}{% if steps.get_ci_green.outputs.state == 'failed' %}- CI is not green: {{ steps.get_ci_green.outputs.failed_checks | join('; ') }}.

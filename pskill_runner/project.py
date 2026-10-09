@@ -23,6 +23,7 @@ class Config:
     permissions: list[str] = field(default_factory=lambda: list(PERMISSION_APPS))
     default_mode: str = "interactive"
     retries: int = 2
+    autonomous_max_visits: int = 150
     script_timeout_s: int = 300
     stop_hook_max_blocks: int = 3
     viewer_port: int = 7777

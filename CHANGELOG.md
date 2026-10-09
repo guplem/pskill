@@ -1,11 +1,18 @@
 # Changelog
 
-## 0.32.2 (2026-10-08)
+## 0.33.0 (2026-10-09)
 
-The loop-limit example in `AUTHORING.md` ends on a step that says the limit was reached.
+A visit cap asks before it moves on, and every loop must have a cap (#145).
 
-- **A limit says so:** the example `max_visits: 3` now goes to `on_max_visits: capped`, an end whose report names the limit and the work it skipped. Before, it went to `done`, so a run that a limit cut short still ended as if the work was complete (#141).
-- **Example skills:** in `implement-issue` and `resolve-pr-feedback`, each visit limit that skips work now ends the run on `capped` (failed). `implement-issue` still reviews, runs CI, and labels the pull request, then names each limit in its new `limits` output: the 40 build cycles, the 7 review rounds, the 7 CI rounds, the 5 required-only rounds, and a feedback round's 100 items. `resolve-pr-feedback` ends on `capped` past 100 items.
+- **The question at a cap:** when a run would enter a block at its `max_visits`, it asks `more` (with a number of `rounds`) or `move_on`. The human answers in interactive mode; the agent answers in autonomous mode, and the question asks for few extra rounds. `move_on` goes to `on_max_visits`; `more` runs the block that many more times, then asks again.
+- **`ask_on_max_visits: false`:** a block that never asks moves on at once, in both modes. The safety-net caps of implement-issue and review-pr use it.
+- **A hidden ceiling for the agent:** `autonomous_max_visits` on a block, or the same setting in `.pskill/config.yaml` (default 150). In autonomous mode the run moves on at the ceiling with no question. The agent never sees it, and a human in interactive mode can go past it.
+- **Every loop needs a cap:** `pskill validate` now gives errors, not a warning, that can fail a skill that validated before:
+  - a loop with no `max_visits` on the way, also inside a capped loop;
+  - a loop that goes on after its caps, because an `on_max_visits` block leads back into it;
+  - `max_visits` without `on_max_visits` (a cap with no target used to pause the run at a dead end);
+  - `on_max_visits`, `ask_on_max_visits`, or `autonomous_max_visits` without `max_visits`, and `autonomous_max_visits` below `max_visits`.
+- **Skill tests:** a case answers cap questions with the new `caps` key.
 
 ## 0.32.1 (2026-10-08)
 

@@ -66,6 +66,9 @@ answers:
     - {summary: Saving a file with no name shows an error instead of crashing.}
   finish:
     - {labels: [waiting-for-human-review], reasons: CI did not run on the head commit.}
+caps:
+  get_ci_green:
+    - {choice: move_on, rationale: Seven CI rounds are enough., $answered_by: human}
 expect:
   path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, ready, finish, capped]
   status: failed

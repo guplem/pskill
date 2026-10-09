@@ -44,6 +44,7 @@ INPUT_TITLES = {
     "script": "Input: the command the runner ran",
     "call": "Input: what the child skill got",
     "end": "Input: the report the agent got",
+    "visit_cap": "Input: the question at the visit cap",
 }
 OUTPUT_TITLES = {
     "task": "Output: the agent's answer",
@@ -52,6 +53,7 @@ OUTPUT_TITLES = {
     "script": "Output: the command's result",
     "call": "Output: the child skill's outputs",
     "end": "Output: the skill's outputs",
+    "visit_cap": "Output: more rounds, or move on",
 }
 # A packet before schema version 4 holds each task's full prompt; a later one holds a one-line prompt.
 TASK_HEADING = re.compile(
@@ -167,7 +169,7 @@ def node_notes(block: AnyBlock) -> str:
     if isinstance(block, EndBlock):
         lines.append(f"Status: {block.status}.")
     if block.max_visits is not None:
-        lines.append(f"It runs at most {block.max_visits} times.")
+        lines.append(visit_cap_note(block))
     if isinstance(block, RetryableBlock) and block.retries is not None:
         lines.append(
             "It does not try again when it fails."
@@ -300,7 +302,11 @@ def block_edges(index: int, block: AnyBlock) -> list[CanvasEdge]:
     if block.on_max_visits is not None:
         target = block.on_max_visits
         hint = (
-            f"Taken instead when the run tries to enter {block.id} after its {block.max_visits} visits (the visit cap)."
+            f"Taken when the run tries to enter {block.id} after its {block.max_visits} visits and the question at "
+            "the cap says to move on (the visit cap)."
+            if block.asks_at_cap
+            else f"Taken instead when the run tries to enter {block.id} after its {block.max_visits} visits "
+            "(the visit cap)."
         )
         edges.append(
             CanvasEdge(source, node_id(index, target), "visit cap", "visit_cap", index, block.id, target, hint)
@@ -525,6 +531,8 @@ def format_duration(milliseconds: int) -> str:
 def row_outcome(row: dict[str, Any]) -> str | None:
     """The short result shown on the node: a choice, a child status, an exit code, or a task count."""
     output = row["output"] if isinstance(row["output"], dict) else {}
+    if row["block_type"] == "visit_cap" and "choice" in output:
+        return f"{output['rounds']} more" if output["choice"] == "more" else "move on"
     if row["block_type"] == "decision" and "choice" in output:
         return str(output["choice"])
     if row["block_type"] == "call" and "status" in output:
@@ -575,6 +583,15 @@ def arrival_text(row: dict[str, Any], called_by: str | None) -> str:
     return f"{row['from']} ({condition_text(reason)})"
 
 
+def visit_cap_note(block: AnyBlock) -> str:
+    """What happens at a block's visit cap (SPEC.md section 5.5)."""
+    then = "then asks whether to run more" if block.asks_at_cap else "then moves on"
+    note = f"It runs at most {block.max_visits} times, {then}."
+    if block.autonomous_max_visits is not None:
+        note += f" In autonomous mode, at most {block.autonomous_max_visits} times."
+    return note
+
+
 def asks_human(block: AnyBlock | None, mode: str) -> bool:
     """A human decision asks the user only in an interactive run; in autonomous mode the agent decides."""
     return isinstance(block, DecisionBlock) and block.decider == "human" and mode == "interactive"
@@ -623,8 +640,11 @@ def annotate_rows(
             1 for submission in row["submissions"] if not submission["accepted"]
         )
         block = frames[frame].skill.blocks.get(row["block"]) if frame is not None else None
+        type_text = "visit cap question" if row["block_type"] == "visit_cap" else None
         details, badges = row_details(
-            row, rejected_per_block[key], block_type_text(block) if block else str(row["block_type"])
+            row,
+            rejected_per_block[key],
+            type_text or (block_type_text(block) if block else str(row["block_type"])),
         )
         edge = arrival_edge(row, frame, edges) if frame is not None else None
         called_by = frames[frame].called_by if frame is not None else None
@@ -642,7 +662,7 @@ def annotate_rows(
                 "label": node_label(row["block"], details, badges),
                 "summary": " · ".join(details + badges),
                 "arrival": arrival_text(row, called_by),
-                "asks_human": asks_human(block, mode),
+                "asks_human": asks_human(block, mode) or (row["block_type"] == "visit_cap" and mode == "interactive"),
             }
         )
     edges_by_id = {edge.id: edge for edge in edges}

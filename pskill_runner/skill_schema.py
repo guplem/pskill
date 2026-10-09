@@ -84,6 +84,8 @@ COMMON_BLOCK_PROPERTIES: dict[str, Any] = {
     "description": {"type": "string"},
     "max_visits": {"type": "integer", "minimum": 1},
     "on_max_visits": {"type": "string"},
+    "ask_on_max_visits": {"type": "boolean"},
+    "autonomous_max_visits": {"type": "integer", "minimum": 1},
 }
 
 

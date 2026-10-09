@@ -26,6 +26,9 @@ answers:
     - {cause: flaky, summary: Rerun 8.}
     - {cause: flaky, summary: Rerun 9.}
     - {cause: flaky, summary: Rerun 10.}
+caps:
+  wait_ci:
+    - {choice: move_on, rationale: Ten waits are enough., $answered_by: human}
 expect:
   path: [checkout, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci,
          fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, failed]

@@ -170,6 +170,22 @@ def test_retries_and_timeout_are_unset_by_default(tmp_path: Path) -> None:
     assert task.retries is None
 
 
+def test_a_capped_block_can_opt_out_of_the_cap_question_and_set_a_ceiling(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "    max_visits: 3\n", "    max_visits: 3\n    ask_on_max_visits: false\n    autonomous_max_visits: 10\n"
+    )
+
+    task = load_skill(write_skill(tmp_path, "plan-work", skill_yaml, PLAN_SKILL_FILES)).blocks["create_plan"]
+
+    assert (task.ask_on_max_visits, task.autonomous_max_visits) == (False, 10)
+
+
+def test_a_capped_block_asks_and_has_no_ceiling_of_its_own_by_default(tmp_path: Path) -> None:
+    task = load_skill(write_skill(tmp_path, "plan-work", PLAN_SKILL, PLAN_SKILL_FILES)).blocks["create_plan"]
+
+    assert (task.ask_on_max_visits, task.asks_at_cap, task.autonomous_max_visits) == (None, True, None)
+
+
 def test_only_a_script_takes_a_timeout_and_an_end_takes_no_retries(tmp_path: Path) -> None:
     skill_yaml = PLAN_SKILL.replace("    max_visits: 3\n", "    max_visits: 3\n    timeout_s: 30\n").replace(
         "    type: end\n    status: succeeded", "    type: end\n    retries: 1\n    status: succeeded"

@@ -80,6 +80,9 @@ answers:
     - {summary: Saving a file with no name shows an error instead of crashing.}
   finish:
     - {labels: [waiting-for-human-review], reasons: "The build ended at its cap, so plan steps can be missing."}
+caps:
+  implement_step:
+    - {choice: move_on, rationale: Forty cycles are enough., $answered_by: human}
 expect:
   path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, write_description, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, finish, capped]
   status: failed
