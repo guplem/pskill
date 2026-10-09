@@ -63,6 +63,35 @@ export const FIELD_HELP = {
       },
     ],
   },
+  ask_on_max_visits: {
+    title: "ask_on_max_visits",
+    short: "Whether the run asks \"more rounds, or move on?\" when this block reaches its cap. Default: true.",
+    details: [
+      "Optional, on a block with `max_visits`. At the cap, the run asks the user (or, in autonomous mode, the agent) whether to run more rounds or to go to `on_max_visits`.",
+      "`false` skips the question in both modes: the run goes to `on_max_visits` at once. Use it where a later block covers the work, such as a review loop whose last fixes get later review rounds.",
+    ],
+    examples: [
+      {
+        caption: "A safety net that never asks",
+        code: "review:\n  type: call\n  skill: review-round\n  max_visits: 7\n  on_max_visits: ready\n  ask_on_max_visits: false\n  next: resolve",
+      },
+    ],
+  },
+  autonomous_max_visits: {
+    title: "autonomous_max_visits",
+    short: "The most visits that the agent may allow in autonomous mode. The default comes from .pskill/config.yaml (150).",
+    details: [
+      "Optional, on a block with `max_visits`, and at least `max_visits`. It counts every visit of the block, the extra rounds too.",
+      "In autonomous mode the agent answers the cap question itself. At this ceiling the run goes to `on_max_visits` with no question. The agent never sees the number.",
+      "A user in interactive mode can go past it.",
+    ],
+    examples: [
+      {
+        caption: "Ask at 40 cycles; the agent may go on up to 60",
+        code: "implement_step:\n  type: task\n  instruction: instructions/implement_step.md\n  max_visits: 40\n  on_max_visits: write_description\n  autonomous_max_visits: 60\n  output:\n    done: {type: boolean, description: \"true when every step is built.\"}\n  next: implement_step",
+      },
+    ],
+  },
   retries: {
     title: "retries",
     short: "How many more tries the block gets after a failure. The default comes from .pskill/config.yaml (2).",

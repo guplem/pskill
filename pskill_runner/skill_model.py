@@ -29,6 +29,8 @@ class Block:
     description: str | None = None
     max_visits: int | None = None
     on_max_visits: str | None = None
+    ask_on_max_visits: bool = True  # at the cap, ask "more rounds, or move on?" (SPEC.md section 5.5)
+    autonomous_max_visits: int | None = None  # the hidden ceiling for the agent; None: the config.yaml value
 
 
 @dataclass(frozen=True, kw_only=True)
