@@ -19,7 +19,7 @@ outputs:
   limits: {type: array, items: {type: string}, optional: true, description: "The limits that cut work short, for the capped result. The report and the PR description say what each one skipped."}
 # Each limit that cut work short, for the finish edge and the capped end. report.md and finish.md copy it (a test checks
 # the copies).
-x-limits: &limits "{{ (['implement_step'] if not steps.implement_step.done else []) + (['review'] if steps.resolve.outputs.fixed > 0 and (history.resolve | map(attribute='outputs') | selectattr('fixed', 'gt', 0) | list | length) > 6 else []) + (['get_ci_green'] if (history.ready | length) > (history.get_ci_green | length) else []) + (['final_review'] if steps.check_unreviewed.json.unreviewed else []) + (['resolve_items'] if (history.resolve + history.answer_comments + history.final_resolve) | map(attribute='outputs') | selectattr('left') | list else []) }}"
+x-limits: &limits "{{ (['implement_step'] if not steps.implement_step.done else []) + (['review'] if steps.resolve.outputs.fixed > 0 and (history.resolve | map(attribute='outputs') | selectattr('fixed', 'gt', 0) | list | length) > 6 else []) + (['get_ci_green'] if (history.ready | length) > (history.get_ci_green | length) else []) + (['final_review'] if steps.check_unreviewed.json.unreviewed or ((history.final_review | length) > (history.final_resolve | length) and (steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list)) else []) + (['resolve_items'] if (history.resolve + history.answer_comments + history.final_resolve) | map(attribute='outputs') | selectattr('left') | list else []) }}"
 entry:
   - when: "{{ inputs.request is matches('^ *#?[0-9]+ *$|^ *https://github[.]com/[^ ]+/issues/[0-9]+ *$') }}"
     to: read_issue
@@ -285,8 +285,11 @@ blocks:
     on_max_visits: finish
     ask_on_max_visits: false
     next:
-      - when: "{{ (steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list | length) > 0 }}"
+      - when: "{{ (steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list | length) > 0 and (history.final_review | length) < 5 }}"
         to: final_resolve
+      # The 5th round's fixes would get no review, so its required findings stay open, and finish names them.
+      - when: "{{ (steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list | length) > 0 }}"
+        to: finish
       - to: check_unreviewed
 
   final_resolve:
