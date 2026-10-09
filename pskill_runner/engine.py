@@ -657,6 +657,8 @@ class Run:
         extra_visits = self.frame.get("extra_visits", {}).get(target, 0)
         at_ceiling = self.info["mode"] == "autonomous" and visits >= self.autonomous_ceiling_of(block)
         if block.max_visits is not None and (visits >= block.max_visits + extra_visits or at_ceiling):
+            if block.on_max_visits is None:  # a run started before 0.33.0 can have a cap with no target
+                raise RunnerStop(f"The block {block.id!r} reached its visit cap ({block.max_visits}).")
             if block.ask_on_max_visits and not at_ceiling:
                 self.frame["visit_cap_question"] = True
                 self.arrive(target, from_block, reason)
@@ -672,9 +674,8 @@ class Run:
         self.frame["arrival_reason"] = reason
 
     def move_on_from_cap(self, block: AnyBlock) -> None:
-        """Leave a capped block for its `on_max_visits` block."""
-        if block.on_max_visits is None:  # a run started before 0.33.0 can have a cap with no target
-            raise RunnerStop(f"The block {block.id!r} reached its visit cap ({block.max_visits}).")
+        """Leave a capped block for its `on_max_visits` block. `go_to` checked that the block has one."""
+        assert block.on_max_visits is not None
         self.go_to(block.on_max_visits, from_block=block.id, reason=f"visit cap of {block.id} ({block.max_visits})")
 
     def follow_edges(self, block: AnyBlock, value: dict[str, Any]) -> None:

@@ -229,7 +229,7 @@ A transition into a block that already has `max_visits` visits is at the cap. Th
 - **Who answers:** the human in interactive mode (the run waits as `waiting_for_human`); the agent in autonomous mode, as for any human decision (D6).
 - **`ask_on_max_visits: false`** skips the question in both modes: the run goes to `on_max_visits` at once. Use it for a safety net that a later block covers.
 - **The ceiling** binds only the agent: in autonomous mode, a block at `autonomous_max_visits` visits goes to `on_max_visits` with no question. It counts every visit of the block, the extra rounds too, and it never goes below `max_visits`. A human in interactive mode can go past it.
-- The question and its answer are runner state: `{{ }}` cannot read them, and they stay out of `steps` and `history`. The trace logs them as `block_started` and `block_completed` with `block_type: visit_cap`.
+- The question and its answer are runner state: `{{ }}` cannot read them, and they stay out of `steps` and `history`. The trace logs the question as `block_started` with `block_type: visit_cap`, and the answer as `block_completed` on the capped block's id.
 
 ---
 

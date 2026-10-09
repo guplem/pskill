@@ -284,6 +284,9 @@ def test_more_rounds_run_the_block_again_then_ask_again(tmp_path: Path) -> None:
     packet = submit_answer(project, run_id, USER_ANSWER)
     assert read_run_info(project, run_id)["status"] == "waiting_for_human"
     assert "it ran 4 times." in packet
+    packet = submit_answer(project, run_id, ONE_MORE)  # the rounds add up: the block runs a 5th time
+    assert "Write a plan for the login page." in packet
+    assert read_run_state(project, run_id)["frames"][0]["visits"]["create_plan"] == 5
 
 
 def test_more_needs_at_least_one_round(tmp_path: Path) -> None:
@@ -299,17 +302,16 @@ def test_more_needs_at_least_one_round(tmp_path: Path) -> None:
     assert read_run_info(project, run_id)["attempts"] == 0
 
 
-def test_a_cap_with_no_target_in_an_older_run_copy_pauses_on_move_on(tmp_path: Path) -> None:
+def test_a_cap_with_no_target_in_an_older_run_copy_pauses_before_the_block(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id = start(project)
     copy = project.runs_folder / run_id / "skills" / "plan-work" / "skill.yaml"
     copy.write_text(copy.read_text(encoding="utf-8").replace("    on_max_visits: stopped\n", ""), encoding="utf-8")
-    reach_the_cap(project, run_id)
 
-    packet = submit_answer(project, run_id, MOVE_ON)
+    packet = reach_the_cap(project, run_id)
 
     info = read_run_info(project, run_id)
-    assert (info["status"], info["pause_reason"]) == ("paused", "runner_error")
+    assert (info["status"], info["pause_reason"], info["current_block"]) == ("paused", "runner_error", "ask_user")
     assert "The block 'create_plan' reached its visit cap (3)." in packet
 
 

@@ -515,6 +515,18 @@ def test_a_step_after_a_visit_cap_arrives_by_the_visit_cap_edge(tmp_path: Path) 
     assert rows[-1]["arrival"] == "create_plan (visit cap of create_plan (3))"
 
 
+def test_a_cap_question_in_an_autonomous_run_does_not_ask_a_person(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="autonomous", harness="generic")
+    for _ in range(3):
+        submit_answer(project, run_id, QUESTION)
+        submit_answer(project, run_id, "answer: Postgres.\n")
+
+    rows = detail_of(project, run_id)["timeline"]
+
+    assert (rows[-1]["block_type"], rows[-1]["asks_human"]) == ("visit_cap", False)
+
+
 def test_a_more_answer_at_the_cap_shows_its_rounds_on_the_node(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
