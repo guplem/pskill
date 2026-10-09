@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.33.0 (2026-10-09)
+
+A visit cap asks before it moves on, and every loop must have a cap (#145).
+
+- **The question at a cap:** when a run would enter a block at its `max_visits`, it asks `more` (with a number of `rounds`) or `move_on`. The human answers in interactive mode; the agent answers in autonomous mode, and the question asks for few extra rounds. `move_on` goes to `on_max_visits`; `more` runs the block that many more times, then asks again.
+- **`ask_on_max_visits: false`:** a block that never asks moves on at once, in both modes. The safety-net caps of implement-issue and review-pr use it.
+- **A hidden ceiling for the agent:** `autonomous_max_visits` on a block, or the same setting in `.pskill/config.yaml` (default 150). In autonomous mode the run moves on at the ceiling with no question. The agent never sees it, and a human in interactive mode can go past it.
+- **Every loop needs a cap:** `pskill validate` now gives an error, not a warning, for a loop with no `max_visits`, and for `max_visits` without `on_max_visits`. A cap with no target used to pause the run at a dead end.
+- **Skill tests:** a case answers cap questions with the new `caps` key.
+
 ## 0.32.1 (2026-10-08)
 
 A script with `parse: json` can print a value over 64 KiB, and a cut text output says it was cut.

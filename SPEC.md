@@ -63,7 +63,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D8 | The stub gives the skill goal and the loop rules once. A packet contains the current instruction and its return format, and no future blocks. It repeats the goal only where the agent never saw the stub: a subagent task, the first packet of a child skill, and `current` or `resume` (with the rules). | Fewer tokens, no running ahead, one obvious place for the goal, and enough context for autonomous answers. Changed in 0.10.0: before, every packet repeated the goal and the rules. |
 | D9 | Every agent block declares a typed output. The runner rejects invalid submissions with the error text. | State lives in the runner, typed, and survives tool calls. |
 | D10 | A nested skill call works like a function: inputs in, outputs out, no access to the caller's state. | Replaces line-number citations and file-heading contracts. |
-| D11 | Visit caps are optional. The validator warns about a loop with no cap. | User choice. |
+| D11 | Every loop needs a visit cap: the validator gives an error for a loop with no cap. At a cap, the run asks whether to run more rounds (section 5.5). Changed in 0.33.0 (#145): before, caps were optional and a loop with no cap got a warning. | User choice. A skill author cannot know the right number of rounds for every task, and an autonomous run must not loop forever. |
 | D12 | When a block fails, the runner retries it, then pauses the run with a report. | Recoverable by default. |
 | D13 | A run survives the session. Any session in any harness in the same checkout can resume it. | State is in files, not in the chat. |
 | D14 | "Replay" means visual step-through of past runs in the viewer. | User scope. |
@@ -217,11 +217,19 @@ In form 3b the runner first follows the choice, then the first matching edge of 
 ### 5.5 Visit caps
 
 ```yaml
-max_visits: 3          # optional, on any block
-on_max_visits: done    # optional
+max_visits: 3              # optional, on any block; every loop needs one capped block
+on_max_visits: done        # required with max_visits
+ask_on_max_visits: false   # optional, default true
+autonomous_max_visits: 20  # optional, at least max_visits; default: `autonomous_max_visits` in config.yaml (150)
 ```
 
-A transition into a block that already has `max_visits` visits goes to `on_max_visits` instead. With no `on_max_visits`, the block fails (section 7.4).
+A transition into a block that already has `max_visits` visits is at the cap. The runner then asks a question that it builds itself (it is not a block): `more` with a whole number of `rounds`, or `move_on`.
+- **The question** names the block and its visits, and says that the user wants few extra rounds. It never names the `on_max_visits` block or the ceiling.
+- **`move_on`** goes to `on_max_visits`. **`more`** raises the block's cap by `rounds` for this frame, and the run asks again at the new limit. `rounds` below 1 is rejected.
+- **Who answers:** the human in interactive mode (the run waits as `waiting_for_human`); the agent in autonomous mode, as for any human decision (D6).
+- **`ask_on_max_visits: false`** skips the question in both modes: the run goes to `on_max_visits` at once. Use it for a safety net that a later block covers.
+- **The ceiling** binds only the agent: in autonomous mode, a block at `autonomous_max_visits` visits goes to `on_max_visits` with no question. It counts every visit of the block, the extra rounds too, and it never goes below `max_visits`. A human in interactive mode can go past it.
+- The question and its answer are runner state: `{{ }}` cannot read them, and they stay out of `steps` and `history`. The trace logs them as `block_started` and `block_completed` with `block_type: visit_cap`.
 
 ---
 
@@ -420,7 +428,7 @@ done:
 | Status | Meaning | Stop hook |
 |---|---|---|
 | `active` | The runner waits for the agent's submission. | Blocks the stop. |
-| `waiting_for_human` | A human decision in interactive mode is open. | Allows the stop. |
+| `waiting_for_human` | A human decision, or a visit cap question (5.5), is open in interactive mode. | Allows the stop. |
 | `paused` | A block failed, `pskill pause` ran, or the Stop hook gave up. `pause_reason` says why. | Allows the stop. |
 | `succeeded`, `failed`, `cancelled` | Final. | Allows the stop. |
 
@@ -466,7 +474,7 @@ done:
 
 Two kinds of failure exist:
 - **Retried failures** can succeed on a second try: an invalid submission, a `$cannot_complete`, and a failed script. The runner retries up to `retries` times (config, default 2): it reprints the packet with the errors, or it runs the script again. After that it pauses the run with the reason `block_failed`. A `task`, `decision`, `parallel`, or `script` block can set its own `retries: <n>` (0 means no second try), which overrides the config value for that block.
-- **Runner-side failures** fail the same way every time, because nothing changed: a computed value that fails, no matching edge, a visit cap with no `on_max_visits`, and invalid end outputs. The runner pauses the run at once with the reason `runner_error`.
+- **Runner-side failures** fail the same way every time, because nothing changed: a computed value that fails, no matching edge, and invalid end outputs. The runner pauses the run at once with the reason `runner_error`.
 
 The pause packet shows the error and three commands: `resume` (retry the block with a fresh count), `cancel`, and `current`.
 
@@ -474,7 +482,7 @@ As a guard, a run pauses when more than 1,000 runner-only blocks run without an 
 
 ### 7.5 Modes
 
-Set the mode with `start --mode interactive|autonomous` (default from config: `interactive`). The mode is fixed for the whole run, nested calls included. It changes only human decisions (6.2).
+Set the mode with `start --mode interactive|autonomous` (default from config: `interactive`). The mode is fixed for the whole run, nested calls included. It changes only human decisions (6.2) and the visit cap question (5.5).
 
 ### 7.6 Resume
 
@@ -688,6 +696,7 @@ hook_files: [.claude/settings.json, .codex/hooks.json]  # where sync writes the 
 permissions: [claude-code, codex]                       # the apps that get the rule to run pskill without asking
 default_mode: interactive
 retries: 2
+autonomous_max_visits: 150                               # the agent's ceiling at a visit cap (5.5)
 script_timeout_s: 300
 stop_hook_max_blocks: 3
 viewer_port: 7777
@@ -752,11 +761,12 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 15. A `succeeded` end that misses a required skill output. (`failed` and `cancelled` ends may give any subset.)
 16. A skill description longer than 1024 chars.
 17. A stub out of date.
+18. A loop with no `max_visits`.
+19. `max_visits` without `on_max_visits`; `on_max_visits`, `ask_on_max_visits`, or `autonomous_max_visits` without `max_visits`; `autonomous_max_visits` below `max_visits`.
 
 **Warnings:**
-1. A loop with no `max_visits`.
-2. A condition list whose last item has a `when`.
-3. An instruction file that no block uses.
+1. A condition list whose last item has a `when`.
+2. An instruction file that no block uses.
 
 ---
 
@@ -779,6 +789,9 @@ scripts:                      # per script block: one result per visit
   close_issue:
     - {exit_code: 0, stdout: ""}
 calls: {}                     # per call block: one {status, outputs, inputs} per visit (inputs is optional)
+caps:                         # per capped block: one answer per visit cap question, in order
+  check_applies:
+    - {choice: move_on, rationale: "Enough rounds", "$answered_by": human}
 expect:
   path: [read_issue, check_applies, confirm_close, close_issue, closed]   # or path_contains
   status: succeeded
@@ -791,6 +804,7 @@ Rules:
 - For a `parallel` block, list the answers of its tasks in task order, as for any other block. The test runner uses the one-by-one mode, so each task takes the next answer in the queue.
 - An answer that fails validation is rejected, as in a real run, and the next answer is used. This lets a test prove that the schema catches bad output.
 - When a case runs out of answers, it fails and names the block that asked for more.
+- A visit cap question (5.5) takes its answer from `caps`, not from `answers`. A question with no answer left fails the case and names the block. The questions stay out of the `path`.
 - When a case file is not valid YAML and the error points at a `?` inside `{ }`, the problem adds a hint: put the value in quotes.
 - The output has one PASS or FAIL line per case, and the first mismatch for each FAIL.
 
@@ -853,7 +867,8 @@ The example skills together must exercise every runtime feature. pytest fixtures
 | A script that enforces a rule | `review-round.collect_findings` (no quote, no finding) |
 | Nested `call`, with typed outputs, several levels deep | `review-pr.review` calls `review-round`, which calls `checkout-pr` |
 | Branch on a child's `status` | `implement-issue.create_new_issue` |
-| `max_visits` with and without `on_max_visits` | `implement-issue.review`; `create-issue.assess_clarity` |
+| `max_visits` and `on_max_visits`, with the question at the cap | `fix-ci.wait_ci` (`tests/capped.yaml`) |
+| `ask_on_max_visits: false` (a safety net that never asks) | `implement-issue.review`, `review-pr.review` |
 | `history` | `resolve-pr-feedback.claim_item` (the next item), `implement-issue.review` (the dismissed findings) |
 | Conditional `entry` | `implement-issue` |
 | A script's `input` on stdin, as JSON and as text | `implement-issue.checkout_base`; `create-issue.create` |
@@ -961,7 +976,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 
 - **Frontmatter:** `name` and `description`, plus `disable-model-invocation: true` for a `manual` or `internal` skill.
 - **Steps:** one `## Step N: <block>` heading per block, in graph order (breadth first from the entry). A short "How to follow this skill" part comes first.
-- **Edges:** "go to step N" lines, with each condition as a plain expression. A visit cap becomes "Do this step at most N times".
+- **Edges:** "go to step N" lines, with each condition as a plain expression. A visit cap becomes "Do this step at most N times", and asks the user before more times unless the block opts out.
 - **Values:** `{{ steps.x.y }}` becomes `x.y`, `history.x` becomes `x.all_visits`, and `{% %}` tags become words. Inside the author's own code, a value stays a bare name.
 - **Block types:** a human decision asks the user, a script is a command that the agent runs, a parallel block uses subagents or does the items one by one, and an end step names its status, outputs, and report.
 - **Files:** the zip holds `<skill>/SKILL.md`, the skill's `scripts/`, and each pskill agent that it uses as `<skill>/subagents/<name>.md`. (Not `agents/`: Codex reads `agents/openai.yaml` there.)
@@ -972,7 +987,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 
 The skill screen can change a skill. `skill_editor.py` writes the change to `skill.yaml`.
 
-- **What it edits:** a block's description, visit cap, retries, instruction or report (inline, or the text of its `.md` file), `next` edges (with conditions, and per choice), choices, decider, command, parse, timeout, child skill, agent, task name, `for_each`, and end status. It also adds a block of any type (the smallest valid block) and deletes a block that no edge leads to. It does not edit field maps, `inputs`, `outputs`, or the skill's top level: edit those in the file.
+- **What it edits:** a block's description, visit cap (with `ask_on_max_visits` and `autonomous_max_visits`), retries, instruction or report (inline, or the text of its `.md` file), `next` edges (with conditions, and per choice), choices, decider, command, parse, timeout, child skill, agent, task name, `for_each`, and end status. It also adds a block of any type (the smallest valid block) and deletes a block that no edge leads to. It does not edit field maps, `inputs`, `outputs`, or the skill's top level: edit those in the file.
 - **Only the changed block changes.** `ruamel.yaml` (a YAML library that keeps comments) reads the file. The editor replaces only the lines of the changed block, so every other line stays byte for byte the same. Inside the block, the comments, the quotes, and the anchors stay. A new key goes where the skill files put it (for example `description` after `type`). A list that the author wrapped over two lines becomes one line, but only in the changed block.
 - **Only keys that changed:** the page sends only the keys that the user changed, so an untouched key keeps its exact form.
 - **A structure error is refused:** a change after which the skill does not load is not saved, and the file stays as it was. A validation problem (for example an end that misses a required output) is saved, and the checks show it, because many edits need several steps.

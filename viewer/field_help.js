@@ -38,8 +38,8 @@ export const FIELD_HELP = {
     short: "The most times a run may enter this block. It caps a loop.",
     details: [
       "Optional, on every block type. The runner counts how many times a run entered the block.",
-      "When a run tries to enter the block again after the last visit, the runner goes to `on_max_visits` instead. With no `on_max_visits`, the block fails and the run pauses.",
-      "`pskill validate` warns about a loop that has no cap, because an agent could go round it forever.",
+      "When a run tries to enter the block again after the last visit, the run asks: more rounds, or move on to `on_max_visits`? See `ask_on_max_visits` and `autonomous_max_visits`.",
+      "Every loop needs one block with a cap, because an agent could go round it forever. `pskill validate` gives an error for a loop with no cap.",
     ],
     examples: [
       {
@@ -52,8 +52,7 @@ export const FIELD_HELP = {
     title: "on_max_visits",
     short: "The block to go to when this block has no visits left.",
     details: [
-      "Optional. It works together with `max_visits`. When a run tries to enter the block after its last visit, the run goes to this block instead.",
-      "Without it, the cap is a failure: the run pauses, and the user can resume it or cancel it.",
+      "Required with `max_visits`. When the run moves on at the cap, it goes to this block instead of entering the capped block again.",
       "Often it is an `end` block, so the skill stops in a clean way.",
     ],
     examples: [
