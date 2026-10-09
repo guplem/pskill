@@ -39,11 +39,11 @@ export const FIELD_HELP = {
     details: [
       "Optional, on every block type. The runner counts how many times a run entered the block.",
       "When a run tries to enter the block again after the last visit, the run asks: more rounds, or move on to `on_max_visits`? See `ask_on_max_visits` and `autonomous_max_visits`.",
-      "Every loop needs one block with a cap, because an agent could go round it forever. `pskill validate` gives an error for a loop with no cap.",
+      "Every loop needs a block with a cap, also a small loop inside a capped one, because an agent could go round it forever. The `on_max_visits` block must not lead back into the same loop. `pskill validate` gives an error for both.",
     ],
     examples: [
       {
-        caption: "At most 3 plans, then stop",
+        caption: "At 3 plans, ask for more or stop",
         code: "write_plan:\n  type: task\n  instruction: instructions/write_plan.md\n  max_visits: 3\n  on_max_visits: stopped\n  output:\n    plan: {type: string, description: \"The plan.\"}\n  next: approve",
       },
     ],
@@ -57,7 +57,7 @@ export const FIELD_HELP = {
     ],
     examples: [
       {
-        caption: "Stop after 5 questions",
+        caption: "At 5 questions, ask for more or stop",
         code: "ask_user:\n  type: decision\n  decider: human\n  instruction: Ask the next question.\n  max_visits: 5\n  on_max_visits: stopped\n  next: write_plan",
       },
     ],
@@ -87,7 +87,7 @@ export const FIELD_HELP = {
     examples: [
       {
         caption: "Ask at 40 cycles; the agent may go on up to 60",
-        code: "implement_step:\n  type: task\n  instruction: instructions/implement_step.md\n  max_visits: 40\n  on_max_visits: write_description\n  autonomous_max_visits: 60\n  output:\n    done: {type: boolean, description: \"true when every step is built.\"}\n  next: implement_step",
+        code: "implement_step:\n  type: task\n  instruction: instructions/implement_step.md\n  max_visits: 40\n  on_max_visits: write_description\n  autonomous_max_visits: 60\n  output:\n    done: {type: boolean, description: \"true when every step is built.\"}\n  next:\n    - when: \"{{ steps.implement_step.done }}\"\n      to: write_description\n    - to: implement_step",
       },
     ],
   },

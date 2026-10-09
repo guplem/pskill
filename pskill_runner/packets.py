@@ -263,7 +263,8 @@ def render_pause_packet(
 
 
 VISIT_CAP_CHOICES = {
-    "more": "Run the block more times. Give the number in `rounds`.",
+    "more": "Run the block more times. Give the number in `rounds`: the user's number (ask for it), or yours in an "
+    "autonomous run.",
     "move_on": "Stop this loop, and go on with the skill.",
 }
 VISIT_CAP_ROUNDS = FieldSpec(type="integer", description="For `more`: how many more times.", optional=True)

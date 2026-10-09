@@ -1,5 +1,6 @@
 """Tests for pskill_runner.engine: running a skill block by block."""
 
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -269,6 +270,29 @@ def test_move_on_goes_to_the_block_after_the_cap(tmp_path: Path) -> None:
 
     assert read_run_info(project, run_id)["status"] == "cancelled"
     assert "finished with status cancelled" in packet
+
+
+def test_the_interactive_question_tells_the_agent_to_ask_the_user_for_the_rounds(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    packet = reach_the_cap(project, run_id)
+
+    assert "Give the number in `rounds`: the user's number (ask for it)" in packet
+
+
+def test_a_run_saved_before_the_cap_question_existed_still_goes_on(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    state_file = project.runs_folder / run_id / "state.json"
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    for frame in state["frames"]:
+        del frame["visit_cap_question"], frame["extra_visits"]
+    state_file.write_text(json.dumps(state), encoding="utf-8")
+
+    packet = reach_the_cap(project, run_id)
+
+    assert "`create_plan` reached its visit limit: it ran 3 times." in packet
 
 
 def test_more_rounds_run_the_block_again_then_ask_again(tmp_path: Path) -> None:
