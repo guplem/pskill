@@ -12,6 +12,7 @@ the base branch changes nothing in the pull request, so it is left out.
 import json
 import subprocess
 import sys
+from typing import Any
 
 from github_rest import gh_api
 
@@ -44,7 +45,7 @@ def new_commits(reviewed_sha: str, head_sha: str) -> list[str]:
 def main() -> None:
     script_input = json.load(sys.stdin)
     pr_number, reviewed_sha = str(script_input["pr"]), str(script_input["reviewed_sha"])
-    head = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")["head"]
+    head: dict[str, Any] = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")["head"]
     head_sha = str(head["sha"])
     commits: list[str] = []
     if head_sha != reviewed_sha:

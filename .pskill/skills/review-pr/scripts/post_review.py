@@ -141,8 +141,8 @@ def main() -> None:
     script_input: dict[str, Any] = json.load(sys.stdin)
     pr_number, commit, body = str(script_input["pr"]), str(script_input["commit"]), str(script_input["body"])
     findings: list[dict[str, Any]] = script_input["findings"]
-    pull_request = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")
-    viewer = gh_api("user")["login"]
+    pull_request: dict[str, Any] = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")
+    viewer = str(gh_api("user")["login"])
     event = review_event(bool(script_input["has_required"]), own_pull_request=pull_request["user"]["login"] == viewer)
 
     review_key = json.dumps([commit, body, findings, event], sort_keys=True)

@@ -74,7 +74,7 @@ def overall_state(rows: list[dict[str, str]]) -> str:
 
 
 def read_once(pr_number: int) -> dict[str, Any]:
-    pull_request = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")
+    pull_request: dict[str, Any] = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")
     # A fork branch is not on origin: then the head of GitHub is the only one.
     origin_head = "" if is_cross_repository(pull_request) else remote_head(pull_request["head"]["ref"])
     head_sha = origin_head or pull_request["head"]["sha"]
