@@ -95,7 +95,9 @@ def build_parser() -> argparse.ArgumentParser:
     test = commands.add_parser("test", help="Run the skills' test cases with a scripted fake agent.")
     test.add_argument("skill", nargs="?", help="Default: every skill.")
 
-    sync = commands.add_parser("sync", help="Write the skill stubs, the profile agents, and the harness hooks and permission rule.")
+    sync = commands.add_parser(
+        "sync", help="Write the skill stubs, the profile agents, and the harness hooks and permission rule."
+    )
     sync.add_argument("--check", action="store_true", help="Only report what is out of date.")
 
     init = commands.add_parser("init", help="Create .pskill/ in the current folder, pinned to a runner release.")

@@ -1,4 +1,4 @@
-"""`pskill sync`: bring the stubs, the profile agents, and the app settings in line with the project (SPEC.md 9.2, 9.3)."""
+"""`pskill sync`: bring the stubs, profile agents, and app settings in line with the project (SPEC.md 9.2, 9.3)."""
 
 import subprocess
 from typing import Any
