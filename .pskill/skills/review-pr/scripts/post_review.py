@@ -25,6 +25,8 @@ import subprocess
 import sys
 from typing import Any
 
+from github_rest import gh_api, gh_api_pages
+
 HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 REVIEW_MARKER_PREFIX = "<!-- pr-review: "
 RESULT_OF_EVENT = {"REQUEST_CHANGES": "changes_requested", "APPROVE": "approved", "COMMENT": "commented"}
@@ -126,17 +128,8 @@ def lines_at_commit(commit: str, paths: set[str]) -> dict[str, list[str]]:
 
 def posted_review_url(pr_number: str, marker: str) -> str:
     """The URL of the review that carries this marker, or an empty text when there is none."""
-    urls = run_checked(
-        [
-            "gh",
-            "api",
-            f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews",
-            "--paginate",
-            "--jq",
-            f'.[] | select(.body | contains("{marker}")) | .html_url',
-        ]
-    )
-    return next(iter(urls.splitlines()), "")
+    reviews = gh_api_pages(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews")
+    return next((str(review["html_url"]) for review in reviews if marker in (review["body"] or "")), "")
 
 
 def post(pr_number: str, review: dict[str, Any]) -> subprocess.CompletedProcess[str]:
@@ -148,13 +141,13 @@ def main() -> None:
     script_input: dict[str, Any] = json.load(sys.stdin)
     pr_number, commit, body = str(script_input["pr"]), str(script_input["commit"]), str(script_input["body"])
     findings: list[dict[str, Any]] = script_input["findings"]
-    pull_request = json.loads(run_checked(["gh", "pr", "view", pr_number, "--json", "author,baseRefName"]))
-    viewer = run_checked(["gh", "api", "user", "--jq", ".login"])
-    event = review_event(bool(script_input["has_required"]), own_pull_request=pull_request["author"]["login"] == viewer)
+    pull_request = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")
+    viewer = gh_api("user")["login"]
+    event = review_event(bool(script_input["has_required"]), own_pull_request=pull_request["user"]["login"] == viewer)
 
     review_key = json.dumps([commit, body, findings, event], sort_keys=True)
     marker = f"{REVIEW_MARKER_PREFIX}{hashlib.sha256(review_key.encode()).hexdigest()[:12]} -->"
-    diff = run_checked(["git", "diff", "--unified=3", f"origin/{pull_request['baseRefName']}...{commit}"])
+    diff = run_checked(["git", "diff", "--unified=3", f"origin/{pull_request['base']['ref']}...{commit}"])
     file_lines = lines_at_commit(commit, {finding["file"] for finding in findings})
     inline, in_body = split_findings(findings, lines_shown_by_diff(diff), file_lines)
     fallback = False

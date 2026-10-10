@@ -18,23 +18,14 @@ notice: neither is review, so they never count.
 
 import json
 import re
-import subprocess
 import sys
 from typing import Any
+
+from github_rest import gh_api, gh_api_pages
 
 REPLY_MARKER = re.compile(r"<!-- resolve-pr-feedback-reply: (\d+) -->")
 CI_NOTICE_AUTHOR = "github-actions[bot]"
 COPILOT_REVIEWER = "copilot-pull-request-reviewer[bot]"
-
-
-def run(command: list[str]) -> str:
-    return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
-
-
-def all_pages(endpoint: str) -> list[dict[str, Any]]:
-    """Every item of a paginated REST endpoint (`--slurp` gives one list per page)."""
-    pages: list[list[dict[str, Any]]] = json.loads(run(["gh", "api", endpoint, "--paginate", "--slurp"]))
-    return [item for page in pages for item in page]
 
 
 def answered_ids(bodies: list[str]) -> set[int]:
@@ -64,7 +55,7 @@ def claimed_by(login: str, comment: dict[str, Any], comment_kind: str) -> bool:
     if (comment.get("reactions") or {}).get("eyes", 0) == 0:  # a review body has no reactions
         return False
     kind_path = "pulls/comments" if comment_kind == "inline" else "issues/comments"
-    reactions = all_pages(f"repos/{{owner}}/{{repo}}/{kind_path}/{comment['id']}/reactions?content=eyes")
+    reactions = gh_api_pages(f"repos/{{owner}}/{{repo}}/{kind_path}/{comment['id']}/reactions?content=eyes")
     return any(reaction["user"]["login"] == login for reaction in reactions)
 
 
@@ -79,19 +70,19 @@ def is_unaddressed(comment: dict[str, Any], comment_kind: str, answered: set[int
 
 
 def unaddressed_comments(pr_number: str) -> list[dict[str, Any]]:
-    inline = all_pages(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/comments")
+    inline = gh_api_pages(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/comments")
     reviews = [
         review
-        for review in all_pages(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews")
+        for review in gh_api_pages(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews")
         if not is_copilot_notice(review)
     ]
     conversation = [
         comment
-        for comment in all_pages(f"repos/{{owner}}/{{repo}}/issues/{pr_number}/comments")
+        for comment in gh_api_pages(f"repos/{{owner}}/{{repo}}/issues/{pr_number}/comments")
         if comment["user"]["login"] != CI_NOTICE_AUTHOR
     ]
     answered = answered_ids([str(comment["body"] or "") for comment in [*inline, *conversation]])
-    login = str(json.loads(run(["gh", "api", "user"]))["login"])
+    login = str(gh_api("user")["login"])
     return [
         comment_item(comment, comment_kind)
         for comment_kind, comments in (("inline", inline), ("review", reviews), ("conversation", conversation))

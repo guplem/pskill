@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from tests.skill_scripts import SKILLS_FOLDER, load_skill_script
+from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
 
 SKILL = "review-pr"
 final_findings = load_skill_script(SKILL, "final_findings")
@@ -162,10 +162,9 @@ class TestPost:
         has_required: bool = True,
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         sent: list[dict[str, Any]] = []
-        answers = {
-            "pr": json.dumps({"author": {"login": author}, "baseRefName": "main"}),
-            "api": "me",
-            "diff": TestPlacement.DIFF,
+        replies = {
+            "repos/{owner}/{repo}/pulls/7": {"user": {"login": author}, "base": {"ref": "main"}},
+            "user": {"login": "me"},
         }
 
         def fake_post(pr_number: str, review: dict[str, Any]) -> subprocess.CompletedProcess[str]:
@@ -173,7 +172,8 @@ class TestPost:
             code, stderr = post_results[len(sent) - 1]
             return subprocess.CompletedProcess([], code, stdout="https://review" if code == 0 else "", stderr=stderr)
 
-        monkeypatch.setattr(post_review, "run_checked", lambda command: answers[command[1]])
+        monkeypatch.setattr(post_review, "gh_api", lambda path: replies[path])
+        monkeypatch.setattr(post_review, "run_checked", lambda command: TestPlacement.DIFF)
         monkeypatch.setattr(post_review, "lines_at_commit", lambda commit, paths: {"a.py": ["a", "b", "c"]})
         monkeypatch.setattr(post_review, "posted_review_url", lambda pr_number, marker: posted_url)
         monkeypatch.setattr(post_review, "post", fake_post)
@@ -238,6 +238,20 @@ class TestPost:
         _, second = self.run_main(monkeypatch, "author", [(0, "")], commit="c2")
         markers = [sent[0]["body"].rsplit(post_review.REVIEW_MARKER_PREFIX, 1)[1] for sent in (first, second)]
         assert markers[0] != markers[1]
+
+    def test_the_posted_review_is_the_one_whose_body_holds_the_marker(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reviews = [{"body": None, "html_url": "u1"}, {"body": "B <!-- pr-review: abc -->", "html_url": "u2"}]
+        paths: list[str] = []
+
+        def fake_gh_api_pages(path: str) -> list[dict[str, Any]]:
+            paths.append(path)
+            return reviews
+
+        monkeypatch.setattr(post_review, "gh_api_pages", fake_gh_api_pages)
+
+        assert post_review.posted_review_url("7", "<!-- pr-review: abc -->") == "u2"
+        assert post_review.posted_review_url("7", "<!-- pr-review: other -->") == ""
+        assert paths[0] == "repos/{owner}/{repo}/pulls/7/reviews"
 
 
 class TestEarlierReviews:
@@ -313,3 +327,17 @@ class TestEarlierReviews:
         assert "`a.py:3`" in dismissed[0]["reason"] and "dev: Fixed in abc." in dismissed[0]["reason"]
         assert "`a.py:5`" in dismissed[1]["reason"] and "no reply" in dismissed[1]["reason"]
         assert "`b.py:4`" in dismissed[2]["reason"]
+
+    def test_the_reader_reads_every_page_of_reviews_and_comments(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        reviews = [{"id": 1, "body": f"B\n\n- **`[Required]` In body** at `b.py:4`: S\n\n{self.MARKER}"}]
+        outputs = {
+            "gh api GET repos/{owner}/{repo}/pulls/7/reviews": json.dumps(reviews),
+            "gh api GET repos/{owner}/{repo}/pulls/7/comments": "[]",
+        }
+        install_shell(monkeypatch, read_earlier_reviews, FakeShell(outputs))
+
+        printed = run_main(monkeypatch, capsys, read_earlier_reviews, {"pr": 7})
+
+        assert printed["count"] == 1 and printed["dismissed"][0]["title"] == "In body"

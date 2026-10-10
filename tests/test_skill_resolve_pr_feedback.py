@@ -32,12 +32,16 @@ def collect(
 ) -> dict[str, Any]:
     script = load_skill_script(SKILL, "collect_items")
     outputs = {
-        "gh api repos/{owner}/{repo}/pulls/9/comments": json.dumps([inline]),
-        "gh api repos/{owner}/{repo}/pulls/9/reviews": json.dumps([reviews]),
-        "gh api repos/{owner}/{repo}/issues/9/comments": json.dumps([conversation]),
-        "gh api user": json.dumps({"login": "me"}),
-        "gh api repos/{owner}/{repo}/pulls/comments/5/reactions": json.dumps([[{"user": {"login": "me"}}]]),
-        "gh api repos/{owner}/{repo}/pulls/comments/7/reactions": json.dumps([[{"user": {"login": "bea"}}]]),
+        "gh api GET repos/{owner}/{repo}/pulls/9/comments": json.dumps(inline),
+        "gh api GET repos/{owner}/{repo}/pulls/9/reviews": json.dumps(reviews),
+        "gh api GET repos/{owner}/{repo}/issues/9/comments": json.dumps(conversation),
+        "gh api GET user": json.dumps({"login": "me"}),
+        "gh api GET repos/{owner}/{repo}/pulls/comments/5/reactions?content=eyes": json.dumps(
+            [{"user": {"login": "me"}}]
+        ),
+        "gh api GET repos/{owner}/{repo}/pulls/comments/7/reactions?content=eyes": json.dumps(
+            [{"user": {"login": "bea"}}]
+        ),
     }
     install_shell(monkeypatch, script, FakeShell(outputs))
     printed: dict[str, Any] = run_main(monkeypatch, capsys, script, {"pr": 9, "findings": [FINDING]})
