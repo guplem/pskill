@@ -115,6 +115,7 @@ def test_no_tiers_and_an_empty_tiers_setting_keep_the_default_rows(tmp_path: Pat
         ("{codex: {fast: low}}", r"'tiers\.codex\.fast' must be a mapping"),
         ("{codex: {fast: {reasoning_effort: low}}}", r"unknown key 'reasoning_effort' in tiers\.codex\.fast"),
         ("{codex: {fast: {model: ''}}}", r"'tiers\.codex\.fast\.model' must be a non-empty text"),
+        ("{codex: {fast: {model: '  '}}}", r"'tiers\.codex\.fast\.model' must be a non-empty text"),
         ("{codex: {fast: {effort: 3}}}", r"'tiers\.codex\.fast\.effort' must be a non-empty text"),
     ],
 )
