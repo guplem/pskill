@@ -7,11 +7,12 @@
 Usage: uv run search_issues.py, with {"repo", "terms"} on stdin: the repository as owner/name, and the search words.
 Prints [{"number", "title", "state", "url"}]: at most 30 issues, open or closed, with the most matching words first.
 
-It reads the newest 1,000 issues and pull requests, leaves out the pull requests, and counts the words (any case) in
+It reads the newest 1,000 issues and pull requests, leaves out the pull requests, and counts the whole words (any case) in
 each title and body. The Claude Code cloud GitHub proxy refuses the search API, so the script searches by itself.
 """
 
 import json
+import re
 import sys
 from typing import Any
 
@@ -37,7 +38,8 @@ def matching_issues(repo: str, terms: list[str]) -> list[dict[str, Any]]:
         if "pull_request" in item:
             continue
         text = f"{item['title']} {item['body'] or ''}".lower()
-        score = sum(word in text for word in words)
+        # Whole words only: "ci" must not match "decision".
+        score = sum(bool(re.search(rf"\b{re.escape(word)}\b", text)) for word in words)
         if score:
             scored.append((score, item))
     scored.sort(key=lambda pair: (-pair[0], -pair[1]["number"]))

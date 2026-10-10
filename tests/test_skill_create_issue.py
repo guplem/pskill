@@ -141,3 +141,15 @@ def test_search_issues_gives_at_most_30_issues_and_the_newest_first_on_a_tie(
     printed = run_main(monkeypatch, capsys, script, {"repo": "o/r", "terms": ["viewer"]})
 
     assert [found["number"] for found in printed] == list(range(40, 10, -1))
+
+
+def test_search_issues_counts_only_whole_words(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "search_issues")
+    issues = [issue(1, "A decision about the runner"), issue(2, "Run CI on drafts")]
+    install_shell(monkeypatch, script, FakeShell({"gh api GET repos/o/r/issues?state=all": json.dumps(issues)}))
+
+    printed = run_main(monkeypatch, capsys, script, {"repo": "o/r", "terms": ["ci", "run"]})
+
+    assert [found["number"] for found in printed] == [2]
