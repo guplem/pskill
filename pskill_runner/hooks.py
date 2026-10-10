@@ -5,7 +5,8 @@
   loops forever. Another session in the same checkout stops freely. While a `pskill wait` runs, allow the
   stop with no message and no count.
 - Session start: refresh stale skill stubs. It lists no runs: a run of another live session would invite
-  the new session to take it over. `pskill runs --open` lists them.\n"""
+  the new session to take it over. `pskill runs --open` lists them.
+"""
 
 from pskill_runner.engine import list_runs, register_stop_attempt
 from pskill_runner.project import Project

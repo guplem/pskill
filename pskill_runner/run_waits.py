@@ -1,7 +1,8 @@
 """`pskill wait`: the agent waits on background work, and the Stop hook stays quiet (SPEC.md section 9.2).
 
 A wait is an alarm. It records `wait_until` in `run.json`, so the Stop hook allows the stop with no
-message until then. The wait holds the run lock only to change `run.json`, never while it sleeps.\n"""
+message until then. The wait holds the run lock only to change `run.json`, never while it sleeps.
+"""
 
 import time
 from collections.abc import Callable
