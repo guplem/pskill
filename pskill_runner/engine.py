@@ -282,8 +282,8 @@ def delete_run(project: Project, run_id: str) -> str:
 def register_stop_attempt(project: Project, run_id: str) -> bool:
     """Count one try of the agent to end its turn with an open block. Return True to keep it working.
 
-    After `stop_hook_max_blocks` tries in a row with no submission between them, pause the run and
-    return False, so the agent can stop and a stuck run never loops forever.
+    After `stop_hook_max_blocks` tries in a row with no submission, resume, or `pskill wait` between them,
+    pause the run and return False, so the agent can stop and a stuck run never loops forever.
     """
     with run_lock(run_folder(project, run_id)):
         run = Run.load(project, run_id)
