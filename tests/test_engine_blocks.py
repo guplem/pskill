@@ -976,7 +976,7 @@ def test_a_tier_asks_codex_for_its_reasoning_effort(tmp_path: Path) -> None:
 
     _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="codex")
 
-    assert "`high`" in packet
+    assert "Pass `reasoning_effort: high` in this task's spawn_agent call." in packet
 
 
 def test_a_block_with_no_tier_asks_for_no_model(tmp_path: Path) -> None:
