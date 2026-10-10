@@ -47,10 +47,18 @@ CLAUDE_CODE = HarnessAdapter(
         "standard": "Pass `model: sonnet` in this task's Agent call.",
         "deep": "Pass `model: opus` in this task's Agent call.",
     },
-    # `pskill sync` writes the profile agents into `.claude/agents/` (profile_agents.py).
+    # `pskill sync` writes the profile agents into `.claude/agents/` (profile_agents.py). The agent may be
+    # missing: no sync yet, `claude-code` not in `permissions`, or a folder that Claude Code does not watch
+    # because it is newer than the session. So the wording names the fallback.
     tools_wording={
-        "read": "Pass `subagent_type: pskill-read` in this task's Agent call, instead of `general-purpose`.",
-        "web": "Pass `subagent_type: pskill-web` in this task's Agent call, instead of `general-purpose`.",
+        "read": (
+            "Pass `subagent_type: pskill-read` in this task's Agent call, instead of `general-purpose`. "
+            "If that agent type is unknown, use `general-purpose`."
+        ),
+        "web": (
+            "Pass `subagent_type: pskill-web` in this task's Agent call, instead of `general-purpose`. "
+            "If that agent type is unknown, use `general-purpose`."
+        ),
     },
 )
 

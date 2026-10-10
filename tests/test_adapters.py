@@ -83,6 +83,11 @@ def test_claude_code_asks_for_the_profile_agent_of_each_tool_profile() -> None:
     assert "`subagent_type: pskill-web`" in wording["web"]
 
 
+def test_the_profile_wording_falls_back_to_general_purpose_when_the_agent_is_unknown() -> None:
+    for wording in adapter_for("claude-code").tools_wording.values():
+        assert wording.endswith("If that agent type is unknown, use `general-purpose`.")
+
+
 def test_only_claude_code_words_the_tool_profiles() -> None:
     assert set(adapter_for("claude-code").tools_wording) == set(TOOL_PROFILES)
     assert adapter_for("codex").tools_wording == {}
