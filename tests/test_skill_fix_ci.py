@@ -57,6 +57,16 @@ def checks_shell(check_runs: list[dict[str, Any]], statuses: list[dict[str, Any]
             "failed",
             ["audit: "],
         ),
+        (
+            # GitHub lists the newest status first: the older failure after it must not win.
+            [],
+            [
+                {"id": 2, "context": "deploy", "state": "success", "target_url": "https://new"},
+                {"id": 1, "context": "deploy", "state": "failure", "target_url": "https://old"},
+            ],
+            "passed",
+            [],
+        ),
     ],
 )
 def test_read_once_sums_up_the_check_runs_and_the_newest_status_of_each_context(

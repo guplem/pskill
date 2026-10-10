@@ -9,8 +9,8 @@ resolve-pr-feedback, review-head-check and review-pr. Change all seven together:
 fails when they differ.
 
 Why REST only: in a Claude Code cloud session, `gh` reaches GitHub through a proxy. That proxy refuses GraphQL
-(HTTP 403), which most `gh pr` and `gh issue` commands use, and it refuses the next-page link of
-`gh api --paginate`. This is a restriction of Claude Code, not a rule of pskill: when the proxy allows both,
+(HTTP 403), which most `gh pr` and `gh issue` commands use, the search API, and the next-page link of
+`gh api --paginate`. This is a restriction of Claude Code, not a rule of pskill: when the proxy allows all three,
 the plain `gh` commands can come back (tests/test_skills_github_calls.py holds the rule).
 """
 
