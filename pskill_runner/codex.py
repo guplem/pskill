@@ -13,7 +13,8 @@ Verified against the Codex docs and the openai/codex source on 2026-09-28:
 
 Checked on 2026-10-10, for `pskill wait`: the Stop input has no list of background work, and no doc says
 that Codex starts a turn when a background terminal ends (https://developers.openai.com/codex/hooks,
-https://developers.openai.com/codex/config-reference). So a wait there only keeps the hook quiet until its alarm.
+https://developers.openai.com/codex/config-reference). So the Stop hook ignores waits for Codex
+(`wakes_after_background_command` is false).
 """
 
 import json

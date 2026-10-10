@@ -221,3 +221,15 @@ def test_session_start_reports_a_stub_that_it_cannot_write(tmp_path: Path) -> No
 
     assert text.startswith("pskill: ") and "is a hand-written file with the name of a pskill stub" in text
     assert hand_written.read_text(encoding="utf-8") == "My own plan-work skill.\n"
+
+
+def test_a_harness_that_does_not_wake_the_agent_keeps_counting_stops_during_a_wait(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project, harness="codex")
+    start_wait(project, run_id, "the CI checks", utc_now())
+
+    reason = stop_hook_reason(project, "codex") or ""
+
+    assert f"pskill run {run_id} has an open block" in reason
+    assert "wait" not in reason
+    assert read_run_info(project, run_id)["stop_blocks"] == 1

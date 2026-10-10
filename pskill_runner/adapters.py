@@ -20,6 +20,8 @@ class HarnessAdapter:
     can_spawn_subagents: bool
     subagent_wording: str = ""
     tier_wording: Mapping[str, str] = field(default_factory=dict)  # model tier -> how to spawn a task with it
+    # The harness starts a turn when a background command ends, so `pskill wait` can keep the Stop hook quiet.
+    wakes_after_background_command: bool = False
 
 
 GENERIC = HarnessAdapter(
@@ -46,6 +48,8 @@ CLAUDE_CODE = HarnessAdapter(
         "standard": "Pass `model: sonnet` in this task's Agent call.",
         "deep": "Pass `model: opus` in this task's Agent call.",
     },
+    # https://code.claude.com/docs/en/tools-reference#when-a-background-command-stops (see claude_code.py)
+    wakes_after_background_command=True,
 )
 
 CODEX = HarnessAdapter(
