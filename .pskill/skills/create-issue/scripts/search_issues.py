@@ -7,8 +7,9 @@
 Usage: uv run search_issues.py, with {"repo", "terms"} on stdin: the repository as owner/name, and the search words.
 Prints [{"number", "title", "state", "url"}]: at most 30 issues, open or closed, with the most matching words first.
 
-It reads the newest 1,000 issues and pull requests, leaves out the pull requests, and counts the whole words (any case) in
-each title and body. The Claude Code cloud GitHub proxy refuses the search API, so the script searches by itself.
+It reads the newest 1,000 issues and pull requests, leaves out the pull requests, and counts the whole words (any
+case) in each title and body. The Claude Code cloud GitHub proxy refuses the search API, so the script searches
+by itself.
 """
 
 import json
