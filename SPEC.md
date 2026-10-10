@@ -429,7 +429,7 @@ done:
 
 | Status | Meaning | Stop hook |
 |---|---|---|
-| `active` | The runner waits for the agent's submission. | Blocks the stop. |
+| `active` | The runner waits for the agent's submission. | Blocks the stop, except while a `pskill wait` runs (9.2). |
 | `waiting_for_human` | A human decision, or a visit cap question (5.5), is open in interactive mode. | Allows the stop. |
 | `paused` | A block failed, `pskill pause` ran, or the Stop hook gave up. `pause_reason` says why. | Allows the stop. |
 | `succeeded`, `failed`, `cancelled` | Final. | Allows the stop. |
