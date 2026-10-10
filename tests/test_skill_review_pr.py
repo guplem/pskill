@@ -240,7 +240,10 @@ class TestPost:
         assert markers[0] != markers[1]
 
     def test_the_posted_review_is_the_one_whose_body_holds_the_marker(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        reviews = [{"body": None, "html_url": "u1"}, {"body": "B <!-- pr-review: abc -->", "html_url": "u2"}]
+        reviews: list[dict[str, Any]] = [
+            {"body": None, "html_url": "u1"},
+            {"body": "B <!-- pr-review: abc -->", "html_url": "u2"},
+        ]
         paths: list[str] = []
 
         def fake_gh_api_pages(path: str) -> list[dict[str, Any]]:
