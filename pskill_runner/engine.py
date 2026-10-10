@@ -290,7 +290,10 @@ def register_stop_attempt(project: Project, run_id: str) -> bool:
         run.info["stop_blocks"] += 1
         keep_working = run.info["stop_blocks"] <= project.config.stop_hook_max_blocks
         if not keep_working:
-            run.pause("agent_stopped", "The agent ended its turn with an open block, several times in a row.")
+            error = "The agent ended its turn with an open block, several times in a row."
+            if run.info.get("wait_reason"):
+                error += f" The last wait was on: {run.info.get('wait_reason')}."
+            run.pause("agent_stopped", error)
         run.save()
     return keep_working
 

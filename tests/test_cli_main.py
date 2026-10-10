@@ -767,7 +767,7 @@ def test_a_generic_stop_hook_prints_the_reason_as_plain_text(
     assert exit_code == cli.EXIT_OK
     output = capsys.readouterr().out
     assert output.startswith(f"pskill run {run_id} has an open block.")
-    assert output.endswith(" instead.\n")
+    assert output.endswith(" then end your turn.\n")
 
 
 def test_a_generic_stop_hook_with_nothing_open_prints_nothing(

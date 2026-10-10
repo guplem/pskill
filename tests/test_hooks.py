@@ -1,11 +1,13 @@
 """Tests for pskill_runner.hooks: the Stop and session-start hook logic, independent of any harness."""
 
+from datetime import timedelta
 from pathlib import Path
 
 from pskill_runner.engine import current_packet, pause_run, read_run_info, run_folder, start_run, submit_answer
 from pskill_runner.hooks import session_start_text, stop_hook_reason
 from pskill_runner.project import Project, find_project
-from pskill_runner.run_store import read_events
+from pskill_runner.run_store import read_events, utc_now
+from pskill_runner.run_waits import start_wait
 from pskill_runner.skill_loader import load_catalog
 from pskill_runner.stubs import sync_stubs
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
@@ -69,6 +71,52 @@ def test_the_stop_is_allowed_while_the_run_waits_for_the_human(tmp_path: Path) -
 
     assert read_run_info(project, run_id)["status"] == "waiting_for_human"
     assert stop_hook_reason(project, "claude-code") is None
+
+
+def test_the_stop_is_allowed_with_no_message_and_no_count_while_a_wait_runs(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    start_wait(project, run_id, "the CI checks", utc_now())
+
+    reasons = [stop_hook_reason(project, "claude-code") for _ in range(5)]
+
+    assert reasons == [None] * 5
+    info = read_run_info(project, run_id)
+    assert (info["status"], info["stop_blocks"]) == ("active", 0)
+
+
+def test_after_its_alarm_a_wait_no_longer_holds_the_stop(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    start_wait(project, run_id, "the CI checks", utc_now() - timedelta(minutes=21))
+
+    assert stop_hook_reason(project, "claude-code") is not None
+    assert read_run_info(project, run_id)["stop_blocks"] == 1
+
+
+def test_the_stop_message_tells_how_to_wait_on_background_work(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    reason = stop_hook_reason(project, "claude-code") or ""
+
+    assert (
+        f"If you wait on background work, run `uv run .pskill/pskill.py wait {run_id} --reason "
+        '"<what you wait on>"` in the background, then end your turn.'
+    ) in reason
+
+
+def test_a_pause_after_the_waits_names_the_reason_of_the_last_wait(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    start_wait(project, run_id, "the CI checks", utc_now() - timedelta(minutes=121))
+
+    for _ in range(4):
+        stop_hook_reason(project, "claude-code")
+
+    info = read_run_info(project, run_id)
+    assert info["pause_reason"] == "agent_stopped"
+    assert "The last wait was on: the CI checks." in (info["pause_error"] or "")
 
 
 def test_a_paused_run_or_a_run_of_another_harness_does_not_block(tmp_path: Path) -> None:

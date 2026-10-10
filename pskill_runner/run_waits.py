@@ -82,3 +82,9 @@ def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> Run
         run.info["waits_since"] = waits_since or timestamp(now)
         run.save()
     return run.info
+
+
+def is_waiting(info: RunInfo, now: datetime) -> bool:
+    """True while the alarm of a wait has not rung. A killed wait process holds the run only until then."""
+    wait_until = info.get("wait_until")
+    return info["status"] == "active" and wait_until is not None and now < parse_timestamp(wait_until)

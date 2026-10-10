@@ -2,14 +2,16 @@
 
 - Stop: while a run of this session has an open block, keep the agent working, at most
   `stop_hook_max_blocks` times in a row. Then allow the stop and pause the run, so a stuck agent never
-  loops forever. Another session in the same checkout stops freely.
+  loops forever. Another session in the same checkout stops freely. While a `pskill wait` runs, allow the
+  stop with no message and no count.
 - Session start: refresh stale skill stubs. It lists no runs: a run of another live session would invite
-  the new session to take it over. `pskill runs --open` lists them.
-"""
+  the new session to take it over. `pskill runs --open` lists them.\n"""
 
 from pskill_runner.engine import list_runs, register_stop_attempt
 from pskill_runner.project import Project
 from pskill_runner.run_records import RunInfo
+from pskill_runner.run_store import utc_now
+from pskill_runner.run_waits import is_waiting
 from pskill_runner.skill_loader import load_catalog
 from pskill_runner.stubs import RUNNER, StubError, sync_stubs
 
@@ -28,11 +30,15 @@ def stop_hook_reason(project: Project, harness: str, session_id: str | None = No
     if not active_runs:
         return None
     run_id = active_runs[0]["run_id"]
+    if is_waiting(active_runs[0], utc_now()):
+        return None
     if not register_stop_attempt(project, run_id):
         return None
     return (
         f"pskill run {run_id} has an open block. Continue it: run `{RUNNER} current {run_id}` and follow the "
-        f"packet. If the user asked to stop, run `{RUNNER} pause {run_id}` instead."
+        f"packet. If the user asked to stop, run `{RUNNER} pause {run_id}` instead.\n"
+        f'If you wait on background work, run `{RUNNER} wait {run_id} --reason "<what you wait on>"` in the '
+        "background, then end your turn."
     )
 
 
