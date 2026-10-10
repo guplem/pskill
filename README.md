@@ -49,7 +49,7 @@ uv run .pskill/pskill.py update
 
 - **One small file per skill** (`SKILL.md` in `.claude/skills/` and `.agents/skills/`). Your agent finds the skill through it. It holds the skill's goal and tells the agent how to use the runner.
 - **Two hooks** (commands that your agent app runs by itself):
-  - When the agent tries to stop while a step is still open, the hook tells it to continue. After 3 tries, it lets the agent stop and pauses the run.
+  - When the agent tries to stop while a step is still open, the hook tells it to continue. After 3 tries, it lets the agent stop and pauses the run. An agent that waits on background work runs `wait` first: then the hook lets it stop, and the run stays open.
   - When you open a session, the hook updates the small skill files.
 - **One permission rule**, so your agent app does not ask you each time the agent talks to the runner. It allows only `uv run .pskill/pskill.py ...`.
 
@@ -137,6 +137,7 @@ Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`
 - **Autonomous mode asks you nothing.** The agent also takes decisions that normally need you, like "close this issue". Only your agent app's permission settings protect you then.
 - **Codex needs "Full access".** Its sandbox (the area that limits what commands can do) stops the runner from sending answers. Choose "Full access" in Codex's permissions menu, or start it with `codex --sandbox danger-full-access`. This turns off the sandbox for every command, not only for pskill.
 - **One session per folder, in apps other than Claude Code and Codex.** There, two sessions in the same folder share the hooks.
+- **`wait` needs an app that wakes the agent** when a background command ends. Claude Code does: with no time limit on your computer, and up to 30 minutes by default in a cloud session. Codex does not say that it does, so there the run can still pause after 3 stops.
 - **pskill trusts the agent** when it says that you answered a question.
 - **The steps are plain files.** The agent could read the later steps. This is not a security barrier.
 

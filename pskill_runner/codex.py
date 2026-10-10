@@ -10,6 +10,10 @@ Verified against the Codex docs and the openai/codex source on 2026-09-28:
 - Codex adds CODEX_THREAD_ID to every command's environment (codex-rs/core/src/exec_env.rs).
 - Skills in `.agents/skills/`; `agents/openai.yaml` with `policy.allow_implicit_invocation: false`
   stops implicit use: https://developers.openai.com/codex/skills
+
+Checked on 2026-10-10, for `pskill wait`: the Stop input has no list of background work, and no doc says
+that Codex starts a turn when a background terminal ends (https://developers.openai.com/codex/hooks,
+https://developers.openai.com/codex/config-reference). So a wait there only keeps the hook quiet until its alarm.
 """
 
 import json

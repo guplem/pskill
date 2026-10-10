@@ -500,6 +500,7 @@ Set the mode with `start --mode interactive|autonomous` (default from config: `i
 
 - Write `run.json` and `state.json` to a temp file, then call `os.replace` (atomic on every OS).
 - Every command holds a lock on `runs/<run-id>/.lock`. Create it with `os.open(O_CREAT | O_EXCL)`. Wait up to 10 s. Break a lock older than 60 s. Parallel task submissions depend on this lock.
+- `wait` holds the lock only while it writes `run.json`, never while it sleeps: a lock held for minutes would block every submit, and other commands would break it after 60 s.
 
 ---
 

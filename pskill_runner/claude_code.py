@@ -6,6 +6,14 @@ Verified against the Claude Code docs on 2026-09-28:
 - Permission rule syntax `Bash(<prefix> *)`: https://code.claude.com/docs/en/permissions
 - Claude Code sets CLAUDECODE=1 for the commands it runs: https://code.claude.com/docs/en/env-vars
 - Claude Code reads project skills from `.claude/skills/` only: https://code.claude.com/docs/en/skills
+
+Verified on 2026-10-10, for `pskill wait`:
+- The Stop hook fires when the turn ends, also while background work runs:
+  https://code.claude.com/docs/en/hooks#stop-input
+- A background command keeps running after the turn ends, and Claude takes another turn when it ends:
+  https://code.claude.com/docs/en/tools-reference#when-a-background-command-stops
+- No time limit in a local session; 30 minutes by default (up to 2 hours with `timeout`) in a cloud
+  session: https://code.claude.com/docs/en/tools-reference#time-limit-for-background-commands
 """
 
 import json
