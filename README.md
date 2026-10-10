@@ -49,7 +49,7 @@ uv run .pskill/pskill.py update
 
 - **One small file per skill** (`SKILL.md` in `.claude/skills/` and `.agents/skills/`). Your agent finds the skill through it. It holds the skill's goal and tells the agent how to use the runner.
 - **Two hooks** (commands that your agent app runs by itself):
-  - When the agent tries to stop while a step is still open, the hook tells it to continue. After 3 tries, it lets the agent stop and pauses the run. An agent that waits on background work runs `wait` first: then the hook lets it stop, and the run stays open.
+  - When the agent tries to stop while a step is still open, the hook tells it to continue. After 3 tries, it lets the agent stop and pauses the run. In Claude Code, an agent that waits on background work runs `wait` first: then the hook lets it stop, and the run stays open.
   - When you open a session, the hook updates the small skill files.
 - **One permission rule**, so your agent app does not ask you each time the agent talks to the runner. It allows only `uv run .pskill/pskill.py ...`.
 
