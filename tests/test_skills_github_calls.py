@@ -27,7 +27,7 @@ REFUSED_OPTIONS = ("--paginate", "--slurp")
 
 # `"gh", "pr", "view"` in Python, `[gh, pr, view]` in YAML, and `gh pr view` in text.
 PYTHON_GH_COMMAND = re.compile(r'"gh",\s*"([\w-]+)"(?:,\s*"([\w-]+)")?')
-YAML_GH_COMMAND = re.compile(r"\[gh,\s*([\w-]+)(?:,\s*([\w-]+))?")
+YAML_GH_COMMAND = re.compile(r"""\[\s*["']?gh["']?,\s*["']?([\w-]+)["']?(?:,\s*["']?([\w-]+))?""")
 TEXT_GH_COMMAND = re.compile(r"\bgh\s+([\w-]+)(?:\s+([\w-]+))?")
 
 
@@ -82,6 +82,9 @@ def test_a_skill_file_uses_no_github_call_that_the_cloud_proxy_refuses(path: Pat
         ('run(["gh", "api", path, "--paginate"])', True, ["--paginate"]),
         ('"""`gh pr view` once ran here."""', True, []),
         ("run: [gh, issue, create, --title, x]", False, ["gh issue create"]),
+        ('run: [gh, "pr", view, "7"]', False, ["gh pr view"]),
+        ("run: ['gh', pr, 'view']", False, ["gh pr view"]),
+        ('run: [gh, api, "repos/{owner}/{repo}"]', False, []),
         ("Read it with `gh issue view 7 --comments`.", False, ["gh issue view"]),
         ("Compare it with `gh pr diff 7`, then `gh run view 1 --log-failed`.", False, []),
         ("Read every page: `gh api repos/{owner}/{repo}/pulls --paginate --slurp`.", False, ["--paginate", "--slurp"]),
