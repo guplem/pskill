@@ -599,7 +599,7 @@ class HarnessAdapter(Protocol):
     - A submit or a `resume` clears the four fields. A wait that starts more than `wait_minutes` after the last alarm starts a new `waits_since`: the agent worked between the two waits. When `waits_since` is `max_wait_minutes` old (default 120), `wait` refuses to start: the stops count again, and the `agent_stopped` pause error names the last wait reason.
     - A killed `wait` holds the stop only until `wait_until`. Only an adapter with `wakes_after_background_command` (Claude Code) gets the quiet stop and the wait line. Every other harness (Codex: not documented) keeps the old behavior, because nothing would wake the agent and the run would stay active and idle.
   - Never block the stop of a subagent. Claude Code sends subagent stops as a separate `SubagentStop` event, which pskill does not hook. VERIFY how Codex marks a subagent stop.
-  - After 3 blocks in a row (config `stop_hook_max_blocks`) with no submission between them, allow the stop and pause the run with reason `agent_stopped`. This prevents an endless loop.
+  - After 3 blocks in a row (config `stop_hook_max_blocks`) with no submission, resume, or `pskill wait` between them, allow the stop and pause the run with reason `agent_stopped`. This prevents an endless loop.
   - For any other case, allow the stop.
 - **Session start.** One job:
   - **Refresh the stubs.** Run the stub part of `sync` (not hooks, not permission rules). When it changed files, print one line: "pskill: updated <n> stubs (<skill ids>)." Skip a skill whose `skill.yaml` does not load, and print one warning line for it. This covers skill edits from any source: the agent, an IDE, `git pull`, or a teammate.
