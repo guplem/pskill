@@ -643,7 +643,7 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
 - The frontmatter follows the Agent Skills spec.
 - **Inputs:** each input shows its type, `optional`, and its `default`. The start command names only the required inputs, so the agent never invents a value for an optional one. When a skill has a required input, the stub tells the agent to ask the user for each one that the request does not give, before `start`. (Added in 0.21.0: before, the start command named every input, and the stub showed no default.)
 - `sync` overwrites and deletes only files that carry the generated marker. If a hand-written skill has the same name, `sync` stops with an error.
-- `sync` also writes one built-in stub, `pskill`: "Resume, inspect, pause, or cancel a pskill run. Use when the user mentions an unfinished skill run." Its body lists `runs`, `current`, `resume`, `pause`, `cancel`, and `view`.
+- `sync` also writes one built-in stub, `pskill`: "Resume, inspect, pause, or cancel a pskill run. Use when the user mentions an unfinished skill run." Its body lists `runs`, `current`, `resume`, `wait`, `pause`, `cancel`, and `view`.
 - Commit the stubs. `pskill validate` fails when a stub is out of date.
 - Set `stub_folders` to match how the project already owns these folders:
   - In a project where another tool mirrors `.agents/skills/` into a gitignored `.claude/skills/` (the Galtea monorepo's `sync-skills-to-claude.js`), use `[.agents/skills]` only. The mirror then copies the stubs.

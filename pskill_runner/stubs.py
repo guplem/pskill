@@ -32,6 +32,7 @@ class StubChange:
     path: Path
     action: str  # "created", "updated", or "deleted"
     skill: str  # the stub's skill id (the name of its folder)
+    relative_path: str  # the path in the stub folder, such as "review-pr/SKILL.md"
 
 
 def input_facts(spec: FieldSpec) -> str:
@@ -101,6 +102,7 @@ def render_pskill_stub() -> str:
             f"- List the unfinished runs: `{RUNNER} runs --open`",
             f"- Show the current block of a run again: `{RUNNER} current <run-id>`",
             f"- Resume a paused run: `{RUNNER} resume <run-id>`",
+            f'- Wait on background work, in the background: `{RUNNER} wait <run-id> --reason "<what>"`',
             f"- Pause a run: `{RUNNER} pause <run-id>`",
             f"- Stop a run for good: `{RUNNER} cancel <run-id>`",
             f"- Open the run viewer: `{RUNNER} view`",
@@ -152,17 +154,17 @@ def stub_folder_changes(folder: Path, files: dict[str, str], protected_names: se
         path = folder / relative_path
         skill = relative_path.split("/")[0]
         if not path.exists():
-            changes.append(StubChange(path, "created", skill))
+            changes.append(StubChange(path, "created", skill, relative_path))
         elif not is_generated(path):
             raise StubError(f"{path} is a hand-written file with the name of a pskill stub. Rename one of them.")
         elif path.read_text(encoding="utf-8") != text:
-            changes.append(StubChange(path, "updated", skill))
+            changes.append(StubChange(path, "updated", skill, relative_path))
     if folder.is_dir():
         for path in sorted([*folder.glob(f"*/{STUB_FILE_NAME}"), *folder.glob(f"*/{SIDECAR_RELATIVE_PATH}")]):
             relative_path = path.relative_to(folder).as_posix()
             skill = relative_path.split("/")[0]
             if relative_path not in files and skill not in protected_names and is_generated(path):
-                changes.append(StubChange(path, "deleted", skill))
+                changes.append(StubChange(path, "deleted", skill, relative_path))
     return changes
 
 
@@ -173,8 +175,7 @@ def apply_stub_changes(changes: list[StubChange], files: dict[str, str]) -> None
             remove_empty_folders(change.path.parent, stop_at_name=change.skill)
             continue
         change.path.parent.mkdir(parents=True, exist_ok=True)
-        relative_path = change.path.as_posix().split(f"/{change.skill}/", 1)[1]
-        change.path.write_text(files[f"{change.skill}/{relative_path}"], encoding="utf-8", newline="\n")
+        change.path.write_text(files[change.relative_path], encoding="utf-8", newline="\n")
 
 
 def remove_empty_folders(folder: Path, stop_at_name: str) -> None:
