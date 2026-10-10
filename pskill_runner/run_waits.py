@@ -47,7 +47,7 @@ def wait_for_run_change(
 
 
 def read_when_free(project: Project, run_id: str) -> RunInfo | None:
-    """`run.json` read under the lock, or None while another command holds the lock past its timeout.
+    """`run.json` read under the lock, or None when the lock stays busy past its timeout or the run is gone.
 
     The lock lasts a few milliseconds: on Windows, a read during an `os.replace` fails both. A long
     `script` block can hold the lock for minutes; the wait then reads again after its next sleep.
@@ -55,7 +55,7 @@ def read_when_free(project: Project, run_id: str) -> RunInfo | None:
     try:
         with run_lock(run_folder(project, run_id)):
             return read_run_info(project, run_id)
-    except RunLockTimeout:
+    except (RunLockTimeout, FileNotFoundError):  # a run deleted after the file check: the next poll says so
         return None
 
 

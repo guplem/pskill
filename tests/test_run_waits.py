@@ -1,5 +1,6 @@
 """Tests for pskill_runner.run_waits: `pskill wait`, the alarm that keeps the Stop hook quiet."""
 
+import shutil
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -298,3 +299,27 @@ def test_a_busy_lock_during_a_poll_does_not_crash_the_wait(tmp_path: Path, monke
     text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
 
     assert text.startswith("20 minutes passed and nothing changed.")
+
+
+def test_a_run_deleted_between_the_file_check_and_the_read_ends_the_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    real_lock = run_lock
+    lock_calls: list[int] = []
+
+    @contextmanager
+    def delete_before_the_first_poll(folder: Path) -> Iterator[None]:
+        lock_calls.append(1)
+        if len(lock_calls) == 2:  # the first call records the wait; the second is the first poll
+            shutil.rmtree(folder)
+        with real_lock(folder):
+            yield
+
+    monkeypatch.setattr(run_waits, "run_lock", delete_before_the_first_poll)
+    clock = FakeClock()
+
+    text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert text == f"Run {run_id} is deleted.\n"
