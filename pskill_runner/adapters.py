@@ -83,6 +83,9 @@ CODEX = HarnessAdapter(
 )
 
 ADAPTERS: dict[str, HarnessAdapter] = {adapter.name: adapter for adapter in (GENERIC, CLAUDE_CODE, CODEX)}
+# The harnesses that spawn subagents, so the ones whose tier rows a project can change in config.yaml.
+SPAWNING_HARNESSES = tuple(adapter.name for adapter in ADAPTERS.values() if adapter.can_spawn_subagents)
+TIER_ROW_KEYS = ("effort", "model")
 
 
 def adapter_for(name: str) -> HarnessAdapter:
