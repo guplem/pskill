@@ -13,6 +13,8 @@ import json
 import subprocess
 import sys
 
+from github_rest import gh_api
+
 
 def run(command: list[str]) -> str:
     return subprocess.run(
@@ -42,11 +44,11 @@ def new_commits(reviewed_sha: str, head_sha: str) -> list[str]:
 def main() -> None:
     script_input = json.load(sys.stdin)
     pr_number, reviewed_sha = str(script_input["pr"]), str(script_input["reviewed_sha"])
-    pull_request = json.loads(run(["gh", "pr", "view", pr_number, "--json", "headRefName,headRefOid"]))
-    head_sha = pull_request["headRefOid"]
+    head = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")["head"]
+    head_sha = str(head["sha"])
     commits: list[str] = []
     if head_sha != reviewed_sha:
-        run(["git", "fetch", "--quiet", "origin", pull_request["headRefName"]])
+        run(["git", "fetch", "--quiet", "origin", head["ref"]])
         commits = new_commits(reviewed_sha, head_sha)
     print(json.dumps({"head_sha": head_sha, "commits": commits}))
 
