@@ -93,7 +93,7 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 
 ### Recommended setup for the example skills
 
-The skills read your project's rules from its own files, so they work in most repositories as they are. They call GitHub only through its REST API, so they also run in Claude Code cloud sessions, whose GitHub proxy refuses GraphQL. These settings make them work best:
+The skills read your project's rules from its own files, so they work in most repositories as they are. They call GitHub through its REST API, so they also run in Claude Code cloud sessions, whose GitHub proxy refuses GraphQL. These settings make them work best:
 
 - **Run CI only on ready pull requests.** `implement-issue` pushes many commits to a draft, and marks it ready at the end. In each pull request workflow, start the checks on `ready_for_review` too, skip drafts, and let a new push cancel the older run:
   ```yaml
