@@ -24,8 +24,7 @@ from pskill_runner.engine import (
 )
 from pskill_runner.hooks import stop_hook_reason
 from pskill_runner.project import Project, find_project
-from pskill_runner.run_records import RunInfo
-from pskill_runner.run_store import RunLockTimeout, run_lock, timestamp
+from pskill_runner.run_store import RunLockTimeout, read_json, run_lock, timestamp
 from pskill_runner.run_waits import start_wait, wait_for_run_change
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 from tests.test_engine_blocks import PARALLEL_SKILL
@@ -226,11 +225,11 @@ def test_each_poll_reads_the_run_under_its_lock(tmp_path: Path, monkeypatch: pyt
     lock_file = run_folder(project, run_id) / ".lock"
     locked_reads: list[bool] = []
 
-    def read_and_note_the_lock(project: Project, run_id: str) -> RunInfo:
+    def read_and_note_the_lock(path: Path) -> object:
         locked_reads.append(lock_file.exists())
-        return read_run_info(project, run_id)
+        return read_json(path)
 
-    monkeypatch.setattr(run_waits, "read_run_info", read_and_note_the_lock)
+    monkeypatch.setattr(run_waits, "read_json", read_and_note_the_lock)
     clock = FakeClock()
 
     wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
@@ -334,3 +333,26 @@ def test_a_wait_is_refused_on_a_harness_that_does_not_wake_the_agent(tmp_path: P
         start_wait(project, run_id, "the CI checks", START)
 
     assert read_run_info(project, run_id)["stop_blocks"] == 1
+
+
+def test_a_run_json_removed_before_its_folder_ends_the_wait(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`delete` removes `run.json` before the folder, so a poll can find the folder with no `run.json`."""
+    project = make_project(tmp_path)
+    run_id = start(project)
+    real_lock = run_lock
+    lock_calls: list[int] = []
+
+    @contextmanager
+    def remove_run_json_in_the_first_poll(folder: Path) -> Iterator[None]:
+        lock_calls.append(1)
+        with real_lock(folder):
+            if len(lock_calls) == 2:  # the first call records the wait; the second is the first poll
+                (folder / "run.json").unlink()
+            yield
+
+    monkeypatch.setattr(run_waits, "run_lock", remove_run_json_in_the_first_poll)
+    clock = FakeClock()
+
+    text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert text == f"Run {run_id} is deleted.\n"
