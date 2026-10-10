@@ -21,19 +21,22 @@ from tests.skill_scripts import SKILLS_FOLDER
 
 AGENTS_FOLDER = SKILLS_FOLDER.parent / "agents"
 ALLOWED_COMMANDS = {("api", None), ("pr", "diff"), ("run", None), ("workflow", None)}
+# The proxy refuses the GraphQL endpoint and the search API.
+REFUSED_API_PATHS = {"graphql", "search"}
 # mark_ready.py tries `gh pr ready` first, then the route that only the cloud proxy has.
 ALLOWED_EXCEPTIONS = {("implement-issue/scripts/mark_ready.py", "gh pr ready")}
 REFUSED_OPTIONS = ("--paginate", "--slurp")
 
 # `"gh", "pr", "view"` in Python, `[gh, pr, view]` in YAML, and `gh pr view` in text.
-PYTHON_GH_COMMAND = re.compile(r'"gh",\s*"([\w-]+)"(?:,\s*"([\w-]+)")?')
+PYTHON_GH_COMMAND = re.compile(r'"gh",\s*"([\w-]+)"(?:,\s*f?"([\w-]+))?')
 YAML_GH_COMMAND = re.compile(r"""\[\s*["']?gh["']?,\s*["']?([\w-]+)["']?(?:,\s*["']?([\w-]+))?""")
 TEXT_GH_COMMAND = re.compile(r"\bgh\s+([\w-]+)(?:\s+([\w-]+))?")
 
 
 def is_allowed(command: str, subcommand: str | None) -> bool:
     if command == "api":
-        return subcommand != "graphql"
+        # The second word of a `gh api` call is the first word of its path.
+        return subcommand not in REFUSED_API_PATHS
     return (command, None) in ALLOWED_COMMANDS or (command, subcommand) in ALLOWED_COMMANDS
 
 
@@ -85,6 +88,10 @@ def test_a_skill_file_uses_no_github_call_that_the_cloud_proxy_refuses(path: Pat
         ('run: [gh, "pr", view, "7"]', False, ["gh pr view"]),
         ("run: ['gh', pr, 'view']", False, ["gh pr view"]),
         ('run: [gh, api, "repos/{owner}/{repo}"]', False, []),
+        ('run: [gh, api, "search/issues?q=x"]', False, ["gh api search"]),
+        ("Search with `gh api search/issues?q=x`.", False, ["gh api search"]),
+        ('run(["gh", "api", "search/issues?q=x"])', True, ["gh api search"]),
+        ('run(["gh", "api", f"search/issues?q={terms}"])', True, ["gh api search"]),
         ("Read it with `gh issue view 7 --comments`.", False, ["gh issue view"]),
         ("Compare it with `gh pr diff 7`, then `gh run view 1 --log-failed`.", False, []),
         ("Read every page: `gh api repos/{owner}/{repo}/pulls --paginate --slurp`.", False, ["--paginate", "--slurp"]),
