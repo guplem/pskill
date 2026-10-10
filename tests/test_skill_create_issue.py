@@ -129,3 +129,15 @@ def test_ensure_label_stops_on_another_failure(
 
     with pytest.raises(SystemExit, match="HTTP 403: Forbidden"):
         run_main(monkeypatch, capsys, script, {"repo": "o/r"})
+
+
+def test_search_issues_gives_at_most_30_issues_and_the_newest_first_on_a_tie(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "search_issues")
+    issues = [issue(number, "Viewer") for number in range(1, 41)]
+    install_shell(monkeypatch, script, FakeShell({"gh api GET repos/o/r/issues?state=all": json.dumps(issues)}))
+
+    printed = run_main(monkeypatch, capsys, script, {"repo": "o/r", "terms": ["viewer"]})
+
+    assert [found["number"] for found in printed] == list(range(40, 10, -1))
