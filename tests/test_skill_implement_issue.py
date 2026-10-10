@@ -215,6 +215,7 @@ def test_open_draft_pr_a_second_time_reuses_the_branch_the_commit_and_the_pull_r
     outputs = {
         "git branch --show-current": "42-fix-save",
         "gh api GET repos/{owner}/{repo}/pulls?head=": f"[{NEW_PULL_REQUEST}]",
+        "gh api GET user": json.dumps({"login": "me"}),
         REPOSITORY: json.dumps({"owner": {"login": "ana"}}),
     }
     shell = install_shell(monkeypatch, script, FakeShell(outputs))
@@ -224,7 +225,9 @@ def test_open_draft_pr_a_second_time_reuses_the_branch_the_commit_and_the_pull_r
     assert printed == {"pr_number": 9, "pr_url": "https://github.com/o/r/pull/9"}
     assert not shell.ran("git switch")
     assert not shell.ran("git commit")
-    assert not shell.ran("gh api POST")
+    assert not shell.ran("gh api POST repos/{owner}/{repo}/pulls")
+    # A first run can stop between the create and the assign: the assign is safe to repeat.
+    assert shell.ran('gh api POST repos/{owner}/{repo}/issues/9/assignees {"assignees": ["me"]}')
 
 
 def ready_result(returncode: int, stderr: str = "") -> subprocess.CompletedProcess[str]:

@@ -49,8 +49,8 @@ def pull_request_body(plan_file: str, issue: str) -> str:
     return f"{closes}The plan is in `{plan_file}`. The description follows with the code."
 
 
-def open_pull_request(script_input: dict[str, Any], issue: str) -> dict[str, Any]:
-    """The open pull request of the branch, or a new draft one, assigned to the logged-in user."""
+def find_or_create_pull_request(script_input: dict[str, Any], issue: str) -> dict[str, Any]:
+    """The open pull request of the branch, or a new draft one."""
     branch = str(script_input["branch"])
     # Encoded, with the owner read first: `gh api` would fill `:repo` or `:branch` in `{owner}:<branch>`.
     owner = str(gh_api("repos/{owner}/{repo}")["owner"]["login"])
@@ -66,9 +66,18 @@ def open_pull_request(script_input: dict[str, Any], issue: str) -> dict[str, Any
         "draft": True,
     }
     created: dict[str, Any] = gh_api("repos/{owner}/{repo}/pulls", "POST", new_pull_request)
-    login = str(gh_api("user")["login"])
-    gh_api(f"repos/{{owner}}/{{repo}}/issues/{created['number']}/assignees", "POST", {"assignees": [login]})
     return created
+
+
+def open_pull_request(script_input: dict[str, Any], issue: str) -> dict[str, Any]:
+    """The pull request of the branch, assigned to the logged-in user.
+
+    The assign runs on a found pull request too, because a first run can stop between the create and the assign.
+    """
+    pull_request = find_or_create_pull_request(script_input, issue)
+    login = str(gh_api("user")["login"])
+    gh_api(f"repos/{{owner}}/{{repo}}/issues/{pull_request['number']}/assignees", "POST", {"assignees": [login]})
+    return pull_request
 
 
 def main() -> None:
