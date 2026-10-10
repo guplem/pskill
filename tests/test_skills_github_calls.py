@@ -1,15 +1,15 @@
 """The example skills reach GitHub only through calls that work in a Claude Code cloud session.
 
-Why: in a Claude Code cloud session, `gh` reaches GitHub through a proxy. That proxy refuses GraphQL (HTTP 403) and
-the next-page link of `gh api --paginate`. Most `gh pr`, `gh issue`, `gh repo`, and `gh label` commands use GraphQL.
-So the skills use only `gh api` with REST paths (paged by number, through each skill's `scripts/github_rest.py`),
-`gh pr diff`, `gh run`, and `gh workflow`.
+Why: in a Claude Code cloud session, `gh` reaches GitHub through a proxy. That proxy refuses GraphQL (HTTP 403), the
+search API, and the next-page link of `gh api --paginate` (and `--slurp`). Most `gh pr`, `gh issue`, `gh repo`, and
+`gh label` commands use GraphQL. So the skills use only `gh api` with REST paths (paged by number, through each
+skill's `scripts/github_rest.py`), `gh pr diff`, `gh run`, and `gh workflow`.
 
-This is a restriction of Claude Code, not a rule of pskill. When the proxy allows GraphQL and `--paginate`, delete
-this test, and the skills can use the plain `gh` commands again.
+This is a restriction of Claude Code, not a rule of pskill. When the proxy allows GraphQL, the search API, and
+`--paginate`, delete this test, and the skills can use the plain `gh` commands again.
 
-The test reads the code of each script (its `gh` command lists, not its docstrings), and the full text of each
-instruction, brief, reference, agent, and `skill.yaml`.
+The test reads the code of each script (its `gh` command lists and its github_rest helper calls, not its
+docstrings), and the full text of each instruction, brief, reference, agent, and `skill.yaml`.
 """
 
 import re
@@ -27,10 +27,18 @@ REFUSED_API_PATHS = {"graphql", "search"}
 ALLOWED_EXCEPTIONS = {("implement-issue/scripts/mark_ready.py", "gh pr ready")}
 REFUSED_OPTIONS = ("--paginate", "--slurp")
 
-# `"gh", "pr", "view"` in Python, `[gh, pr, view]` in YAML, and `gh pr view` in text.
-PYTHON_GH_COMMAND = re.compile(r'"gh",\s*"([\w-]+)"(?:,\s*f?"([\w-]+))?')
-YAML_GH_COMMAND = re.compile(r"""\[\s*["']?gh["']?,\s*["']?([\w-]+)["']?(?:,\s*["']?([\w-]+))?""")
-TEXT_GH_COMMAND = re.compile(r"\bgh\s+([\w-]+)(?:\s+([\w-]+))?")
+# `"gh", "pr", "view"` in Python, `[gh, pr, view]` in YAML, and `gh pr view` in text. Each pattern skips a method
+# flag (`-X GET`, `--method GET`) before the second word, because the second word of `gh api` is its path.
+PYTHON_GH_COMMAND = re.compile(
+    r'"gh",\s*"(?P<command>[\w-]+)"(?:,\s*"(?:-X|--method)",\s*"\w+")?(?:,\s*f?"(?P<subcommand>[\w-]+))?'
+)
+YAML_GH_COMMAND = re.compile(
+    r"""\[\s*["']?gh["']?,\s*["']?(?P<command>[\w-]+)["']?"""
+    r"""(?:,\s*["']?(?:-X|--method)["']?,\s*["']?\w+["']?)?(?:,\s*["']?(?P<subcommand>[\w-]+))?"""
+)
+TEXT_GH_COMMAND = re.compile(r"\bgh\s+(?P<command>[\w-]+)(?:\s+(?:-X|--method)\s+\w+)?(?:\s+(?P<subcommand>[\w-]+))?")
+# `gh_api("<path>")`, `gh_api_pages(...)`, and `gh_api_call(...)`: the github_rest helper runs `gh api <path>`.
+PYTHON_HELPER_CALL = re.compile(r'\bgh_api(?:_pages|_call)?\(\s*f?"(?P<subcommand>[\w-]+)')
 
 
 def is_allowed(command: str, subcommand: str | None) -> bool:
@@ -42,12 +50,16 @@ def is_allowed(command: str, subcommand: str | None) -> bool:
 
 def refused_calls(text: str, is_python: bool) -> list[str]:
     """Each `gh` call in the text that the cloud proxy refuses, and each refused option."""
-    patterns = [PYTHON_GH_COMMAND] if is_python else [YAML_GH_COMMAND, TEXT_GH_COMMAND]
-    found = [
-        f"gh {match.group(1)} {match.group(2) or ''}".strip()
+    patterns = [PYTHON_GH_COMMAND, PYTHON_HELPER_CALL] if is_python else [YAML_GH_COMMAND, TEXT_GH_COMMAND]
+    calls = [
+        (match.groupdict().get("command") or "api", match.group("subcommand"))
         for pattern in patterns
         for match in pattern.finditer(text)
-        if not is_allowed(match.group(1), match.group(2))
+    ]
+    found = [
+        f"gh {command} {subcommand or ''}".strip()
+        for command, subcommand in calls
+        if not is_allowed(command, subcommand)
     ]
     for option in REFUSED_OPTIONS:
         if (f'"{option}"' if is_python else option) in text:
@@ -92,6 +104,14 @@ def test_a_skill_file_uses_no_github_call_that_the_cloud_proxy_refuses(path: Pat
         ("Search with `gh api search/issues?q=x`.", False, ["gh api search"]),
         ('run(["gh", "api", "search/issues?q=x"])', True, ["gh api search"]),
         ('run(["gh", "api", f"search/issues?q={terms}"])', True, ["gh api search"]),
+        ('gh_api(f"search/issues?q={terms}")', True, ["gh api search"]),
+        ('gh_api("graphql", "POST", {"query": "x"})', True, ["gh api graphql"]),
+        ('gh_api_pages("search/issues?q=x", "items")', True, ["gh api search"]),
+        ('gh_api_call("repos/{owner}/{repo}/labels", "POST", LABEL)', True, []),
+        ('gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")', True, []),
+        ('run(["gh", "api", "--method", "GET", "search/issues"])', True, ["gh api search"]),
+        ("Search with `gh api -X GET search/issues`.", False, ["gh api search"]),
+        ('run: [gh, api, --method, GET, "search/issues"]', False, ["gh api search"]),
         ("Read it with `gh issue view 7 --comments`.", False, ["gh issue view"]),
         ("Compare it with `gh pr diff 7`, then `gh run view 1 --log-failed`.", False, []),
         ("Read every page: `gh api repos/{owner}/{repo}/pulls --paginate --slurp`.", False, ["--paginate", "--slurp"]),
