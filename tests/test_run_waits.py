@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from pskill_runner.engine import RunError, pause_run, read_run_info, start_run, submit_answer
+from pskill_runner.engine import RunError, pause_run, read_run_info, resume_run, start_run, submit_answer
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import timestamp
 from pskill_runner.run_waits import start_wait, wait_for_run_change
@@ -139,3 +139,29 @@ def test_a_submit_ends_the_wait_at_once(tmp_path: Path) -> None:
 
     assert text == f"Run {run_id} changed. Continue it: run `uv run .pskill/pskill.py current {run_id}`.\n"
     assert len(clock.sleeps) == 1
+
+
+def wait_fields(project: Project, run_id: str) -> list[str | None]:
+    info = read_run_info(project, run_id)
+    return [info["wait_reason"], info["wait_started_at"], info["wait_until"], info["waits_since"]]
+
+
+def test_a_submit_clears_the_wait(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    start_wait(project, run_id, "the CI checks", START)
+
+    submit_answer(project, run_id, "status: unknown\n")
+
+    assert wait_fields(project, run_id) == [None, None, None, None]
+
+
+def test_a_resume_clears_the_wait(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    start_wait(project, run_id, "the CI checks", START)
+    pause_run(project, run_id)
+
+    resume_run(project, run_id)
+
+    assert wait_fields(project, run_id) == [None, None, None, None]

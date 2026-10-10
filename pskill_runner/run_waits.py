@@ -27,11 +27,12 @@ def wait_for_run_change(
     It reads `run.json` with no lock: the file is always replaced whole, and a lock held for minutes would
     block every submit.
     """
-    saved_at = start_wait(project, run_id, reason, clock())
-    alarm = parse_timestamp(read_run_info(project, run_id)["wait_until"] or saved_at)
+    started = clock()
+    saved = start_wait(project, run_id, reason, started)
+    alarm = started + timedelta(minutes=project.config.wait_minutes)
     while True:
         info = read_run_info(project, run_id)
-        if run_changed(info, saved_at):
+        if run_changed(info, saved):
             return change_text(project, info)
         remaining = (alarm - clock()).total_seconds()
         if remaining <= 0:
@@ -42,8 +43,13 @@ def wait_for_run_change(
         sleep(min(POLL_SECONDS, remaining))
 
 
-def run_changed(info: RunInfo, saved_at: str) -> bool:
-    return info["status"] != "active" or info["updated_at"] != saved_at
+def run_changed(info: RunInfo, saved: RunInfo) -> bool:
+    """Another command saved the run. An answer also clears the alarm, in case it saved in the same millisecond."""
+    return (info["status"], info["updated_at"], info.get("wait_until")) != (
+        saved["status"],
+        saved["updated_at"],
+        saved["wait_until"],
+    )
 
 
 def change_text(project: Project, info: RunInfo) -> str:
@@ -53,8 +59,8 @@ def change_text(project: Project, info: RunInfo) -> str:
     return f"Run {run_id} changed. Continue it: run `{runner_command(project)} current {run_id}`.\n"
 
 
-def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> str:
-    """Record a wait that ends `wait_minutes` after `now`. Return the `updated_at` that it saved.
+def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> RunInfo:
+    """Record a wait that ends `wait_minutes` after `now`. Return the `run.json` that it saved.
 
     The waits of one block end after `max_wait_minutes` with no new answer: then the Stop hook counts the
     stops again, and a stuck run still pauses.
@@ -75,4 +81,4 @@ def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> str
         run.info["wait_until"] = timestamp(now + timedelta(minutes=project.config.wait_minutes))
         run.info["waits_since"] = waits_since or timestamp(now)
         run.save()
-    return run.info["updated_at"]
+    return run.info

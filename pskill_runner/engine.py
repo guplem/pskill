@@ -1068,6 +1068,13 @@ class Run:
             runner_command(self.project),
         )
 
+    def clear_wait(self) -> None:
+        """Something new happened, so the next `pskill wait` starts a fresh `max_wait_minutes`."""
+        self.info["wait_reason"] = None
+        self.info["wait_started_at"] = None
+        self.info["wait_until"] = None
+        self.info["waits_since"] = None
+
     def paused_by_stop_attempts(self) -> bool:
         return self.info["status"] == "paused" and self.info["pause_reason"] == "agent_stopped"
 
@@ -1078,6 +1085,7 @@ class Run:
         """
         self.info["attempts"] = 0
         self.info["stop_blocks"] = 0
+        self.clear_wait()
         self.info["pause_reason"] = None
         self.info["pause_error"] = None
         for task in self.frame["tasks"] or []:
@@ -1121,6 +1129,7 @@ class Run:
         if task is not None and not isinstance(block, ParallelBlock):
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
         self.info["stop_blocks"] = 0
+        self.clear_wait()
         if isinstance(block, ParallelBlock):
             return self.submit_task(block, answer_text, task)
         answer, answered_by, errors = self.read_answer(answer_text, block)
