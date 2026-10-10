@@ -1,17 +1,36 @@
 """Tests for pskill_runner.run_waits: `pskill wait`, the alarm that keeps the Stop hook quiet."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from pskill_runner.engine import RunError, pause_run, read_run_info, start_run
+from pskill_runner.engine import RunError, pause_run, read_run_info, start_run, submit_answer
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import timestamp
-from pskill_runner.run_waits import start_wait
+from pskill_runner.run_waits import start_wait, wait_for_run_change
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 START = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
+
+
+class FakeClock:
+    """A clock that moves only when the wait sleeps. `on_sleep` changes the run, as another command would."""
+
+    def __init__(self, on_sleep: Callable[[], object] | None = None) -> None:
+        self.now = START
+        self.sleeps: list[float] = []
+        self.on_sleep = on_sleep
+
+    def time(self) -> datetime:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += timedelta(seconds=seconds)
+        if self.on_sleep is not None:
+            self.on_sleep()
 
 
 def make_project(tmp_path: Path) -> Project:
@@ -82,3 +101,41 @@ def test_a_wait_is_refused_on_a_run_that_is_not_active(tmp_path: Path) -> None:
 
     with pytest.raises(RunError, match="is paused, so it cannot wait"):
         start_wait(project, run_id, "the CI checks", START)
+
+
+def test_a_wait_with_nothing_new_ends_at_its_alarm_with_one_line(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    clock = FakeClock()
+
+    text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert text == (
+        "20 minutes passed and nothing changed. If you still wait on the CI checks, run the wait again. "
+        f"Else continue the run: run `uv run .pskill/pskill.py current {run_id}`.\n"
+    )
+    assert clock.now == START + timedelta(minutes=20)
+    assert max(clock.sleeps) <= 5
+
+
+def test_a_pause_ends_the_wait_at_once(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    clock = FakeClock(on_sleep=lambda: pause_run(project, run_id))
+
+    text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert text == f"Run {run_id} is now paused.\n"
+    assert len(clock.sleeps) == 1
+
+
+def test_a_submit_ends_the_wait_at_once(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    answer = "status: unknown\n"  # a rejected answer changes the run too
+    clock = FakeClock(on_sleep=lambda: submit_answer(project, run_id, answer))
+
+    text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert text == f"Run {run_id} changed. Continue it: run `uv run .pskill/pskill.py current {run_id}`.\n"
+    assert len(clock.sleeps) == 1
