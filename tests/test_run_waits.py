@@ -25,6 +25,8 @@ from pskill_runner.run_records import RunInfo
 from pskill_runner.run_store import timestamp
 from pskill_runner.run_waits import start_wait, wait_for_run_change
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.test_engine_blocks import PARALLEL_SKILL
+from tests.test_engine_blocks import make_project as make_parallel_project
 
 START = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
 
@@ -235,3 +237,15 @@ def test_a_run_deleted_during_the_wait_ends_it(tmp_path: Path) -> None:
     text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
 
     assert text == f"Run {run_id} is deleted.\n"
+
+
+def test_a_task_result_of_a_parallel_block_ends_the_wait_at_once(tmp_path: Path) -> None:
+    project = make_parallel_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code")
+    clock = FakeClock(on_sleep=lambda: submit_answer(project, run_id, "wrong: []\n", task=0))
+
+    text = wait_for_run_change(project, run_id, "the subagents", clock.sleep, clock.time)
+
+    assert text == f"Run {run_id} changed. Continue it: run `uv run .pskill/pskill.py current {run_id}`.\n"
+    assert len(clock.sleeps) == 1
+    assert wait_fields(project, run_id) == [None, None, None, None]
