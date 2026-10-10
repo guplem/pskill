@@ -2,8 +2,9 @@
 
 - Stop: while a run of this session has an open block, keep the agent working, at most
   `stop_hook_max_blocks` times in a row. Then allow the stop and pause the run, so a stuck agent never
-  loops forever. Another session in the same checkout stops freely. While a `pskill wait` runs, allow the
-  stop with no message and no count.
+  loops forever. Another session in the same checkout stops freely. While a `pskill wait` runs, and the
+  harness wakes the agent after a background command (Claude Code), allow the stop with no message and no
+  count.
 - Session start: refresh stale skill stubs. It lists no runs: a run of another live session would invite
   the new session to take it over. `pskill runs --open` lists them.
 """
