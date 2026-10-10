@@ -570,6 +570,7 @@ class HarnessAdapter(Protocol):
 | Session-start hook | `SessionStart` with matcher `startup\|resume\|clear\|compact`; its plain stdout becomes context | `SessionStart`; its plain stdout becomes context | none |
 | Subagents | Agent tool with `subagent_type: general-purpose` and `run_in_background: false` (the turn waits for every subagent; the calls still run in parallel) | `spawn_agent`, then `wait_agent` | no (one by one) |
 | Model tier (`tier`) | `model: haiku`, `sonnet`, or `opus` on the task's Agent call | the reasoning effort `low`, `medium`, or `high` on the spawn request (VERIFY) | ignored |
+| Wakes the agent after a background command (`wakes_after_background_command`, for `pskill wait`) | yes: a new turn when the command ends (no time limit locally; 30 minutes by default in a cloud session) | not documented, so no: the Stop hook ignores waits | no |
 | Question tool | `AskUserQuestion` (2-4 options; above 4, use a plain question) | plain question | plain question |
 
 - An adapter that cannot VERIFY a capability uses the `generic` behavior for it.
