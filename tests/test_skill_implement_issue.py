@@ -16,48 +16,51 @@ LIMITS = ["implement_step", "review", "get_ci_green", "final_review", "resolve_i
 
 
 def issue(**changes: Any) -> dict[str, Any]:
+    """An issue as the REST API gives it."""
     return {
         "number": 42,
         "title": "Saving crashes",
         "body": "Steps.",
         "labels": [{"name": "bug"}],
-        "comments": [{"author": {"login": "ana"}, "body": "Still there."}],
-        "state": "OPEN",
+        "state": "open",
         "assignees": [],
+        "sub_issues_summary": {"total": 0},
         **changes,
     }
 
 
 @pytest.mark.parametrize(
-    ("changes", "sub_issues", "reason"),
+    ("changes", "reason"),
     [
-        ({}, 0, None),
-        ({"assignees": [{"login": "me"}]}, 0, None),
-        ({"state": "CLOSED"}, 0, "is closed"),
-        ({}, 3, "is a parent issue with 3 sub-issues: implement each sub-issue instead"),
-        ({"assignees": [{"login": "ana"}, {"login": "me"}]}, 0, "is assigned to ana, who owns the work"),
-        ({"labels": [{"name": "waiting-for-design"}]}, 0, "has the blocking labels waiting-for-design"),
+        ({}, None),
+        ({"sub_issues_summary": None}, None),
+        ({"assignees": [{"login": "me"}]}, None),
+        ({"state": "closed"}, "is closed"),
+        ({"pull_request": {"url": "u"}}, "is a pull request, not an issue"),
+        ({"sub_issues_summary": {"total": 3}}, "is a parent issue with 3 sub-issues: implement each sub-issue instead"),
+        ({"assignees": [{"login": "ana"}, {"login": "me"}]}, "is assigned to ana, who owns the work"),
+        ({"labels": [{"name": "waiting-for-design"}]}, "has the blocking labels waiting-for-design"),
     ],
 )
-def test_hold_reason_names_why_the_work_must_not_start(
-    changes: dict[str, Any], sub_issues: int, reason: str | None
-) -> None:
+def test_hold_reason_names_why_the_work_must_not_start(changes: dict[str, Any], reason: str | None) -> None:
     script = load_skill_script(SKILL, "read_issue")
 
-    assert script.hold_reason(issue(**changes), sub_issues, "me") == reason
+    assert script.hold_reason(issue(**changes), "me") == reason
 
 
 def test_read_issue_prints_the_issue_with_its_links_and_branches(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     script = load_skill_script(SKILL, "read_issue")
-    timeline = [[{"event": "cross-referenced", "source": {"issue": {"number": 7, "title": "Related"}}}, {"event": "x"}]]
+    timeline = [{"event": "cross-referenced", "source": {"issue": {"number": 7, "title": "Related"}}}, {"event": "x"}]
     outputs = {
-        "gh issue view 42": json.dumps(issue()),
-        "gh api repos/{owner}/{repo}/issues/42/timeline": json.dumps(timeline),
-        "gh api repos/{owner}/{repo}/issues/42 ": "0",
-        "gh api user": "me",
-        "gh repo view": "O/R",
+        "gh api GET repos/{owner}/{repo}/issues/42/timeline": json.dumps(timeline),
+        "gh api GET repos/{owner}/{repo}/issues/42/comments": json.dumps(
+            [{"user": {"login": "ana"}, "body": "Still."}]
+        ),
+        "gh api GET repos/{owner}/{repo}/issues/42": json.dumps(issue(body=None)),
+        "gh api GET user": json.dumps({"login": "me"}),
+        "gh api GET repos/{owner}/{repo}": json.dumps({"full_name": "O/R"}),
         "git ls-remote": "abc\trefs/heads/42-old-try\n",
     }
     install_shell(monkeypatch, script, FakeShell(outputs))
@@ -67,9 +70,9 @@ def test_read_issue_prints_the_issue_with_its_links_and_branches(
     assert printed == {
         "number": 42,
         "title": "Saving crashes",
-        "body": "Steps.",
+        "body": "",
         "labels": ["bug"],
-        "comments": [{"author": "ana", "body": "Still there."}],
+        "comments": [{"author": "ana", "body": "Still."}],
         "cross_references": [{"number": 7, "title": "Related"}],
         "hold_reason": None,
         "existing_branches": ["42-old-try"],
@@ -80,7 +83,8 @@ def test_read_issue_holds_a_link_to_an_issue_of_another_repository(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     script = load_skill_script(SKILL, "read_issue")
-    shell = install_shell(monkeypatch, script, FakeShell({"gh repo view": "o/r"}))
+    outputs = {"gh api GET repos/{owner}/{repo}": json.dumps({"full_name": "o/r"})}
+    shell = install_shell(monkeypatch, script, FakeShell(outputs))
 
     printed = run_main(monkeypatch, capsys, script, {"request": "https://github.com/other/tool/issues/42"})
 
@@ -88,14 +92,15 @@ def test_read_issue_holds_a_link_to_an_issue_of_another_repository(
     assert printed["hold_reason"] == (
         "is in the repository other/tool, not in o/r: start the skill from a checkout of other/tool"
     )
-    assert not shell.ran("gh issue view")
+    assert not shell.ran("gh api GET repos/{owner}/{repo}/issues")
 
 
 def test_checkout_default_branch_detaches_at_its_latest_commit(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     script = load_skill_script(SKILL, "checkout_default_branch")
-    shell = install_shell(monkeypatch, script, FakeShell({"gh repo view": "trunk"}))
+    outputs = {"gh api GET repos/{owner}/{repo}": json.dumps({"default_branch": "trunk"})}
+    shell = install_shell(monkeypatch, script, FakeShell(outputs))
 
     printed = run_main(monkeypatch, capsys, script)
 
@@ -107,7 +112,10 @@ def test_checkout_default_branch_detaches_at_its_latest_commit(
     ("shell", "reason"),
     [
         (FakeShell({"git status --porcelain": "M a.py"}), "The checkout has uncommitted changes: a.py"),
-        (FakeShell({"gh repo view": "main"}, failing=["git fetch"]), "The branch main cannot be fetched from GitHub."),
+        (
+            FakeShell({"gh api GET repos/{owner}/{repo}": '{"default_branch": "main"}'}, failing=["git fetch"]),
+            "The branch main cannot be fetched from GitHub.",
+        ),
     ],
 )
 def test_checkout_default_branch_changes_nothing_on_a_problem(
@@ -126,13 +134,14 @@ def test_checkout_base_names_the_branch_and_claims_the_issue(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     script = load_skill_script(SKILL, "checkout_base")
-    shell = install_shell(monkeypatch, script, FakeShell(failing=["git rev-parse --verify"]))
+    outputs = {"gh api GET user": json.dumps({"login": "me"})}
+    shell = install_shell(monkeypatch, script, FakeShell(outputs, failing=["git rev-parse --verify"]))
 
     printed = run_main(monkeypatch, capsys, script, {"base": "origin/main", "slug": "fix-save", "issue": 42})
 
     assert printed == {"ok": True, "base": "main", "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}
     assert shell.ran("git switch --quiet --detach origin/main")
-    assert shell.ran("gh issue edit 42 --add-assignee @me")
+    assert shell.ran('gh api POST repos/{owner}/{repo}/issues/42/assignees {"assignees": ["me"]}')
 
 
 @pytest.mark.parametrize(
@@ -155,7 +164,7 @@ def test_checkout_base_changes_nothing_on_a_problem(
     printed = run_main(monkeypatch, capsys, script, {"base": "main", "slug": "fix-save", "issue": 42})
 
     assert printed == {"ok": False, "reason": reason}
-    assert not shell.ran("gh issue edit")
+    assert not shell.ran("gh api POST")
 
 
 DRAFT_INPUT = {
@@ -165,6 +174,7 @@ DRAFT_INPUT = {
     "title": "Fix the crash on save",
     "issue": 42,
 }
+NEW_PULL_REQUEST = json.dumps({"number": 9, "html_url": "https://github.com/o/r/pull/9"})
 
 
 def test_open_draft_pr_pushes_the_plan_and_opens_a_draft(
@@ -173,7 +183,9 @@ def test_open_draft_pr_pushes_the_plan_and_opens_a_draft(
     script = load_skill_script(SKILL, "open_draft_pr")
     outputs = {
         "git status --porcelain -- implementation-plan-42.md": "?? implementation-plan-42.md",
-        "gh pr create": "https://github.com/o/r/pull/9",
+        "gh api GET repos/{owner}/{repo}/pulls?head=": "[]",
+        "gh api POST repos/{owner}/{repo}/pulls": NEW_PULL_REQUEST,
+        "gh api GET user": json.dumps({"login": "me"}),
     }
     shell = install_shell(monkeypatch, script, FakeShell(outputs, failing=["git rev-parse --verify"]))
 
@@ -183,16 +195,24 @@ def test_open_draft_pr_pushes_the_plan_and_opens_a_draft(
     assert shell.ran("git switch --quiet --create 42-fix-save")
     assert shell.ran("git commit --quiet -m Add the implementation plan")
     assert shell.ran("git push --quiet --set-upstream origin 42-fix-save")
-    create = next(command for command in shell.commands if command.startswith("gh pr create"))
-    assert "--draft --base main --title Fix the crash on save --assignee @me" in create
+    assert shell.ran("gh api GET repos/{owner}/{repo}/pulls?head={owner}:42-fix-save&state=open")
+    create = next(command for command in shell.commands if command.startswith("gh api POST repos/{owner}/{repo}/pulls"))
+    assert '"base": "main"' in create
+    assert '"draft": true' in create
+    assert '"head": "42-fix-save"' in create
+    assert '"title": "Fix the crash on save"' in create
     assert "Closes #42" in create
+    assert shell.ran('gh api POST repos/{owner}/{repo}/issues/9/assignees {"assignees": ["me"]}')
 
 
 def test_open_draft_pr_a_second_time_reuses_the_branch_the_commit_and_the_pull_request(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     script = load_skill_script(SKILL, "open_draft_pr")
-    outputs = {"git branch --show-current": "42-fix-save", "gh pr list": "https://github.com/o/r/pull/9"}
+    outputs = {
+        "git branch --show-current": "42-fix-save",
+        "gh api GET repos/{owner}/{repo}/pulls?head=": f"[{NEW_PULL_REQUEST}]",
+    }
     shell = install_shell(monkeypatch, script, FakeShell(outputs))
 
     printed = run_main(monkeypatch, capsys, script, {**DRAFT_INPUT, "issue": 0})
@@ -200,20 +220,40 @@ def test_open_draft_pr_a_second_time_reuses_the_branch_the_commit_and_the_pull_r
     assert printed == {"pr_number": 9, "pr_url": "https://github.com/o/r/pull/9"}
     assert not shell.ran("git switch")
     assert not shell.ran("git commit")
-    assert not shell.ran("gh pr create")
+    assert not shell.ran("gh api POST")
+
+
+def ready_result(returncode: int, stderr: str = "") -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(["gh", "pr", "ready", "9"], returncode, "", stderr)
+
+
+def install_mark_ready(
+    monkeypatch: pytest.MonkeyPatch, draft: bool, ready: subprocess.CompletedProcess[str], **shell_options: Any
+) -> tuple[Any, FakeShell]:
+    script = load_skill_script(SKILL, "mark_ready")
+    outputs = {"gh api GET repos/{owner}/{repo}/pulls/9": json.dumps({"draft": draft}), "git rev-parse HEAD": "def456"}
+    shell = install_shell(monkeypatch, script, FakeShell(outputs, **shell_options))
+
+    def fake_gh_pr_ready(pr_number: str) -> subprocess.CompletedProcess[str]:
+        shell.commands.append(f"gh pr ready {pr_number}")
+        return ready
+
+    monkeypatch.setattr(script, "gh_pr_ready", fake_gh_pr_ready)
+    return script, shell
 
 
 def test_mark_ready_marks_the_draft_ready_then_removes_the_plan(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    script = load_skill_script(SKILL, "mark_ready")
-    shell = install_shell(monkeypatch, script, FakeShell({"gh pr view": "true", "git rev-parse HEAD": "def456"}))
+    script, shell = install_mark_ready(monkeypatch, True, ready_result(0))
 
     printed = run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
 
     assert printed == {"head_sha": "def456"}
     changes = [
-        command for command in shell.commands if command.startswith(("gh pr ready", "git rm", "git commit", "git push"))
+        command
+        for command in shell.commands
+        if command.startswith(("gh pr ready", "gh api POST", "git rm", "git commit", "git push"))
     ]
     assert changes == [
         "gh pr ready 9",
@@ -223,11 +263,32 @@ def test_mark_ready_marks_the_draft_ready_then_removes_the_plan(
     ]
 
 
+def test_mark_ready_uses_the_proxy_route_when_graphql_is_refused(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    refused = ready_result(1, "GitHub GraphQL is not available through this proxy (HTTP 403)")
+    script, shell = install_mark_ready(monkeypatch, True, refused)
+
+    run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
+
+    assert shell.ran("gh api POST repos/{owner}/{repo}/pulls/9/ccr/ready_for_review")
+
+
+def test_mark_ready_stops_on_another_failure(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script, shell = install_mark_ready(monkeypatch, True, ready_result(1, "HTTP 401: Bad credentials\n"))
+
+    with pytest.raises(SystemExit, match="`gh pr ready 9` failed: HTTP 401: Bad credentials"):
+        run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
+    assert not shell.ran("gh api POST")
+    assert not shell.ran("git push")
+
+
 def test_mark_ready_a_second_time_only_pushes(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    script = load_skill_script(SKILL, "mark_ready")
-    shell = install_shell(monkeypatch, script, FakeShell({"gh pr view": "false"}, failing=["git ls-files"]))
+    script, shell = install_mark_ready(monkeypatch, False, ready_result(0), failing=["git ls-files"])
 
     run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
 
@@ -243,8 +304,9 @@ def unreviewed_shell(commits: str, merged_tree: str = "t3") -> FakeShell:
     """
     return FakeShell(
         {
-            "gh pr view 9 --json headRefName": "42-saving-crash",
-            "gh pr view 9 --json headRefOid": "c3full",
+            "gh api GET repos/{owner}/{repo}/pulls/9": json.dumps(
+                {"head": {"ref": "42-saving-crash", "sha": "c3full"}}
+            ),
             "git rev-list --reverse --first-parent r1..c3full": commits,
             "git rev-list --parents -n 1 c3": "c3 c2 m1",
             "git rev-list --parents -n 1": "c0 p0",

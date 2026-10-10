@@ -12,6 +12,8 @@ uncommitted changes (they belong to the user) or when the default branch cannot 
 import json
 import subprocess
 
+from github_rest import gh_api
+
 
 def run(command: list[str]) -> str:
     return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
@@ -33,7 +35,7 @@ def main() -> None:
     if files:
         print(json.dumps({"ok": False, "reason": f"The checkout has uncommitted changes: {files}"}))
         return
-    default_branch = run(["gh", "repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"])
+    default_branch = str(gh_api("repos/{owner}/{repo}")["default_branch"])
     if not succeeds(["git", "fetch", "--quiet", "origin", default_branch]):
         print(json.dumps({"ok": False, "reason": f"The branch {default_branch} cannot be fetched from GitHub."}))
         return

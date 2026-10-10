@@ -17,6 +17,8 @@ import subprocess
 import sys
 from typing import Any
 
+from github_rest import gh_api
+
 
 def run(command: list[str]) -> str:
     return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
@@ -46,14 +48,23 @@ def pull_request_body(plan_file: str, issue: str) -> str:
     return f"{closes}The plan is in `{plan_file}`. The description follows with the code."
 
 
-def open_pull_request(script_input: dict[str, Any], issue: str) -> str:
+def open_pull_request(script_input: dict[str, Any], issue: str) -> dict[str, Any]:
+    """The open pull request of the branch, or a new draft one, assigned to the logged-in user."""
     branch = str(script_input["branch"])
-    existing = run(["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "url", "--jq", ".[0].url"])
+    existing: list[dict[str, Any]] = gh_api(f"repos/{{owner}}/{{repo}}/pulls?head={{owner}}:{branch}&state=open")
     if existing:
-        return existing
-    body = pull_request_body(str(script_input["plan_file"]), issue)
-    command = ["gh", "pr", "create", "--draft", "--base", str(script_input["base"]), "--title"]
-    return run([*command, str(script_input["title"]), "--assignee", "@me", "--body", body])
+        return existing[0]
+    new_pull_request = {
+        "title": str(script_input["title"]),
+        "head": branch,
+        "base": str(script_input["base"]),
+        "body": pull_request_body(str(script_input["plan_file"]), issue),
+        "draft": True,
+    }
+    created: dict[str, Any] = gh_api("repos/{owner}/{repo}/pulls", "POST", new_pull_request)
+    login = str(gh_api("user")["login"])
+    gh_api(f"repos/{{owner}}/{{repo}}/issues/{created['number']}/assignees", "POST", {"assignees": [login]})
+    return created
 
 
 def main() -> None:
@@ -64,8 +75,8 @@ def main() -> None:
     switch_to_new_branch(branch)
     commit_plan(str(script_input["plan_file"]))
     run(["git", "push", "--quiet", "--set-upstream", "origin", branch])
-    pr_url = open_pull_request(script_input, issue).splitlines()[-1]
-    print(json.dumps({"pr_number": int(pr_url.rstrip("/").rsplit("/", 1)[-1]), "pr_url": pr_url}))
+    pull_request = open_pull_request(script_input, issue)
+    print(json.dumps({"pr_number": pull_request["number"], "pr_url": pull_request["html_url"]}))
 
 
 if __name__ == "__main__":
