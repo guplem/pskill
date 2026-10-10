@@ -261,7 +261,7 @@ export const FIELD_HELP = {
     short: "The model tier of each subagent: `fast`, `standard`, or `deep`. With no tier, the subagent uses the main agent's model.",
     details: [
       "Optional, on `parallel` blocks. It is a tier name, or a `{{ }}` value computed once per item, like `agent`. So each reviewer of one block can get its own tier.",
-      "Each harness turns the tier into its own setting, so no skill names a model. Claude Code passes `model: haiku`, `sonnet`, or `opus` to each Agent call. Codex asks for the reasoning effort `low`, `medium`, or `high`. A harness without subagents ignores it.",
+      "Each harness turns the tier into a model and an effort, so no skill names a model. By default, Claude Code passes `model: haiku`, `sonnet`, or `opus` to each Agent call, and Codex passes `reasoning_effort: low`, `medium`, or `high` to each spawn_agent call. A project changes any row under `tiers` in `.pskill/config.yaml`. A harness without subagents ignores it.",
       "Use `fast` or `standard` for work that checks text against written rules, and `deep` for work that needs judgment, such as finding bugs.",
       "An empty computed value means no tier. `pskill validate` rejects a written value that is not a tier; a computed one fails the block at run time.",
     ],
@@ -273,12 +273,25 @@ export const FIELD_HELP = {
       },
     ],
   },
+  tools: {
+    title: "tools (tool profile)",
+    short: "The tool profile of each subagent: `read` or `web`. With no profile, the subagent gets every tool of the session.",
+    details: [
+      "Optional, on `parallel` blocks. It is a profile name, or a `{{ }}` value computed once per item, like `tier`.",
+      "`read` runs shell commands, reads and searches files, and writes its answer file. `web` adds fetching a page and searching the web. Fewer tools means a smaller starting context for each subagent. It is not a security boundary: the shell can still write files.",
+      "Claude Code spawns the task's subagent as `pskill-read` or `pskill-web`, agents that `pskill sync` writes into `.claude/agents/`. Codex and harnesses without subagents ignore it.",
+      "An empty computed value means no profile. `pskill validate` rejects a written value that is not a profile; a computed one fails the block at run time.",
+    ],
+    examples: [
+      { caption: "Reviewers that only read code", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntools: read' },
+    ],
+  },
   for_each: {
     title: "for_each (for each)",
     short: "The list to split into tasks: one task, and one subagent, per item.",
     details: [
       "Required on `parallel` blocks. It is a YAML list, or one `{{ }}` value that gives a list. So an earlier block can decide how many tasks there are.",
-      "In the instruction, in `agent`, in `task_name`, and in `tier`, `item` is the current list element.",
+      "In the instruction, in `agent`, in `task_name`, in `tier`, and in `tools`, `item` is the current list element.",
       "The block completes when every task has a valid answer. `steps.<block>.results` is the list of the task outputs, in item order. An empty list completes at once.",
       "Each subagent sees only its own task, never the other tasks.",
     ],
@@ -453,6 +466,8 @@ export const FACT_FIELDS = {
   "for each": "for_each",
   agent: "agent",
   "task name": "task_name",
+  tier: "tier",
+  tools: "tools",
   parse: "parse",
   timeout: "timeout_s",
   skill: "skill",

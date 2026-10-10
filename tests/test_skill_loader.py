@@ -294,3 +294,14 @@ def test_a_parallel_block_loads_its_tier(tmp_path: Path) -> None:
     assert isinstance(with_tier, ParallelBlock) and isinstance(without_tier, ParallelBlock)
     assert with_tier.tier == "fast"
     assert without_tier.tier is None
+
+
+def test_a_parallel_block_loads_its_tool_profile(tmp_path: Path) -> None:
+    skill_yaml = ALL_BLOCKS_SKILL.replace("    agent: fact-checker\n", "    agent: fact-checker\n    tools: read\n")
+
+    with_tools = load_skill(write_skill(tmp_path / "a", "all-blocks", skill_yaml)).blocks["check_docs"]
+    without_tools = load_skill(write_skill(tmp_path / "b", "all-blocks", ALL_BLOCKS_SKILL)).blocks["check_docs"]
+
+    assert isinstance(with_tools, ParallelBlock) and isinstance(without_tools, ParallelBlock)
+    assert with_tools.tools == "read"
+    assert without_tools.tools is None

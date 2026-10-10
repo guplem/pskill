@@ -2,13 +2,14 @@
 
 import json
 import threading
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from pskill_runner import engine
-from pskill_runner.adapters import ADAPTERS, HarnessAdapter
+from pskill_runner.adapters import ADAPTERS, HarnessAdapter, TierRow, tier_wording
 from pskill_runner.engine import (
     RunError,
     current_packet,
@@ -22,7 +23,7 @@ from pskill_runner.engine import (
     task_packet,
 )
 from pskill_runner.inline_executor import CallResult, ScriptResult
-from pskill_runner.project import Project, find_project
+from pskill_runner.project import Config, Project, find_project
 from pskill_runner.run_store import read_events
 from tests.skill_files import write_skill
 
@@ -976,7 +977,20 @@ def test_a_tier_asks_codex_for_its_reasoning_effort(tmp_path: Path) -> None:
 
     _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="codex")
 
-    assert "`high`" in packet
+    assert "Pass `reasoning_effort: high` in this task's spawn_agent call." in packet
+
+
+def test_a_project_tier_row_sets_the_model_and_effort_of_that_tier_only(tmp_path: Path) -> None:
+    skill_yaml = tiered_skill("\"{{ 'fast' if item == 'a.md' else 'deep' }}\"")
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+    tiers = {"codex": {"fast": TierRow(model="gpt-6-luna", effort="low")}}
+    project = replace(project, config=Config(tiers=tiers))
+
+    _, packet = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="codex")
+
+    task_zero, task_one = packet.split("#### Task 1")
+    assert "Pass `model: gpt-6-luna` and `reasoning_effort: low` in this task's spawn_agent call." in task_zero
+    assert "Pass `reasoning_effort: high` in this task's spawn_agent call." in task_one
 
 
 def test_a_block_with_no_tier_asks_for_no_model(tmp_path: Path) -> None:
@@ -1027,3 +1041,98 @@ def test_the_one_by_one_packet_ignores_the_tier(tmp_path: Path) -> None:
     _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="generic")
 
     assert "model" not in packet and "fast" not in packet
+
+
+def profiled_skill(tools: str, extra: str = "") -> str:
+    return PARALLEL_SKILL.replace("    agent: checker\n", f"    agent: checker\n    tools: {tools}\n{extra}")
+
+
+def task_profiles(project: Project, run_id: str) -> list[str | None]:
+    return [task.get("tools") for task in read_run_state(project, run_id)["frames"][0]["tasks"] or []]
+
+
+def test_a_tool_profile_asks_claude_code_for_its_profile_agent_on_each_agent_call(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": profiled_skill("read")}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code"
+    )
+
+    assert packet.count("`subagent_type: pskill-read`") == 2
+    assert task_profiles(project, run_id) == ["read", "read"]
+
+
+def test_a_block_with_no_tool_profile_gets_the_same_packet_as_before(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+
+    assert "pskill-" not in packet
+    assert packet.split("#### Task 0")[1].splitlines()[1].startswith("You are a subagent of pskill run")
+    assert task_profiles(project, run_id) == [None]
+
+
+def test_a_task_with_a_tool_profile_and_a_tier_gets_both_on_one_line(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": profiled_skill("web", "    tier: fast\n")}, {"checker": "Facts."})
+
+    _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+
+    spawn_line = packet.split("#### Task 0")[1].splitlines()[1]
+    claude_code = ADAPTERS["claude-code"]
+    assert spawn_line == f"{claude_code.tools_wording['web']} {tier_wording(claude_code, {}, 'fast')}"
+
+
+def test_each_item_can_ask_for_its_own_tool_profile(tmp_path: Path) -> None:
+    skill_yaml = profiled_skill("\"{{ 'web' if item == 'a.md' else 'read' }}\"")
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code"
+    )
+
+    assert task_profiles(project, run_id) == ["web", "read"]
+    task_zero, task_one = packet.split("#### Task 1")
+    assert "pskill-web" in task_zero.split("#### Task 0")[1]
+    assert "pskill-read" in task_one
+
+
+@pytest.mark.parametrize("tools", ["\"{{ '' }}\"", '"{{ none }}"'])
+def test_an_empty_computed_tool_profile_gives_every_tool(tmp_path: Path, tools: str) -> None:
+    project = make_project(tmp_path, {"fanout": profiled_skill(tools)}, {"checker": "You check facts."})
+
+    run_id, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+
+    assert "pskill-" not in packet
+    assert task_profiles(project, run_id) == [None]
+
+
+def test_a_computed_tool_profile_that_is_not_a_profile_pauses_the_run(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": profiled_skill("\"{{ 'write' }}\"")}, {"checker": "Facts."})
+
+    run_id, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+    assert "The tool profile of 'check' must be read or web, not 'write'." in packet
+
+
+@pytest.mark.parametrize("harness", ["codex", "generic"])
+def test_codex_and_the_one_by_one_packet_ignore_the_tool_profile(tmp_path: Path, harness: str) -> None:
+    project = make_project(tmp_path, {"fanout": profiled_skill("read")}, {"checker": "You check facts."})
+
+    _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness=harness)
+
+    assert "pskill-read" not in packet
+
+
+def test_a_state_file_from_before_tool_profiles_still_gives_its_packet(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+    state_path = project.runs_folder / run_id / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    for task in state["frames"][0]["tasks"]:
+        del task["tools"]
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    packet = current_packet(project, run_id)
+
+    assert "#### Task 0" in packet and "pskill-" not in packet

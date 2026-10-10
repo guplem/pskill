@@ -1,4 +1,4 @@
-"""Codex specifics: the project hooks and command rule that pskill manages, and the Stop response.
+"""Codex specifics: the project hooks and command rule that pskill manages, the Stop response, and the model catalog.
 
 Verified against the Codex docs and the openai/codex source on 2026-09-28:
 - Hooks in `<repo>/.codex/hooks.json`, Stop output, SessionStart stdout as context, commands run in the
@@ -15,13 +15,27 @@ Checked on 2026-10-10, for `pskill wait`: the Stop input has no list of backgrou
 that Codex starts a turn when a background terminal ends (https://developers.openai.com/codex/hooks,
 https://developers.openai.com/codex/config-reference). So the Stop hook ignores waits for Codex
 (`wakes_after_background_command` is false).
+
+Verified with Codex CLI 0.158.0 on 2026-10-10 (issue #151):
+- `spawn_agent` takes `model` and `reasoning_effort`: a subagent spawned with both logs them in its own session.
+- Only versioned model names work (`codex exec -m luna` fails with HTTP 400), and they leave the catalog over time.
+
+Verified against the openai/codex source on 2026-10-10:
+- The model catalog is `models_cache.json` in the Codex folder: `$CODEX_HOME`, else `~/.codex`
+  (codex-rs/models-manager/src/manager.rs, codex-rs/utils/home-dir/src/lib.rs).
+- Its `models` list holds one object per model: `slug` is the name, and `upgrade` is null or an object whose
+  `model` names the replacement (codex-rs/models-manager/src/cache.rs, codex-rs/protocol/src/openai_models.rs).
 """
 
 import json
+import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from pskill_runner.adapters import CODEX, TierRow
 from pskill_runner.hook_settings import GIT_ROOT_CODE, pskill_hooks
+from pskill_runner.validator import Problem
 
 HOOKS_RELATIVE_PATH = Path(".codex") / "hooks.json"
 RULES_RELATIVE_PATH = Path(".codex") / "rules" / "pskill.rules"
@@ -62,3 +76,61 @@ def stop_response(reason: str | None) -> tuple[str, int]:
     if reason is None:
         return "{}", 0
     return json.dumps({"decision": "block", "reason": reason}), 0
+
+
+def codex_home(environment: Mapping[str, str] | None = None) -> Path:
+    """The Codex folder of this user: `CODEX_HOME` when it is set, else `~/.codex`."""
+    environment = os.environ if environment is None else environment
+    return Path(environment.get("CODEX_HOME") or Path.home() / ".codex")
+
+
+def read_model_catalog(path: Path) -> dict[str, str | None] | None:
+    """Each model of the Codex catalog, with the model that replaces it or None. None when there is no catalog.
+
+    Codex rewrites this cache itself, so a file that cannot be read counts as no catalog.
+    """
+    try:
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    models = catalog.get("models") if isinstance(catalog, dict) else None
+    if not isinstance(models, list):
+        return None
+    return {
+        model["slug"]: upgrade_model(model)
+        for model in models
+        if isinstance(model, dict) and is_text(model.get("slug"))
+    }
+
+
+def upgrade_model(model: dict[str, Any]) -> str | None:
+    upgrade = model.get("upgrade")
+    if isinstance(upgrade, dict) and is_text(upgrade.get("model")):
+        return str(upgrade["model"])
+    return None
+
+
+def is_text(value: object) -> bool:
+    return isinstance(value, str) and value != ""
+
+
+def tier_model_problems(
+    tiers: Mapping[str, Mapping[str, TierRow]], environment: Mapping[str, str] | None = None
+) -> list[Problem]:
+    """Warn on each Codex tier model that the local catalog does not list, or lists with an upgrade."""
+    catalog_path = codex_home(environment) / "models_cache.json"
+    catalog = read_model_catalog(catalog_path)
+    if catalog is None:
+        return []
+    problems = []
+    for tier, row in tiers.get(CODEX.name, {}).items():
+        location = f"tiers.{CODEX.name}.{tier}"
+        if row.model is None:
+            continue
+        if row.model not in catalog:
+            message = f"the model {row.model!r} is not in the Codex model catalog ({catalog_path}), so Codex refuses it"
+            problems.append(Problem(level="warning", location=location, message=message))
+        elif catalog[row.model] is not None:
+            message = f"the model {row.model!r} has an upgrade to {catalog[row.model]!r}, so Codex retires it soon"
+            problems.append(Problem(level="warning", location=location, message=message))
+    return problems

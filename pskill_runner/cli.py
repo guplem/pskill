@@ -31,6 +31,7 @@ from pskill_runner.engine import (
 from pskill_runner.hook_settings import SettingsError
 from pskill_runner.hooks import session_start_text, stop_hook_reason
 from pskill_runner.install import InstallError, init_project, update_project
+from pskill_runner.profile_agents import sync_profile_agents
 from pskill_runner.project import Project, ProjectError, find_project
 from pskill_runner.release import release_url
 from pskill_runner.run_records import UNFINISHED_STATUSES, RunInfo
@@ -103,7 +104,9 @@ def build_parser() -> argparse.ArgumentParser:
     test = commands.add_parser("test", help="Run the skills' test cases with a scripted fake agent.")
     test.add_argument("skill", nargs="?", help="Default: every skill.")
 
-    sync = commands.add_parser("sync", help="Write the skill stubs and the harness hooks and permission rule.")
+    sync = commands.add_parser(
+        "sync", help="Write the skill stubs, the profile agents, and the harness hooks and permission rule."
+    )
     sync.add_argument("--check", action="store_true", help="Only report what is out of date.")
 
     init = commands.add_parser("init", help="Create .pskill/ in the current folder, pinned to a runner release.")
@@ -300,11 +303,15 @@ def validate_command(project: Project, skill_id: str | None) -> int:
             error_count += problem.level == "error"
             warning_count += problem.level == "warning"
     if skill_id is None:
-        for change in sync_stubs(project, catalog, check_only=True):
+        stale = sync_stubs(project, catalog, check_only=True) + sync_profile_agents(project, catalog, check_only=True)
+        for change in stale:
             lines.append(
                 f"error  (stubs)  {change.path.relative_to(project.root).as_posix()} is out of date: run `pskill sync`"
             )
             error_count += 1
+        for problem in codex.tier_model_problems(project.config.tiers):
+            lines.append(f"{problem.level:<7} (config)  {problem.location}: {problem.message}")
+            warning_count += 1
     noun = "skill" if len(folders) == 1 else "skills"
     lines.append(f"{len(folders)} {noun} checked: {error_count} errors, {warning_count} warnings.")
     print_text("\n".join(lines))

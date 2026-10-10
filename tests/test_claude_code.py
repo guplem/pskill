@@ -1,4 +1,4 @@
-"""Tests for the Claude Code adapter: detection, settings merge, and hook responses."""
+"""Tests for the Claude Code adapter: detection, settings merge, profile agents, and hook responses."""
 
 import json
 from pathlib import Path
@@ -11,10 +11,12 @@ from pskill_runner.claude_code import (
     PROJECT_ROOT_CODE,
     PSKILL_HOOKS,
     SettingsError,
+    profile_agent_text,
     stop_response,
     sync_claude_permission,
 )
 from pskill_runner.hook_settings import hook_command, sync_hook_file
+from pskill_runner.stubs import GENERATED_MARKER
 
 SETTINGS_PATH = Path(".claude") / "settings.json"
 STOP_COMMAND = hook_command(PROJECT_ROOT_CODE, "stop", "claude-code")
@@ -125,3 +127,18 @@ def test_a_blocking_stop_response_gives_claude_the_reason_as_feedback() -> None:
 
 def test_an_allowing_stop_response_prints_nothing() -> None:
     assert stop_response(None) == ("", 0)
+
+
+def test_the_read_agent_names_only_the_shell_read_and_search_tools_and_no_model() -> None:
+    text = profile_agent_text("read")
+
+    assert text.startswith(
+        "---\nname: pskill-read\ndescription: Only for pskill tasks. Never choose it on your own.\n"
+        "tools: Bash, Read, Grep, Glob, Write\n---\n"
+    )
+    assert GENERATED_MARKER in text
+    assert "model" not in text
+
+
+def test_the_web_agent_adds_fetching_and_searching_the_web() -> None:
+    assert "tools: Bash, Read, Grep, Glob, Write, WebFetch, WebSearch\n" in profile_agent_text("web")

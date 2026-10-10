@@ -5,6 +5,7 @@
 """
 
 import io
+import json
 import re
 import shutil
 import sys
@@ -556,6 +557,34 @@ def test_validate_reports_load_errors_graph_errors_and_stale_stubs(
     assert "error  plan-work  blocks.create_plan: the target 'nowhere' is not a block" in output
     assert "error  (stubs)  .agents/skills/plan-work/SKILL.md is out of date: run `pskill sync`" in output
     assert "2 skills checked: " in output
+
+
+def test_validate_warns_on_a_codex_tier_model_that_the_codex_catalog_lacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path / "project", monkeypatch)
+    (project.pskill_folder / "config.yaml").write_text(
+        "tiers: {codex: {fast: {model: gpt-6.1-sol}}}\n", encoding="utf-8"
+    )
+    run_cli(monkeypatch, "sync")
+    codex_folder = tmp_path / "codex"
+    codex_folder.mkdir()
+    catalog = {"models": [{"slug": "gpt-6-sol", "upgrade": None}]}
+    (codex_folder / "models_cache.json").write_text(json.dumps(catalog), encoding="utf-8")
+    monkeypatch.setenv("CODEX_HOME", str(codex_folder))
+    capsys.readouterr()
+
+    exit_code = run_cli(monkeypatch, "validate")
+
+    assert exit_code == cli.EXIT_OK
+    output = capsys.readouterr().out
+    assert "warning (config)  tiers.codex.fast: the model 'gpt-6.1-sol' is not in the Codex model catalog" in output
+    assert output.endswith("1 skill checked: 0 errors, 1 warnings.\n")
+
+    exit_code = run_cli(monkeypatch, "validate", "plan-work")
+
+    assert exit_code == cli.EXIT_OK
+    assert capsys.readouterr().out == "1 skill checked: 0 errors, 0 warnings.\n"  # one skill: no project checks
 
 
 def test_validate_with_no_skills_checks_nothing(

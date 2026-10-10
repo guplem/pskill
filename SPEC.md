@@ -59,7 +59,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D4 | `pskill sync` writes one read-only stub per skill into each folder in `config.stub_folders` (default `.agents/skills/` and `.claude/skills/`). All stubs have the same content and pass `--harness auto`. | Harnesses pick skills by their description. Without stubs, auto-triggering stops. The folder list is configurable because projects already own these folders differently (see 9.3). |
 | D5 | One run can mix main-agent work, parallel subagents, scripts, and questions to the human. | The real skills use all four. |
 | D6 | Every skill can run in `autonomous` mode. A `decision` block has `decider: agent` or `decider: human`. In autonomous mode the agent takes human decisions itself, from the skill goal, the session, and the project. | User requirement. Replaces all mode-specific prose. |
-| D7 | A Stop hook blocks the agent from ending its turn while a block is open, on harnesses that have such a hook. Other harnesses get packet wording only. Changed in 0.35.0 (#150): while a `pskill wait` runs, on a harness that wakes the agent after a background command, the hook allows the stop (9.2). | Otherwise the agent can simply stop calling the runner. |
+| D7 | A Stop hook blocks the agent from ending its turn while a block is open, on harnesses that have such a hook. Other harnesses get packet wording only. Changed in 0.37.0 (#150): while a `pskill wait` runs, on a harness that wakes the agent after a background command, the hook allows the stop (9.2). | Otherwise the agent can simply stop calling the runner. |
 | D8 | The stub gives the skill goal and the loop rules once. A packet contains the current instruction and its return format, and no future blocks. It repeats the goal only where the agent never saw the stub: a subagent task, the first packet of a child skill, and `current` or `resume` (with the rules). | Fewer tokens, no running ahead, one obvious place for the goal, and enough context for autonomous answers. Changed in 0.10.0: before, every packet repeated the goal and the rules. |
 | D9 | Every agent block declares a typed output. The runner rejects invalid submissions with the error text. | State lives in the runner, typed, and survives tool calls. |
 | D10 | A nested skill call works like a function: inputs in, outputs out, no access to the caller's state. | Replaces line-number citations and file-heading contracts. |
@@ -298,6 +298,7 @@ research:
   agent: "{{ item.agent }}"            # optional: a pskill agent from .pskill/agents/
   task_name: "{{ item.agent }}"        # optional: the name of each task, in the packet and the viewer
   tier: deep                           # optional: the model tier of each subagent (fast, standard, deep)
+  tools: read                          # optional: the tool profile of each subagent (read, web)
   instruction: instructions/research.md   # uses {{ item.focus }}
   output:                              # the output of each task
     report: {type: string, description: "What you found, with file paths."}
@@ -329,8 +330,9 @@ fact_check:
 - **A `when` per item.** In a `for_each` written as a YAML list, an item may have a `when` (exactly one `{{ }}`, like an edge's). The item starts a task only when its `when` is true, and the task's `item` has no `when` key. This keeps one way to list tasks: a fixed list, where each subagent says when it is needed. The `block_started` event lists the skipped items (section 10.3), and the viewer shows them. In a list computed during the run, a `when` key is plain data.
 - **`agent`** names a file `.pskill/agents/<name>.md`. The file is the subagent's role and rules, in Markdown. The runner puts its text at the top of the task prompt. The harness then spawns a plain subagent, so the same agent works on every harness. With no `agent`, the task gets a plain subagent with only its instruction.
 - **`task_name`** is one `{{ }}` value, computed once per item, that names the task. The packet heads the task with `#### Task <n> · <name>`, and the viewer labels the task's node and chip with it. The runner puts the name on one line and cuts it to 60 characters. A name that is missing, empty, or fails to compute is no name: the task shows as `task <n>`, and the run goes on. When the main agent builds the list, give each item an optional `name` field in that block's `output`, and set `task_name: "{{ item.name }}"`.
-- **`tier`** is `fast`, `standard`, or `deep`, or one `{{ }}` value computed once per item, so each task of one block can get its own tier. It is the model tier of the task's subagent. Each adapter turns it into its own setting, so no skill names a model: Claude Code passes `model: haiku`, `sonnet`, or `opus` to the task's Agent call, and Codex asks for the reasoning effort `low`, `medium`, or `high` (VERIFY). The packet says it on one line under the task's heading. With no tier, or an empty computed value, the subagent inherits the main agent's model, as before. `pskill validate` rejects a written value that is not a tier; a computed one fails the block. The generic adapter ignores the tier, because the main agent runs the tasks itself and cannot change its own model. Added in 0.34.0 (#11).
-- pskill agents are only reusable prompt text. pskill never reads harness agent files (`.claude/agents/`, `.codex/agents/`), and `sync` never writes them. The main agent spawns a plain subagent (in Claude: `general-purpose`) and gives it the prompt that the runner built. This keeps agents versioned with the skills, so they cannot drift apart.
+- **`tier`** is `fast`, `standard`, or `deep`, or one `{{ }}` value computed once per item, so each task of one block can get its own tier. It is the model tier of the task's subagent. Each harness turns it into a model and an effort through a table, so no skill names a model. A row of the table has an optional `model` (none keeps the session's model) and an optional `effort` (none keeps the model's default). The default rows name no versioned model, so they never expire: Claude Code `fast`, `standard`, `deep` pass `model: haiku`, `sonnet`, `opus` to the task's Agent call; Codex passes `reasoning_effort: low`, `medium`, `high` to the task's `spawn_agent` call, on the session's model, because Codex has no model aliases and its versioned names expire. A project replaces any single row under `tiers` in `config.yaml` (section 10.1), such as `codex: {fast: {model: gpt-6-luna, effort: low}}`; the project row wins whole. The packet says the row on one line under the task's heading (Claude Code `model` and `effort`, Codex `model` and `reasoning_effort`); a row with neither gives no line. With no tier, or an empty computed value, the subagent inherits the main agent's model, as before. `pskill validate` rejects a written value that is not a tier; a computed one fails the block. The generic adapter ignores the tier, because the main agent runs the tasks itself and cannot change its own model. Added in 0.34.0 (#11). The table changed in 0.36.0 (#151).
+- **`tools`** is `read` or `web`, or one `{{ }}` value computed once per item, like `tier`. It is the tool profile of the task's subagent, so a subagent that only reads code starts without the tool definitions it never uses (measured in Claude Code: about 40,000 tokens instead of 80,000 for an empty task). `read` runs shell commands, reads and searches files, and writes its answer file (`submit --file`). `web` adds fetching a page and searching the web. A profile sets tools only: the `agent` text stays the prompt, and `tier` stays the model. The runner holds the profiles; a skill cannot name a tool, because tool names differ per harness. Claude Code asks for `subagent_type: pskill-<profile>` on the task's Agent call, on the same line as the tier wording; `sync` writes those agents (9.3). Codex ignores the profile: a Codex agent file cannot set its sandbox or its MCP servers, so a profile agent would promise a limit that Codex does not keep (VERIFY again when Codex changes). The generic adapter ignores it too. With no `tools`, or an empty computed value, the subagent gets every tool, and the packet is the same as before. `pskill validate` rejects a written value that is not a profile; a computed one fails the block. It is not a security boundary: the shell can still write files. Added in 0.35.0 (#149).
+- pskill agents are only reusable prompt text. pskill never reads harness agent files (`.claude/agents/`, `.codex/agents/`). The main agent spawns a plain subagent (in Claude: `general-purpose`, or a profile agent with `tools`) and gives it the prompt that the runner built. This keeps agents versioned with the skills, so they cannot drift apart. The one exception: `sync` writes a Claude Code profile agent per used tool profile. It holds a tool list and no prompt and no model, so it cannot drift from the skills.
 - `steps.research.results` is the list of task outputs, in item order.
 - Each task has its own submission. The block completes when every task has a valid submission. An empty list completes at once.
 - A task is one agent job. It cannot contain other blocks.
@@ -542,7 +544,7 @@ Additions by block type:
 - **Decision with choices:** the Return section lists each choice and its meaning.
 - **Human decision, interactive:** "Ask the user and wait. Submit the user's answer with `"$answered_by": "human"`. Do not decide for the user." The adapter adds the wording for its question tool (section 9).
 - **Human decision, autonomous:** "This run is autonomous. Decide as the user would, from the goal, this session, and the project. Explain why in `rationale`."
-- **Parallel with subagents:** the packet lists every open task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with a one-line prompt: "You are a subagent of pskill run <run>. In the folder `<project root>`, run `pskill task <run> <n>`, and do what it prints." `pskill task` prints the task's full prompt: the work folder, the agent role, the goal, the instruction, the return format, and its own submit command with `--task <n>`, plus its `--file` line. The packet says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each subagent exactly the one-line prompt of its task. When every subagent has finished, run `pskill current <run>`." The same line restarts a task whose subagent stalled. Changed in 0.12.0: before, the packet held every full prompt, which the main agent copied by hand.
+- **Parallel with subagents:** the packet lists every open task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with a one-line prompt: "You are a subagent of pskill run <run>. In the folder `<project root>`, run `pskill task <run> <n>`, and do what it prints." A task with a tool profile or a tier gets one more line under its heading, with the harness wording for both (for Claude Code: "Pass `subagent_type: pskill-read` in this task's Agent call, instead of `general-purpose`. If that agent type is unknown, use `general-purpose`. Pass `model: haiku` in this task's Agent call."). The fallback covers a profile agent that is missing (no `sync` yet, or `claude-code` not in `permissions`) or that Claude Code does not see yet (a `.claude/agents/` folder newer than the session). `pskill task` prints the task's full prompt: the work folder, the agent role, the goal, the instruction, the return format, and its own submit command with `--task <n>`, plus its `--file` line. The packet says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each subagent exactly the one-line prompt of its task. When every subagent has finished, run `pskill current <run>`." The same line restarts a task whose subagent stalled. Changed in 0.12.0: before, the packet held every full prompt, which the main agent copied by hand.
 - **Parallel without subagents:** the packet gives one task at a time, like a normal block.
 - **Final packet:** the status, the rendered `report`, the outputs, and "The run is finished."
 
@@ -570,7 +572,8 @@ class HarnessAdapter(Protocol):
 | Stop hook | `Stop`; pskill answers with `hookSpecificOutput.additionalContext` (non-error feedback that keeps Claude working; Claude Code also caps continuations at 8) | `Stop` in `.codex/hooks.json`; pskill answers with `{"decision": "block", "reason": ...}` (Codex needs JSON on stdout) | none |
 | Session-start hook | `SessionStart` with matcher `startup\|resume\|clear\|compact`; its plain stdout becomes context | `SessionStart`; its plain stdout becomes context | none |
 | Subagents | Agent tool with `subagent_type: general-purpose` and `run_in_background: false` (the turn waits for every subagent; the calls still run in parallel) | `spawn_agent`, then `wait_agent` | no (one by one) |
-| Model tier (`tier`) | `model: haiku`, `sonnet`, or `opus` on the task's Agent call | the reasoning effort `low`, `medium`, or `high` on the spawn request (VERIFY) | ignored |
+| Model tier (`tier`) | the row's `model` and `effort` on the task's Agent call (default: `model: haiku`, `sonnet`, or `opus`) | the row's `model` and `reasoning_effort` on the task's `spawn_agent` call (default: `reasoning_effort: low`, `medium`, or `high`) | ignored |
+| Tool profile (`tools`) | `subagent_type: pskill-<profile>` on the task's Agent call; `sync` writes `.claude/agents/pskill-<profile>.md` | ignored: an agent file cannot set `sandbox_mode` or `mcp_servers` (openai/codex `codex-rs/core/src/agent/role.rs`, read 2026-10-10) | ignored |
 | Wakes the agent after a background command (`wakes_after_background_command`, for `pskill wait`) | yes: a new turn when the command ends (no time limit locally; 30 minutes by default in a cloud session) | not documented, so no: the Stop hook ignores waits | no |
 | Question tool | `AskUserQuestion` (2-4 options; above 4, use a plain question) | plain question | plain question |
 
@@ -591,7 +594,7 @@ class HarnessAdapter(Protocol):
 
 - **Stop.**
   - Look only at the newest `active` run for this harness in this checkout that holds this session: its `session_id` equals the hook input's `session_id`, or one of the two is missing. If it exists, block with the reason: "pskill run <id> has an open block. Continue it: run `uv run .pskill/pskill.py current <id>` and follow the packet. If the user asked to stop, run `uv run .pskill/pskill.py pause <id>` instead." A second line tells the agent how to wait: "If you wait on background work, run `uv run .pskill/pskill.py wait <id> --reason "<what you wait on>"` in the background, then end your turn."
-  - **A wait (`pskill wait`, since 0.35.0).** While the run's `wait_until` is in the future, allow the stop with no message and no count. The run stays `active`. The agent waits on background work (subagents, a CI wait), and the harness wakes it when the background `wait` command ends.
+  - **A wait (`pskill wait`, since 0.37.0).** While the run's `wait_until` is in the future, allow the stop with no message and no count. The run stays `active`. The agent waits on background work (subagents, a CI wait), and the harness wakes it when the background `wait` command ends.
     - `wait` records `wait_reason`, `wait_started_at`, `wait_until` (`wait_minutes` later, default 20), and `waits_since` in `run.json`. It takes the run lock for that write (7.7), then reads `run.json` every 5 s, each read under the lock: on Windows, a read during an `os.replace` fails both sides. It holds no lock while it sleeps. A lock busy past its timeout (a long `script` block) only skips that read.
     - It ends at once when the run changes (any submit, a pause, a cancel), or at `wait_until` with one line: "<n> minutes passed and nothing changed. If you still wait on <reason>, run the wait again. Else continue the run: run `uv run .pskill/pskill.py current <id>`."
     - `wait` refuses a run whose harness does not wake the agent (no `wakes_after_background_command`).
@@ -651,6 +654,16 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
 - `sync` overwrites and deletes only files that carry the generated marker. If a hand-written skill has the same name, `sync` stops with an error.
 - `sync` also writes one built-in stub, `pskill`: "Resume, inspect, pause, or cancel a pskill run. Use when the user mentions an unfinished skill run." Its body lists `runs`, `current`, `resume`, `wait`, `pause`, `cancel`, and `view`.
 - Commit the stubs. `pskill validate` fails when a stub is out of date.
+- **Profile agents.** For each tool profile that some `parallel` block uses (a computed `tools` value counts as every profile), `sync` writes `.claude/agents/pskill-<profile>.md`, when `claude-code` is in `config.permissions`:
+  ```markdown
+  ---
+  name: pskill-read
+  description: Only for pskill tasks. Never choose it on your own.
+  tools: Bash, Read, Grep, Glob, Write
+  ---
+  <!-- Generated by pskill. Do not edit. Run: uv run .pskill/pskill.py sync -->
+  ```
+  It has no `model`, so the Agent call's `model` (the tier) still sets it. A `tools` list leaves out the MCP tools and the Agent tool. No harness can hide an agent from automatic use, so the description asks the agent not to pick it. `sync` deletes a generated profile agent that no skill uses, stops on a hand-written file with the same name, and `sync --check` and `pskill validate` report a stale one. The session-start hook does not write them. Claude Code sees a new `.claude/agents/` folder only after a session restart, so commit the profile agents (verified 2026-10-10: https://code.claude.com/docs/en/sub-agents).
 - Set `stub_folders` to match how the project already owns these folders:
   - In a project where another tool mirrors `.agents/skills/` into a gitignored `.claude/skills/` (the Galtea monorepo's `sync-skills-to-claude.js`), use `[.agents/skills]` only. The mirror then copies the stubs.
   - In a project whose ADR forbids `.agents/skills/` (the setup-guplem-standard ADR 0001), use `[.claude/skills]`, or update that ADR first.
@@ -674,6 +687,7 @@ pskill/
 │   ├── skills/{implement-issue, review-pr, review-round, review-head-check, review-doubt, resolve-pr-feedback, fix-ci, create-issue, checkout-pr}/   # the example skills (section 13)
 │   └── agents/{reviewer, explorer, pattern-scout, adr-checker}.md   # their pskill agents
 ├── .claude/skills/, .agents/skills/   # stubs generated by sync
+├── .claude/agents/pskill-{read, web}.md   # profile agents generated by sync (9.3)
 ├── .github/workflows/ci.yml           # section 16; release job builds pskill.zip on a tag
 ├── README.md              # human-facing: install, use, limitations L1 to L6, the rules that sync adds
 ├── AGENTS.md              # agent-facing map; CLAUDE.md is a one-line @AGENTS.md shim
@@ -701,13 +715,14 @@ The runner itself lives in the user's cache: `PSKILL_CACHE_DIR` when set, else `
 `config.yaml`:
 
 - **`hook_files`** are paths, because every hooks file has the same shape (`{"hooks": {...}}`). An app's own file (`.claude/settings.json`, `.codex/hooks.json`) gets that app's hook commands. Any other file, such as a project's own source of hooks that generates the app files, gets shared commands that pass `--harness auto`. The runner then detects the app from the hook input (`turn_id` means Codex) or the environment (`CLAUDE_PROJECT_DIR` means Claude Code). `sync` removes an app's own pskill hooks from its app file when that file is not listed. It keeps the shared hooks there: only the project's generator puts them there, when it copies the listed source.
-- **`permissions`** are app names, because each app keeps its rules in its own format, in a fixed place: Claude Code in `permissions.allow` of `.claude/settings.json`, Codex in `.codex/rules/pskill.rules`.
+- **`permissions`** are app names, because each app keeps its rules in its own format, in a fixed place: Claude Code in `permissions.allow` of `.claude/settings.json`, Codex in `.codex/rules/pskill.rules`. An app in this list is one that pskill sets up, so `claude-code` here also gets the profile agents in `.claude/agents/` (9.3).
 - The old setting `harnesses` stops with an error that names these two settings.
+- **`tiers`** changes rows of the tier table (section 6.3): a harness (`claude-code` or `codex`), a tier, and a row with `model` and `effort`, each optional. A row replaces the default row of its harness and tier; every other row keeps its default. An unknown harness, tier, or key, or a value that is not a non-empty text, stops with an error.
 
 ```yaml
 stub_folders: [.agents/skills, .claude/skills]          # where sync writes stubs
 hook_files: [.claude/settings.json, .codex/hooks.json]  # where sync writes the two hooks
-permissions: [claude-code, codex]                       # the apps that get the rule to run pskill without asking
+permissions: [claude-code, codex]                       # the apps that get the runner rule (and the profile agents)
 default_mode: interactive
 retries: 2
 autonomous_max_visits: 150                               # the agent's ceiling at a visit cap (5.5)
@@ -716,6 +731,9 @@ stop_hook_max_blocks: 3
 wait_minutes: 20                                         # how long one `pskill wait` sleeps when nothing changes
 max_wait_minutes: 120                                    # the waits of one block with nothing new, before wait refuses
 viewer_port: 7777
+tiers:                                                   # rows that replace the default tier rows (6.3)
+  codex:
+    fast: {model: gpt-6-luna, effort: low}
 ```
 
 ### 10.2 Run folder
@@ -734,7 +752,7 @@ runs/<run-id>/
 - `schema_version`, `run_id`, `skill_id`, `skill_hash` (sha256 of the copied skill files)
 - `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `session_id` (the owner session, or null), `mode`, `inputs`
 - `status`, `pause_reason`, `current` (`{frame, block, visit}`), `attempts`, `stop_blocks`
-- `wait_reason`, `wait_started_at`, `wait_until`, `waits_since`: the `pskill wait` alarm (section 9.2). Absent in runs before 0.35.0.
+- `wait_reason`, `wait_started_at`, `wait_until`, `waits_since`: the `pskill wait` alarm (section 9.2). Absent in runs before 0.37.0.
 - `created_at`, `updated_at`, `ended_at`, `outputs`
 
 ### 10.3 Events
@@ -777,13 +795,15 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 14. A call cycle.
 15. A `succeeded` end that misses a required skill output. (`failed` and `cancelled` ends may give any subset.)
 16. A skill description longer than 1024 chars.
-17. A stub out of date.
+17. A stub or a profile agent out of date.
 18. A loop that can repeat after every cap is used up: a loop with no `max_visits` on the way (also inside a capped loop), or caps whose `on_max_visits` blocks lead back into the same loop.
 19. `max_visits` without `on_max_visits`; `on_max_visits`, `ask_on_max_visits`, or `autonomous_max_visits` without `max_visits`; `autonomous_max_visits` below `max_visits`.
+20. A `parallel` block's written `tier` is not `fast`, `standard`, or `deep`, or its written `tools` is not `read` or `web`. A computed value is checked at run time, and an unknown one fails the block.
 
 **Warnings:**
 1. A condition list whose last item has a `when`.
 2. An instruction file that no block uses.
+3. A Codex row in `tiers` whose model the local Codex model catalog does not list, or lists with an `upgrade` (named in the warning). The catalog is `models_cache.json` in `$CODEX_HOME`, else `~/.codex`. With no catalog, or one that cannot be read, there is no check. Checked when `validate` checks every skill.
 
 ---
 
@@ -880,6 +900,7 @@ The example skills together must exercise every runtime feature. pytest fixtures
 | `parallel` over a fixed list, with an agent per item | `implement-issue.research_code` |
 | `parallel` over a fixed list, with a `when` per item | `review-round.review` |
 | `parallel` over a list computed during the run | `implement-issue.research_gaps` (one task per gap from `understand`) |
+| Tool profiles (`tools`) | `implement-issue.research_code` (`read`), `implement-issue.research_gaps` (`web`) |
 | pskill agents (`.pskill/agents/`) | `implement-issue.research_code` (from the item), `implement-issue.research_gaps` and `review-round.review` (fixed) |
 | Inline instruction text | `implement-issue.research_gaps`, `implement-issue.approve_plan` |
 | `script` with `parse: json` and with text | `implement-issue.read_issue`; `create-issue.create` |
@@ -1040,7 +1061,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `update [--from <source>]` | Move the pin of `.pskill/pskill.py`, put the release in the cache, then run `sync` with the new runner. Default source: the latest release archive. `--from .` in the pskill repository writes the dev pin. Remove the runner files of a vendored install (`VENDORED`, `pskill_runner/`, `viewer/`, `launchers/`, `AUTHORING.md`). Never touch `skills/`, `agents/`, `runs/`, or `config.yaml`. |
 | `authoring` | Print `AUTHORING.md`, the guide for agents that write skills. |
 | `list` | Skills: id, invocation, description. |
-| `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h]` | Validate the skill (errors 1 to 16 only; a stale stub never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. |
+| `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h]` | Validate the skill (every error except 17: a stale stub or profile agent never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. |
 | `current [<run>]` | Print the current packet. No state change. |
 | `task <run> <n>` | Print the full prompt of task `<n>` of the current parallel block. A subagent runs it first. No state change. |
 | `submit <run> [--task <n>] [--file <path>]` | Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. |
@@ -1050,7 +1071,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `runs [--open]` | List runs. A waiting run shows its wait reason and the start of the wait. |
 | `validate [<skill>]` | Section 11. |
 | `test [<skill>]` | Section 12. |
-| `sync [--check]` | Write stubs and hooks. `--check` only reports differences. |
+| `sync [--check]` | Write the stubs, the profile agents, the hooks, and the permission rule. `--check` only reports differences. |
 | `view` | Start the viewer. |
 | `hook stop\|session-start --harness <h>` | Internal. The harness calls it. |
 
@@ -1142,7 +1163,7 @@ Each of these was in an earlier draft. Each one added complexity for little user
 | Static-flow warnings ("a step can run before its source") | The runtime error for missing values, plus skill tests |
 | Bare expressions without braces (`when: "a == b"`, `result: "'text'"`) | One syntax: `{{ }}` means computed, everything else is plain text |
 | Submissions through an `outbox/` folder, JSON-only answers, `--inputs-file` | One `submit` call with a literal YAML block on stdin. `submit --file` is back since 0.31.0, only for a long answer (D16). |
-| Harness agent files (`.claude/agents/`, `.codex/agents/`) as subagents | pskill agents in `.pskill/agents/`, versioned with the skills |
+| Harness agent files (`.claude/agents/`, `.codex/agents/`) as subagents | pskill agents in `.pskill/agents/`, versioned with the skills. The one exception since 0.35.0: the generated Claude Code profile agents of `tools`, which hold tools only, no prompt (6.3). |
 | Token counts per block | Durations only. Harness session files are private formats that change without notice. |
 | Mermaid copied into every project (about 3 MB) | A pinned CDN copy; the viewer works without the graph when offline |
 | A hook that runs `sync` after each file edit, and git hooks | The session-start hook refreshes stubs; `AUTHORING.md` tells the agent to run `sync` after an edit; CI fails on a stale stub |
@@ -1165,7 +1186,7 @@ Each item below exists as a GitHub issue with the label `future` (guplem/pskill 
 | Token counts per block | Harness session files are private formats. |
 | Replay from a chosen block (fork a run) | Step-through playback covers the MVP need. |
 | Up-front check of required tools and connectors | A missing tool fails its block, then the run pauses. |
-| Tool limits for a block or a pskill agent | Harness-specific, and pskill writes no harness agent file. The model tier part shipped in 0.34.0 as the `parallel` field `tier` (#11). |
+| Tool limits for a pskill agent | The block part shipped: the model tier in 0.34.0 as the `parallel` field `tier` (#11), and the tools in 0.35.0 as the `parallel` field `tools` (#149). A `tools` default in a pskill agent file waits: a block sets it today, and one way to do it is enough. |
 | `implement-issue`: split big issues into stacked PRs, worktree subagents | The example version makes one PR. (`resolve-pr-feedback` now replies to review threads.) |
 
 ---

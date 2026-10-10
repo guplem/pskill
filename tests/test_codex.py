@@ -5,14 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from pskill_runner.adapters import adapter_for, detect_harness
+from pskill_runner.adapters import TierRow, adapter_for, detect_harness
 from pskill_runner.codex import (
     HOOKS_RELATIVE_PATH,
     PROJECT_ROOT_CODE,
     PSKILL_HOOKS,
     RULES_RELATIVE_PATH,
+    codex_home,
+    read_model_catalog,
     stop_response,
     sync_codex_rules,
+    tier_model_problems,
 )
 from pskill_runner.hook_settings import SettingsError, hook_command, sync_hook_file
 
@@ -108,3 +111,82 @@ def test_an_allowing_stop_response_is_still_json() -> None:
     stdout, exit_code = stop_response(None)
 
     assert (json.loads(stdout), exit_code) == ({}, 0)
+
+
+def write_catalog(codex_folder: Path, models: object) -> Path:
+    codex_folder.mkdir(parents=True, exist_ok=True)
+    path = codex_folder / "models_cache.json"
+    path.write_text(json.dumps({"fetched_at": "2026-10-10T08:00:00Z", "models": models}), encoding="utf-8")
+    return path
+
+
+CATALOG_MODELS = [
+    {"slug": "gpt-6-sol", "visibility": "list", "upgrade": None},
+    {"slug": "gpt-6-luna", "visibility": "list", "upgrade": None},
+    {"slug": "gpt-5.5", "upgrade": {"model": "gpt-6-sol", "migration_markdown": "Meet GPT-6 Sol"}},
+]
+
+
+def test_the_codex_folder_follows_codex_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+
+    assert codex_home({"CODEX_HOME": str(tmp_path / "codex")}) == tmp_path / "codex"
+    assert codex_home({"CODEX_HOME": ""}) == tmp_path / "home" / ".codex"
+    assert codex_home({}) == tmp_path / "home" / ".codex"
+
+
+def test_the_codex_folder_reads_the_real_environment_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CODEX_HOME", "/somewhere/codex")
+
+    assert codex_home() == Path("/somewhere/codex")
+
+
+def test_the_model_catalog_maps_each_model_to_its_upgrade(tmp_path: Path) -> None:
+    path = write_catalog(tmp_path, [*CATALOG_MODELS, {"slug": 7}, "gpt-4", {"slug": "odd", "upgrade": "gpt-6"}])
+
+    assert read_model_catalog(path) == {"gpt-6-sol": None, "gpt-6-luna": None, "gpt-5.5": "gpt-6-sol", "odd": None}
+
+
+@pytest.mark.parametrize("text", ["not json", "[1, 2]", '{"models": {"slug": "gpt-6-sol"}}', "\udcff"])
+def test_a_model_catalog_that_cannot_be_read_is_no_catalog(tmp_path: Path, text: str) -> None:
+    path = tmp_path / "models_cache.json"
+    path.write_text(text, encoding="utf-8", errors="surrogateescape")
+
+    assert read_model_catalog(path) is None
+
+
+def test_a_missing_model_catalog_is_no_catalog(tmp_path: Path) -> None:
+    assert read_model_catalog(tmp_path / "models_cache.json") is None
+
+
+def test_a_codex_tier_model_missing_from_the_catalog_or_with_an_upgrade_is_a_warning(tmp_path: Path) -> None:
+    write_catalog(tmp_path, CATALOG_MODELS)
+    tiers = {
+        "codex": {
+            "fast": TierRow(model="gpt-6-luna", effort="low"),
+            "standard": TierRow(model="gpt-6.1-sol"),
+            "deep": TierRow(model="gpt-5.5"),
+        },
+        "claude-code": {"fast": TierRow(model="haiku")},
+    }
+
+    problems = tier_model_problems(tiers, {"CODEX_HOME": str(tmp_path)})
+
+    assert [(problem.level, problem.location) for problem in problems] == [
+        ("warning", "tiers.codex.standard"),
+        ("warning", "tiers.codex.deep"),
+    ]
+    assert "'gpt-6.1-sol' is not in the Codex model catalog" in problems[0].message
+    assert "'gpt-5.5' has an upgrade to 'gpt-6-sol'" in problems[1].message
+
+
+def test_codex_tier_models_are_not_checked_without_a_catalog(tmp_path: Path) -> None:
+    tiers = {"codex": {"fast": TierRow(model="gpt-6-luna")}}
+
+    assert tier_model_problems(tiers, {"CODEX_HOME": str(tmp_path)}) == []
+
+
+def test_a_codex_row_without_a_model_is_not_checked(tmp_path: Path) -> None:
+    write_catalog(tmp_path, CATALOG_MODELS)
+
+    assert tier_model_problems({"codex": {"fast": TierRow(effort="low")}}, {"CODEX_HOME": str(tmp_path)}) == []

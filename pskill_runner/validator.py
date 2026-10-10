@@ -17,6 +17,7 @@ from pskill_runner.computed_values import (
 from pskill_runner.field_types import FieldMap
 from pskill_runner.skill_model import (
     MODEL_TIERS,
+    TOOL_PROFILES,
     AnyBlock,
     CallBlock,
     DecisionBlock,
@@ -29,6 +30,7 @@ from pskill_runner.skill_model import (
     block_edges,
     next_targets,
     tier_choices,
+    tool_profile_choices,
 )
 
 DESCRIPTION_LIMIT = 1024
@@ -131,6 +133,7 @@ def block_problems(skill: Skill, block: AnyBlock) -> list[Problem]:
     if isinstance(block, ParallelBlock):
         problems += item_when_problems(location, block)
         problems += tier_problems(location, block)
+        problems += tool_profile_problems(location, block)
     output = block_output(block)
     if output is not None:
         problems += field_description_problems(location, "the output field", output)
@@ -218,6 +221,13 @@ def tier_problems(location: str, block: ParallelBlock) -> list[Problem]:
     return [error(location, f"the tier {block.tier!r} is not {tier_choices()}")]
 
 
+def tool_profile_problems(location: str, block: ParallelBlock) -> list[Problem]:
+    """A written tool profile must be a known profile. A computed one is checked at run time."""
+    if block.tools is None or "{{" in block.tools or block.tools in TOOL_PROFILES:
+        return []
+    return [error(location, f"the tool profile {block.tools!r} is not {tool_profile_choices()}")]
+
+
 def item_when_problems(location: str, block: ParallelBlock) -> list[Problem]:
     """Each `when` of a fixed `for_each` list follows the same rule as an edge's `when`."""
     if not isinstance(block.for_each, list):
@@ -280,7 +290,7 @@ def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Pro
     if isinstance(block, CallBlock):
         texts += string_values(list(block.inputs.values()))
     if isinstance(block, ParallelBlock):
-        texts += nested_strings(block.for_each) + string_values([block.agent, block.task_name, block.tier])
+        texts += nested_strings(block.for_each) + string_values([block.agent, block.task_name, block.tier, block.tools])
     prose = prose_value(block)
     if prose is not None:
         if prose.endswith(".md") and not (skill.folder / prose).is_file():

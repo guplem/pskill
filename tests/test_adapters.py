@@ -1,9 +1,19 @@
 """Tests for pskill_runner.adapters."""
 
+from dataclasses import replace
+
 import pytest
 
-from pskill_runner.adapters import AdapterError, adapter_for, detect_harness, detect_hook_harness, detect_session_id
-from pskill_runner.skill_model import MODEL_TIERS
+from pskill_runner.adapters import (
+    AdapterError,
+    TierRow,
+    adapter_for,
+    detect_harness,
+    detect_hook_harness,
+    detect_session_id,
+    tier_wording,
+)
+from pskill_runner.skill_model import MODEL_TIERS, TOOL_PROFILES
 
 
 def test_the_generic_adapter_asks_in_the_chat_and_has_no_subagents() -> None:
@@ -55,22 +65,79 @@ def test_claude_code_runs_parallel_subagents_in_the_foreground_so_the_turn_waits
 
 
 def test_claude_code_asks_for_the_model_of_each_tier_on_the_agent_call() -> None:
-    wording = adapter_for("claude-code").tier_wording
+    claude_code = adapter_for("claude-code")
 
-    assert "`model: haiku`" in wording["fast"]
-    assert "`model: sonnet`" in wording["standard"]
-    assert "`model: opus`" in wording["deep"]
-
-
-def test_codex_asks_for_the_reasoning_effort_of_each_tier() -> None:
-    wording = adapter_for("codex").tier_wording
-
-    assert "`low`" in wording["fast"]
-    assert "`medium`" in wording["standard"]
-    assert "`high`" in wording["deep"]
+    assert tier_wording(claude_code, {}, "fast") == "Pass `model: haiku` in this task's Agent call."
+    assert tier_wording(claude_code, {}, "standard") == "Pass `model: sonnet` in this task's Agent call."
+    assert tier_wording(claude_code, {}, "deep") == "Pass `model: opus` in this task's Agent call."
 
 
-def test_every_adapter_with_subagents_words_every_tier_and_generic_words_none() -> None:
-    assert set(adapter_for("claude-code").tier_wording) == set(MODEL_TIERS)
-    assert set(adapter_for("codex").tier_wording) == set(MODEL_TIERS)
-    assert adapter_for("generic").tier_wording == {}
+def test_codex_asks_for_the_reasoning_effort_of_each_tier_on_the_spawn_agent_call() -> None:
+    codex = adapter_for("codex")
+
+    assert tier_wording(codex, {}, "fast") == "Pass `reasoning_effort: low` in this task's spawn_agent call."
+    assert tier_wording(codex, {}, "standard") == "Pass `reasoning_effort: medium` in this task's spawn_agent call."
+    assert tier_wording(codex, {}, "deep") == "Pass `reasoning_effort: high` in this task's spawn_agent call."
+
+
+def test_a_row_with_a_model_and_an_effort_names_both() -> None:
+    claude_code = replace(adapter_for("claude-code"), tier_rows={"deep": TierRow(model="opus", effort="max")})
+
+    assert tier_wording(claude_code, {}, "deep") == "Pass `model: opus` and `effort: max` in this task's Agent call."
+
+
+def test_a_row_with_neither_a_model_nor_an_effort_asks_for_nothing() -> None:
+    codex = replace(adapter_for("codex"), tier_rows={"fast": TierRow()})
+
+    assert tier_wording(codex, {}, "fast") == ""
+
+
+def test_every_adapter_with_subagents_has_a_row_for_every_tier_and_generic_has_none() -> None:
+    assert set(adapter_for("claude-code").tier_rows) == set(MODEL_TIERS)
+    assert set(adapter_for("codex").tier_rows) == set(MODEL_TIERS)
+    assert adapter_for("generic").tier_rows == {}
+    assert tier_wording(adapter_for("generic"), {}, "deep") == ""
+
+
+def test_a_project_row_replaces_the_default_row_of_its_tier_only() -> None:
+    codex = adapter_for("codex")
+    project_tiers = {"codex": {"fast": TierRow(model="gpt-6-luna", effort="low")}}
+
+    assert tier_wording(codex, project_tiers, "fast") == (
+        "Pass `model: gpt-6-luna` and `reasoning_effort: low` in this task's spawn_agent call."
+    )
+    assert (
+        tier_wording(codex, project_tiers, "deep") == "Pass `reasoning_effort: high` in this task's spawn_agent call."
+    )
+
+
+def test_a_project_row_of_another_harness_changes_nothing() -> None:
+    project_tiers = {"codex": {"fast": TierRow(model="gpt-6-luna")}}
+
+    assert tier_wording(adapter_for("claude-code"), project_tiers, "fast") == (
+        "Pass `model: haiku` in this task's Agent call."
+    )
+
+
+def test_an_empty_project_row_asks_for_nothing() -> None:
+    project_tiers = {"claude-code": {"deep": TierRow()}}
+
+    assert tier_wording(adapter_for("claude-code"), project_tiers, "deep") == ""
+
+
+def test_claude_code_asks_for_the_profile_agent_of_each_tool_profile() -> None:
+    wording = adapter_for("claude-code").tools_wording
+
+    assert "`subagent_type: pskill-read`" in wording["read"]
+    assert "`subagent_type: pskill-web`" in wording["web"]
+
+
+def test_the_profile_wording_falls_back_to_general_purpose_when_the_agent_is_unknown() -> None:
+    for wording in adapter_for("claude-code").tools_wording.values():
+        assert wording.endswith("If that agent type is unknown, use `general-purpose`.")
+
+
+def test_only_claude_code_words_the_tool_profiles() -> None:
+    assert set(adapter_for("claude-code").tools_wording) == set(TOOL_PROFILES)
+    assert adapter_for("codex").tools_wording == {}
+    assert adapter_for("generic").tools_wording == {}

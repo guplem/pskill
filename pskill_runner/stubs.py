@@ -24,15 +24,15 @@ SIDECAR_TEXT = f"# {GENERATED_MARKER_TEXT}\npolicy:\n  allow_implicit_invocation
 
 
 class StubError(Exception):
-    """A stub cannot be written without overwriting a hand-written skill."""
+    """A generated file (a stub or a profile agent) cannot be written without overwriting a hand-written file."""
 
 
 @dataclass(frozen=True)
 class StubChange:
     path: Path
     action: str  # "created", "updated", or "deleted"
-    skill: str  # the stub's skill id (the name of its folder)
-    relative_path: str  # the path in the stub folder, such as "review-pr/SKILL.md"
+    skill: str  # the stub's skill id (the name of its folder), or the profile agent's name
+    relative_path: str = ""  # a stub's path in its stub folder, such as "review-pr/SKILL.md"; empty for an agent
 
 
 def input_facts(spec: FieldSpec) -> str:

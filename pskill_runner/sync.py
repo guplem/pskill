@@ -1,10 +1,11 @@
-"""`pskill sync`: bring the stubs and the app settings in line with the project (SPEC.md 9.2 and 9.3)."""
+"""`pskill sync`: bring the stubs, profile agents, and app settings in line with the project (SPEC.md 9.2, 9.3)."""
 
 import subprocess
 from typing import Any
 
 from pskill_runner import claude_code, codex
 from pskill_runner.hook_settings import SHARED_HOOKS, remove_pskill_hooks, sync_hook_file
+from pskill_runner.profile_agents import sync_profile_agents
 from pskill_runner.project import Project
 from pskill_runner.skill_loader import load_catalog
 from pskill_runner.stubs import sync_stubs
@@ -19,10 +20,13 @@ APP_HOOKS: dict[str, dict[str, dict[str, Any]]] = {
 def sync_project(project: Project, check_only: bool) -> list[str]:
     """Write (or, with check_only, only list) every change. Return one line per changed file."""
     catalog = load_catalog(project.skills_folder, project.agents_folder)
+    # A hand-written file with a generated name stops sync. Check both kinds first, so it stops before any write.
+    sync_stubs(project, catalog, check_only=True)
+    sync_profile_agents(project, catalog, check_only=True)
     verb = "is out of date" if check_only else "was"
     lines = [
         f"{change.path.relative_to(project.root).as_posix()} {verb}{'' if check_only else ' ' + change.action}"
-        for change in sync_stubs(project, catalog, check_only)
+        for change in sync_stubs(project, catalog, check_only) + sync_profile_agents(project, catalog, check_only)
     ]
     changed_files = hook_file_changes(project, check_only) + permission_changes(project, check_only)
     lines += [f"{path} {verb}{'' if check_only else ' updated'}" for path in dict.fromkeys(changed_files)]
