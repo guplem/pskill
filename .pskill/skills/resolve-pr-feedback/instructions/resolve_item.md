@@ -23,4 +23,4 @@
 {% if item.kind == 'comment' %}
 A script posts your `reason` as the reply, so write it for {{ item.author }}. Dismiss a comment that asks for nothing (praise, a notice) with a short reply. Answer a question in `reason`, and dismiss it, unless the answer shows a problem to fix. When a person (not a bot) asks for a change that step 2 leaves out, make it when it serves the goal of the pull request. Otherwise, change nothing: dismiss it, and suggest a separate issue in the reply.
 {% endif %}
-When a fix makes a sentence of the pull request description false, rewrite that sentence: `gh api -X PATCH repos/{owner}/{repo}/pulls/{{ inputs.pr }} -F body=@<file>`. Write `<file>` in a temporary folder outside the repository. Use capital `-F`: lowercase `-f` posts the text `@<file>` itself.
+When a fix makes a sentence of the pull request description false, rewrite that sentence. Read the description with `gh api repos/{owner}/{repo}/pulls/{{ inputs.pr }} --jq .body`. Write the new one to `<file>` in a temporary folder outside the repository. Then run `uv run {{ skill.dir }}/scripts/publish_body.py` with `{"pr": {{ inputs.pr }}, "body_file": "<file>"}` on stdin.

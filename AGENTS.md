@@ -71,6 +71,7 @@ CI (`.github/workflows/pull-request-checks.yml`) runs those checks on Windows, m
 - **Simplicity first.** Code must be easy to read for a junior developer: small functions, descriptive names, explicit types, no clever tricks.
 - **`.pskill/pskill.py` runs this checkout** (the dev pin), so the test bed always uses the current code. After a change to the root `pskill.py`, run `uv run pskill.py update --from .`; a test fails until the copy matches. Never edit `.pskill/pskill.py` by hand.
 - **Dependencies live in two places.** Keep the PEP 723 block in `pskill.py` equal to `[project].dependencies` in `pyproject.toml`. A test checks this.
+- **Example skills reach GitHub only through REST**, because the Claude Code cloud GitHub proxy refuses GraphQL, the search API, and `--paginate`. It is the proxy's restriction, not a pskill rule: drop it when the proxy allows them. SPEC 13.2 holds the rule and its one exception; `tests/test_skills_github_calls.py` checks it.
 - **Branch and pull request.** Branch from `main`, open one pull request per issue, and close the issue from it. CI must be green on Windows, macOS, and Linux before a merge.
 
 ## Releasing

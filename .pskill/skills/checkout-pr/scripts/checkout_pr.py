@@ -23,6 +23,8 @@ import subprocess
 import sys
 from typing import Any
 
+from github_rest import gh_api, is_cross_repository
+
 PLAN_FILE_PATTERN = "implementation-plan-*.md"
 
 
@@ -45,11 +47,22 @@ def uncommitted_files() -> str:
     return ", ".join(line.split(maxsplit=1)[-1] for line in status.splitlines()[:5])
 
 
+def read_pull_request(pr_number: str) -> dict[str, Any]:
+    """The state (open, closed, or merged), the branch, the base, and whether the branch is in a fork."""
+    reply: dict[str, Any] = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")
+    return {
+        "state": "merged" if reply["merged_at"] else reply["state"],
+        "branch": reply["head"]["ref"],
+        "base": reply["base"]["ref"],
+        "from_fork": is_cross_repository(reply),
+    }
+
+
 def blocking_reason(pr_number: str, pr: dict[str, Any]) -> str | None:
-    branch, base = pr["headRefName"], pr["baseRefName"]
-    if pr["state"] != "OPEN":
-        return f"Pull request #{pr_number} is {pr['state'].lower()}."
-    if pr["isCrossRepository"]:
+    branch, base = pr["branch"], pr["base"]
+    if pr["state"] != "open":
+        return f"Pull request #{pr_number} is {pr['state']}."
+    if pr["from_fork"]:
         return f"Pull request #{pr_number} comes from a fork, so this checkout cannot push to it."
     files = uncommitted_files()
     if files:
@@ -82,21 +95,19 @@ def plan_file(base: str) -> str:
 
 def main() -> None:
     pr_number = str(json.load(sys.stdin)["pr"])
-    pr: dict[str, Any] = json.loads(
-        run(["gh", "pr", "view", pr_number, "--json", "state,headRefName,baseRefName,isCrossRepository"])
-    )
+    pr = read_pull_request(pr_number)
     reason = blocking_reason(pr_number, pr)
     if reason:
         print(reason, file=sys.stderr)
         sys.exit(1)
-    switch_to(pr["headRefName"])
+    switch_to(pr["branch"])
     print(
         json.dumps(
             {
-                "branch": pr["headRefName"],
-                "base": pr["baseRefName"],
+                "branch": pr["branch"],
+                "base": pr["base"],
                 "head_sha": run(["git", "rev-parse", "HEAD"]),
-                "plan_file": plan_file(pr["baseRefName"]),
+                "plan_file": plan_file(pr["base"]),
             }
         )
     )

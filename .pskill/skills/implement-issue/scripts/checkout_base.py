@@ -16,6 +16,8 @@ import subprocess
 import sys
 from typing import Any
 
+from github_rest import gh_api
+
 
 def run(command: list[str]) -> str:
     return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
@@ -49,7 +51,8 @@ def main() -> None:
 
     run(["git", "switch", "--quiet", "--detach", f"origin/{base}"])
     if issue:
-        run(["gh", "issue", "edit", issue, "--add-assignee", "@me"])
+        login = str(gh_api("user")["login"])
+        gh_api(f"repos/{{owner}}/{{repo}}/issues/{issue}/assignees", "POST", {"assignees": [login]})
     plan_file = f"implementation-plan-{issue or slug}.md"
     print(json.dumps({"ok": True, "base": base, "branch": branch, "plan_file": plan_file}))
 

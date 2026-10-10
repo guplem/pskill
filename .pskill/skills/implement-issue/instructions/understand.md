@@ -3,8 +3,10 @@ Understand issue #{{ steps.read_issue.json.number }}: **{{ steps.read_issue.json
 {{ steps.read_issue.json.body }}
 
 - Labels: {{ steps.read_issue.json.labels | join(', ') | default('none', true) }}
-- Comments: {{ steps.read_issue.json.comments | length }}. Read them all with `gh issue view {{ steps.read_issue.json.number }} --comments`. When a newer comment and the body disagree, follow the comment.
-{% if steps.read_issue.json.cross_references %}- Linked: {% for ref in steps.read_issue.json.cross_references %}#{{ ref.number }} ({{ ref.title }}){% if not loop.last %}, {% endif %}{% endfor %}
+- Comments: {{ steps.read_issue.json.comments | length }}. When a newer comment and the body disagree, follow the comment.
+{% for comment in steps.read_issue.json.comments %}
+  **{{ comment.author }}:** {{ comment.body | indent(2) }}
+{% endfor %}{% if steps.read_issue.json.cross_references %}- Linked: {% for ref in steps.read_issue.json.cross_references %}#{{ ref.number }} ({{ ref.title }}){% if not loop.last %}, {% endif %}{% endfor %}
 {% endif %}{% if steps.read_issue.json.existing_branches %}- Branches that already exist for it: {{ steps.read_issue.json.existing_branches | join(', ') }}
 {% endif %}
 The checkout is at the latest `{{ steps.checkout_default.json.default_branch }}`. When the work builds on an unmerged branch, fetch it with `git fetch origin <branch>`. Read its code with `git show origin/<branch>:<path>`.

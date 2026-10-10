@@ -16,9 +16,10 @@ quotes the replies under its comment, so that the triage can see what a human al
 
 import json
 import re
-import subprocess
 import sys
 from typing import Any
+
+from github_rest import gh_api_pages
 
 REVIEW_MARKER_PREFIX = "<!-- pr-review: "
 # The tag of the current format (**`[Required]` title**) or of the first one (**required: title** (x reviewer)).
@@ -27,17 +28,6 @@ FINDING_TITLE = re.compile(
 )
 BODY_FINDING = re.compile(r"^- (?P<head>\*\*.+?\*\*) at `(?P<location>[^`]+)`")
 REPLY_LIMIT = 300
-
-
-def run(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
-
-
-def gh_list(endpoint: str) -> list[dict[str, Any]]:
-    result = run(["gh", "api", endpoint, "--paginate", "--jq", ".[]"])
-    if result.returncode != 0:
-        sys.exit(f"`gh api {endpoint}` failed: {result.stderr.strip()}")
-    return [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
 
 
 def finding_head(text: str) -> tuple[str, str] | None:
@@ -86,8 +76,8 @@ def posted(severity: str, title: str, location: str, answered: str) -> dict[str,
 
 def main() -> None:
     pr_number = str(json.load(sys.stdin)["pr"])
-    reviews = gh_list(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews")
-    comments = gh_list(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/comments")
+    reviews = gh_api_pages(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews")
+    comments = gh_api_pages(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/comments")
     dismissed = earlier_findings(reviews, comments)
     print(json.dumps({"dismissed": dismissed, "count": len(dismissed)}))
 

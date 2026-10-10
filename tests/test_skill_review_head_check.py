@@ -71,8 +71,8 @@ def test_a_commit_that_changes_the_pull_request_is_listed(check_head: ModuleType
 def test_an_unmoved_head_needs_no_fetch_and_lists_nothing(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], check_head: ModuleType
 ) -> None:
-    pull_request = json.dumps({"headRefName": "42-fix-save", "headRefOid": "abc"})
-    shell = install_shell(monkeypatch, check_head, FakeShell({"gh pr view 9": pull_request}))
+    pull_request = json.dumps({"head": {"ref": "42-fix-save", "sha": "abc"}})
+    shell = install_shell(monkeypatch, check_head, FakeShell({"gh api GET repos/{owner}/{repo}/pulls/9": pull_request}))
 
     printed = run_main(monkeypatch, capsys, check_head, {"pr": 9, "reviewed_sha": "abc"})
 
@@ -83,8 +83,8 @@ def test_an_unmoved_head_needs_no_fetch_and_lists_nothing(
 def test_a_moved_head_is_fetched_before_its_commits_are_listed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], check_head: ModuleType
 ) -> None:
-    pull_request = json.dumps({"headRefName": "42-fix-save", "headRefOid": "def4567890ab"})
-    shell = install_shell(monkeypatch, check_head, FakeShell({"gh pr view 9": pull_request}))
+    pull_request = json.dumps({"head": {"ref": "42-fix-save", "sha": "def4567890ab"}})
+    shell = install_shell(monkeypatch, check_head, FakeShell({"gh api GET repos/{owner}/{repo}/pulls/9": pull_request}))
     monkeypatch.setattr(check_head, "new_commits", lambda reviewed, head: [head[:10]])
 
     printed = run_main(monkeypatch, capsys, check_head, {"pr": 9, "reviewed_sha": "abc"})

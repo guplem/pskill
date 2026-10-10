@@ -11,9 +11,9 @@ answers:
     - {choice: use_existing, rationale: Same request., $answered_by: human}
 scripts:
   resolve_repo:
-    - {exit_code: 0, stdout: '{"nameWithOwner": "guplem/pskill"}'}
+    - {exit_code: 0, stdout: '{"full_name": "guplem/pskill"}'}
   search_duplicates:
-    - {exit_code: 0, stdout: '[{"number": 12, "title": "Dark theme for the viewer", "state": "OPEN", "url": "https://github.com/guplem/pskill/issues/12"}]'}
+    - {exit_code: 0, stdout: '[{"number": 12, "title": "Dark theme for the viewer", "state": "open", "url": "https://github.com/guplem/pskill/issues/12"}]'}
 expect:
   path: [resolve_repo, assess_clarity, extract_terms, search_duplicates, judge_duplicates, confirm_duplicate, existing]
   status: succeeded

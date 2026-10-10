@@ -13,6 +13,9 @@ merge with no conflict resolution.
 import json
 import subprocess
 import sys
+from typing import Any
+
+from github_rest import gh_api
 
 
 def run(command: list[str]) -> str:
@@ -46,8 +49,8 @@ def unreviewed_commits(last_reviewed: str, head: str, plan_file: str) -> list[st
 def main() -> None:
     script_input = json.load(sys.stdin)
     pr_number = str(script_input["pr"])
-    branch = run(["gh", "pr", "view", pr_number, "--json", "headRefName", "--jq", ".headRefName"])
-    head_sha = run(["gh", "pr", "view", pr_number, "--json", "headRefOid", "--jq", ".headRefOid"])
+    head: dict[str, Any] = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")["head"]
+    branch, head_sha = str(head["ref"]), str(head["sha"])
     run(["git", "fetch", "--quiet", "origin", branch])
     commits = unreviewed_commits(str(script_input["last_reviewed"]), head_sha, str(script_input["plan_file"]))
     print(json.dumps({"unreviewed": bool(commits), "commits": commits, "head_sha": head_sha}))

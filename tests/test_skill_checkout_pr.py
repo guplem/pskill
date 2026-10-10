@@ -7,13 +7,22 @@ import pytest
 
 from tests.skill_scripts import FakeShell, install_shell, load_skill_script, run_main
 
-OPEN_PR = {"state": "OPEN", "headRefName": "42-fix-save", "baseRefName": "main", "isCrossRepository": False}
+# A pull request as the REST API gives it.
+OPEN_PR: dict[str, Any] = {
+    "state": "open",
+    "merged_at": None,
+    "head": {"ref": "42-fix-save", "repo": {"full_name": "o/r"}},
+    "base": {"ref": "main", "repo": {"full_name": "o/r"}},
+}
+MERGED: dict[str, Any] = {"state": "closed", "merged_at": "2026-01-01T00:00:00Z"}
+FORK: dict[str, Any] = {"head": {"ref": "42-fix-save", "repo": {"full_name": "fork/r"}}}
 
 
 def shell_for(
     pr: dict[str, object], outputs: dict[str, str] | None = None, failing: list[str] | None = None
 ) -> FakeShell:
-    return FakeShell({"gh pr view 7": json.dumps(pr), "git rev-parse HEAD": "abc123", **(outputs or {})}, failing)
+    pull_request = {"gh api GET repos/{owner}/{repo}/pulls/7": json.dumps(pr)}
+    return FakeShell({**pull_request, "git rev-parse HEAD": "abc123", **(outputs or {})}, failing)
 
 
 def test_a_new_local_branch_tracks_the_pull_request_branch(
@@ -55,8 +64,9 @@ def test_the_plan_file_is_the_newest_one_that_the_branch_added(
 @pytest.mark.parametrize(
     ("pr_change", "tables", "reason"),
     [
-        ({"state": "MERGED"}, {}, "Pull request #7 is merged."),
-        ({"isCrossRepository": True}, {}, "comes from a fork"),
+        (MERGED, {}, "Pull request #7 is merged."),
+        ({"state": "closed"}, {}, "Pull request #7 is closed."),
+        (FORK, {}, "comes from a fork"),
         ({}, {"outputs": {"git status --porcelain": "M a.py\n?? b.py"}}, "uncommitted changes: a.py, b.py"),
         ({}, {"failing": ["git fetch"]}, "cannot be fetched"),
         ({}, {"failing": ["git merge-base"]}, "has commits that GitHub does not have"),
