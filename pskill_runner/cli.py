@@ -285,6 +285,9 @@ def validate_command(project: Project, skill_id: str | None) -> int:
                 f"error  (stubs)  {change.path.relative_to(project.root).as_posix()} is out of date: run `pskill sync`"
             )
             error_count += 1
+        for problem in codex.tier_model_problems(project.config.tiers):
+            lines.append(f"{problem.level:<7} (config)  {problem.location}: {problem.message}")
+            warning_count += 1
     noun = "skill" if len(folders) == 1 else "skills"
     lines.append(f"{len(folders)} {noun} checked: {error_count} errors, {warning_count} warnings.")
     print_text("\n".join(lines))
