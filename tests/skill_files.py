@@ -98,3 +98,27 @@ blocks:
     status: succeeded
     outputs: {fixed: "{{ history.ask_finding | selectattr('choice', 'equalto', 'fix') | list | length }}"}
 """
+
+# A parallel block whose subagents ask for the `read` tool profile.
+PROFILED_SKILL = """\
+schema: pskill/v1
+id: fanout
+description: Checks documents in parallel.
+goal: Find the wrong claims.
+inputs:
+  files: {type: array, items: {type: string}, description: "The documents."}
+outputs: {}
+entry: check
+blocks:
+  check:
+    type: parallel
+    for_each: "{{ inputs.files }}"
+    tools: read
+    instruction: "Check every claim in {{ item }}."
+    output:
+      wrong: {type: array, items: {type: string}, description: "The wrong claims."}
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""

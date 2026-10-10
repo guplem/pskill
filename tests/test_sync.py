@@ -10,7 +10,9 @@ import pytest
 from pskill_runner import claude_code, codex, sync
 from pskill_runner.hook_settings import SHARED_HOOKS
 from pskill_runner.project import Project, find_project
+from pskill_runner.stubs import StubError
 from pskill_runner.sync import sync_project
+from tests.skill_files import PROFILED_SKILL, write_skill
 
 CLAUDE_SETTINGS = Path(".claude") / "settings.json"
 CODEX_HOOKS = Path(".codex") / "hooks.json"
@@ -142,3 +144,25 @@ def test_a_failed_sync_after_an_update_tells_how_to_run_it_again(
         "The sync after the update failed. Run `uv run .pskill/pskill.py sync`. ModuleNotFoundError: jinja2"
     ]
     assert not worked
+
+
+def test_sync_writes_the_profile_agent_that_a_skill_uses_and_check_reports_it_stale(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    write_skill(project.skills_folder, "fanout", PROFILED_SKILL)
+
+    assert ".claude/agents/pskill-read.md is out of date" in sync_project(project, check_only=True)
+    assert ".claude/agents/pskill-read.md was created" in sync_project(project, check_only=False)
+    assert sync_project(project, check_only=True) == []
+
+
+def test_a_hand_written_profile_agent_stops_sync_before_it_writes_anything(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    write_skill(project.skills_folder, "fanout", PROFILED_SKILL)
+    hand_written = tmp_path / ".claude" / "agents" / "pskill-read.md"
+    hand_written.parent.mkdir(parents=True)
+    hand_written.write_text("---\nname: pskill-read\n---\nMine.\n", encoding="utf-8")
+
+    with pytest.raises(StubError, match="hand-written"):
+        sync_project(project, check_only=False)
+
+    assert not (tmp_path / ".claude" / "skills").exists()

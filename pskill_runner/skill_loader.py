@@ -140,6 +140,7 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
             agent=raw.get("agent"),
             task_name=raw.get("task_name"),
             tier=raw.get("tier"),
+            tools=raw.get("tools"),
             instruction=raw["instruction"],
             output=parse_field_map(raw["output"]),
             next=parse_edges(raw["next"]),

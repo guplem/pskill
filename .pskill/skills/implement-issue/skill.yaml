@@ -99,6 +99,7 @@ blocks:
       - {agent: adr-checker, question: "Which recorded decisions (ADRs, AGENTS.md rules, design docs) limit this change?"}
     agent: "{{ item.agent }}"
     task_name: "{{ item.agent }}"
+    tools: read  # these subagents only read code and docs
     instruction: >-
       {{ item.question }} The change: "{{ steps.understand.title }}". The brief: {{ steps.understand.brief }}
     output:
@@ -111,6 +112,7 @@ blocks:
     for_each: "{{ steps.understand.gaps }}"
     agent: explorer
     task_name: "{{ item.name }}"
+    tools: web  # a gap may need the docs of a library or a harness
     instruction: >-
       Answer this open question about "{{ steps.understand.title }}" (issue #{{ steps.read_issue.json.number }}): {{ item.question }}
       Look in the code, the docs, the recorded decisions, the issue and its comments, and the git history.

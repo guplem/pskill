@@ -1,6 +1,6 @@
 [project]
 name = "pskill"
-version = "0.34.0"
+version = "0.35.0"
 description = "Portable programmatic skills: run agent skills as typed YAML graphs, one block at a time."
 readme = "README.md"
 license = "MIT"

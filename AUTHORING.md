@@ -74,6 +74,7 @@ blocks:
     for_each: "{{ inputs.files }}"
     task_name: "{{ item }}"   # optional: the name of each task in the viewer
     tier: standard            # optional: the model tier of each subagent: fast | standard | deep
+    tools: read               # optional: the tool profile of each subagent: read | web
     instruction: "Check the names in {{ item }}."
     output:
       problems: {type: array, items: {type: string}, description: "Bad names."}
@@ -102,6 +103,7 @@ blocks:
 - Make an input required only when the skill cannot start without it: the stub tells the agent to ask the user for each missing one. Give an optional input a `default` for the common case. A calling skill passes another value where it needs one.
 - A `parallel` block may name `agent: <name>`: the text of `.pskill/agents/<name>.md` then heads each task's prompt.
 - A `parallel` block may set `tier` (`fast`, `standard`, or `deep`, or a `{{ }}` value per item) for its subagents' model. Use `fast` or `standard` for work that checks text against written rules, and `deep` for work that needs judgment. Without a tier, the subagents use the main agent's model.
+- A `parallel` block may set `tools` (`read` or `web`, or a `{{ }}` value per item) for its subagents' tools. `read` runs shell commands, reads and searches files, and writes the answer file; `web` adds fetching a page and searching the web. Use `read` for reviewers and code research, and `web` when a task needs online docs. Without it, the subagents get every tool of the session. Run `pskill sync` after you add it: it writes the Claude Code agent `.claude/agents/pskill-<profile>.md`. Commit that file; a session sees a new `.claude/agents/` folder only after a restart.
 - A `parallel` block may set `task_name`, a `{{ }}` value per item, to name each task in the packet and the viewer. Without a name, a task shows as "task 0". When a block of the main agent builds the list, add an optional `name` field to its items and set `task_name: "{{ item.name }}"`.
 - In a `for_each` written as a YAML list, an item may have a `when`: the item starts a task only when its `when` is true. The task's `item` has no `when` key. The viewer lists the skipped items with their condition. Use it for a fixed set of subagents where each one runs only when it is needed:
   ```yaml

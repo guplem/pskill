@@ -273,12 +273,25 @@ export const FIELD_HELP = {
       },
     ],
   },
+  tools: {
+    title: "tools (tool profile)",
+    short: "The tool profile of each subagent: `read` or `web`. With no profile, the subagent gets every tool of the session.",
+    details: [
+      "Optional, on `parallel` blocks. It is a profile name, or a `{{ }}` value computed once per item, like `tier`.",
+      "`read` runs shell commands, reads and searches files, and writes its answer file. `web` adds fetching a page and searching the web. Fewer tools means a smaller starting context for each subagent. It is not a security boundary: the shell can still write files.",
+      "Claude Code spawns the task's subagent as `pskill-read` or `pskill-web`, agents that `pskill sync` writes into `.claude/agents/`. Codex and harnesses without subagents ignore it.",
+      "An empty computed value means no profile. `pskill validate` rejects a written value that is not a profile; a computed one fails the block at run time.",
+    ],
+    examples: [
+      { caption: "Reviewers that only read code", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntools: read' },
+    ],
+  },
   for_each: {
     title: "for_each (for each)",
     short: "The list to split into tasks: one task, and one subagent, per item.",
     details: [
       "Required on `parallel` blocks. It is a YAML list, or one `{{ }}` value that gives a list. So an earlier block can decide how many tasks there are.",
-      "In the instruction, in `agent`, in `task_name`, and in `tier`, `item` is the current list element.",
+      "In the instruction, in `agent`, in `task_name`, in `tier`, and in `tools`, `item` is the current list element.",
       "The block completes when every task has a valid answer. `steps.<block>.results` is the list of the task outputs, in item order. An empty list completes at once.",
       "Each subagent sees only its own task, never the other tasks.",
     ],
@@ -453,6 +466,8 @@ export const FACT_FIELDS = {
   "for each": "for_each",
   agent: "agent",
   "task name": "task_name",
+  tier: "tier",
+  tools: "tools",
   parse: "parse",
   timeout: "timeout_s",
   skill: "skill",

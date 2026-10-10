@@ -3,7 +3,7 @@
 import pytest
 
 from pskill_runner.adapters import AdapterError, adapter_for, detect_harness, detect_hook_harness, detect_session_id
-from pskill_runner.skill_model import MODEL_TIERS
+from pskill_runner.skill_model import MODEL_TIERS, TOOL_PROFILES
 
 
 def test_the_generic_adapter_asks_in_the_chat_and_has_no_subagents() -> None:
@@ -74,3 +74,21 @@ def test_every_adapter_with_subagents_words_every_tier_and_generic_words_none() 
     assert set(adapter_for("claude-code").tier_wording) == set(MODEL_TIERS)
     assert set(adapter_for("codex").tier_wording) == set(MODEL_TIERS)
     assert adapter_for("generic").tier_wording == {}
+
+
+def test_claude_code_asks_for_the_profile_agent_of_each_tool_profile() -> None:
+    wording = adapter_for("claude-code").tools_wording
+
+    assert "`subagent_type: pskill-read`" in wording["read"]
+    assert "`subagent_type: pskill-web`" in wording["web"]
+
+
+def test_the_profile_wording_falls_back_to_general_purpose_when_the_agent_is_unknown() -> None:
+    for wording in adapter_for("claude-code").tools_wording.values():
+        assert wording.endswith("If that agent type is unknown, use `general-purpose`.")
+
+
+def test_only_claude_code_words_the_tool_profiles() -> None:
+    assert set(adapter_for("claude-code").tools_wording) == set(TOOL_PROFILES)
+    assert adapter_for("codex").tools_wording == {}
+    assert adapter_for("generic").tools_wording == {}
