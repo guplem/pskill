@@ -32,6 +32,12 @@ class RunInfo(TypedDict):
     packet_issued_at: str | None
     attempts: int
     stop_blocks: int
+    # `pskill wait` (absent in runs before 0.35.0): the reason of the last wait, the start of the current
+    # wait, its alarm, and the start of the first wait since the last answer.
+    wait_reason: str | None
+    wait_started_at: str | None
+    wait_until: str | None
+    waits_since: str | None
     created_at: str
     updated_at: str
     ended_at: str | None

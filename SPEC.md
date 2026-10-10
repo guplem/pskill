@@ -723,6 +723,7 @@ runs/<run-id>/
 - `schema_version`, `run_id`, `skill_id`, `skill_hash` (sha256 of the copied skill files)
 - `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `session_id` (the owner session, or null), `mode`, `inputs`
 - `status`, `pause_reason`, `current` (`{frame, block, visit}`), `attempts`, `stop_blocks`
+- `wait_reason`, `wait_started_at`, `wait_until`, `waits_since`: the `pskill wait` alarm (section 9.2). Absent in runs before 0.35.0.
 - `created_at`, `updated_at`, `ended_at`, `outputs`
 
 ### 10.3 Events
