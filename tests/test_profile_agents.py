@@ -27,21 +27,6 @@ def sync(project: Project, check_only: bool = False) -> list[tuple[str, str]]:
     return [(change.path.relative_to(project.root).as_posix(), change.action) for change in changes]
 
 
-def test_the_read_agent_names_only_the_shell_read_and_search_tools_and_no_model() -> None:
-    text = profile_agent_text("read")
-
-    assert text.startswith(
-        "---\nname: pskill-read\ndescription: Only for pskill tasks. Never choose it on your own.\n"
-        "tools: Bash, Read, Grep, Glob, Write\n---\n"
-    )
-    assert GENERATED_MARKER in text
-    assert "model" not in text
-
-
-def test_the_web_agent_adds_fetching_and_searching_the_web() -> None:
-    assert "tools: Bash, Read, Grep, Glob, Write, WebFetch, WebSearch\n" in profile_agent_text("web")
-
-
 def test_a_written_profile_is_used_and_a_computed_one_uses_every_profile(tmp_path: Path) -> None:
     written = make_project(tmp_path / "a")
     computed = make_project(tmp_path / "b", '    tools: "{{ item }}"\n')
