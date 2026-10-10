@@ -175,6 +175,8 @@ DRAFT_INPUT = {
     "issue": 42,
 }
 NEW_PULL_REQUEST = json.dumps({"number": 9, "html_url": "https://github.com/o/r/pull/9"})
+# Last in a table of outputs: it is the start of the other GitHub paths.
+REPOSITORY = "gh api GET repos/{owner}/{repo}"
 
 
 def test_open_draft_pr_pushes_the_plan_and_opens_a_draft(
@@ -186,6 +188,7 @@ def test_open_draft_pr_pushes_the_plan_and_opens_a_draft(
         "gh api GET repos/{owner}/{repo}/pulls?head=": "[]",
         "gh api POST repos/{owner}/{repo}/pulls": NEW_PULL_REQUEST,
         "gh api GET user": json.dumps({"login": "me"}),
+        REPOSITORY: json.dumps({"owner": {"login": "ana"}}),
     }
     shell = install_shell(monkeypatch, script, FakeShell(outputs, failing=["git rev-parse --verify"]))
 
@@ -195,7 +198,7 @@ def test_open_draft_pr_pushes_the_plan_and_opens_a_draft(
     assert shell.ran("git switch --quiet --create 42-fix-save")
     assert shell.ran("git commit --quiet -m Add the implementation plan")
     assert shell.ran("git push --quiet --set-upstream origin 42-fix-save")
-    assert shell.ran("gh api GET repos/{owner}/{repo}/pulls?head={owner}:42-fix-save&state=open")
+    assert shell.ran("gh api GET repos/{owner}/{repo}/pulls?head=ana%3A42-fix-save&state=open")
     create = next(command for command in shell.commands if command.startswith("gh api POST repos/{owner}/{repo}/pulls"))
     assert '"base": "main"' in create
     assert '"draft": true' in create
@@ -212,6 +215,7 @@ def test_open_draft_pr_a_second_time_reuses_the_branch_the_commit_and_the_pull_r
     outputs = {
         "git branch --show-current": "42-fix-save",
         "gh api GET repos/{owner}/{repo}/pulls?head=": f"[{NEW_PULL_REQUEST}]",
+        REPOSITORY: json.dumps({"owner": {"login": "ana"}}),
     }
     shell = install_shell(monkeypatch, script, FakeShell(outputs))
 
@@ -468,3 +472,20 @@ def test_publish_body_strips_the_proxy_footer_so_that_footers_never_stack(
 
     assert printed == {"changed": True}
     assert shell.ran('gh api PATCH repos/{owner}/{repo}/pulls/9 {"body": "New."}')
+
+
+def test_open_draft_pr_finds_the_pull_request_of_a_branch_that_gh_would_rewrite(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`gh api` fills `:repo` in a path, so `{owner}:repo-x` must not reach it: the owner and colon go encoded."""
+    script = load_skill_script(SKILL, "open_draft_pr")
+    outputs = {
+        "git branch --show-current": "repo-cleanup",
+        "gh api GET repos/{owner}/{repo}/pulls?head=": f"[{NEW_PULL_REQUEST}]",
+        REPOSITORY: json.dumps({"owner": {"login": "ana"}}),
+    }
+    shell = install_shell(monkeypatch, script, FakeShell(outputs))
+
+    run_main(monkeypatch, capsys, script, {**DRAFT_INPUT, "branch": "repo-cleanup", "issue": 0})
+
+    assert shell.ran("gh api GET repos/{owner}/{repo}/pulls?head=ana%3Arepo-cleanup&state=open")

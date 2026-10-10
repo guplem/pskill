@@ -16,6 +16,7 @@ import json
 import subprocess
 import sys
 from typing import Any
+from urllib.parse import quote
 
 from github_rest import gh_api
 
@@ -51,7 +52,10 @@ def pull_request_body(plan_file: str, issue: str) -> str:
 def open_pull_request(script_input: dict[str, Any], issue: str) -> dict[str, Any]:
     """The open pull request of the branch, or a new draft one, assigned to the logged-in user."""
     branch = str(script_input["branch"])
-    existing: list[dict[str, Any]] = gh_api(f"repos/{{owner}}/{{repo}}/pulls?head={{owner}}:{branch}&state=open")
+    # Encoded, with the owner read first: `gh api` would fill `:repo` or `:branch` in `{owner}:<branch>`.
+    owner = str(gh_api("repos/{owner}/{repo}")["owner"]["login"])
+    head = quote(f"{owner}:{branch}", safe="")
+    existing: list[dict[str, Any]] = gh_api(f"repos/{{owner}}/{{repo}}/pulls?head={head}&state=open")
     if existing:
         return existing[0]
     new_pull_request = {
