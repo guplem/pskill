@@ -1,4 +1,4 @@
-"""Claude Code specifics: the project settings that pskill manages, and the hook responses.
+"""Claude Code specifics: the project settings and profile agents that pskill manages, and the hook responses.
 
 Verified against the Claude Code docs on 2026-09-28:
 - Hook settings shape, Stop decision control, SessionStart stdout as context, ${CLAUDE_PROJECT_DIR}:
