@@ -1,4 +1,4 @@
-"""Codex specifics: the project hooks and command rule that pskill manages, and the Stop response.
+"""Codex specifics: the project hooks and command rule that pskill manages, the Stop response, and the model catalog.
 
 Verified against the Codex docs and the openai/codex source on 2026-09-28:
 - Hooks in `<repo>/.codex/hooks.json`, Stop output, SessionStart stdout as context, commands run in the
@@ -10,6 +10,10 @@ Verified against the Codex docs and the openai/codex source on 2026-09-28:
 - Codex adds CODEX_THREAD_ID to every command's environment (codex-rs/core/src/exec_env.rs).
 - Skills in `.agents/skills/`; `agents/openai.yaml` with `policy.allow_implicit_invocation: false`
   stops implicit use: https://developers.openai.com/codex/skills
+
+Verified with Codex CLI 0.158.0 on 2026-10-10 (issue #151):
+- `spawn_agent` takes `model` and `reasoning_effort`: a subagent spawned with both logs them in its own session.
+- Only versioned model names work (`codex exec -m luna` fails with HTTP 400), and they leave the catalog over time.
 
 Verified against the openai/codex source on 2026-10-10:
 - The model catalog is `models_cache.json` in the Codex folder: `$CODEX_HOME`, else `~/.codex`

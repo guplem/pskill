@@ -70,9 +70,8 @@ CODEX = HarnessAdapter(
         "Use the spawn_agent tool: one spawn_agent call per task, all at once, then wait_agent until every "
         "subagent has finished."
     ),
-    # spawn_agent takes `model` and `reasoning_effort` (Codex CLI 0.158.0, 2026-10-10: a subagent spawned with
-    # both logs them in its own session; issue #151). Codex has no model aliases and its versioned names expire,
-    # so the defaults set the effort only, and a project names a model in config.yaml.
+    # spawn_agent takes `model` and `reasoning_effort`, and Codex has no model aliases (sources in codex.py).
+    # Versioned names expire, so the defaults set the effort only, and a project names a model in config.yaml.
     tier_rows={
         "fast": TierRow(effort="low"),
         "standard": TierRow(effort="medium"),
