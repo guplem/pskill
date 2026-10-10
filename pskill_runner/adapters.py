@@ -14,12 +14,22 @@ class AdapterError(Exception):
 
 
 @dataclass(frozen=True)
+class TierRow:
+    """What a model tier means in one harness. None keeps the session's model, or the model's default effort."""
+
+    model: str | None = None
+    effort: str | None = None
+
+
+@dataclass(frozen=True)
 class HarnessAdapter:
     name: str
     question_wording: str
     can_spawn_subagents: bool
     subagent_wording: str = ""
-    tier_wording: Mapping[str, str] = field(default_factory=dict)  # model tier -> how to spawn a task with it
+    tier_rows: Mapping[str, TierRow] = field(default_factory=dict)  # model tier -> its default model and effort
+    spawn_call: str = ""  # the tool call that spawns one subagent
+    effort_parameter: str = ""  # the parameter of that call that sets the effort
     tools_wording: Mapping[str, str] = field(default_factory=dict)  # tool profile -> how to spawn a task with it
 
 
@@ -41,12 +51,15 @@ CLAUDE_CODE = HarnessAdapter(
         "per task, all in one message. The calls run in parallel, and your turn waits until every subagent has "
         "finished."
     ),
-    # A per-invocation `model` overrides the subagent's own model: https://code.claude.com/docs/en/sub-agents
-    tier_wording={
-        "fast": "Pass `model: haiku` in this task's Agent call.",
-        "standard": "Pass `model: sonnet` in this task's Agent call.",
-        "deep": "Pass `model: opus` in this task's Agent call.",
+    # A per-invocation `model` and `effort` override the subagent's own: https://code.claude.com/docs/en/sub-agents
+    # The aliases haiku, sonnet, and opus follow the newest model of each family, so they never expire.
+    tier_rows={
+        "fast": TierRow(model="haiku"),
+        "standard": TierRow(model="sonnet"),
+        "deep": TierRow(model="opus"),
     },
+    spawn_call="Agent",
+    effort_parameter="effort",
     # `pskill sync` writes the profile agents into `.claude/agents/` (profile_agents.py). The agent may be
     # missing: no sync yet, `claude-code` not in `permissions`, or a folder that Claude Code does not watch
     # because it is newer than the session. So the wording names the fallback.
@@ -71,25 +84,47 @@ CODEX = HarnessAdapter(
         "Use the spawn_agent tool: one spawn_agent call per task, all at once, then wait_agent until every "
         "subagent has finished."
     ),
-    # An explicit spawn request can set the reasoning effort; Codex picks the model itself. VERIFY.
-    # https://learn.chatgpt.com/docs/agent-configuration/subagents
-    tier_wording={
-        "fast": "Spawn this task's subagent with the reasoning effort `low`.",
-        "standard": "Spawn this task's subagent with the reasoning effort `medium`.",
-        "deep": "Spawn this task's subagent with the reasoning effort `high`.",
+    # spawn_agent takes `model` and `reasoning_effort`, and Codex has no model aliases (sources in codex.py).
+    # Versioned names expire, so the defaults set the effort only, and a project names a model in config.yaml.
+    tier_rows={
+        "fast": TierRow(effort="low"),
+        "standard": TierRow(effort="medium"),
+        "deep": TierRow(effort="high"),
     },
+    spawn_call="spawn_agent",
+    effort_parameter="reasoning_effort",
     # No tool profiles: a Codex agent file cannot set `sandbox_mode` or `mcp_servers` (the child keeps the
     # parent's sandbox and MCP servers), so a profile agent would promise a limit that Codex does not keep.
     # openai/codex codex-rs/core/src/agent/role.rs and role_tests.rs, read on 2026-10-10.
 )
 
 ADAPTERS: dict[str, HarnessAdapter] = {adapter.name: adapter for adapter in (GENERIC, CLAUDE_CODE, CODEX)}
+# The harnesses that spawn subagents, so the ones whose tier rows a project can change in config.yaml.
+SPAWNING_HARNESSES = tuple(adapter.name for adapter in ADAPTERS.values() if adapter.can_spawn_subagents)
+TIER_ROW_KEYS = ("effort", "model")
 
 
 def adapter_for(name: str) -> HarnessAdapter:
     if name not in ADAPTERS:
         raise AdapterError(f"unknown harness {name!r} (known harnesses: auto, {', '.join(sorted(ADAPTERS))})")
     return ADAPTERS[name]
+
+
+def tier_wording(adapter: HarnessAdapter, project_tiers: Mapping[str, Mapping[str, TierRow]], tier: str) -> str:
+    """How to spawn a task's subagent with its model tier, in one line. Empty when the row asks for nothing.
+
+    `project_tiers` holds the project's rows from config.yaml, per harness: a project row replaces the default row.
+    """
+    project_rows = project_tiers.get(adapter.name, {})
+    row = project_rows[tier] if tier in project_rows else adapter.tier_rows.get(tier, TierRow())
+    settings = []
+    if row.model:
+        settings.append(f"`model: {row.model}`")
+    if row.effort:
+        settings.append(f"`{adapter.effort_parameter}: {row.effort}`")
+    if not settings:
+        return ""
+    return f"Pass {' and '.join(settings)} in this task's {adapter.spawn_call} call."
 
 
 def detect_harness(environment: Mapping[str, str]) -> str:

@@ -2,13 +2,14 @@
 
 import json
 import threading
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from pskill_runner import engine
-from pskill_runner.adapters import ADAPTERS, HarnessAdapter
+from pskill_runner.adapters import ADAPTERS, HarnessAdapter, TierRow, tier_wording
 from pskill_runner.engine import (
     RunError,
     current_packet,
@@ -22,7 +23,7 @@ from pskill_runner.engine import (
     task_packet,
 )
 from pskill_runner.inline_executor import CallResult, ScriptResult
-from pskill_runner.project import Project, find_project
+from pskill_runner.project import Config, Project, find_project
 from pskill_runner.run_store import read_events
 from tests.skill_files import write_skill
 
@@ -976,7 +977,20 @@ def test_a_tier_asks_codex_for_its_reasoning_effort(tmp_path: Path) -> None:
 
     _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="codex")
 
-    assert "`high`" in packet
+    assert "Pass `reasoning_effort: high` in this task's spawn_agent call." in packet
+
+
+def test_a_project_tier_row_sets_the_model_and_effort_of_that_tier_only(tmp_path: Path) -> None:
+    skill_yaml = tiered_skill("\"{{ 'fast' if item == 'a.md' else 'deep' }}\"")
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+    tiers = {"codex": {"fast": TierRow(model="gpt-6-luna", effort="low")}}
+    project = replace(project, config=Config(tiers=tiers))
+
+    _, packet = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="codex")
+
+    task_zero, task_one = packet.split("#### Task 1")
+    assert "Pass `model: gpt-6-luna` and `reasoning_effort: low` in this task's spawn_agent call." in task_zero
+    assert "Pass `reasoning_effort: high` in this task's spawn_agent call." in task_one
 
 
 def test_a_block_with_no_tier_asks_for_no_model(tmp_path: Path) -> None:
@@ -1065,7 +1079,7 @@ def test_a_task_with_a_tool_profile_and_a_tier_gets_both_on_one_line(tmp_path: P
 
     spawn_line = packet.split("#### Task 0")[1].splitlines()[1]
     claude_code = ADAPTERS["claude-code"]
-    assert spawn_line == f"{claude_code.tools_wording['web']} {claude_code.tier_wording['fast']}"
+    assert spawn_line == f"{claude_code.tools_wording['web']} {tier_wording(claude_code, {}, 'fast')}"
 
 
 def test_each_item_can_ask_for_its_own_tool_profile(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from pskill_runner.adapters import TierRow
 from pskill_runner.project import Config, ProjectError, find_project
 
 
@@ -79,3 +80,45 @@ def test_known_apps_in_permissions_are_kept(tmp_path: Path) -> None:
     config = find_project(make_project(tmp_path, "permissions: [codex, claude-code]\n")).config
 
     assert config.permissions == ["codex", "claude-code"]
+
+
+def test_the_project_tier_rows_are_read_per_harness_and_tier(tmp_path: Path) -> None:
+    config_yaml = (
+        "tiers:\n"
+        "  codex:\n"
+        "    fast: {model: gpt-6-luna, effort: low}\n"
+        "  claude-code:\n"
+        "    deep: {effort: max}\n"
+        "    standard: {}\n"
+    )
+
+    config = find_project(make_project(tmp_path, config_yaml)).config
+
+    assert config.tiers == {
+        "codex": {"fast": TierRow(model="gpt-6-luna", effort="low")},
+        "claude-code": {"deep": TierRow(effort="max"), "standard": TierRow()},
+    }
+
+
+def test_no_tiers_and_an_empty_tiers_setting_keep_the_default_rows(tmp_path: Path) -> None:
+    assert find_project(make_project(tmp_path)).config.tiers == {}
+    assert find_project(make_project(tmp_path / "empty", "tiers:\n")).config.tiers == {}
+
+
+@pytest.mark.parametrize(
+    ("tiers_yaml", "message"),
+    [
+        ("[codex]", r"'tiers' must be a mapping of harnesses"),
+        ("{generic: {}}", r"unknown harness 'generic' in tiers \(known harnesses: claude-code, codex\)"),
+        ("{codex: [fast]}", r"'tiers\.codex' must be a mapping of tiers"),
+        ("{codex: {quick: {}}}", r"unknown tier 'quick' in tiers\.codex \(known tiers: fast, standard, deep\)"),
+        ("{codex: {fast: low}}", r"'tiers\.codex\.fast' must be a mapping"),
+        ("{codex: {fast: {reasoning_effort: low}}}", r"unknown key 'reasoning_effort' in tiers\.codex\.fast"),
+        ("{codex: {fast: {model: ''}}}", r"'tiers\.codex\.fast\.model' must be a non-empty text"),
+        ("{codex: {fast: {model: '  '}}}", r"'tiers\.codex\.fast\.model' must be a non-empty text"),
+        ("{codex: {fast: {effort: 3}}}", r"'tiers\.codex\.fast\.effort' must be a non-empty text"),
+    ],
+)
+def test_a_wrong_tiers_setting_is_an_error(tmp_path: Path, tiers_yaml: str, message: str) -> None:
+    with pytest.raises(ProjectError, match=message):
+        find_project(make_project(tmp_path, f"tiers: {tiers_yaml}\n"))

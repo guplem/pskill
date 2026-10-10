@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pskill_runner
-from pskill_runner.adapters import adapter_for
+from pskill_runner.adapters import adapter_for, tier_wording
 from pskill_runner.computed_values import ComputedValueError, compute, is_true, render_text
 from pskill_runner.field_types import FieldMap, FieldSpec, check_answer, check_typed_values
 from pskill_runner.inline_executor import InlineExecutor, RealExecutor, ScriptResult
@@ -963,7 +963,7 @@ class Run:
         """How to spawn the task's subagent in this harness: its tool profile, then its model tier, on one line."""
         wordings = [
             self.adapter.tools_wording.get(task.get("tools") or "", ""),
-            self.adapter.tier_wording.get(task.get("tier") or "", ""),
+            tier_wording(self.adapter, self.project.config.tiers, task.get("tier") or ""),
         ]
         return " ".join(wording for wording in wordings if wording)
 
