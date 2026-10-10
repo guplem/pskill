@@ -103,14 +103,14 @@ def test_a_second_wait_keeps_the_start_of_the_first_one(tmp_path: Path) -> None:
 def test_a_wait_is_refused_after_max_wait_minutes_with_nothing_new(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id = start(project)
-    for minutes in range(0, 120, 20):  # each wait starts when the one before rings
+    for minutes in range(0, 106, 21):  # each wait starts 1 minute after the one before rings
         start_wait(project, run_id, "the CI checks", START + timedelta(minutes=minutes))
 
     with pytest.raises(RunError, match="120 minutes with nothing new"):
-        start_wait(project, run_id, "the CI checks", START + timedelta(minutes=120))
+        start_wait(project, run_id, "the CI checks", START + timedelta(minutes=126))
 
     info = read_run_info(project, run_id)
-    assert info["wait_started_at"] == timestamp(START + timedelta(minutes=100))
+    assert info["wait_started_at"] == timestamp(START + timedelta(minutes=105))
     assert info["wait_reason"] == "the CI checks"
 
 
