@@ -130,6 +130,7 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
             "agent": {"type": "string"},
             "task_name": {"type": "string"},
             "tier": {"type": "string"},
+            "tools": {"type": "string"},
             "instruction": {"type": "string"},
             "output": {"$ref": "#/$defs/field_map"},
             "next": {"$ref": "#/$defs/edges"},

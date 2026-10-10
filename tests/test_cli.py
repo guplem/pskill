@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pskill_runner.install import CACHE_VARIABLE
 from pskill_runner.release import build_release_archive, release_file_map
-from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, PROFILED_SKILL, write_skill
 
 ENTRY_SCRIPT = Path(__file__).resolve().parent.parent / "pskill.py"
 
@@ -278,6 +278,17 @@ def test_validate_reports_a_stale_stub(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "is out of date: run `pskill sync`" in result.stdout
+
+
+def test_validate_reports_a_missing_profile_agent(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    run_pskill(root, "sync")
+    write_skill(root / ".pskill" / "skills", "fanout", PROFILED_SKILL)
+
+    result = run_pskill(root, "validate")
+
+    assert result.returncode == 2
+    assert ".claude/agents/pskill-read.md is out of date: run `pskill sync`" in result.stdout
 
 
 def test_the_stop_hook_blocks_an_open_run_with_claude_feedback(tmp_path: Path) -> None:

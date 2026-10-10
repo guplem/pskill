@@ -29,6 +29,15 @@ def tier_choices() -> str:
     return ", ".join(MODEL_TIERS[:-1]) + f", or {MODEL_TIERS[-1]}"
 
 
+# The tool profiles that a parallel block can ask for. Each adapter says what a profile means in its harness.
+TOOL_PROFILES = ("read", "web")
+
+
+def tool_profile_choices() -> str:
+    """The known tool profiles for an error message: "read or web"."""
+    return " or ".join(TOOL_PROFILES)
+
+
 @dataclass(frozen=True, kw_only=True)
 class Block:
     """Fields that every block type has."""
@@ -84,6 +93,7 @@ class ParallelBlock(RetryableBlock):
     agent: str | None = None
     task_name: str | None = None  # a {{ }} value per item: the task's name in the packet and the viewer
     tier: str | None = None  # one of MODEL_TIERS, or a {{ }} value per item; None: the subagent inherits the model
+    tools: str | None = None  # one of TOOL_PROFILES, or a {{ }} value per item; None: the subagent gets every tool
     instruction: str
     output: FieldMap
     next: list[Edge]

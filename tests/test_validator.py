@@ -527,3 +527,27 @@ def test_references_in_a_tier_are_checked(tmp_path: Path) -> None:
     assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(
         tmp_path, with_tier('"{{ steps.nowhere.x }}"')
     )
+
+
+def with_tools(tools: str) -> str:
+    return CALLER_SKILL.replace(
+        '    agent: "{{ item.agent }}"\n', f'    agent: "{{{{ item.agent }}}}"\n    tools: {tools}\n'
+    )
+
+
+def test_a_tool_profile_that_is_not_a_profile_is_an_error(tmp_path: Path) -> None:
+    assert "blocks.research: the tool profile 'write' is not read or web" in catalog_problems(
+        tmp_path, with_tools("write")
+    )
+
+
+def test_a_valid_or_computed_tool_profile_has_no_profile_error(tmp_path: Path) -> None:
+    for index, tools in enumerate(["read", '"{{ item.tools }}"']):
+        errors = catalog_problems(tmp_path / str(index), with_tools(tools))
+        assert not [message for message in errors if "tool profile" in message]
+
+
+def test_references_in_a_tool_profile_are_checked(tmp_path: Path) -> None:
+    assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(
+        tmp_path, with_tools('"{{ steps.nowhere.x }}"')
+    )

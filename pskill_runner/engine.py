@@ -60,6 +60,7 @@ from pskill_runner.shells import detect_shell
 from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
 from pskill_runner.skill_model import (
     MODEL_TIERS,
+    TOOL_PROFILES,
     AgentBlock,
     AnyBlock,
     CallBlock,
@@ -73,6 +74,7 @@ from pskill_runner.skill_model import (
     SkillCatalog,
     TaskBlock,
     tier_choices,
+    tool_profile_choices,
 )
 from pskill_runner.validator import validate_skill
 from pskill_runner.yaml_loading import load_answer_yaml
@@ -867,6 +869,7 @@ class Run:
                 agent=str(self.computed(block.agent, f"The agent of {block.id!r}", item)) if block.agent else None,
                 name=self.task_name(block, item),
                 tier=self.task_tier(block, item),
+                tools=self.task_tools(block, item),
                 output=None,
                 attempts=0,
             )
@@ -920,6 +923,17 @@ class Run:
             raise RunnerStop(f"The tier of {block.id!r} must be {tier_choices()}, not {tier!r}.")
         return str(tier)
 
+    def task_tools(self, block: ParallelBlock, item: Any) -> str | None:
+        """The task's tool profile. An empty value gives every tool; any other value must be a known profile."""
+        if block.tools is None:
+            return None
+        tools = self.computed(block.tools, f"The tool profile of {block.id!r}", item)
+        if tools is None or tools == "":
+            return None
+        if tools not in TOOL_PROFILES:
+            raise RunnerStop(f"The tool profile of {block.id!r} must be {tool_profile_choices()}, not {tools!r}.")
+        return str(tools)
+
     def open_task_indexes(self) -> list[int]:
         return [index for index, task in enumerate(self.frame["tasks"] or []) if task["output"] is None]
 
@@ -942,8 +956,16 @@ class Run:
             instruction=instruction,
             return_fields=block.output,
             name=task.get("name"),
-            spawn_wording=tier_wording(self.adapter, self.project.config.tiers, task.get("tier") or ""),
+            spawn_wording=self.spawn_wording(task),
         )
+
+    def spawn_wording(self, task: ParallelTask) -> str:
+        """How to spawn the task's subagent in this harness: its tool profile, then its model tier, on one line."""
+        wordings = [
+            self.adapter.tools_wording.get(task.get("tools") or "", ""),
+            tier_wording(self.adapter, self.project.config.tiers, task.get("tier") or ""),
+        ]
+        return " ".join(wording for wording in wordings if wording)
 
     def parallel_packet(self, block: ParallelBlock, errors: list[str], show_goal: bool, show_rules: bool) -> str:
         """All open tasks for subagents (each task prompt has the goal), or the next open task for the main agent."""
