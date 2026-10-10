@@ -521,6 +521,11 @@ def test_validate_warns_on_a_codex_tier_model_that_the_codex_catalog_lacks(
     assert "warning (config)  tiers.codex.fast: the model 'gpt-6.1-sol' is not in the Codex model catalog" in output
     assert output.endswith("1 skill checked: 0 errors, 1 warnings.\n")
 
+    exit_code = run_cli(monkeypatch, "validate", "plan-work")
+
+    assert exit_code == cli.EXIT_OK
+    assert capsys.readouterr().out == "1 skill checked: 0 errors, 0 warnings.\n"  # one skill: no project checks
+
 
 def test_validate_with_no_skills_checks_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
