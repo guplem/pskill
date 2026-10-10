@@ -314,6 +314,10 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
             facts.append(["agent", block.agent])
         if block.task_name is not None:
             facts.append(["task name", block.task_name])
+        if block.tier is not None:
+            facts.append(["tier", block.tier])
+        if block.tools is not None:
+            facts.append(["tools", block.tools])
     if isinstance(block, ScriptBlock):
         facts.append(["parse", block.parse])
         if block.timeout_s is not None:

@@ -466,6 +466,8 @@ export const FACT_FIELDS = {
   "for each": "for_each",
   agent: "agent",
   "task name": "task_name",
+  tier: "tier",
+  tools: "tools",
   parse: "parse",
   timeout: "timeout_s",
   skill: "skill",

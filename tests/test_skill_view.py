@@ -513,3 +513,16 @@ def test_a_script_block_shows_its_input(tmp_path: Path) -> None:
 
     assert blocks["read_input"]["input"] == '{"pr": "{{ inputs.pr }}", "labels": ["bug", "{{ inputs.body | length }}"]}'
     assert detail_of(project, "scripted")["blocks"]["list_files"]["input"] is None
+
+
+def test_a_parallel_block_shows_its_tier_and_tool_profile(tmp_path: Path) -> None:
+    skill_yaml = NAMED_PARALLEL_SKILL.replace(
+        "    agent: checker\n", "    agent: checker\n    tier: fast\n    tools: read\n"
+    )
+    write_skill(tmp_path / ".pskill" / "skills", "fanout", skill_yaml)
+    detail = skill_detail(find_project(tmp_path), "fanout") or {}
+
+    check = detail["blocks"]["check"]
+
+    assert ["tier", "fast"] in check["facts"]
+    assert ["tools", "read"] in check["facts"]
