@@ -356,3 +356,16 @@ def test_a_run_json_removed_before_its_folder_ends_the_wait(tmp_path: Path, monk
     text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
 
     assert text == f"Run {run_id} is deleted.\n"
+
+
+def test_a_newer_wait_ends_the_running_one_and_tells_the_agent_to_end_its_turn(tmp_path: Path) -> None:
+    """The newer wait wakes the agent later, so the older one must not ask the agent to continue now."""
+    project = make_project(tmp_path)
+    run_id = start(project)
+    clock = FakeClock()
+    clock.on_sleep = lambda: start_wait(project, run_id, "the subagents", clock.now)
+
+    text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert text == "A newer wait replaced this one. End your turn: the newer wait wakes you.\n"
+    assert len(clock.sleeps) == 1

@@ -74,6 +74,8 @@ def change_text(project: Project, info: RunInfo) -> str:
     run_id = info["run_id"]
     if info["status"] != "active":
         return f"Run {run_id} is now {info['status']}.\n"
+    if info.get("wait_until") is not None:  # a submit or a resume clears the alarm; only a newer wait sets one
+        return "A newer wait replaced this one. End your turn: the newer wait wakes you.\n"
     return f"Run {run_id} changed. Continue it: run `{runner_command(project)} current {run_id}`.\n"
 
 
