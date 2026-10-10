@@ -37,8 +37,12 @@ TEXT_GH_COMMAND = re.compile(r"\bgh\s+(?P<command>[\w-]+)(?:\s+(?P<subcommand>[\
 PYTHON_API_CALL = re.compile(r'"gh",\s*"api"|\bgh_api(?:_pages|_call)?\(')
 TEXT_API_CALL = re.compile(r"""\[\s*["']?gh["']?,\s*["']?api\b|\bgh\s+api\b""")
 # A refused path anywhere in the rest of the call, so flags, quotes, or a leading slash before it do not hide it.
-REFUSED_API_PATH = re.compile(r"""(?:^|[\s,"'/=(])(?P<path>graphql|search)(?=$|[\s"',/?)\]])""")
-CALL_END = re.compile(r"[\n`)\]]")
+REFUSED_API_PATH = re.compile(
+    r"""(?:^|[\s,"'/=(])(?P<path>""" + "|".join(sorted(REFUSED_API_PATHS)) + r""")(?=$|[\s"',/?)\]])"""
+)
+# A Python call ends at its bracket (ruff wraps a long call over lines); a text call also ends at a line break.
+PYTHON_CALL_END = re.compile(r"[)\]]")
+TEXT_CALL_END = re.compile(r"[\n`)\]]")
 
 
 def is_allowed(command: str, subcommand: str | None) -> bool:
@@ -51,7 +55,7 @@ def refused_api_paths(text: str, is_python: bool) -> list[str]:
     found: list[str] = []
     for start in (PYTHON_API_CALL if is_python else TEXT_API_CALL).finditer(text):
         rest = text[start.end() :]
-        end = CALL_END.search(rest)
+        end = (PYTHON_CALL_END if is_python else TEXT_CALL_END).search(rest)
         arguments = rest[: end.start()] if end else rest
         found += [f"gh api {match.group('path')}" for match in REFUSED_API_PATH.finditer(arguments)]
     return found
@@ -124,6 +128,8 @@ def test_a_skill_file_uses_no_github_call_that_the_cloud_proxy_refuses(path: Pat
         ("Ask with `gh api --method=POST graphql`.", False, ["gh api graphql"]),
         ("run: [gh, api, /graphql]", False, ["gh api graphql"]),
         ('gh_api("/search/issues")', True, ["gh api search"]),
+        ('run(\n    [\n        "gh",\n        "api",\n        "graphql",\n    ]\n)', True, ["gh api graphql"]),
+        ('gh_api(\n    f"search/issues?q={terms}",\n)', True, ["gh api search"]),
         ("Read it with `gh api repos/{owner}/{repo}/pulls/7 --jq .body`. Search is refused.", False, []),
         ("Read it with `gh issue view 7 --comments`.", False, ["gh issue view"]),
         ("Compare it with `gh pr diff 7`, then `gh run view 1 --log-failed`.", False, []),

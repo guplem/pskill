@@ -153,3 +153,15 @@ def test_search_issues_counts_only_whole_words(
     printed = run_main(monkeypatch, capsys, script, {"repo": "o/r", "terms": ["ci", "run"]})
 
     assert [found["number"] for found in printed] == [2]
+
+
+def test_search_issues_matches_a_term_that_starts_with_a_symbol(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "search_issues")
+    issues = [issue(1, "Stop using --paginate"), issue(2, "Use --paginate-all")]
+    install_shell(monkeypatch, script, FakeShell({"gh api GET repos/o/r/issues?state=all": json.dumps(issues)}))
+
+    printed = run_main(monkeypatch, capsys, script, {"repo": "o/r", "terms": ["--paginate"]})
+
+    assert [found["number"] for found in printed] == [1]

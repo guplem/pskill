@@ -39,8 +39,9 @@ def matching_issues(repo: str, terms: list[str]) -> list[dict[str, Any]]:
         if "pull_request" in item:
             continue
         text = f"{item['title']} {item['body'] or ''}".lower()
-        # Whole words only: "ci" must not match "decision".
-        score = sum(bool(re.search(rf"\b{re.escape(word)}\b", text)) for word in words)
+        # Whole words only: "ci" must not match "decision". No letter, digit, or hyphen may touch either end, so a
+        # term that starts or ends with a symbol (c++, .pskill/) still matches.
+        score = sum(bool(re.search(rf"(?<![\w-]){re.escape(word)}(?![\w-])", text)) for word in words)
         if score:
             scored.append((score, item))
     scored.sort(key=lambda pair: (-pair[0], -pair[1]["number"]))
