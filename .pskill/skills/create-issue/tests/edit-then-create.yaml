@@ -15,7 +15,7 @@ answers:
     - {choice: create, rationale: Good now., $answered_by: human}
 scripts:
   resolve_repo:
-    - {exit_code: 0, stdout: '{"nameWithOwner": "guplem/pskill"}'}
+    - {exit_code: 0, stdout: '{"full_name": "guplem/pskill"}'}
   search_duplicates:
     - {exit_code: 0, stdout: "[]"}
   create:

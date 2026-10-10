@@ -13,7 +13,7 @@ answers:
     - {choice: create, rationale: Create it., $answered_by: human}
 scripts:
   resolve_repo:
-    - {exit_code: 0, stdout: '{"nameWithOwner": "Galtea-AI/monorepo"}'}
+    - {exit_code: 0, stdout: '{"full_name": "Galtea-AI/monorepo"}'}
   search_duplicates:
     - {exit_code: 0, stdout: "[]"}
   create:

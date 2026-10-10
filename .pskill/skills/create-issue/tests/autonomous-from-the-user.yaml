@@ -14,7 +14,7 @@ answers:
     - {choice: create, rationale: The request is clear and the draft covers it.}
 scripts:
   resolve_repo:
-    - {exit_code: 0, stdout: '{"nameWithOwner": "guplem/pskill"}'}
+    - {exit_code: 0, stdout: '{"full_name": "guplem/pskill"}'}
   search_duplicates:
     - {exit_code: 0, stdout: "[]"}
   create:

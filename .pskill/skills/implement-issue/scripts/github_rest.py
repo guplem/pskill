@@ -4,8 +4,8 @@
 # ///
 """Call the GitHub REST API through `gh api`, and read every page of a list.
 
-One of six identical copies, in the scripts/ folder of checkout-pr, fix-ci, implement-issue, resolve-pr-feedback,
-review-head-check and review-pr. Change all six together: tests/test_skill_github_rest.py
+One of seven identical copies, in the scripts/ folder of checkout-pr, create-issue, fix-ci, implement-issue,
+resolve-pr-feedback, review-head-check and review-pr. Change all seven together: tests/test_skill_github_rest.py
 fails when they differ.
 
 Why REST only: in a Claude Code cloud session, `gh` reaches GitHub through a proxy. That proxy refuses GraphQL
