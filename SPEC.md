@@ -59,7 +59,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D4 | `pskill sync` writes one read-only stub per skill into each folder in `config.stub_folders` (default `.agents/skills/` and `.claude/skills/`). All stubs have the same content and pass `--harness auto`. | Harnesses pick skills by their description. Without stubs, auto-triggering stops. The folder list is configurable because projects already own these folders differently (see 9.3). |
 | D5 | One run can mix main-agent work, parallel subagents, scripts, and questions to the human. | The real skills use all four. |
 | D6 | Every skill can run in `autonomous` mode. A `decision` block has `decider: agent` or `decider: human`. In autonomous mode the agent takes human decisions itself, from the skill goal, the session, and the project. | User requirement. Replaces all mode-specific prose. |
-| D7 | A Stop hook blocks the agent from ending its turn while a block is open, on harnesses that have such a hook. Other harnesses get packet wording only. | Otherwise the agent can simply stop calling the runner. |
+| D7 | A Stop hook blocks the agent from ending its turn while a block is open, on harnesses that have such a hook. Other harnesses get packet wording only. Changed in 0.37.0 (#150): while a `pskill wait` runs, on a harness that wakes the agent after a background command, the hook allows the stop (9.2). | Otherwise the agent can simply stop calling the runner. |
 | D8 | The stub gives the skill goal and the loop rules once. A packet contains the current instruction and its return format, and no future blocks. It repeats the goal only where the agent never saw the stub: a subagent task, the first packet of a child skill, and `current` or `resume` (with the rules). | Fewer tokens, no running ahead, one obvious place for the goal, and enough context for autonomous answers. Changed in 0.10.0: before, every packet repeated the goal and the rules. |
 | D9 | Every agent block declares a typed output. The runner rejects invalid submissions with the error text. | State lives in the runner, typed, and survives tool calls. |
 | D10 | A nested skill call works like a function: inputs in, outputs out, no access to the caller's state. | Replaces line-number citations and file-heading contracts. |
@@ -91,6 +91,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 - **L5. Instruction files are on disk.** The agent could read future blocks. This is not a security boundary.
 - **L7. Codex needs Full access.** Inside the Codex sandbox, `uv` cannot open its cache (outside the project) or reach PyPI. The Codex rule lets only plain runner commands, such as `start` and `current`, run outside the sandbox: Codex does not match the rule to the `submit` form with an answer on stdin (verified in #24). So the user runs Codex with Full access (`--sandbox danger-full-access`), or approves each `submit`. pskill never changes this setting. Full access also means that the runner's `script` blocks run without the sandbox.
 - **L6. No isolation without subagents.** With the `generic` adapter, parallel tasks run one by one in the main agent's context, so each task can see the earlier ones.
+- **L8. `pskill wait` needs a harness that wakes the agent when a background command ends.** Claude Code does (no time limit locally; 30 minutes by default in a cloud session). Codex does not document it, so its Stop hook ignores waits and keeps 3 refused stops, then a pause (9.2).
 
 ### 3.2 Items to verify at implementation time
 
@@ -431,7 +432,7 @@ done:
 
 | Status | Meaning | Stop hook |
 |---|---|---|
-| `active` | The runner waits for the agent's submission. | Blocks the stop. |
+| `active` | The runner waits for the agent's submission. | Blocks the stop, except while a `pskill wait` runs (9.2). |
 | `waiting_for_human` | A human decision, or a visit cap question (5.5), is open in interactive mode. | Allows the stop. |
 | `paused` | A block failed, `pskill pause` ran, or the Stop hook gave up. `pause_reason` says why. | Allows the stop. |
 | `succeeded`, `failed`, `cancelled` | Final. | Allows the stop. |
@@ -502,6 +503,7 @@ Set the mode with `start --mode interactive|autonomous` (default from config: `i
 
 - Write `run.json` and `state.json` to a temp file, then call `os.replace` (atomic on every OS).
 - Every command holds a lock on `runs/<run-id>/.lock`. Create it with `os.open(O_CREAT | O_EXCL)`. Wait up to 10 s. Break a lock older than 60 s. Parallel task submissions depend on this lock.
+- `wait` holds the lock only while it writes or reads `run.json`, never while it sleeps: a lock held for minutes would block every submit, and other commands would break it after 60 s.
 
 ---
 
@@ -572,6 +574,7 @@ class HarnessAdapter(Protocol):
 | Subagents | Agent tool with `subagent_type: general-purpose` and `run_in_background: false` (the turn waits for every subagent; the calls still run in parallel) | `spawn_agent`, then `wait_agent` | no (one by one) |
 | Model tier (`tier`) | the row's `model` and `effort` on the task's Agent call (default: `model: haiku`, `sonnet`, or `opus`) | the row's `model` and `reasoning_effort` on the task's `spawn_agent` call (default: `reasoning_effort: low`, `medium`, or `high`) | ignored |
 | Tool profile (`tools`) | `subagent_type: pskill-<profile>` on the task's Agent call; `sync` writes `.claude/agents/pskill-<profile>.md` | ignored: an agent file cannot set `sandbox_mode` or `mcp_servers` (openai/codex `codex-rs/core/src/agent/role.rs`, read 2026-10-10) | ignored |
+| Wakes the agent after a background command (`wakes_after_background_command`, for `pskill wait`) | yes: a new turn when the command ends (no time limit locally; 30 minutes by default in a cloud session) | not documented, so no: the Stop hook ignores waits | no |
 | Question tool | `AskUserQuestion` (2-4 options; above 4, use a plain question) | plain question | plain question |
 
 - An adapter that cannot VERIFY a capability uses the `generic` behavior for it.
@@ -590,9 +593,17 @@ class HarnessAdapter(Protocol):
 `sync` installs them for each target harness that supports them. The command is `uv run .pskill/pskill.py hook <event> --harness <name>`. `sync` finds its own entries by this command string, and never touches other hooks.
 
 - **Stop.**
-  - Look only at the newest `active` run for this harness in this checkout that holds this session: its `session_id` equals the hook input's `session_id`, or one of the two is missing. If it exists, block with the reason: "pskill run <id> has an open block. Run `uv run .pskill/pskill.py current <id>`."
+  - Look only at the newest `active` run for this harness in this checkout that holds this session: its `session_id` equals the hook input's `session_id`, or one of the two is missing. If it exists, block with the reason: "pskill run <id> has an open block. Continue it: run `uv run .pskill/pskill.py current <id>` and follow the packet. If the user asked to stop, run `uv run .pskill/pskill.py pause <id>` instead." A second line tells the agent how to wait: "If you wait on background work, run `uv run .pskill/pskill.py wait <id> --reason "<what you wait on>"` in the background, then end your turn."
+  - **A wait (`pskill wait`, since 0.37.0).** While the run's `wait_until` is in the future, allow the stop with no message and no count. The run stays `active`. The agent waits on background work (subagents, a CI wait), and the harness wakes it when the background `wait` command ends.
+    - `wait` records `wait_reason`, `wait_started_at`, `wait_until` (`wait_minutes` later, default 20), and `waits_since` in `run.json`. It takes the run lock for that write (7.7), then reads `run.json` every 5 s, each read under the lock: on Windows, a read during an `os.replace` fails both sides. It holds no lock while it sleeps. A lock busy past its timeout (a long `script` block) only skips that read.
+    - It ends at once when the run changes (any submit, a pause, a cancel), or at `wait_until` with one line: "<n> minutes passed and nothing changed. If you still wait on <reason>, run the wait again. Else continue the run: run `uv run .pskill/pskill.py current <id>`."
+    - `wait` refuses a run whose harness does not wake the agent (no `wakes_after_background_command`).
+    - A newer wait ends a running one with "A newer wait replaced this one. End your turn: the newer wait wakes you.", so the agent does not wake twice.
+    - A wait resets `stop_blocks`: the hook can count a stop before the background `wait` writes `run.json`.
+    - A submit or a `resume` clears the four fields. A wait that starts more than `wait_minutes` after the last alarm starts a new `waits_since`: the agent worked between the two waits. When `waits_since` is `max_wait_minutes` old (default 120), `wait` refuses to start: the stops count again, and the `agent_stopped` pause error names the last wait reason.
+    - A killed `wait` holds the stop only until `wait_until`. Only an adapter with `wakes_after_background_command` (Claude Code) gets the quiet stop and the wait line. Every other harness (Codex: not documented) keeps the old behavior, because nothing would wake the agent and the run would stay active and idle.
   - Never block the stop of a subagent. Claude Code sends subagent stops as a separate `SubagentStop` event, which pskill does not hook. VERIFY how Codex marks a subagent stop.
-  - After 3 blocks in a row (config `stop_hook_max_blocks`) with no submission between them, allow the stop and pause the run with reason `agent_stopped`. This prevents an endless loop.
+  - After 3 blocks in a row (config `stop_hook_max_blocks`) with no submission, resume, or `pskill wait` between them, allow the stop and pause the run with reason `agent_stopped`. This prevents an endless loop.
   - For any other case, allow the stop.
 - **Session start.** One job:
   - **Refresh the stubs.** Run the stub part of `sync` (not hooks, not permission rules). When it changed files, print one line: "pskill: updated <n> stubs (<skill ids>)." Skip a skill whose `skill.yaml` does not load, and print one warning line for it. This covers skill edits from any source: the agent, an IDE, `git pull`, or a teammate.
@@ -641,7 +652,7 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
 - The frontmatter follows the Agent Skills spec.
 - **Inputs:** each input shows its type, `optional`, and its `default`. The start command names only the required inputs, so the agent never invents a value for an optional one. When a skill has a required input, the stub tells the agent to ask the user for each one that the request does not give, before `start`. (Added in 0.21.0: before, the start command named every input, and the stub showed no default.)
 - `sync` overwrites and deletes only files that carry the generated marker. If a hand-written skill has the same name, `sync` stops with an error.
-- `sync` also writes one built-in stub, `pskill`: "Resume, inspect, pause, or cancel a pskill run. Use when the user mentions an unfinished skill run." Its body lists `runs`, `current`, `resume`, `pause`, `cancel`, and `view`.
+- `sync` also writes one built-in stub, `pskill`: "Resume, inspect, pause, or cancel a pskill run. Use when the user mentions an unfinished skill run." Its body lists `runs`, `current`, `resume`, `wait`, `pause`, `cancel`, and `view`.
 - Commit the stubs. `pskill validate` fails when a stub is out of date.
 - **Profile agents.** For each tool profile that some `parallel` block uses (a computed `tools` value counts as every profile), `sync` writes `.claude/agents/pskill-<profile>.md`, when `claude-code` is in `config.permissions`:
   ```markdown
@@ -717,6 +728,8 @@ retries: 2
 autonomous_max_visits: 150                               # the agent's ceiling at a visit cap (5.5)
 script_timeout_s: 300
 stop_hook_max_blocks: 3
+wait_minutes: 20                                         # how long one `pskill wait` sleeps when nothing changes
+max_wait_minutes: 120                                    # the waits of one block with nothing new, before wait refuses
 viewer_port: 7777
 tiers:                                                   # rows that replace the default tier rows (6.3)
   codex:
@@ -739,6 +752,7 @@ runs/<run-id>/
 - `schema_version`, `run_id`, `skill_id`, `skill_hash` (sha256 of the copied skill files)
 - `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `session_id` (the owner session, or null), `mode`, `inputs`
 - `status`, `pause_reason`, `current` (`{frame, block, visit}`), `attempts`, `stop_blocks`
+- `wait_reason`, `wait_started_at`, `wait_until`, `waits_since`: the `pskill wait` alarm (section 9.2). Absent in runs before 0.37.0.
 - `created_at`, `updated_at`, `ended_at`, `outputs`
 
 ### 10.3 Events
@@ -1053,7 +1067,8 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `submit <run> [--task <n>] [--file <path>]` | Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. |
 | `pause <run>` / `resume <run>` / `cancel <run>` | Lifecycle control. |
 | `delete <run>` | Delete the folder of a finished run, for cleanup. An unfinished run must be cancelled first. The id must name a folder right inside `runs/`. |
-| `runs [--open]` | List runs. |
+| `wait <run> --reason <text>` | The agent waits on background work. Record the wait, then sleep until the run changes or `wait_minutes` pass (9.2). The agent runs it in the background, then ends its turn. |
+| `runs [--open]` | List runs. A waiting run shows its wait reason and the start of the wait. |
 | `validate [<skill>]` | Section 11. |
 | `test [<skill>]` | Section 12. |
 | `sync [--check]` | Write the stubs, the profile agents, the hooks, and the permission rule. `--check` only reports differences. |

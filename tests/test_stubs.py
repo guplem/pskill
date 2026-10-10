@@ -6,7 +6,7 @@ import pytest
 
 from pskill_runner.project import Project, find_project
 from pskill_runner.skill_loader import load_catalog, load_skill
-from pskill_runner.stubs import GENERATED_MARKER, StubError, render_stub, sync_stubs
+from pskill_runner.stubs import GENERATED_MARKER, StubError, render_pskill_stub, render_stub, sync_stubs
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 
@@ -103,6 +103,24 @@ def test_sync_writes_one_stub_per_folder_plus_the_pskill_stub(tmp_path: Path) ->
         assert (tmp_path / folder / "pskill" / "SKILL.md").is_file()
     assert len(changes) == 4
     assert {change.action for change in changes} == {"created"}
+
+
+def test_the_pskill_stub_tells_how_to_wait_on_background_work() -> None:
+    assert (
+        "- Wait on background work, in the background (Claude Code only): "
+        '`uv run .pskill/pskill.py wait <run-id> --reason "<what>"`' in render_pskill_stub()
+    )
+
+
+def test_sync_updates_a_stub_when_a_parent_folder_has_the_name_of_the_skill(tmp_path: Path) -> None:
+    project = make_project(tmp_path / "pskill")
+    stub = tmp_path / "pskill" / ".claude" / "skills" / "pskill" / "SKILL.md"
+    stub.parent.mkdir(parents=True)
+    stub.write_text(f"{GENERATED_MARKER}\nold text\n", encoding="utf-8")
+
+    sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
+
+    assert stub.read_text(encoding="utf-8") == render_pskill_stub()
 
 
 def test_sync_is_idempotent(tmp_path: Path) -> None:

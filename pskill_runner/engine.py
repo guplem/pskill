@@ -149,6 +149,10 @@ def start_run(
         packet_issued_at=None,
         attempts=0,
         stop_blocks=0,
+        wait_reason=None,
+        wait_started_at=None,
+        wait_until=None,
+        waits_since=None,
         created_at=timestamp(now),
         updated_at=timestamp(now),
         ended_at=None,
@@ -280,15 +284,18 @@ def delete_run(project: Project, run_id: str) -> str:
 def register_stop_attempt(project: Project, run_id: str) -> bool:
     """Count one try of the agent to end its turn with an open block. Return True to keep it working.
 
-    After `stop_hook_max_blocks` tries in a row with no submission between them, pause the run and
-    return False, so the agent can stop and a stuck run never loops forever.
+    After `stop_hook_max_blocks` tries in a row with no submission, resume, or `pskill wait` between them,
+    pause the run and return False, so the agent can stop and a stuck run never loops forever.
     """
     with run_lock(run_folder(project, run_id)):
         run = Run.load(project, run_id)
         run.info["stop_blocks"] += 1
         keep_working = run.info["stop_blocks"] <= project.config.stop_hook_max_blocks
         if not keep_working:
-            run.pause("agent_stopped", "The agent ended its turn with an open block, several times in a row.")
+            error = "The agent ended its turn with an open block, several times in a row."
+            if run.info.get("wait_reason"):
+                error += f" The last wait was on: {run.info.get('wait_reason')}."
+            run.pause("agent_stopped", error)
         run.save()
     return keep_working
 
@@ -1086,6 +1093,13 @@ class Run:
             runner_command(self.project),
         )
 
+    def clear_wait(self) -> None:
+        """Something new happened, so the next `pskill wait` starts a fresh `max_wait_minutes`."""
+        self.info["wait_reason"] = None
+        self.info["wait_started_at"] = None
+        self.info["wait_until"] = None
+        self.info["waits_since"] = None
+
     def paused_by_stop_attempts(self) -> bool:
         return self.info["status"] == "paused" and self.info["pause_reason"] == "agent_stopped"
 
@@ -1096,6 +1110,7 @@ class Run:
         """
         self.info["attempts"] = 0
         self.info["stop_blocks"] = 0
+        self.clear_wait()
         self.info["pause_reason"] = None
         self.info["pause_error"] = None
         for task in self.frame["tasks"] or []:
@@ -1139,6 +1154,7 @@ class Run:
         if task is not None and not isinstance(block, ParallelBlock):
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
         self.info["stop_blocks"] = 0
+        self.clear_wait()
         if isinstance(block, ParallelBlock):
             return self.submit_task(block, answer_text, task)
         answer, answered_by, errors = self.read_answer(answer_text, block)

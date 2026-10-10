@@ -30,6 +30,8 @@ class Config:
     autonomous_max_visits: int = 150
     script_timeout_s: int = 300
     stop_hook_max_blocks: int = 3
+    wait_minutes: int = 20  # how long one `pskill wait` sleeps when nothing changes
+    max_wait_minutes: int = 120  # how long the waits of one block may last with nothing new
     viewer_port: int = 7777
     # The project's tier rows, per harness and tier. Each replaces the adapter's default row (adapters.py).
     tiers: Mapping[str, Mapping[str, TierRow]] = field(default_factory=dict)

@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,9 @@ from pskill_runner.install import InstallError, init_project, update_project
 from pskill_runner.profile_agents import sync_profile_agents
 from pskill_runner.project import Project, ProjectError, find_project
 from pskill_runner.release import release_url
-from pskill_runner.run_records import UNFINISHED_STATUSES
+from pskill_runner.run_records import UNFINISHED_STATUSES, RunInfo
+from pskill_runner.run_store import utc_now
+from pskill_runner.run_waits import is_waiting, wait_for_run_change
 from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
 from pskill_runner.skill_model import SkillCatalog
 from pskill_runner.skill_tests import run_skill_tests
@@ -83,6 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
         ("delete", "Delete the folder of a finished run, for cleanup."),
     ):
         commands.add_parser(name, help=help_text).add_argument("run_id")
+
+    wait = commands.add_parser(
+        "wait", help="Wait on background work: the Stop hook stays quiet until the run changes or an alarm rings."
+    )
+    wait.add_argument("run_id")
+    wait.add_argument("--reason", required=True, help="What the agent waits on, such as the CI checks.")
 
     runs = commands.add_parser("runs", help="List the runs, newest first.")
     runs.add_argument("--open", action="store_true", help="Only unfinished runs.")
@@ -185,6 +194,8 @@ def run_command(options: argparse.Namespace) -> int:
         return print_text(cancel_run(project, options.run_id))
     if command == "delete":
         return print_text(delete_run(project, options.run_id))
+    if command == "wait":
+        return print_text(wait_for_run_change(project, options.run_id, options.reason))
     if command == "runs":
         return print_text(runs_table(project, only_open=options.open))
     if command == "list":
@@ -242,11 +253,20 @@ def runs_table(project: Project, only_open: bool) -> str:
     runs = [info for info in list_runs(project) if not only_open or info["status"] in UNFINISHED_STATUSES]
     if not runs:
         return "No runs."
+    now = utc_now()
     rows = [
         f"{info['run_id']}  {info['skill_id']}  {info['status']}  {info['current_block'] or '-'}  {info['updated_at']}"
+        + wait_note(info, now)
         for info in runs
     ]
     return "\n".join(["run  skill  status  block  updated", *rows])
+
+
+def wait_note(info: RunInfo, now: datetime) -> str:
+    """The end of a run's row while a `pskill wait` runs, so the user sees why the agent is quiet."""
+    if not is_waiting(info, now):
+        return ""
+    return f"  waiting on {info.get('wait_reason')} since {info.get('wait_started_at')}"
 
 
 def skill_folders(project: Project, skill_id: str | None = None) -> list[Path]:

@@ -31,6 +31,8 @@ class HarnessAdapter:
     spawn_call: str = ""  # the tool call that spawns one subagent
     effort_parameter: str = ""  # the parameter of that call that sets the effort
     tools_wording: Mapping[str, str] = field(default_factory=dict)  # tool profile -> how to spawn a task with it
+    # The harness starts a turn when a background command ends, so `pskill wait` can keep the Stop hook quiet.
+    wakes_after_background_command: bool = False
 
 
 GENERIC = HarnessAdapter(
@@ -73,6 +75,8 @@ CLAUDE_CODE = HarnessAdapter(
             "If that agent type is unknown, use `general-purpose`."
         ),
     },
+    # https://code.claude.com/docs/en/tools-reference#when-a-background-command-stops (see claude_code.py)
+    wakes_after_background_command=True,
 )
 
 CODEX = HarnessAdapter(

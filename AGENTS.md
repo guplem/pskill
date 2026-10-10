@@ -40,6 +40,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `claude_code.py` | Claude Code's `.claude/settings.json` entries (hooks, permission rule), the profile agent text (`.claude/agents/`), and hook output. |
 | `codex.py` | Codex's `.codex/hooks.json` hooks, `.codex/rules/pskill.rules`, and hook output; the Codex model catalog (`models_cache.json`) and its tier warnings for `pskill validate`. |
 | `hooks.py` | The Stop and session-start hook logic, for every harness. |
+| `run_waits.py` | `pskill wait`: the alarm that keeps the Stop hook quiet while the agent waits on background work. |
 | `install.py` | `pskill init` and `pskill update`: the pinned entry script, the user's runner cache, and the few project files. |
 | `release.py` | The release archive `pskill.zip`, and unpacking an archive given to `init` or `update`. |
 | `release_plan.py` | On a merge to `main`: the tag to create for the version, and its release notes from `CHANGELOG.md`. |

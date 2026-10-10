@@ -11,6 +11,11 @@ Verified against the Codex docs and the openai/codex source on 2026-09-28:
 - Skills in `.agents/skills/`; `agents/openai.yaml` with `policy.allow_implicit_invocation: false`
   stops implicit use: https://developers.openai.com/codex/skills
 
+Checked on 2026-10-10, for `pskill wait`: the Stop input has no list of background work, and no doc says
+that Codex starts a turn when a background terminal ends (https://developers.openai.com/codex/hooks,
+https://developers.openai.com/codex/config-reference). So the Stop hook ignores waits for Codex
+(`wakes_after_background_command` is false).
+
 Verified with Codex CLI 0.158.0 on 2026-10-10 (issue #151):
 - `spawn_agent` takes `model` and `reasoning_effort`: a subagent spawned with both logs them in its own session.
 - Only versioned model names work (`codex exec -m luna` fails with HTTP 400), and they leave the catalog over time.
