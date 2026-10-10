@@ -20,6 +20,7 @@ class HarnessAdapter:
     can_spawn_subagents: bool
     subagent_wording: str = ""
     tier_wording: Mapping[str, str] = field(default_factory=dict)  # model tier -> how to spawn a task with it
+    tools_wording: Mapping[str, str] = field(default_factory=dict)  # tool profile -> how to spawn a task with it
 
 
 GENERIC = HarnessAdapter(
@@ -46,6 +47,11 @@ CLAUDE_CODE = HarnessAdapter(
         "standard": "Pass `model: sonnet` in this task's Agent call.",
         "deep": "Pass `model: opus` in this task's Agent call.",
     },
+    # `pskill sync` writes the profile agents into `.claude/agents/` (profile_agents.py).
+    tools_wording={
+        "read": "Pass `subagent_type: pskill-read` in this task's Agent call, instead of `general-purpose`.",
+        "web": "Pass `subagent_type: pskill-web` in this task's Agent call, instead of `general-purpose`.",
+    },
 )
 
 CODEX = HarnessAdapter(
@@ -64,6 +70,9 @@ CODEX = HarnessAdapter(
         "standard": "Spawn this task's subagent with the reasoning effort `medium`.",
         "deep": "Spawn this task's subagent with the reasoning effort `high`.",
     },
+    # No tool profiles: a Codex agent file cannot set `sandbox_mode` or `mcp_servers` (the child keeps the
+    # parent's sandbox and MCP servers), so a profile agent would promise a limit that Codex does not keep.
+    # openai/codex codex-rs/core/src/agent/role.rs and role_tests.rs, read on 2026-10-10.
 )
 
 ADAPTERS: dict[str, HarnessAdapter] = {adapter.name: adapter for adapter in (GENERIC, CLAUDE_CODE, CODEX)}
