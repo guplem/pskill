@@ -12,7 +12,7 @@ Add **`waiting-for-human-review`** when any of these is true:
 {% endif %}{% set dismissed = (history.resolve + (history.final_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list %}{% if dismissed %}- The resolution dismissed these findings: {% for finding in dismissed %}"{{ finding.title }}" ({{ finding.reason }}){% if not loop.last %}; {% endif %}{% endfor %}. Add the label when a human must confirm one of them.
 {% endif %}- CI did not run on the head commit: `gh api repos/{owner}/{repo}/pulls/{{ steps.open_draft_pr.json.pr_number }} --jq .head.sha` is not `{{ steps.get_ci_green.outputs.head_sha }}`.
 
-Then update the pull request description.
+Then update the pull request description. Read it with `gh api repos/{owner}/{repo}/pulls/{{ steps.open_draft_pr.json.pr_number }} --jq .body`.
 
 - **Make it match the branch.** Compare it with `gh pr diff {{ steps.open_draft_pr.json.pr_number }}`. Rewrite each part that is no longer true. Keep each part that is still true.
 {% if steps.get_ci_green.outputs.state == 'passed' %}  - CI passed, so tick each CI box in the `## Test plan`.
