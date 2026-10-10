@@ -20,6 +20,9 @@ APP_HOOKS: dict[str, dict[str, dict[str, Any]]] = {
 def sync_project(project: Project, check_only: bool) -> list[str]:
     """Write (or, with check_only, only list) every change. Return one line per changed file."""
     catalog = load_catalog(project.skills_folder, project.agents_folder)
+    # A hand-written file with a generated name stops sync. Check both kinds first, so it stops before any write.
+    sync_stubs(project, catalog, check_only=True)
+    sync_profile_agents(project, catalog, check_only=True)
     verb = "is out of date" if check_only else "was"
     lines = [
         f"{change.path.relative_to(project.root).as_posix()} {verb}{'' if check_only else ' ' + change.action}"
