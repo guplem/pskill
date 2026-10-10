@@ -8,7 +8,7 @@ Acceptance: the criteria of #148. The manual cloud run is a check after the merg
 
 ## Decisions
 
-- **Helper:** `github_rest.py` (`gh_api_call`, `gh_api`, `gh_api_pages`, `is_cross_repository`), with the code of the monorepo copy. Its header names every copy, the copy test, and the proxy reason. One copy in each skill that calls GitHub: checkout-pr, create-issue, fix-ci, implement-issue, resolve-pr-feedback, review-head-check, review-pr. No `# bearer:disable` lines.
+- **Helper:** `github_rest.py` (`gh_api_call`, `gh_api`, `gh_api_pages`, `is_cross_repository`), with the code of the monorepo copy. Its header names every copy, the copy test, and the proxy reason. One copy in each skill that calls GitHub: checkout-pr, create-issue, fix-ci, implement-issue, resolve-pr-feedback, review-head-check, review-pr. create-issue and fix-ci get theirs in steps 6 and 7, with their first script: mypy fails on a scripts folder that holds only an excluded file. No `# bearer:disable` lines.
 - **Unchanged:** `claim_item.py` and `finish_item.py` already POST through `gh api`.
 - **fix-ci:** new `scripts/read_checks.py` (monorepo code, no `repository` input), plus `draft` in its output. `wait_ci.md` keeps the pskill rules: `merge conflict`, `draft`, and "no CI on a ready pull request means passed".
 - **mark_ready.py:** reads `draft` through REST, runs `gh pr ready`, and on the GraphQL refusal POSTs `pulls/{n}/ccr/ready_for_review`. It is the one exception of the static test.
