@@ -1107,3 +1107,17 @@ def test_codex_and_the_one_by_one_packet_ignore_the_tool_profile(tmp_path: Path,
     _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness=harness)
 
     assert "pskill-read" not in packet
+
+
+def test_a_state_file_from_before_tool_profiles_still_gives_its_packet(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+    state_path = project.runs_folder / run_id / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    for task in state["frames"][0]["tasks"]:
+        del task["tools"]
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    packet = current_packet(project, run_id)
+
+    assert "#### Task 0" in packet and "pskill-" not in packet
