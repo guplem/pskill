@@ -102,14 +102,26 @@ def test_a_second_wait_keeps_the_start_of_the_first_one(tmp_path: Path) -> None:
 def test_a_wait_is_refused_after_max_wait_minutes_with_nothing_new(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id = start(project)
-    start_wait(project, run_id, "the CI checks", START)
+    for minutes in range(0, 120, 20):  # each wait starts when the one before rings
+        start_wait(project, run_id, "the CI checks", START + timedelta(minutes=minutes))
 
     with pytest.raises(RunError, match="120 minutes with nothing new"):
         start_wait(project, run_id, "the CI checks", START + timedelta(minutes=120))
 
     info = read_run_info(project, run_id)
-    assert info["wait_started_at"] == timestamp(START)
+    assert info["wait_started_at"] == timestamp(START + timedelta(minutes=100))
     assert info["wait_reason"] == "the CI checks"
+
+
+def test_work_between_two_waits_does_not_count_as_waiting(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    start_wait(project, run_id, "the subagents", START)
+
+    later = START + timedelta(minutes=20 + 120)  # the agent worked 2 hours after the alarm, with no submit
+    start_wait(project, run_id, "the CI checks", later)
+
+    assert read_run_info(project, run_id)["waits_since"] == timestamp(later)
 
 
 def test_a_wait_is_refused_on_a_run_that_is_not_active(tmp_path: Path) -> None:

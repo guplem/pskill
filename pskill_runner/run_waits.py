@@ -85,6 +85,10 @@ def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> Run
         run = Run.load(project, run_id)
         run.require_status(("active",), "wait")
         waits_since = run.info.get("waits_since")
+        last_alarm = run.info.get("wait_until")
+        wait_length = timedelta(minutes=project.config.wait_minutes)
+        if last_alarm is not None and now - parse_timestamp(last_alarm) > wait_length:
+            waits_since = None  # the agent worked between the two waits, so the waits start a new count
         max_wait = timedelta(minutes=project.config.max_wait_minutes)
         if waits_since is not None and now - parse_timestamp(waits_since) >= max_wait:
             raise RunError(
@@ -94,7 +98,7 @@ def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> Run
             )
         run.info["wait_reason"] = reason
         run.info["wait_started_at"] = timestamp(now)
-        run.info["wait_until"] = timestamp(now + timedelta(minutes=project.config.wait_minutes))
+        run.info["wait_until"] = timestamp(now + wait_length)
         run.info["waits_since"] = waits_since or timestamp(now)
         # The hook can count a stop before this write lands. `max_wait_minutes` still bounds a stuck run.
         run.info["stop_blocks"] = 0

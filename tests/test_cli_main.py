@@ -406,10 +406,9 @@ def test_wait_refuses_after_max_wait_minutes_with_exit_code_1(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     project = make_project(tmp_path, monkeypatch)
-    (project.pskill_folder / "config.yaml").write_text("wait_minutes: 0\nmax_wait_minutes: 0\n", encoding="utf-8")
+    (project.pskill_folder / "config.yaml").write_text("max_wait_minutes: 0\n", encoding="utf-8")
     run_id = start_plan(monkeypatch, capsys)
-    run_cli(monkeypatch, "wait", run_id, "--reason", "the CI checks")
-    capsys.readouterr()
+    start_wait(project, run_id, "the CI checks", utc_now())
 
     exit_code = run_cli(monkeypatch, "wait", run_id, "--reason", "the CI checks")
 
