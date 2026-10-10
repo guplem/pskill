@@ -430,6 +430,20 @@ def test_runs_shows_the_reason_and_the_start_of_a_running_wait(
     assert capsys.readouterr().out.endswith(f"  waiting on the CI checks since {started_at}\n")
 
 
+def test_runs_shows_no_wait_for_a_paused_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+    start_wait(project, run_id, "the CI checks", utc_now())
+    run_cli(monkeypatch, "pause", run_id)
+    capsys.readouterr()
+
+    run_cli(monkeypatch, "runs", "--open")
+
+    assert "waiting on" not in capsys.readouterr().out
+
+
 # --- runs and list --------------------------------------------------------------------------------
 
 
