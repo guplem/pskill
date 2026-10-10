@@ -1,5 +1,6 @@
 """Tests for pskill_runner.hooks: the Stop and session-start hook logic, independent of any harness."""
 
+import json
 from datetime import timedelta
 from pathlib import Path
 
@@ -234,3 +235,20 @@ def test_a_harness_that_does_not_wake_the_agent_keeps_counting_stops_during_a_wa
     assert f"pskill run {run_id} has an open block" in reason
     assert "wait" not in reason
     assert read_run_info(project, run_id)["stop_blocks"] == 1
+
+
+def test_a_run_from_before_the_wait_fields_still_counts_stops_and_pauses(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    run_json = run_folder(project, run_id) / "run.json"
+    info = json.loads(run_json.read_text(encoding="utf-8"))
+    for name in ("wait_reason", "wait_started_at", "wait_until", "waits_since"):
+        del info[name]
+    run_json.write_text(json.dumps(info), encoding="utf-8")
+
+    reasons = [stop_hook_reason(project, "claude-code") for _ in range(4)]
+
+    assert [reason is not None for reason in reasons] == [True, True, True, False]
+    assert read_run_info(project, run_id)["pause_error"] == (
+        "The agent ended its turn with an open block, several times in a row."
+    )
