@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.35.0 (2026-10-10)
+
+A `parallel` block can ask for a tool profile for its subagents (#149).
+
+- **`tools`:** `read` or `web`, or a `{{ }}` value per item. `read` runs shell commands, reads and searches files, and writes the answer file; `web` adds fetching a page and searching the web. With no profile, a subagent gets every tool, as before, and the packet does not change.
+- **Claude Code:** a task with a profile asks for `subagent_type: pskill-<profile>`. `pskill sync` writes `.claude/agents/pskill-<profile>.md` for each used profile (tools only: no prompt, no model, so `tier` still sets the model), and deletes the ones no skill uses. A subagent that only reads code starts with about half the context.
+- **Codex and generic** ignore the profile: a Codex agent file cannot limit the sandbox or the MCP servers.
+- **Checks:** `pskill validate` rejects a written value that is not a profile, and reports a stale profile agent like a stale stub. A computed value that is not a profile fails the block.
+- **Example skills:** `implement-issue` research subagents use `read` and `web`.
+
 ## 0.34.0 (2026-10-10)
 
 A `parallel` block can ask for a model tier for its subagents (#11).
