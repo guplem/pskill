@@ -6,6 +6,13 @@ Verified against the Claude Code docs on 2026-09-28:
 - Permission rule syntax `Bash(<prefix> *)`: https://code.claude.com/docs/en/permissions
 - Claude Code sets CLAUDECODE=1 for the commands it runs: https://code.claude.com/docs/en/env-vars
 - Claude Code reads project skills from `.claude/skills/` only: https://code.claude.com/docs/en/skills
+
+Verified against the Claude Code docs on 2026-10-10 (https://code.claude.com/docs/en/sub-agents):
+- A project agent is `.claude/agents/<name>.md`; only `name` and `description` are required, and `name` is
+  the `subagent_type` of the Agent call.
+- A `tools` list gives only the tools named: no MCP tools and no Agent tool.
+- With no `model` in the file, the Agent call's `model` sets the model, and otherwise the main model is used.
+- Claude Code watches `.claude/agents/` only when the folder existed at session start.
 """
 
 import json
@@ -18,11 +25,29 @@ from pskill_runner.hook_settings import (
     read_json_settings,
     write_if_changed,
 )
+from pskill_runner.stubs import GENERATED_MARKER
 
-__all__ = ["PERMISSION_RULE", "SETTINGS_RELATIVE_PATH", "SettingsError", "stop_response", "sync_claude_permission"]
+__all__ = [
+    "AGENTS_RELATIVE_FOLDER",
+    "PERMISSION_RULE",
+    "SETTINGS_RELATIVE_PATH",
+    "SettingsError",
+    "profile_agent_text",
+    "stop_response",
+    "sync_claude_permission",
+]
 
 SETTINGS_RELATIVE_PATH = Path(".claude") / "settings.json"
 PERMISSION_RULE = "Bash(uv run .pskill/pskill.py *)"
+AGENTS_RELATIVE_FOLDER = Path(".claude") / "agents"
+# The tools of each tool profile. `Write` lets a subagent write a long answer to its answer file
+# (`submit --file`), which the Bash tool on Windows cannot do with a long heredoc.
+PROFILE_TOOLS = {
+    "read": "Bash, Read, Grep, Glob, Write",
+    "web": "Bash, Read, Grep, Glob, Write, WebFetch, WebSearch",
+}
+# No harness can hide an agent from automatic use, so the description asks the agent not to pick it.
+PROFILE_AGENT_DESCRIPTION = "Only for pskill tasks. Never choose it on your own."
 # Claude Code sets CLAUDE_PROJECT_DIR for its hooks, so a hook works from any folder of the project.
 PROJECT_ROOT_CODE = "os.environ.get('CLAUDE_PROJECT_DIR', '')"
 PSKILL_HOOKS: dict[str, dict[str, Any]] = pskill_hooks(PROJECT_ROOT_CODE, "claude-code")
@@ -45,3 +70,11 @@ def stop_response(reason: str | None) -> tuple[str, int]:
         return "", 0
     feedback = {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": reason}}
     return json.dumps(feedback), 0
+
+
+def profile_agent_text(profile: str) -> str:
+    """The agent file of a tool profile: tools only. No prompt, and no model, so the tier still sets it."""
+    return (
+        f"---\nname: pskill-{profile}\ndescription: {PROFILE_AGENT_DESCRIPTION}\n"
+        f"tools: {PROFILE_TOOLS[profile]}\n---\n{GENERATED_MARKER}\n"
+    )

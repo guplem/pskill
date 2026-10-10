@@ -5,6 +5,7 @@ from typing import Any
 
 from pskill_runner import claude_code, codex
 from pskill_runner.hook_settings import SHARED_HOOKS, remove_pskill_hooks, sync_hook_file
+from pskill_runner.profile_agents import sync_profile_agents
 from pskill_runner.project import Project
 from pskill_runner.skill_loader import load_catalog
 from pskill_runner.stubs import sync_stubs
@@ -22,7 +23,7 @@ def sync_project(project: Project, check_only: bool) -> list[str]:
     verb = "is out of date" if check_only else "was"
     lines = [
         f"{change.path.relative_to(project.root).as_posix()} {verb}{'' if check_only else ' ' + change.action}"
-        for change in sync_stubs(project, catalog, check_only)
+        for change in sync_stubs(project, catalog, check_only) + sync_profile_agents(project, catalog, check_only)
     ]
     changed_files = hook_file_changes(project, check_only) + permission_changes(project, check_only)
     lines += [f"{path} {verb}{'' if check_only else ' updated'}" for path in dict.fromkeys(changed_files)]

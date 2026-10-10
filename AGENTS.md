@@ -35,6 +35,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `skill_tests.py` | `pskill test`: replays a case file's answers against a skill. |
 | `project.py` | Finding `.pskill/` and reading `config.yaml`. |
 | `stubs.py`, `sync.py` | The generated `SKILL.md` stubs, and `pskill sync` (stubs plus harness settings). |
+| `profile_agents.py` | The harness agents that `pskill sync` writes for the tool profiles (`tools`) that skills use. |
 | `hook_settings.py` | The JSON hook merge that Claude Code and Codex share. |
 | `claude_code.py` | Claude Code's `.claude/settings.json` entries (hooks, permission rule) and hook output. |
 | `codex.py` | Codex's `.codex/hooks.json` hooks, `.codex/rules/pskill.rules`, and hook output. |
