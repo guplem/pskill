@@ -48,6 +48,12 @@ def test_the_autonomous_visit_ceiling_defaults_to_150_and_can_be_set(tmp_path: P
     assert find_project(make_project(tmp_path, "autonomous_max_visits: 40\n")).config.autonomous_max_visits == 40
 
 
+def test_the_wait_settings_default_to_20_and_120_minutes_and_can_be_set(tmp_path: Path) -> None:
+    assert (Config().wait_minutes, Config().max_wait_minutes) == (20, 120)
+    config = find_project(make_project(tmp_path, "wait_minutes: 5\nmax_wait_minutes: 30\n")).config
+    assert (config.wait_minutes, config.max_wait_minutes) == (5, 30)
+
+
 def test_an_unknown_config_key_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(ProjectError, match="unknown setting 'retry'"):
         find_project(make_project(tmp_path, "retry: 5\n"))

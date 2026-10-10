@@ -702,6 +702,8 @@ retries: 2
 autonomous_max_visits: 150                               # the agent's ceiling at a visit cap (5.5)
 script_timeout_s: 300
 stop_hook_max_blocks: 3
+wait_minutes: 20                                         # how long one `pskill wait` sleeps when nothing changes
+max_wait_minutes: 120                                    # the waits of one block with nothing new, before wait refuses
 viewer_port: 7777
 ```
 
