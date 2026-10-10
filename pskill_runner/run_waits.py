@@ -45,12 +45,12 @@ def wait_for_run_change(
 
 
 def run_changed(info: RunInfo, saved: RunInfo) -> bool:
-    """Another command saved the run. An answer also clears the alarm, in case it saved in the same millisecond."""
-    return (info["status"], info["updated_at"], info.get("wait_until")) != (
-        saved["status"],
-        saved["updated_at"],
-        saved["wait_until"],
-    )
+    """Something new happened: the status changed, or a submit, a resume, or another wait replaced the alarm.
+
+    A save with nothing new (such as `pskill current`) keeps the alarm, so the wait goes on. An early end
+    therefore never leaves this wait's alarm behind to silence the Stop hook.
+    """
+    return info["status"] != saved["status"] or info.get("wait_until") != saved["wait_until"]
 
 
 def change_text(project: Project, info: RunInfo) -> str:

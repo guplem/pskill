@@ -6,7 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from pskill_runner.engine import RunError, pause_run, read_run_info, resume_run, start_run, submit_answer
+from pskill_runner.engine import (
+    RunError,
+    current_packet,
+    pause_run,
+    read_run_info,
+    resume_run,
+    start_run,
+    submit_answer,
+)
+from pskill_runner.hooks import stop_hook_reason
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import timestamp
 from pskill_runner.run_waits import start_wait, wait_for_run_change
@@ -165,3 +174,24 @@ def test_a_resume_clears_the_wait(tmp_path: Path) -> None:
     resume_run(project, run_id)
 
     assert wait_fields(project, run_id) == [None, None, None, None]
+
+
+def test_a_save_with_nothing_new_does_not_end_the_wait(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    clock = FakeClock(on_sleep=lambda: current_packet(project, run_id))  # `current` saves run.json
+
+    text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert text.startswith("20 minutes passed and nothing changed.")
+
+
+def test_after_a_wait_ends_on_a_submit_the_stop_hook_counts_again(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    clock = FakeClock(on_sleep=lambda: submit_answer(project, run_id, "status: unknown"))
+
+    wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert stop_hook_reason(project, "claude-code") is not None
+    assert read_run_info(project, run_id)["stop_blocks"] == 1
