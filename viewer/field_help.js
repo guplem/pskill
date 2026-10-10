@@ -261,7 +261,7 @@ export const FIELD_HELP = {
     short: "The model tier of each subagent: `fast`, `standard`, or `deep`. With no tier, the subagent uses the main agent's model.",
     details: [
       "Optional, on `parallel` blocks. It is a tier name, or a `{{ }}` value computed once per item, like `agent`. So each reviewer of one block can get its own tier.",
-      "Each harness turns the tier into its own setting, so no skill names a model. Claude Code passes `model: haiku`, `sonnet`, or `opus` to each Agent call. Codex asks for the reasoning effort `low`, `medium`, or `high`. A harness without subagents ignores it.",
+      "Each harness turns the tier into a model and an effort, so no skill names a model. By default, Claude Code passes `model: haiku`, `sonnet`, or `opus` to each Agent call, and Codex passes `reasoning_effort: low`, `medium`, or `high` to each spawn_agent call. A project changes any row under `tiers` in `.pskill/config.yaml`. A harness without subagents ignores it.",
       "Use `fast` or `standard` for work that checks text against written rules, and `deep` for work that needs judgment, such as finding bugs.",
       "An empty computed value means no tier. `pskill validate` rejects a written value that is not a tier; a computed one fails the block at run time.",
     ],

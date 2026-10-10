@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.35.0 (2026-10-10)
+
+A model tier maps to a model and an effort per harness, through a table that each project can change (#151).
+
+- **The table:** each row has an optional `model` and an optional `effort`. The defaults name no versioned model: Claude Code passes `model: haiku`, `sonnet`, or `opus` to each Agent call, as before. Codex now passes `reasoning_effort: low`, `medium`, or `high` to each `spawn_agent` call.
+- **Project rows:** `tiers` in `.pskill/config.yaml` replaces single rows, such as `codex: {fast: {model: gpt-6-luna, effort: low}}`. The packet then names the row's `model` and effort on the call. An unknown harness, tier, or key stops with an error. Skills still name only the tier.
+- **Codex catalog:** `pskill validate` warns on a Codex row whose model the local Codex catalog (`models_cache.json` in `$CODEX_HOME` or `~/.codex`) does not list, or lists with an upgrade. With no catalog, it checks nothing.
+
 ## 0.34.0 (2026-10-10)
 
 A `parallel` block can ask for a model tier for its subagents (#11).

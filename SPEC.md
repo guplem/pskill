@@ -328,7 +328,7 @@ fact_check:
 - **A `when` per item.** In a `for_each` written as a YAML list, an item may have a `when` (exactly one `{{ }}`, like an edge's). The item starts a task only when its `when` is true, and the task's `item` has no `when` key. This keeps one way to list tasks: a fixed list, where each subagent says when it is needed. The `block_started` event lists the skipped items (section 10.3), and the viewer shows them. In a list computed during the run, a `when` key is plain data.
 - **`agent`** names a file `.pskill/agents/<name>.md`. The file is the subagent's role and rules, in Markdown. The runner puts its text at the top of the task prompt. The harness then spawns a plain subagent, so the same agent works on every harness. With no `agent`, the task gets a plain subagent with only its instruction.
 - **`task_name`** is one `{{ }}` value, computed once per item, that names the task. The packet heads the task with `#### Task <n> · <name>`, and the viewer labels the task's node and chip with it. The runner puts the name on one line and cuts it to 60 characters. A name that is missing, empty, or fails to compute is no name: the task shows as `task <n>`, and the run goes on. When the main agent builds the list, give each item an optional `name` field in that block's `output`, and set `task_name: "{{ item.name }}"`.
-- **`tier`** is `fast`, `standard`, or `deep`, or one `{{ }}` value computed once per item, so each task of one block can get its own tier. It is the model tier of the task's subagent. Each adapter turns it into its own setting, so no skill names a model: Claude Code passes `model: haiku`, `sonnet`, or `opus` to the task's Agent call, and Codex asks for the reasoning effort `low`, `medium`, or `high` (VERIFY). The packet says it on one line under the task's heading. With no tier, or an empty computed value, the subagent inherits the main agent's model, as before. `pskill validate` rejects a written value that is not a tier; a computed one fails the block. The generic adapter ignores the tier, because the main agent runs the tasks itself and cannot change its own model. Added in 0.34.0 (#11).
+- **`tier`** is `fast`, `standard`, or `deep`, or one `{{ }}` value computed once per item, so each task of one block can get its own tier. It is the model tier of the task's subagent. Each harness turns it into a model and an effort through a table, so no skill names a model. A row of the table has an optional `model` (none keeps the session's model) and an optional `effort` (none keeps the model's default). The default rows name no versioned model, so they never expire: Claude Code `fast`, `standard`, `deep` pass `model: haiku`, `sonnet`, `opus` to the task's Agent call; Codex passes `reasoning_effort: low`, `medium`, `high` to the task's `spawn_agent` call, on the session's model, because Codex has no model aliases and its versioned names expire. A project replaces any single row under `tiers` in `config.yaml` (section 10.1), such as `codex: {fast: {model: gpt-6-luna, effort: low}}`; the project row wins whole. The packet says the row on one line under the task's heading (Claude Code `model` and `effort`, Codex `model` and `reasoning_effort`); a row with neither gives no line. With no tier, or an empty computed value, the subagent inherits the main agent's model, as before. `pskill validate` rejects a written value that is not a tier; a computed one fails the block. The generic adapter ignores the tier, because the main agent runs the tasks itself and cannot change its own model. Added in 0.34.0 (#11). The table changed in 0.35.0 (#151).
 - pskill agents are only reusable prompt text. pskill never reads harness agent files (`.claude/agents/`, `.codex/agents/`), and `sync` never writes them. The main agent spawns a plain subagent (in Claude: `general-purpose`) and gives it the prompt that the runner built. This keeps agents versioned with the skills, so they cannot drift apart.
 - `steps.research.results` is the list of task outputs, in item order.
 - Each task has its own submission. The block completes when every task has a valid submission. An empty list completes at once.
@@ -568,7 +568,7 @@ class HarnessAdapter(Protocol):
 | Stop hook | `Stop`; pskill answers with `hookSpecificOutput.additionalContext` (non-error feedback that keeps Claude working; Claude Code also caps continuations at 8) | `Stop` in `.codex/hooks.json`; pskill answers with `{"decision": "block", "reason": ...}` (Codex needs JSON on stdout) | none |
 | Session-start hook | `SessionStart` with matcher `startup\|resume\|clear\|compact`; its plain stdout becomes context | `SessionStart`; its plain stdout becomes context | none |
 | Subagents | Agent tool with `subagent_type: general-purpose` and `run_in_background: false` (the turn waits for every subagent; the calls still run in parallel) | `spawn_agent`, then `wait_agent` | no (one by one) |
-| Model tier (`tier`) | `model: haiku`, `sonnet`, or `opus` on the task's Agent call | the reasoning effort `low`, `medium`, or `high` on the spawn request (VERIFY) | ignored |
+| Model tier (`tier`) | the row's `model` and `effort` on the task's Agent call (default: `model: haiku`, `sonnet`, or `opus`) | the row's `model` and `reasoning_effort` on the task's `spawn_agent` call (default: `reasoning_effort: low`, `medium`, or `high`) | ignored |
 | Question tool | `AskUserQuestion` (2-4 options; above 4, use a plain question) | plain question | plain question |
 
 - An adapter that cannot VERIFY a capability uses the `generic` behavior for it.
@@ -692,6 +692,7 @@ The runner itself lives in the user's cache: `PSKILL_CACHE_DIR` when set, else `
 - **`hook_files`** are paths, because every hooks file has the same shape (`{"hooks": {...}}`). An app's own file (`.claude/settings.json`, `.codex/hooks.json`) gets that app's hook commands. Any other file, such as a project's own source of hooks that generates the app files, gets shared commands that pass `--harness auto`. The runner then detects the app from the hook input (`turn_id` means Codex) or the environment (`CLAUDE_PROJECT_DIR` means Claude Code). `sync` removes an app's own pskill hooks from its app file when that file is not listed. It keeps the shared hooks there: only the project's generator puts them there, when it copies the listed source.
 - **`permissions`** are app names, because each app keeps its rules in its own format, in a fixed place: Claude Code in `permissions.allow` of `.claude/settings.json`, Codex in `.codex/rules/pskill.rules`.
 - The old setting `harnesses` stops with an error that names these two settings.
+- **`tiers`** changes rows of the tier table (section 6.3): a harness (`claude-code` or `codex`), a tier, and a row with `model` and `effort`, each optional. A row replaces the default row of its harness and tier; every other row keeps its default. An unknown harness, tier, or key, or a value that is not a non-empty text, stops with an error.
 
 ```yaml
 stub_folders: [.agents/skills, .claude/skills]          # where sync writes stubs
@@ -703,6 +704,9 @@ autonomous_max_visits: 150                               # the agent's ceiling a
 script_timeout_s: 300
 stop_hook_max_blocks: 3
 viewer_port: 7777
+tiers:                                                   # rows that replace the default tier rows (6.3)
+  codex:
+    fast: {model: gpt-6-luna, effort: low}
 ```
 
 ### 10.2 Run folder
@@ -770,6 +774,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 **Warnings:**
 1. A condition list whose last item has a `when`.
 2. An instruction file that no block uses.
+3. A Codex row in `tiers` whose model the local Codex model catalog does not list, or lists with an `upgrade` (named in the warning). The catalog is `models_cache.json` in `$CODEX_HOME`, else `~/.codex`. With no catalog, or one that cannot be read, there is no check. Checked when `validate` checks every skill.
 
 ---
 
