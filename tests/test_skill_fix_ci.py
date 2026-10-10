@@ -166,7 +166,7 @@ def test_read_checks_waits_at_most_300_seconds_for_a_first_check(monkeypatch: py
     assert clock.now == 300
 
 
-def test_main_reads_the_pull_request_and_its_wait(
+def test_main_prints_the_checks_of_the_pull_request(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     script = load_skill_script(SKILL, "read_checks")
@@ -182,3 +182,23 @@ def test_main_reads_the_pull_request_and_its_wait(
         "checks": [{"name": "lint", "state": "passed", "link": "https://ci/lint"}],
         "failed_checks": [],
     }
+
+
+@pytest.mark.parametrize(("script_input", "wait"), [({"pr": 7, "wait_s": 0}, (7, 0)), ({"pr": "7"}, (7, 540))])
+def test_main_passes_the_pull_request_and_its_wait(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    script_input: dict[str, Any],
+    wait: tuple[int, int],
+) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    calls: list[tuple[int, int]] = []
+
+    def fake_read_checks(pr_number: int, wait_s: int) -> dict[str, Any]:
+        calls.append((pr_number, wait_s))
+        return {"state": "passed"}
+
+    monkeypatch.setattr(script, "read_checks", fake_read_checks)
+
+    assert run_main(monkeypatch, capsys, script, script_input) == {"state": "passed"}
+    assert calls == [wait]
