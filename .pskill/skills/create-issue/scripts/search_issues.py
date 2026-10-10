@@ -23,6 +23,17 @@ MAX_PAGES_READ = 10
 MAX_RESULTS = 30
 
 
+def whole_word(term: str) -> str:
+    """A pattern for the term as a whole word: "ci" must not match "decision".
+
+    Each end that is a letter or digit must not touch another one. An end that is a symbol (--paginate, c++, .pskill/)
+    needs no check, and a hyphen next to the term is fine (pskill matches pskill-runner).
+    """
+    start = r"(?<!\w)" if re.match(r"\w", term[:1]) else ""
+    end = r"(?!\w)" if re.match(r"\w", term[-1:]) else ""
+    return f"{start}{re.escape(term)}{end}"
+
+
 def matching_issues(repo: str, terms: list[str]) -> list[dict[str, Any]]:
     pages_read = 0
 
@@ -39,9 +50,7 @@ def matching_issues(repo: str, terms: list[str]) -> list[dict[str, Any]]:
         if "pull_request" in item:
             continue
         text = f"{item['title']} {item['body'] or ''}".lower()
-        # Whole words only: "ci" must not match "decision". No letter, digit, or hyphen may touch either end, so a
-        # term that starts or ends with a symbol (c++, .pskill/) still matches.
-        score = sum(bool(re.search(rf"(?<![\w-]){re.escape(word)}(?![\w-])", text)) for word in words)
+        score = sum(bool(re.search(whole_word(word), text)) for word in words)
         if score:
             scored.append((score, item))
     scored.sort(key=lambda pair: (-pair[0], -pair[1]["number"]))

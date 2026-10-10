@@ -155,13 +155,25 @@ def test_search_issues_counts_only_whole_words(
     assert [found["number"] for found in printed] == [2]
 
 
-def test_search_issues_matches_a_term_that_starts_with_a_symbol(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    ("term", "title", "matches"),
+    [
+        ("--paginate", "Stop using --paginate", True),
+        ("c++", "Port it to c++ first", True),
+        ("pskill", "pskill-runner breaks", True),
+        ("issue", "The create-issue skill", True),
+        (".pskill/", "Read .pskill/skills/x", True),
+        ("ci", "A decision", False),
+    ],
+)
+def test_search_issues_matches_whole_words_with_symbols_and_hyphens(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], term: str, title: str, matches: bool
 ) -> None:
     script = load_skill_script(SKILL, "search_issues")
-    issues = [issue(1, "Stop using --paginate"), issue(2, "Use --paginate-all")]
-    install_shell(monkeypatch, script, FakeShell({"gh api GET repos/o/r/issues?state=all": json.dumps(issues)}))
+    install_shell(
+        monkeypatch, script, FakeShell({"gh api GET repos/o/r/issues?state=all": json.dumps([issue(1, title)])})
+    )
 
-    printed = run_main(monkeypatch, capsys, script, {"repo": "o/r", "terms": ["--paginate"]})
+    printed = run_main(monkeypatch, capsys, script, {"repo": "o/r", "terms": [term]})
 
-    assert [found["number"] for found in printed] == [1]
+    assert bool(printed) is matches
