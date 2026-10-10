@@ -1042,7 +1042,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `update [--from <source>]` | Move the pin of `.pskill/pskill.py`, put the release in the cache, then run `sync` with the new runner. Default source: the latest release archive. `--from .` in the pskill repository writes the dev pin. Remove the runner files of a vendored install (`VENDORED`, `pskill_runner/`, `viewer/`, `launchers/`, `AUTHORING.md`). Never touch `skills/`, `agents/`, `runs/`, or `config.yaml`. |
 | `authoring` | Print `AUTHORING.md`, the guide for agents that write skills. |
 | `list` | Skills: id, invocation, description. |
-| `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h]` | Validate the skill (errors 1 to 16 only; a stale stub never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. |
+| `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h]` | Validate the skill (every error except 17: a stale stub or profile agent never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. |
 | `current [<run>]` | Print the current packet. No state change. |
 | `task <run> <n>` | Print the full prompt of task `<n>` of the current parallel block. A subagent runs it first. No state change. |
 | `submit <run> [--task <n>] [--file <path>]` | Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. |

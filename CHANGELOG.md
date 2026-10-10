@@ -9,6 +9,7 @@ A `parallel` block can ask for a tool profile for its subagents (#149).
 - **Codex and generic** ignore the profile: a Codex agent file cannot limit the sandbox or the MCP servers.
 - **Checks:** `pskill validate` rejects a written value that is not a profile, and reports a stale profile agent like a stale stub. A computed value that is not a profile fails the block.
 - **Example skills:** `implement-issue` research subagents use `read` and `web`.
+- **Viewer:** the details of a parallel block show its tier and tool profile, with their help.
 
 ## 0.34.0 (2026-10-10)
 
