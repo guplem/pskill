@@ -6,7 +6,7 @@ An agent that waits on background work tells the runner with `pskill wait`, so t
 
 - **`wait <run> --reason <text>`:** the agent runs it in the background, then ends its turn. It records the wait in `run.json` and sleeps until the run changes (a submit, a pause, a cancel) or `wait_minutes` pass (default 20). Then it prints one line, so the harness wakes the agent.
 - **The Stop hook:** while a wait runs, it allows the stop with no message and does not count it. Its message now also says how to wait. With no wait, it works as before: 3 refused stops, then a pause.
-- **A limit:** when the waits of one block last `max_wait_minutes` (default 120) with no new answer, `wait` refuses to start. The stops count again, and the pause names the reason of the last wait.
+- **A limit:** when the waits of one block last `max_wait_minutes` (default 120) with no new answer, `wait` refuses to start. A wait that starts more than `wait_minutes` after the last alarm starts a new count. The stops count again, and the pause names the reason of the last wait.
 - **Claude Code only:** the quiet stop and the wait line need an app that wakes the agent when a background command ends. Codex does not document it, so its Stop hook works as before.
 - **`runs --open`** shows a waiting run, its reason, and the start of the wait.
 - **Fix:** `sync` no longer fails to update a stub when a parent folder of the project has the name of a skill.

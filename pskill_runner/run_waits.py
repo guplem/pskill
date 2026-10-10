@@ -79,7 +79,8 @@ def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> Run
     """Record a wait that ends `wait_minutes` after `now`. Return the `run.json` that it saved.
 
     The waits of one block end after `max_wait_minutes` with no new answer: then the Stop hook counts the
-    stops again, and a stuck run still pauses.
+    stops again, and a stuck run still pauses. A wait that starts more than `wait_minutes` after the last
+    alarm starts a new count: the agent worked between the two waits.
     """
     with run_lock(run_folder(project, run_id)):
         run = Run.load(project, run_id)
