@@ -393,7 +393,7 @@ def test_wait_records_the_wait_and_prints_one_line_at_its_alarm(
 ) -> None:
     project = make_project(tmp_path, monkeypatch)
     (project.pskill_folder / "config.yaml").write_text("wait_minutes: 0\n", encoding="utf-8")
-    run_id = start_plan(monkeypatch, capsys)
+    run_id = start_plan(monkeypatch, capsys, "--harness", "claude-code")
 
     exit_code = run_cli(monkeypatch, "wait", run_id, "--reason", "the CI checks")
 
@@ -407,7 +407,7 @@ def test_wait_refuses_after_max_wait_minutes_with_exit_code_1(
 ) -> None:
     project = make_project(tmp_path, monkeypatch)
     (project.pskill_folder / "config.yaml").write_text("max_wait_minutes: 0\n", encoding="utf-8")
-    run_id = start_plan(monkeypatch, capsys)
+    run_id = start_plan(monkeypatch, capsys, "--harness", "claude-code")
     start_wait(project, run_id, "the CI checks", utc_now())
 
     exit_code = run_cli(monkeypatch, "wait", run_id, "--reason", "the CI checks")
@@ -420,7 +420,7 @@ def test_runs_shows_the_reason_and_the_start_of_a_running_wait(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     project = make_project(tmp_path, monkeypatch)
-    run_id = start_plan(monkeypatch, capsys)
+    run_id = start_plan(monkeypatch, capsys, "--harness", "claude-code")
     start_wait(project, run_id, "the CI checks", utc_now())
     started_at = read_run_info(project, run_id)["wait_started_at"]
 
@@ -433,7 +433,7 @@ def test_runs_shows_no_wait_for_a_paused_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     project = make_project(tmp_path, monkeypatch)
-    run_id = start_plan(monkeypatch, capsys)
+    run_id = start_plan(monkeypatch, capsys, "--harness", "claude-code")
     start_wait(project, run_id, "the CI checks", utc_now())
     run_cli(monkeypatch, "pause", run_id)
     capsys.readouterr()

@@ -85,6 +85,12 @@ def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> Run
     with run_lock(run_folder(project, run_id)):
         run = Run.load(project, run_id)
         run.require_status(("active",), "wait")
+        if not run.adapter.wakes_after_background_command:
+            raise RunError(
+                f"Run {run_id} runs in {run.info['harness']}, and {run.info['harness']} does not wake the agent when "
+                f"a background command ends, so nothing would wake you after a wait. Continue the run: run "
+                f"`{runner_command(project)} current {run_id}`."
+            )
         waits_since = run.info.get("waits_since")
         last_alarm = run.info.get("wait_until")
         wait_length = timedelta(minutes=project.config.wait_minutes)

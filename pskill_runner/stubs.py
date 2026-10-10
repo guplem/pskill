@@ -102,7 +102,8 @@ def render_pskill_stub() -> str:
             f"- List the unfinished runs: `{RUNNER} runs --open`",
             f"- Show the current block of a run again: `{RUNNER} current <run-id>`",
             f"- Resume a paused run: `{RUNNER} resume <run-id>`",
-            f'- Wait on background work, in the background: `{RUNNER} wait <run-id> --reason "<what>"`',
+            "- Wait on background work, in the background (Claude Code only): "
+            f'`{RUNNER} wait <run-id> --reason "<what>"`',
             f"- Pause a run: `{RUNNER} pause <run-id>`",
             f"- Stop a run for good: `{RUNNER} cancel <run-id>`",
             f"- Open the run viewer: `{RUNNER} view`",

@@ -225,8 +225,9 @@ def test_session_start_reports_a_stub_that_it_cannot_write(tmp_path: Path) -> No
 
 def test_a_harness_that_does_not_wake_the_agent_keeps_counting_stops_during_a_wait(tmp_path: Path) -> None:
     project = make_project(tmp_path)
-    run_id = start(project, harness="codex")
+    run_id = start(project)
     start_wait(project, run_id, "the CI checks", utc_now())
+    current_packet(project, run_id, harness="codex")  # the run moves to Codex during the wait
 
     reason = stop_hook_reason(project, "codex") or ""
 

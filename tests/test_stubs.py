@@ -107,8 +107,8 @@ def test_sync_writes_one_stub_per_folder_plus_the_pskill_stub(tmp_path: Path) ->
 
 def test_the_pskill_stub_tells_how_to_wait_on_background_work() -> None:
     assert (
-        '- Wait on background work, in the background: `uv run .pskill/pskill.py wait <run-id> --reason "<what>"`'
-        in render_pskill_stub()
+        "- Wait on background work, in the background (Claude Code only): "
+        '`uv run .pskill/pskill.py wait <run-id> --reason "<what>"`' in render_pskill_stub()
     )
 
 

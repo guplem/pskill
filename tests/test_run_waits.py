@@ -323,3 +323,14 @@ def test_a_run_deleted_between_the_file_check_and_the_read_ends_the_wait(
     text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
 
     assert text == f"Run {run_id} is deleted.\n"
+
+
+def test_a_wait_is_refused_on_a_harness_that_does_not_wake_the_agent(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="codex")
+    register_stop_attempt(project, run_id)
+
+    with pytest.raises(RunError, match="codex does not wake the agent"):
+        start_wait(project, run_id, "the CI checks", START)
+
+    assert read_run_info(project, run_id)["stop_blocks"] == 1
