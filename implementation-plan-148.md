@@ -28,8 +28,8 @@ Acceptance: the criteria of #148. The manual cloud run is a check after the merg
 5. publish_body.py copies and the three instructions.
 6. fix-ci read_checks.py (new `tests/test_skill_fix_ci.py`) and wait_ci.md.
 7. create-issue: skill.yaml, the two scripts, judge_duplicates.md, case files.
-8. Remaining instructions (understand, finish, review).
-9. Static test `tests/test_skills_github_calls.py`, `AGENTS.md`, SPEC 13.2.
+8. Static test `tests/test_skills_github_calls.py`; its red is the remaining instructions (understand, finish, review), which this step fixes.
+9. `AGENTS.md` and SPEC 13.2.
 
 ## Checks
 
