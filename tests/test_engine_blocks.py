@@ -1064,7 +1064,8 @@ def test_a_task_with_a_tool_profile_and_a_tier_gets_both_on_one_line(tmp_path: P
     _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
 
     spawn_line = packet.split("#### Task 0")[1].splitlines()[1]
-    assert "`subagent_type: pskill-web`" in spawn_line and "`model: haiku`" in spawn_line
+    claude_code = ADAPTERS["claude-code"]
+    assert spawn_line == f"{claude_code.tools_wording['web']} {claude_code.tier_wording['fast']}"
 
 
 def test_each_item_can_ask_for_its_own_tool_profile(tmp_path: Path) -> None:
