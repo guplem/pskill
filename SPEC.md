@@ -780,6 +780,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 17. A stub or a profile agent out of date.
 18. A loop that can repeat after every cap is used up: a loop with no `max_visits` on the way (also inside a capped loop), or caps whose `on_max_visits` blocks lead back into the same loop.
 19. `max_visits` without `on_max_visits`; `on_max_visits`, `ask_on_max_visits`, or `autonomous_max_visits` without `max_visits`; `autonomous_max_visits` below `max_visits`.
+20. A `parallel` block's written `tier` is not `fast`, `standard`, or `deep`, or its written `tools` is not `read` or `web`. A computed value is checked at run time, and an unknown one fails the block.
 
 **Warnings:**
 1. A condition list whose last item has a `when`.
