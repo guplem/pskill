@@ -29,7 +29,7 @@ blocks:
   resolve_repo:
     type: script
     description: Find the repository that gets the issue
-    # gh fills {owner}/{repo} with the repository of the current folder. Every GitHub call of the skill goes
+    # `gh api` fills {owner}/{repo} with the repository of the current folder. Every GitHub call of the skill goes
     # through REST: the Claude Code cloud GitHub proxy refuses GraphQL and the search API.
     run: [gh, api, "repos/{{ inputs.repo or '{owner}/{repo}' }}", --jq, "{full_name}"]
     parse: json
