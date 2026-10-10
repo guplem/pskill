@@ -21,7 +21,8 @@ Acceptance criteria (from the issue):
   - `wait_started_at`: the start of the current wait.
   - `wait_until`: the alarm time. The hook allows a stop only before it, so a killed wait process never holds the hook for more than `wait_minutes`.
   - `waits_since`: the start of the first wait since the last task result or submit. It measures `max_wait_minutes`.
-- **Resets:** the four fields clear where `stop_blocks` resets (`Run.submit`, `Run.resume`), and in `record_task_while_paused` (a task result is something new).
+- **Resets:** the four fields clear where `stop_blocks` resets (`Run.submit`, `Run.resume`). A task answer while the run is paused needs no reset: no wait runs on a paused run, and `resume` clears the fields.
+- **Change check:** the wait ends when the status, `updated_at`, or `wait_until` differs from what it saved. A submit clears `wait_until`, so a save in the same millisecond still counts.
 - **Refusal:** when `now - waits_since >= max_wait_minutes`, `wait` raises `RunError` (exit 1) with: the waits passed N minutes with nothing new, continue the run or end the turn. The fields stay, so the next stops count as today, and `register_stop_attempt` puts "The last wait was on: <reason>." in the `agent_stopped` pause error.
 - **No new hook, no new event type, no schema bump** (SPEC 9.2, 18, 10.3).
 - **`wait` does not change the run owner** (SPEC 7.6, L4): it calls neither `use_harness` nor `use_session`.
@@ -47,7 +48,7 @@ Acceptance criteria (from the issue):
 2. `RunInfo` fields, None at start; `start_wait` records them (and keeps `waits_since`).
 3. `start_wait` refuses past `max_wait_minutes`; refuses a run that is not active.
 4. `wait_for_run_change`: ends at once on a change (submit, task result, pause, cancel) with its line; ends at the alarm with the one-line text and clears `wait_until`.
-5. Resets in `submit`, `resume`, `record_task_while_paused`.
+5. Resets in `submit` and `resume`.
 6. Hook: a waiting run allows the stop with no count; an expired wait counts again; the message has the wait line; the pause error names the wait reason.
 7. CLI `wait` command and `runs --open` column text.
 8. Stub line, `sync`, docs, version, CHANGELOG.
