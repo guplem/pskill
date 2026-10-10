@@ -129,7 +129,7 @@ Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`
 | Agent app | What works |
 |---|---|
 | Claude Code | Everything. |
-| Codex | Everything, with "Full access" (see below). |
+| Codex | Everything, with "Full access" (see below), except tool profiles (`tools`): its subagents get every tool. |
 | Others (Gemini CLI, Cursor, ...) | The basics. There are no hooks, so the agent can stop halfway. Parallel tasks run one after another, so each task sees the earlier ones. |
 
 ## Know before you use it
