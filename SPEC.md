@@ -710,7 +710,7 @@ The runner itself lives in the user's cache: `PSKILL_CACHE_DIR` when set, else `
 ```yaml
 stub_folders: [.agents/skills, .claude/skills]          # where sync writes stubs
 hook_files: [.claude/settings.json, .codex/hooks.json]  # where sync writes the two hooks
-permissions: [claude-code, codex]                       # the apps that get the rule to run pskill without asking
+permissions: [claude-code, codex]                       # the apps that get the runner rule (and the profile agents)
 default_mode: interactive
 retries: 2
 autonomous_max_visits: 150                               # the agent's ceiling at a visit cap (5.5)
