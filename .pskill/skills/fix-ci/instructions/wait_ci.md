@@ -1,11 +1,13 @@
 Wait until every CI check on the head commit of pull request #{{ inputs.pr }} has finished.
 
-- Read the head commit with `gh pr view {{ inputs.pr }} --json headRefOid`. Count only the checks of that commit.
-- Wait in the foreground: run `gh pr checks {{ inputs.pr }} --watch --interval 30` with the longest timeout that your shell tool allows. Where the `timeout` command exists, `timeout 540 gh pr checks {{ inputs.pr }} --watch --interval 30` stops before a 10-minute tool limit. Repeat it until every check has finished.
+- Run `uv run {{ skill.dir }}/scripts/read_checks.py` with `{"pr": {{ inputs.pr }}, "wait_s": 540}` on stdin. Run it in the foreground, with a shell tool timeout of 10 minutes. The script reads every check of the head commit, and it waits while a check still runs.
 - Do not end your turn to wait. Never use a `sleep` on its own.
-- A skipped check counts as passed.
-- When no check exists yet, rerun `gh pr checks {{ inputs.pr }}` every 15 seconds inside one foreground shell loop, for at most 5 minutes.
-- When no check starts within those 5 minutes, read `gh pr view {{ inputs.pr }} --json mergeable,isDraft`.
-  - A conflict with the base starts no CI: report it as the failed check `merge conflict`.
-  - A draft can start no CI until it is ready for review: report the failed check `draft`.
-  - Otherwise the repository runs no CI on this pull request: report `passed`.
+- Read the `state` of its output:
+  - `passed`: report `passed`. A skipped check counts as passed.
+  - `failed`: report `failed`, with its `failed_checks`.
+  - `pending`: run the script again.
+  - `none`: no check started within 5 minutes. When `mergeable` is `null`, GitHub still computes it: run the script once more. Then:
+    - `mergeable` is `false`: a conflict with the base starts no CI. Report `failed` with the failed check `merge conflict`.
+    - `draft` is `true`: a draft starts no CI until it is ready for review. Report `failed` with the failed check `draft`.
+    - Otherwise the repository runs no CI on this pull request: report `passed`.
+- Take `head_sha` from its output.

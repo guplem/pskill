@@ -10,6 +10,7 @@ from tests.skill_scripts import SKILLS_FOLDER, load_skill_script
 # Keep this list equal to the header of every copy.
 GITHUB_REST_READERS = [
     "checkout-pr",
+    "fix-ci",
     "implement-issue",
     "resolve-pr-feedback",
     "review-head-check",
