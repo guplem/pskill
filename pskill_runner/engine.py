@@ -942,7 +942,7 @@ class Run:
             instruction=instruction,
             return_fields=block.output,
             name=task.get("name"),
-            spawn_wording=tier_wording(self.adapter, {}, task.get("tier") or ""),
+            spawn_wording=tier_wording(self.adapter, self.project.config.tiers, task.get("tier") or ""),
         )
 
     def parallel_packet(self, block: ParallelBlock, errors: list[str], show_goal: bool, show_rules: bool) -> str:
