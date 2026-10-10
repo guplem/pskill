@@ -1,4 +1,4 @@
-Rewrite the description of pull request #{{ steps.open_draft_pr.json.pr_number }} so that it describes the code on the branch. Write it to a file in a temporary folder outside the repository, then post it with `gh api -X PATCH repos/{owner}/{repo}/pulls/{{ steps.open_draft_pr.json.pr_number }} -F body=@<file>`. Use capital `-F`: lowercase `-f` posts the text `@<file>` itself.
+Rewrite the description of pull request #{{ steps.open_draft_pr.json.pr_number }} so that it describes the code on the branch. Write it to `<file>` in a temporary folder outside the repository. Then post it: run `uv run {{ skill.dir }}/scripts/publish_body.py` with `{"pr": {{ steps.open_draft_pr.json.pr_number }}, "body_file": "<file>"}` on stdin.
 
 1. `## Summary`: the outcome in the first line. Then the line `Closes #{{ steps.read_issue.json.number }}`. Then one to three bullets.
 2. `## Test plan`: `- [x]` only for the checks that really ran. Add `- [ ]` for the CI checks that still have to prove the change.

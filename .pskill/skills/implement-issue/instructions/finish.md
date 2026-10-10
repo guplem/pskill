@@ -44,4 +44,4 @@ Then update the pull request description.
   - Name what a human must decide or verify, not what the code does. Example: "Decide if the new retry limit in `config/defaults.toml` stays."
 - **When you do not add `waiting-for-human-review`,** remove the note if there is one. Remove an Incomplete warning that no longer applies.
 
-Write a changed description in one call: `gh api -X PATCH repos/{owner}/{repo}/pulls/{{ steps.open_draft_pr.json.pr_number }} -F body=@<file>`. Write `<file>` in a temporary folder outside the repository. Use capital `-F`: lowercase `-f` posts the text `@<file>` itself.
+Write the description to `<file>` in a temporary folder outside the repository. Then run `uv run {{ skill.dir }}/scripts/publish_body.py` with `{"pr": {{ steps.open_draft_pr.json.pr_number }}, "body_file": "<file>"}` on stdin. It writes the description only when it changed.

@@ -57,4 +57,4 @@ strict = true
 files = ["pskill.py", "pskill_runner", "tests", ".pskill/skills/*/scripts"]
 # mypy refuses two modules with one name. The helper copies are identical (a test checks it), so it checks only the
 # implement-issue copy, and the scripts of the other skills type-check against that one.
-exclude = ['^\.pskill/skills/(?!implement-issue/)[^/]+/scripts/github_rest\.py$']
+exclude = ['^\.pskill/skills/(?!implement-issue/)[^/]+/scripts/(github_rest|publish_body)\.py$']
