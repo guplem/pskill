@@ -76,8 +76,11 @@ class FakeShell:
         return json.loads(output) if output.strip() else None
 
     def api_pages(self, path: str, key: str | None = None, stop: Callable[[list[Any]], bool] | None = None) -> Any:
-        """Fake `gh_api_pages`: one GET of the path, whose output is the whole list."""
-        return self.api(path) or []
+        """Fake `gh_api_pages`: one GET of the path, whose output is one page: a list, or an object with `key`."""
+        reply = self.api(path)
+        if reply is None:
+            return []
+        return reply[key] if key is not None else reply
 
     def ran(self, prefix: str) -> bool:
         return any(command.startswith(prefix) for command in self.commands)

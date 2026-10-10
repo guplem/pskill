@@ -33,7 +33,7 @@ def checks_shell(check_runs: list[dict[str, Any]], statuses: list[dict[str, Any]
         {
             PULLS: json.dumps(pull_request()),
             "git ls-remote origin refs/heads/42-fix-save": "origin1\trefs/heads/42-fix-save",
-            CHECK_RUNS: json.dumps(check_runs),
+            CHECK_RUNS: json.dumps({"total_count": len(check_runs), "check_runs": check_runs}),
             STATUSES: json.dumps(statuses or []),
         }
     )
