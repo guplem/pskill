@@ -14,6 +14,7 @@ from pskill_runner.engine import (
     delete_run,
     pause_run,
     read_run_info,
+    register_stop_attempt,
     resume_run,
     run_folder,
     start_run,
@@ -249,3 +250,15 @@ def test_a_task_result_of_a_parallel_block_ends_the_wait_at_once(tmp_path: Path)
     assert text == f"Run {run_id} changed. Continue it: run `uv run .pskill/pskill.py current {run_id}`.\n"
     assert len(clock.sleeps) == 1
     assert wait_fields(project, run_id) == [None, None, None, None]
+
+
+def test_a_wait_resets_the_count_of_refused_stops(tmp_path: Path) -> None:
+    """A stop that the hook reads before the background wait writes `run.json` must not carry into later waits."""
+    project = make_project(tmp_path)
+    run_id = start(project)
+    register_stop_attempt(project, run_id)
+    register_stop_attempt(project, run_id)
+
+    start_wait(project, run_id, "the CI checks", START)
+
+    assert read_run_info(project, run_id)["stop_blocks"] == 0

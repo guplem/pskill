@@ -84,6 +84,8 @@ def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> Run
         run.info["wait_started_at"] = timestamp(now)
         run.info["wait_until"] = timestamp(now + timedelta(minutes=project.config.wait_minutes))
         run.info["waits_since"] = waits_since or timestamp(now)
+        # The hook can count a stop before this write lands. `max_wait_minutes` still bounds a stuck run.
+        run.info["stop_blocks"] = 0
         run.save()
     return run.info
 
