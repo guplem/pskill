@@ -68,6 +68,7 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 | `runs --open` | List the unfinished runs. |
 | `current <run>` | Show the current step of a run. |
 | `task <run> <n>` | Show the full prompt of one parallel task. A subagent runs this first. |
+| `wait <run> --reason <text>` | The agent waits on background work, such as subagents or a CI wait. The hook lets it stop until the run changes or 20 minutes pass. |
 | `pause <run>`, `resume <run>`, `cancel <run>` | Pause, continue, or stop a run. A run survives when you close the session. |
 | `delete <run>` | Delete a finished run, for cleanup. |
 | `view` | Open the viewer in your browser (below). |

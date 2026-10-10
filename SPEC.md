@@ -1040,7 +1040,8 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `submit <run> [--task <n>] [--file <path>]` | Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. |
 | `pause <run>` / `resume <run>` / `cancel <run>` | Lifecycle control. |
 | `delete <run>` | Delete the folder of a finished run, for cleanup. An unfinished run must be cancelled first. The id must name a folder right inside `runs/`. |
-| `runs [--open]` | List runs. |
+| `wait <run> --reason <text>` | The agent waits on background work. Record the wait, then sleep until the run changes or `wait_minutes` pass (9.2). The agent runs it in the background, then ends its turn. |
+| `runs [--open]` | List runs. A waiting run shows its wait reason and the start of the wait. |
 | `validate [<skill>]` | Section 11. |
 | `test [<skill>]` | Section 12. |
 | `sync [--check]` | Write stubs and hooks. `--check` only reports differences. |

@@ -17,6 +17,8 @@ from pskill_runner.engine import read_run_info
 from pskill_runner.install import CACHE_VARIABLE
 from pskill_runner.project import Project, find_project
 from pskill_runner.release import build_release_archive, release_file_map
+from pskill_runner.run_store import utc_now
+from pskill_runner.run_waits import start_wait
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
@@ -381,6 +383,51 @@ def test_pause_resume_and_cancel_change_the_status_of_a_run(
     assert run_cli(monkeypatch, "delete", run_id) == cli.EXIT_OK
     assert "deleted" in capsys.readouterr().out
     assert not (project.runs_folder / run_id).exists()
+
+
+# --- wait -----------------------------------------------------------------------------------------
+
+
+def test_wait_records_the_wait_and_prints_one_line_at_its_alarm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, monkeypatch)
+    (project.pskill_folder / "config.yaml").write_text("wait_minutes: 0\n", encoding="utf-8")
+    run_id = start_plan(monkeypatch, capsys)
+
+    exit_code = run_cli(monkeypatch, "wait", run_id, "--reason", "the CI checks")
+
+    assert exit_code == cli.EXIT_OK
+    assert capsys.readouterr().out.startswith("0 minutes passed and nothing changed. If you still wait on the CI")
+    assert read_run_info(project, run_id)["wait_reason"] == "the CI checks"
+
+
+def test_wait_refuses_after_max_wait_minutes_with_exit_code_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, monkeypatch)
+    (project.pskill_folder / "config.yaml").write_text("wait_minutes: 0\nmax_wait_minutes: 0\n", encoding="utf-8")
+    run_id = start_plan(monkeypatch, capsys)
+    run_cli(monkeypatch, "wait", run_id, "--reason", "the CI checks")
+    capsys.readouterr()
+
+    exit_code = run_cli(monkeypatch, "wait", run_id, "--reason", "the CI checks")
+
+    assert exit_code == cli.EXIT_USAGE_ERROR
+    assert "0 minutes with nothing new" in capsys.readouterr().err
+
+
+def test_runs_shows_the_reason_and_the_start_of_a_running_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+    start_wait(project, run_id, "the CI checks", utc_now())
+    started_at = read_run_info(project, run_id)["wait_started_at"]
+
+    run_cli(monkeypatch, "runs", "--open")
+
+    assert capsys.readouterr().out.endswith(f"  waiting on the CI checks since {started_at}\n")
 
 
 # --- runs and list --------------------------------------------------------------------------------
