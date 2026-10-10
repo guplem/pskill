@@ -485,6 +485,7 @@ def test_open_draft_pr_finds_the_pull_request_of_a_branch_that_gh_would_rewrite(
     outputs = {
         "git branch --show-current": "repo-cleanup",
         "gh api GET repos/{owner}/{repo}/pulls?head=": f"[{NEW_PULL_REQUEST}]",
+        "gh api GET user": json.dumps({"login": "me"}),
         REPOSITORY: json.dumps({"owner": {"login": "ana"}}),
     }
     shell = install_shell(monkeypatch, script, FakeShell(outputs))
