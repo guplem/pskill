@@ -1,6 +1,7 @@
 """Tests for pskill_runner.run_waits: `pskill wait`, the alarm that keeps the Stop hook quiet."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from pskill_runner.engine import (
 from pskill_runner.hooks import stop_hook_reason
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_records import RunInfo
-from pskill_runner.run_store import timestamp
+from pskill_runner.run_store import RunLockTimeout, run_lock, timestamp
 from pskill_runner.run_waits import start_wait, wait_for_run_change
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 from tests.test_engine_blocks import PARALLEL_SKILL
@@ -262,3 +263,26 @@ def test_a_wait_resets_the_count_of_refused_stops(tmp_path: Path) -> None:
     start_wait(project, run_id, "the CI checks", START)
 
     assert read_run_info(project, run_id)["stop_blocks"] == 0
+
+
+def test_a_busy_lock_during_a_poll_does_not_crash_the_wait(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A long script block can hold the lock past its 10 s timeout. The wait reads again after its next sleep."""
+    project = make_project(tmp_path)
+    run_id = start(project)
+    real_lock = run_lock
+    lock_calls: list[int] = []
+
+    @contextmanager
+    def lock_busy_on_the_first_poll(folder: Path) -> Iterator[None]:
+        lock_calls.append(1)
+        if len(lock_calls) == 2:  # the first call records the wait; the second is the first poll
+            raise RunLockTimeout("busy")
+        with real_lock(folder):
+            yield
+
+    monkeypatch.setattr(run_waits, "run_lock", lock_busy_on_the_first_poll)
+    clock = FakeClock()
+
+    text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert text.startswith("20 minutes passed and nothing changed.")

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pskill_runner.engine import Run, RunError, read_run_info, run_folder, runner_command
 from pskill_runner.project import Project
 from pskill_runner.run_records import RunInfo
-from pskill_runner.run_store import parse_timestamp, run_lock, timestamp, utc_now
+from pskill_runner.run_store import RunLockTimeout, parse_timestamp, run_lock, timestamp, utc_now
 
 POLL_SECONDS = 5.0
 
@@ -34,9 +34,8 @@ def wait_for_run_change(
     while True:
         if not (folder / "run.json").is_file():
             return f"Run {run_id} is deleted.\n"
-        with run_lock(folder):  # a few milliseconds: on Windows, a read during an `os.replace` fails both
-            info = read_run_info(project, run_id)
-        if run_changed(info, saved):
+        info = read_when_free(project, run_id)
+        if info is not None and run_changed(info, saved):
             return change_text(project, info)
         remaining = (alarm - clock()).total_seconds()
         if remaining <= 0:
@@ -45,6 +44,19 @@ def wait_for_run_change(
                 f"run the wait again. Else continue the run: run `{runner_command(project)} current {run_id}`.\n"
             )
         sleep(min(POLL_SECONDS, remaining))
+
+
+def read_when_free(project: Project, run_id: str) -> RunInfo | None:
+    """`run.json` read under the lock, or None while another command holds the lock past its timeout.
+
+    The lock lasts a few milliseconds: on Windows, a read during an `os.replace` fails both. A long
+    `script` block can hold the lock for minutes; the wait then reads again after its next sleep.
+    """
+    try:
+        with run_lock(run_folder(project, run_id)):
+            return read_run_info(project, run_id)
+    except RunLockTimeout:
+        return None
 
 
 def run_changed(info: RunInfo, saved: RunInfo) -> bool:
