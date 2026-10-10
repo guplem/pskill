@@ -1,7 +1,7 @@
 """`pskill wait`: the agent waits on background work, and the Stop hook stays quiet (SPEC.md section 9.2).
 
 A wait is an alarm. It records `wait_until` in `run.json`, so the Stop hook allows the stop with no
-message until then. The wait holds the run lock only to change `run.json`, never while it sleeps.
+message until then. The wait holds the run lock only to write or read `run.json`, never while it sleeps.
 """
 
 import time
@@ -25,14 +25,17 @@ def wait_for_run_change(
 ) -> str:
     """Record a wait, then sleep until the run changes or the alarm rings. Return one line for the agent.
 
-    It reads `run.json` with no lock: the file is always replaced whole, and a lock held for minutes would
-    block every submit.
+    Each poll takes the run lock for its read only: a lock held for minutes would block every submit.
     """
     started = clock()
     saved = start_wait(project, run_id, reason, started)
     alarm = started + timedelta(minutes=project.config.wait_minutes)
+    folder = run_folder(project, run_id)
     while True:
-        info = read_run_info(project, run_id)
+        if not (folder / "run.json").is_file():
+            return f"Run {run_id} is deleted.\n"
+        with run_lock(folder):  # a few milliseconds: on Windows, a read during an `os.replace` fails both
+            info = read_run_info(project, run_id)
         if run_changed(info, saved):
             return change_text(project, info)
         remaining = (alarm - clock()).total_seconds()

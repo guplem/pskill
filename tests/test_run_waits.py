@@ -6,17 +6,22 @@ from pathlib import Path
 
 import pytest
 
+from pskill_runner import run_waits
 from pskill_runner.engine import (
     RunError,
+    cancel_run,
     current_packet,
+    delete_run,
     pause_run,
     read_run_info,
     resume_run,
+    run_folder,
     start_run,
     submit_answer,
 )
 from pskill_runner.hooks import stop_hook_reason
 from pskill_runner.project import Project, find_project
+from pskill_runner.run_records import RunInfo
 from pskill_runner.run_store import timestamp
 from pskill_runner.run_waits import start_wait, wait_for_run_change
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
@@ -195,3 +200,38 @@ def test_after_a_wait_ends_on_a_submit_the_stop_hook_counts_again(tmp_path: Path
 
     assert stop_hook_reason(project, "claude-code") is not None
     assert read_run_info(project, run_id)["stop_blocks"] == 1
+
+
+def test_each_poll_reads_the_run_under_its_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """On Windows, a read during an `os.replace` of `run.json` fails both sides, so a poll takes the lock."""
+    project = make_project(tmp_path)
+    run_id = start(project)
+    lock_file = run_folder(project, run_id) / ".lock"
+    locked_reads: list[bool] = []
+
+    def read_and_note_the_lock(project: Project, run_id: str) -> RunInfo:
+        locked_reads.append(lock_file.exists())
+        return read_run_info(project, run_id)
+
+    monkeypatch.setattr(run_waits, "read_run_info", read_and_note_the_lock)
+    clock = FakeClock()
+
+    wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert len(locked_reads) > 1
+    assert all(locked_reads)
+
+
+def test_a_run_deleted_during_the_wait_ends_it(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    def cancel_and_delete() -> None:
+        cancel_run(project, run_id)
+        delete_run(project, run_id)
+
+    clock = FakeClock(on_sleep=cancel_and_delete)
+
+    text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
+
+    assert text == f"Run {run_id} is deleted.\n"
