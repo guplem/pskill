@@ -1050,7 +1050,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `runs [--open]` | List runs. |
 | `validate [<skill>]` | Section 11. |
 | `test [<skill>]` | Section 12. |
-| `sync [--check]` | Write stubs and hooks. `--check` only reports differences. |
+| `sync [--check]` | Write the stubs, the profile agents, the hooks, and the permission rule. `--check` only reports differences. |
 | `view` | Start the viewer. |
 | `hook stop\|session-start --harness <h>` | Internal. The harness calls it. |
 
