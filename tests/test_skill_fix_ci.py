@@ -46,6 +46,7 @@ def checks_shell(check_runs: list[dict[str, Any]], statuses: list[dict[str, Any]
         ([check_run("lint"), check_run("docs", conclusion="skipped")], [], "passed", []),
         ([check_run("lint"), check_run("tests", status="in_progress", conclusion=None)], [], "pending", []),
         ([check_run("lint", conclusion="failure")], [], "failed", ["lint: https://ci/lint"]),
+        ([check_run("lint")], [{"id": 1, "context": "deploy", "state": "pending", "target_url": None}], "pending", []),
         (
             [],
             [
