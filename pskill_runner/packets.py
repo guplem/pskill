@@ -138,6 +138,7 @@ class TaskPrompt:
     instruction: str
     return_fields: FieldMap
     name: str | None = None  # from the block's `task_name`
+    spawn_wording: str = ""  # how to spawn this task's subagent with its model tier, in this harness
 
 
 def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], total_tasks: int) -> str:
@@ -158,7 +159,8 @@ def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], to
     ]
     for task in open_tasks:
         name = f" · {task.name}" if task.name else ""
-        lines += ["", f"#### Task {task.index}{name}", task_line(packet, task.index)]
+        lines += ["", f"#### Task {task.index}{name}", *([task.spawn_wording] if task.spawn_wording else [])]
+        lines.append(task_line(packet, task.index))
     return "\n".join(lines) + "\n"
 
 

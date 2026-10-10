@@ -296,6 +296,7 @@ research:
     - {agent: adr-checker, focus: "Find the ADRs that limit this change."}
   agent: "{{ item.agent }}"            # optional: a pskill agent from .pskill/agents/
   task_name: "{{ item.agent }}"        # optional: the name of each task, in the packet and the viewer
+  tier: deep                           # optional: the model tier of each subagent (fast, standard, deep)
   instruction: instructions/research.md   # uses {{ item.focus }}
   output:                              # the output of each task
     report: {type: string, description: "What you found, with file paths."}
@@ -327,6 +328,7 @@ fact_check:
 - **A `when` per item.** In a `for_each` written as a YAML list, an item may have a `when` (exactly one `{{ }}`, like an edge's). The item starts a task only when its `when` is true, and the task's `item` has no `when` key. This keeps one way to list tasks: a fixed list, where each subagent says when it is needed. The `block_started` event lists the skipped items (section 10.3), and the viewer shows them. In a list computed during the run, a `when` key is plain data.
 - **`agent`** names a file `.pskill/agents/<name>.md`. The file is the subagent's role and rules, in Markdown. The runner puts its text at the top of the task prompt. The harness then spawns a plain subagent, so the same agent works on every harness. With no `agent`, the task gets a plain subagent with only its instruction.
 - **`task_name`** is one `{{ }}` value, computed once per item, that names the task. The packet heads the task with `#### Task <n> · <name>`, and the viewer labels the task's node and chip with it. The runner puts the name on one line and cuts it to 60 characters. A name that is missing, empty, or fails to compute is no name: the task shows as `task <n>`, and the run goes on. When the main agent builds the list, give each item an optional `name` field in that block's `output`, and set `task_name: "{{ item.name }}"`.
+- **`tier`** is `fast`, `standard`, or `deep`, or one `{{ }}` value computed once per item, so each task of one block can get its own tier. It is the model tier of the task's subagent. Each adapter turns it into its own setting, so no skill names a model: Claude Code passes `model: haiku`, `sonnet`, or `opus` to the task's Agent call, and Codex asks for the reasoning effort `low`, `medium`, or `high` (VERIFY). The packet says it on one line under the task's heading. With no tier, or an empty computed value, the subagent inherits the main agent's model, as before. `pskill validate` rejects a written value that is not a tier; a computed one fails the block. The generic adapter ignores the tier, because the main agent runs the tasks itself and cannot change its own model. Added in 0.34.0 (#11).
 - pskill agents are only reusable prompt text. pskill never reads harness agent files (`.claude/agents/`, `.codex/agents/`), and `sync` never writes them. The main agent spawns a plain subagent (in Claude: `general-purpose`) and gives it the prompt that the runner built. This keeps agents versioned with the skills, so they cannot drift apart.
 - `steps.research.results` is the list of task outputs, in item order.
 - Each task has its own submission. The block completes when every task has a valid submission. An empty list completes at once.
@@ -566,6 +568,7 @@ class HarnessAdapter(Protocol):
 | Stop hook | `Stop`; pskill answers with `hookSpecificOutput.additionalContext` (non-error feedback that keeps Claude working; Claude Code also caps continuations at 8) | `Stop` in `.codex/hooks.json`; pskill answers with `{"decision": "block", "reason": ...}` (Codex needs JSON on stdout) | none |
 | Session-start hook | `SessionStart` with matcher `startup\|resume\|clear\|compact`; its plain stdout becomes context | `SessionStart`; its plain stdout becomes context | none |
 | Subagents | Agent tool with `subagent_type: general-purpose` and `run_in_background: false` (the turn waits for every subagent; the calls still run in parallel) | `spawn_agent`, then `wait_agent` | no (one by one) |
+| Model tier (`tier`) | `model: haiku`, `sonnet`, or `opus` on the task's Agent call | the reasoning effort `low`, `medium`, or `high` on the spawn request (VERIFY) | ignored |
 | Question tool | `AskUserQuestion` (2-4 options; above 4, use a plain question) | plain question | plain question |
 
 - An adapter that cannot VERIFY a capability uses the `generic` behavior for it.
@@ -1146,7 +1149,7 @@ Each item below exists as a GitHub issue with the label `future` (guplem/pskill 
 | Token counts per block | Harness session files are private formats. |
 | Replay from a chosen block (fork a run) | Step-through playback covers the MVP need. |
 | Up-front check of required tools and connectors | A missing tool fails its block, then the run pauses. |
-| Tool limits and model choice for a block or a pskill agent | Harness-specific; pskill agents are prompt-only in the MVP. |
+| Tool limits for a block or a pskill agent | Harness-specific, and pskill writes no harness agent file. The model tier part shipped in 0.34.0 as the `parallel` field `tier` (#11). |
 | `implement-issue`: split big issues into stacked PRs, worktree subagents | The example version makes one PR. (`resolve-pr-feedback` now replies to review threads.) |
 
 ---

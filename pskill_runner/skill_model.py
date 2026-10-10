@@ -20,6 +20,14 @@ class Edge:
 # uses edges.
 ChoiceMap = dict[str, list[Edge]]
 
+# The model tiers that a parallel block can ask for. Each adapter says what a tier means in its harness.
+MODEL_TIERS = ("fast", "standard", "deep")
+
+
+def tier_choices() -> str:
+    """The known tiers for an error message: "fast, standard, or deep"."""
+    return ", ".join(MODEL_TIERS[:-1]) + f", or {MODEL_TIERS[-1]}"
+
 
 @dataclass(frozen=True, kw_only=True)
 class Block:
@@ -75,6 +83,7 @@ class ParallelBlock(RetryableBlock):
     for_each: list[Any] | str
     agent: str | None = None
     task_name: str | None = None  # a {{ }} value per item: the task's name in the packet and the viewer
+    tier: str | None = None  # one of MODEL_TIERS, or a {{ }} value per item; None: the subagent inherits the model
     instruction: str
     output: FieldMap
     next: list[Edge]
