@@ -28,6 +28,7 @@ description: >-               # what harnesses show to decide when to use the sk
   Plan and check a change. Use when the user asks to plan a change.
 goal: A plan that the user approved, with the names in the changed files checked.
 invocation: auto              # auto (default) | manual (only the user starts it) | internal (only call blocks; `pskill start` refuses it)
+on_pause: "{% if run.mode == 'autonomous' %}Comment on the issue: the run paused, and why.{% endif %}"  # optional: steps for when the run pauses
 inputs:
   topic: {type: string, description: "What the user wants to change."}
   files: {type: array, items: {type: string}, description: "The files to check."}
@@ -178,6 +179,7 @@ blocks:
 - An instruction is one block's job only. Do not describe the return format: the packet adds it from `output`.
 - Do not write rules about order ("never skip", "before X do Y"): the graph enforces order.
 - One or two lines can stay inline in `skill.yaml`. Put anything longer in `instructions/<block>.md`.
+- `on_pause` (optional, top level, inline or a `.md` file) holds what the agent does when the run pauses: post a comment, release a claim. The pause packet shows it under the error. An unattended run needs it, because nobody reads its pause.
 - Split a block where agents deviated in real runs (skipped a check, ran ahead). Keep a block whole where the work has no fixed order.
 
 ## Asking the user
