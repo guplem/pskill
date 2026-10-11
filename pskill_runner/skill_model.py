@@ -155,9 +155,10 @@ class Skill:
     entry: list[Edge]
     blocks: dict[str, AnyBlock]
     folder: Path
+    on_pause: str | None = None  # what the agent does when the run pauses: a `.md` path or the text itself
 
     def instruction_text(self, value: str) -> str:
-        """An `instruction` or `report` is a path that ends in `.md`, or the text itself."""
+        """An `instruction`, a `report`, or `on_pause` is a path that ends in `.md`, or the text itself."""
         if value.endswith(".md"):
             return (self.folder / value).read_text(encoding="utf-8")
         return value

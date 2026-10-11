@@ -60,6 +60,7 @@ TOP_LEVEL_SCHEMA: dict[str, Any] = {
         "id": {"type": "string", "pattern": SKILL_ID_PATTERN, "maxLength": SKILL_ID_MAX_LENGTH},
         "description": {"type": "string"},
         "goal": {"type": "string"},
+        "on_pause": {"type": "string"},
         "invocation": {"enum": ["auto", "manual", "internal"]},
         "inputs": {"$ref": "#/$defs/field_map"},
         "outputs": {"$ref": "#/$defs/field_map"},

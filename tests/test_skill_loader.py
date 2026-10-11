@@ -305,3 +305,16 @@ def test_a_parallel_block_loads_its_tool_profile(tmp_path: Path) -> None:
     assert isinstance(with_tools, ParallelBlock) and isinstance(without_tools, ParallelBlock)
     assert with_tools.tools == "read"
     assert without_tools.tools is None
+
+
+def test_a_skill_loads_its_on_pause_text(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "goal: Produce a plan that the user approved.\n",
+        "goal: Produce a plan that the user approved.\non_pause: instructions/on_pause.md\n",
+    )
+
+    with_steps = load_skill(write_skill(tmp_path / "a", "plan-work", skill_yaml, PLAN_SKILL_FILES))
+    without_steps = load_skill(write_skill(tmp_path / "b", "plan-work", PLAN_SKILL, PLAN_SKILL_FILES))
+
+    assert with_steps.on_pause == "instructions/on_pause.md"
+    assert without_steps.on_pause is None
