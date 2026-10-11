@@ -19,6 +19,7 @@ Acceptance criteria:
 | Nested calls | The packet shows the `on_pause` of every skill on the call stack that has one, the paused skill first, out to the root, each under its own heading. Each text is rendered with its own frame's names. | Each skill knows its own cleanup; the root's text still reaches the agent when a child pauses. D10 holds: the runner renders, the child reads nothing of its caller. |
 | A `{{ }}` that fails at pause time | The section shows the error and the text as written. The pause never fails. | The pause packet is the last thing the agent sees; `guarded()` and the Stop hook call `pause()`. |
 | Packet layout | `### Error` (as today), then `### Pause steps of <skill-id>` per skill, then `### Next`, whose first line becomes "Do the pause steps above. Then tell the user why the run paused. ..." | With no `on_pause`, every line stays as today. |
+| A text that renders empty | Adds no section, and the Next line stays as today. | An autonomous-only text (`{% if run.mode == 'autonomous' %}`) then leaves an interactive pause packet unchanged. |
 | Pause reasons | The same packet for every reason, and for `current` on a paused run. | One pause packet. |
 | The Stop hook's give-up pause | Out of scope: the agent is allowed to stop and sees no packet. Recorded as limitation L9. | Like a session that dies (the issue's out of scope). |
 
