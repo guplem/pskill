@@ -92,7 +92,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 - **L7. Codex needs Full access.** Inside the Codex sandbox, `uv` cannot open its cache (outside the project) or reach PyPI. The Codex rule lets only plain runner commands, such as `start` and `current`, run outside the sandbox: Codex does not match the rule to the `submit` form with an answer on stdin (verified in #24). So the user runs Codex with Full access (`--sandbox danger-full-access`), or approves each `submit`. pskill never changes this setting. Full access also means that the runner's `script` blocks run without the sandbox.
 - **L6. No isolation without subagents.** With the `generic` adapter, parallel tasks run one by one in the main agent's context, so each task can see the earlier ones.
 - **L8. `pskill wait` needs a harness that wakes the agent when a background command ends.** Claude Code does (no time limit locally; 30 minutes by default in a cloud session). Codex does not document it, so its Stop hook ignores waits and keeps 3 refused stops, then a pause (9.2).
-- **L9. `on_pause` reaches only a live agent.** When the Stop hook gives up (`agent_stopped`), it lets the agent stop and shows it no packet, and a session that dies shows nothing to anyone. The steps then wait for the next `current` or `resume`.
+- **L9. `on_pause` reaches only a live agent.** When the Stop hook gives up (`agent_stopped`), it lets the agent stop and shows it no packet, and a session that dies shows nothing to anyone. Only `current` on the paused run shows the steps then; `resume` goes straight back to the block.
 
 ### 3.2 Items to verify at implementation time
 
