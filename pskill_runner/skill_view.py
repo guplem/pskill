@@ -132,6 +132,7 @@ def skill_facts(skill: Skill) -> dict[str, Any]:
         "invocation": skill.invocation,
         "inputs": field_rows(skill.inputs),
         "outputs": field_rows(skill.outputs),
+        "on_pause": prose_text(skill, skill.on_pause),
     }
 
 
@@ -287,7 +288,7 @@ def block_details(skill: Skill, block: AnyBlock, agent_names: set[str], frame: i
 
 
 def prose_text(skill: Skill, value: str | None) -> str | None:
-    """The instruction or report text, or None when there is none or its `.md` file is missing.
+    """The instruction, report, or on_pause text, or None when there is none or its `.md` file is missing.
 
     The loader accepts a missing file; `pskill validate` reports it, and the panel shows that problem.
     """

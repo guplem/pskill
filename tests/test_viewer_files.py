@@ -439,3 +439,11 @@ def test_the_run_screen_can_collapse_its_child_skills_and_keeps_the_real_step_in
     assert "view.detail.canvas.nodes.find(" in run_panel  # the panel shows the real block of the child skill
     assert "collapsedChildNote(" in run_panel
     assert "view.detail.canvas?.child_frames" in script
+
+
+def test_the_skill_screen_shows_the_on_pause_text_with_its_help() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    help_script = (VIEWER / "field_help.js").read_text(encoding="utf-8")
+
+    assert 'withHelp("h3", "When the run pauses", "on_pause")' in script
+    assert "\n  on_pause: {\n" in help_script

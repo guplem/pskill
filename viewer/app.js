@@ -2072,6 +2072,15 @@ function skillSections() {
     return parts;
   }
   parts.push(section(withHelp("h3", "Goal", "goal"), element("p", skill.goal)));
+  if (skill.on_pause !== null) {
+    parts.push(
+      section(
+        withHelp("h3", "When the run pauses", "on_pause"),
+        element("p", "Values in {{ }} are filled in during a run.", "note"),
+        folded(markdown(skill.on_pause), "skill:on_pause"),
+      ),
+    );
+  }
   parts.push(problemsSection());
   if (skill.inputs.length) parts.push(section(withHelp("h3", "Inputs", "skill_inputs"), fieldList(skill.inputs)));
   if (skill.outputs.length) parts.push(section(withHelp("h3", "Outputs", "skill_outputs"), fieldList(skill.outputs)));
