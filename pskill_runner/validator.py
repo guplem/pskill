@@ -55,6 +55,7 @@ def validate_skill(skill: Skill, catalog: SkillCatalog | None = None) -> list[Pr
         problems += block_problems(skill, block)
         if catalog is not None:
             problems += catalog_problems(skill, block, catalog)
+    problems += on_pause_problems(skill)
     problems += loop_problems(skill)
     problems += unused_instruction_file_warnings(skill)
     return problems
@@ -300,6 +301,15 @@ def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Pro
     return texts
 
 
+def on_pause_problems(skill: Skill) -> list[Problem]:
+    """The skill's `on_pause` text: a missing `.md` file, or a {{ }} that fails like an instruction's."""
+    if skill.on_pause is None:
+        return []
+    if skill.on_pause.endswith(".md") and not (skill.folder / skill.on_pause).is_file():
+        return [error("on_pause", f"the file {skill.on_pause!r} does not exist")]
+    return text_problems(skill, "on_pause", skill.instruction_text(skill.on_pause))
+
+
 def text_problems(skill: Skill, location: str, text: str) -> list[Problem]:
     compile_errors = syntax_errors(text)
     if compile_errors:
@@ -349,7 +359,7 @@ def loop_problems(skill: Skill) -> list[Problem]:
 
 
 def unused_instruction_file_warnings(skill: Skill) -> list[Problem]:
-    used = {prose_value(block) for block in skill.blocks.values()}
+    used = {prose_value(block) for block in skill.blocks.values()} | {skill.on_pause}
     instruction_folder = skill.folder / "instructions"
     if not instruction_folder.is_dir():
         return []
