@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from pskill_runner.computed_values import render_text
 from pskill_runner.skill_loader import load_skill
 from pskill_runner.skill_model import EndBlock, TaskBlock
 from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
@@ -493,3 +494,43 @@ def test_open_draft_pr_finds_the_pull_request_of_a_branch_that_gh_would_rewrite(
     run_main(monkeypatch, capsys, script, {**DRAFT_INPUT, "branch": "repo-cleanup", "issue": 0})
 
     assert shell.ran("gh api GET repos/{owner}/{repo}/pulls?head=ana%3Arepo-cleanup&state=open")
+
+
+def on_pause_text(mode: str, steps: dict[str, Any]) -> str:
+    skill = load_skill(SKILLS_FOLDER / SKILL)
+    assert skill.on_pause is not None
+    context = {
+        "inputs": {"request": "42"},
+        "steps": steps,
+        "history": {},
+        "run": {"id": "r-1", "mode": mode, "harness": "claude-code", "dir": "runs/r-1"},
+        "skill": {"id": SKILL, "dir": str(skill.folder)},
+    }
+    return render_text(skill.instruction_text(skill.on_pause), context).strip()
+
+
+def test_an_autonomous_pause_comments_on_the_pull_request_when_one_exists() -> None:
+    text = on_pause_text(
+        "autonomous", {"read_issue": {"json": {"number": 42}}, "open_draft_pr": {"json": {"pr_number": 57}}}
+    )
+
+    assert "gh api repos/{owner}/{repo}/issues/57/comments" in text
+    assert "/issues/42/" not in text
+    assert "r-1" in text
+
+
+def test_an_autonomous_pause_comments_on_the_issue_before_the_pull_request_exists() -> None:
+    text = on_pause_text("autonomous", {"read_issue": {"json": {"number": 42}}})
+
+    assert "gh api repos/{owner}/{repo}/issues/42/comments" in text
+
+
+def test_an_autonomous_pause_with_no_issue_yet_posts_nothing() -> None:
+    text = on_pause_text("autonomous", {})
+
+    assert "gh api" not in text
+    assert text
+
+
+def test_an_interactive_pause_has_no_pause_steps() -> None:
+    assert on_pause_text("interactive", {"read_issue": {"json": {"number": 42}}}) == ""

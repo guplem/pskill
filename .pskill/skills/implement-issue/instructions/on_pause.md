@@ -1,0 +1,8 @@
+{% if run.mode == 'autonomous' %}This run is autonomous, so nobody reads this pause. Leave a trace on GitHub before you stop.
+{% if steps.open_draft_pr or steps.read_issue %}{% set number = steps.open_draft_pr.json.pr_number if steps.open_draft_pr else steps.read_issue.json.number %}
+Post one comment on {{ 'pull request' if steps.open_draft_pr else 'issue' }} #{{ number }}: `gh api repos/{owner}/{repo}/issues/{{ number }}/comments -f body="<the comment>"`. In two or three sentences, say:
+- at which block the run paused, and why (the error above, in plain words);
+- what a person must do: fix the cause, then resume the run {{ run.id }} in this checkout (the commands below), or cancel it.
+{% else %}
+No issue or pull request exists yet, so there is nowhere to comment. Only tell the user why the run paused.
+{% endif %}{% endif %}

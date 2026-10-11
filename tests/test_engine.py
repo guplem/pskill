@@ -905,3 +905,17 @@ def test_a_pause_steps_file_missing_from_the_run_copy_shows_the_error(tmp_path: 
 
     assert "### Pause steps of small\nThe pause steps could not be read: " in packet
     assert "As written:\ninstructions/on_pause.md\n" in packet
+
+
+def test_pause_steps_that_render_empty_add_no_section(tmp_path: Path) -> None:
+    skill_yaml = SMALL_SKILL.replace(
+        "goal: Say hello.\n",
+        "goal: Say hello.\non_pause: \"{% if run.mode == 'autonomous' %}Release it.{% endif %}\"\n",
+    )
+    project = make_project(tmp_path, "small", skill_yaml)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+
+    packet = pause_run(project, run_id)
+
+    assert "### Pause steps" not in packet
+    assert "### Next\nTell the user why the run paused." in packet

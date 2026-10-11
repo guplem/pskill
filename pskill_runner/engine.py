@@ -1099,12 +1099,18 @@ class Run:
         )
 
     def pause_steps(self) -> list[PauseSteps]:
-        """The `on_pause` text of each skill on the call stack, the paused skill first."""
+        """The `on_pause` text of each skill on the call stack, the paused skill first.
+
+        A text that renders empty (such as steps for autonomous runs only, in an interactive run) adds no section.
+        """
         steps = []
         for frame in reversed(self.state["frames"]):
             skill = self.skill_of(frame)
-            if skill.on_pause is not None:
-                steps.append(PauseSteps(skill.id, self.pause_steps_text(skill, skill.on_pause, frame)))
+            if skill.on_pause is None:
+                continue
+            text = self.pause_steps_text(skill, skill.on_pause, frame)
+            if text.strip():
+                steps.append(PauseSteps(skill.id, text))
         return steps
 
     def pause_steps_text(self, skill: Skill, written: str, frame: Frame) -> str:

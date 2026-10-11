@@ -10,6 +10,7 @@ description: >-
 goal: >-
   A pull request that is ready to merge as it is: every CI check green, every review finding fixed or dismissed, no
   plan file, and the waiting-for-human-review label only when a human must look before the merge.
+on_pause: instructions/on_pause.md
 inputs:
   request: {type: string, description: "The issue number or link ('#123' too), or a description of the change to build."}
 outputs:
