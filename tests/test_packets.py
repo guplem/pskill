@@ -5,6 +5,7 @@ from dataclasses import replace
 from pskill_runner.field_types import parse_field_map
 from pskill_runner.packets import (
     AgentPacket,
+    PauseSteps,
     TaskPrompt,
     render_agent_packet,
     render_final_packet,
@@ -295,3 +296,31 @@ def test_the_pause_packet_without_an_error_has_no_error_section() -> None:
 
     assert "### Error" not in text
     assert "Run r-1 is paused at block create_plan (paused_by_user).\n\n### Next\n" in text
+
+
+def test_the_pause_packet_without_pause_steps_is_unchanged() -> None:
+    text = render_pause_packet("r-1", "plan-work", "create_plan", "block_failed", "plan: required", "uv run pskill.py")
+
+    assert text == (
+        "## pskill · plan-work · paused\nRun r-1 is paused at block create_plan (block_failed).\n\n"
+        "### Error\nplan: required\n\n"
+        "### Next\nTell the user why the run paused. Then, when the user decides:\n"
+        "- To try the block again: uv run pskill.py resume r-1\n"
+        "- To stop the run: uv run pskill.py cancel r-1\n"
+        "- To see the current block: uv run pskill.py current r-1\n"
+    )
+
+
+def test_the_pause_packet_shows_each_skills_pause_steps_under_the_error() -> None:
+    steps = [PauseSteps("child", "Release the claim.\n"), PauseSteps("parent", "Comment on the issue.")]
+
+    text = render_pause_packet(
+        "r-1", "parent", "write", "block_failed", "plan: required", "uv run pskill.py", pause_steps=steps
+    )
+
+    assert (
+        "### Error\nplan: required\n\n"
+        "### Pause steps of child\nRelease the claim.\n\n"
+        "### Pause steps of parent\nComment on the issue.\n\n"
+        "### Next\nDo the pause steps above. Then tell the user why the run paused. Then, when the user decides:\n"
+    ) in text
