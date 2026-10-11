@@ -861,3 +861,47 @@ def test_a_colon_in_plain_text_gets_the_free_text_hint(tmp_path: Path) -> None:
     errors = packet.split("### Errors")[1]
     assert "- The answer is not valid YAML: " in errors
     assert "Write free text as `field: |` with indented lines." in errors
+
+
+SMALL_SKILL_WITH_PAUSE_STEPS = SMALL_SKILL.replace(
+    "goal: Say hello.\n", 'goal: Say hello.\non_pause: "Release the claim of this {{ run.mode }} run."\n'
+)
+
+
+def test_the_pause_packet_shows_the_rendered_pause_steps_of_the_skill(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL_WITH_PAUSE_STEPS)
+    run_id, _ = start_run(project, "small", {}, mode="autonomous", harness="generic")
+
+    packet = pause_run(project, run_id)
+
+    assert (
+        "### Pause steps of small\nRelease the claim of this autonomous run.\n\n### Next\nDo the pause steps" in packet
+    )
+    assert "### Pause steps of small" in current_packet(project, run_id)
+
+
+def test_pause_steps_that_fail_to_render_show_the_error_and_the_text_as_written(tmp_path: Path) -> None:
+    skill_yaml = SMALL_SKILL.replace(
+        "goal: Say hello.\n", 'goal: Say hello.\non_pause: "Post {{ steps.greet.text }}."\n'
+    )
+    project = make_project(tmp_path, "small", skill_yaml)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+
+    packet = pause_run(project, run_id)
+
+    assert "### Pause steps of small\nThe pause steps could not be computed: " in packet
+    assert "As written:\nPost {{ steps.greet.text }}.\n" in packet
+    assert read_run_info(project, run_id)["status"] == "paused"
+
+
+def test_a_pause_steps_file_missing_from_the_run_copy_shows_the_error(tmp_path: Path) -> None:
+    skill_yaml = SMALL_SKILL.replace("goal: Say hello.\n", "goal: Say hello.\non_pause: instructions/on_pause.md\n")
+    write_skill(tmp_path / ".pskill" / "skills", "small", skill_yaml, {"instructions/on_pause.md": "Release it."})
+    project = find_project(tmp_path)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+    (project.runs_folder / run_id / "skills" / "small" / "instructions" / "on_pause.md").unlink()
+
+    packet = pause_run(project, run_id)
+
+    assert "### Pause steps of small\nThe pause steps could not be read: " in packet
+    assert "As written:\ninstructions/on_pause.md\n" in packet

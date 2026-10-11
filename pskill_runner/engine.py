@@ -24,6 +24,7 @@ from pskill_runner.packets import (
     VISIT_CAP_CHOICES,
     VISIT_CAP_ROUNDS,
     AgentPacket,
+    PauseSteps,
     TaskPrompt,
     render_agent_packet,
     render_final_packet,
@@ -602,8 +603,11 @@ class Run:
         return self.project.config.retries
 
     def context(self, item: Any = None) -> dict[str, Any]:
-        """The names that `{{ }}` values can read (SPEC.md section 7.1)."""
-        frame = self.frame
+        """The names that `{{ }}` values can read in the current frame (SPEC.md section 7.1)."""
+        return self.context_of(self.frame, item)
+
+    def context_of(self, frame: Frame, item: Any = None) -> dict[str, Any]:
+        """The names that `{{ }}` values can read in one frame of the call stack."""
         skill = self.skill_of(frame)
         context = {
             "inputs": frame["inputs"],
@@ -1091,7 +1095,26 @@ class Run:
             self.info["pause_reason"] or "paused",
             self.info["pause_error"],
             runner_command(self.project),
+            self.pause_steps(),
         )
+
+    def pause_steps(self) -> list[PauseSteps]:
+        """The `on_pause` text of each skill on the call stack, the paused skill first."""
+        steps = []
+        for frame in reversed(self.state["frames"]):
+            skill = self.skill_of(frame)
+            if skill.on_pause is not None:
+                steps.append(PauseSteps(skill.id, self.pause_steps_text(skill, skill.on_pause, frame)))
+        return steps
+
+    def pause_steps_text(self, skill: Skill, written: str, frame: Frame) -> str:
+        """A skill's `on_pause`, rendered with its frame's names. A failure shows the error, so a pause never fails."""
+        try:
+            return render_text(skill.instruction_text(written), self.context_of(frame))
+        except OSError as error:
+            return f"The pause steps could not be read: {error}\nAs written:\n{written}"
+        except ComputedValueError as error:
+            return f"The pause steps could not be computed: {error}\nAs written:\n{skill.instruction_text(written)}"
 
     def clear_wait(self) -> None:
         """Something new happened, so the next `pskill wait` starts a fresh `max_wait_minutes`."""
