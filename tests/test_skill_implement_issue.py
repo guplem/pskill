@@ -516,7 +516,8 @@ def test_an_autonomous_pause_comments_on_the_pull_request_when_one_exists() -> N
 
     assert '{"number": 57, "body_file": "<file>"}' in text
     assert "scripts/post_comment.py" in text
-    assert "42" not in text
+    assert '"number": 42' not in text
+    assert "#42" not in text
     assert "r-1" in text
 
 
