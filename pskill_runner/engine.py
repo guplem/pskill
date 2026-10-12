@@ -146,6 +146,7 @@ def start_run(
         status="active",
         pause_reason=None,
         pause_error=None,
+        pause_steps_shown=False,
         current_block=None,
         packet_issued_at=None,
         attempts=0,
@@ -179,7 +180,10 @@ def start_run(
 def current_packet(
     project: Project, run_id: str | None, harness: str | None = None, session_id: str | None = None
 ) -> str:
-    """Print the current packet again, worded for the calling harness. Only a harness or session change is recorded."""
+    """Print the current packet again, worded for the calling harness.
+
+    Only a harness or session change is recorded, and, on a paused run, that its pause steps were given.
+    """
     resolved_run_id = resolve_run_id(project, run_id)
     with run_lock(run_folder(project, resolved_run_id)):
         run = Run.load(project, resolved_run_id)
@@ -297,6 +301,7 @@ def register_stop_attempt(project: Project, run_id: str) -> bool:
             if run.info.get("wait_reason"):
                 error += f" The last wait was on: {run.info.get('wait_reason')}."
             run.pause("agent_stopped", error)
+            run.pause_steps_not_shown()
         run.save()
     return keep_working
 
@@ -1084,10 +1089,15 @@ class Run:
         self.info["status"] = "paused"
         self.info["pause_reason"] = reason
         self.info["pause_error"] = error
+        self.info["pause_steps_shown"] = False
         self.log("run_paused", reason=reason, error=error)
         return self.pause_text()
 
     def pause_text(self) -> str:
+        """The pause packet. Only its first printing gives the pause steps; a later `current` only names them."""
+        steps = self.pause_steps()
+        shown_before = bool(steps) and self.info.get("pause_steps_shown", False)
+        self.info["pause_steps_shown"] = True
         return render_pause_packet(
             self.info["run_id"],
             self.info["skill_id"],
@@ -1095,8 +1105,13 @@ class Run:
             self.info["pause_reason"] or "paused",
             self.info["pause_error"],
             runner_command(self.project),
-            self.pause_steps(),
+            [] if shown_before else steps,
+            steps_shown_before=shown_before,
         )
+
+    def pause_steps_not_shown(self) -> None:
+        """Nobody got the pause packet (the Stop hook or a subagent dropped it): the next `current` gives the steps."""
+        self.info["pause_steps_shown"] = False
 
     def pause_steps(self) -> list[PauseSteps]:
         """The `on_pause` text of each skill on the call stack, the paused skill first.
@@ -1211,6 +1226,7 @@ class Run:
         """The reply to a subagent. A pause and its pause steps are the main agent's work, read with `current`."""
         if self.info["status"] != "paused" or not self.adapter.can_spawn_subagents:
             return text
+        self.pause_steps_not_shown()
         state = "recorded" if recorded else "not recorded"
         return (
             f"Task {task} is {state}, and the run is paused. Stop here, and tell the main agent: it reads the pause "

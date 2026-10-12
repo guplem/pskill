@@ -877,7 +877,55 @@ def test_the_pause_packet_shows_the_rendered_pause_steps_of_the_skill(tmp_path: 
     assert (
         "### Pause steps of small\nRelease the claim of this autonomous run.\n\n### Next\nDo the pause steps" in packet
     )
-    assert "### Pause steps of small" in current_packet(project, run_id)
+
+
+def test_a_later_current_of_the_same_pause_names_the_pause_steps_without_repeating_them(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL_WITH_PAUSE_STEPS)
+    run_id, _ = start_run(project, "small", {}, mode="autonomous", harness="generic")
+    pause_run(project, run_id)
+
+    packet = current_packet(project, run_id)
+
+    assert "Release the claim" not in packet
+    assert (
+        "### Pause steps\nThe first packet of this pause gave them. Do not do them again.\n\n### Next\nTell" in packet
+    )
+
+
+def test_a_new_pause_shows_the_pause_steps_again(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL_WITH_PAUSE_STEPS)
+    run_id, _ = start_run(project, "small", {}, mode="autonomous", harness="generic")
+    pause_run(project, run_id)
+    resume_run(project, run_id)
+
+    packet = pause_run(project, run_id)
+
+    assert "### Pause steps of small\nRelease the claim of this autonomous run." in packet
+
+
+def test_a_pause_that_the_stop_hook_makes_shows_the_pause_steps_on_the_next_current(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL_WITH_PAUSE_STEPS)
+    run_id, _ = start_run(project, "small", {}, mode="autonomous", harness="generic")
+    while register_stop_attempt(project, run_id):
+        pass
+
+    packet = current_packet(project, run_id)
+
+    assert "### Pause steps of small\nRelease the claim of this autonomous run." in packet
+
+
+def test_a_paused_run_from_before_0_38_shows_the_pause_steps_on_current(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL_WITH_PAUSE_STEPS)
+    run_id, _ = start_run(project, "small", {}, mode="autonomous", harness="generic")
+    pause_run(project, run_id)
+    run_file = project.runs_folder / run_id / "run.json"
+    info = json.loads(run_file.read_text(encoding="utf-8"))
+    del info["pause_steps_shown"]
+    run_file.write_text(json.dumps(info), encoding="utf-8")
+
+    packet = current_packet(project, run_id)
+
+    assert "### Pause steps of small\nRelease the claim of this autonomous run." in packet
 
 
 def test_pause_steps_that_fail_to_render_show_the_error_and_the_text_as_written(tmp_path: Path) -> None:

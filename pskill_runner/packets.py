@@ -264,13 +264,19 @@ def render_pause_packet(
     error: str | None,
     runner_command: str,
     pause_steps: Sequence[PauseSteps] = (),
+    steps_shown_before: bool = False,
 ) -> str:
-    """The pause packet. The pause steps of each skill on the call stack sit between the error and the commands."""
+    """The pause packet. The pause steps of each skill on the call stack sit between the error and the commands.
+
+    With `steps_shown_before`, an earlier packet of this pause gave them: this one names them, so they run once.
+    """
     lines = [f"## pskill · {skill_id} · paused", f"Run {run_id} is paused at block {block_id} ({reason})."]
     if error:
         lines += ["", "### Error", error.strip()]
     for steps in pause_steps:
         lines += ["", f"### Pause steps of {steps.skill_id}", steps.text.strip()]
+    if steps_shown_before:
+        lines += ["", "### Pause steps", "The first packet of this pause gave them. Do not do them again."]
     first_step = "Do the pause steps above. Then tell the user" if pause_steps else "Tell the user"
     lines += [
         "",

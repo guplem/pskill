@@ -324,3 +324,14 @@ def test_the_pause_packet_shows_each_skills_pause_steps_under_the_error() -> Non
         "### Pause steps of parent\nComment on the issue.\n\n"
         "### Next\nDo the pause steps above. Then tell the user why the run paused. Then, when the user decides:\n"
     ) in text
+
+
+def test_the_pause_packet_can_name_pause_steps_that_an_earlier_packet_gave() -> None:
+    text = render_pause_packet(
+        "r-1", "plan-work", "create_plan", "block_failed", "plan: required", "uv run pskill.py", steps_shown_before=True
+    )
+
+    assert (
+        "### Error\nplan: required\n\n### Pause steps\nThe first packet of this pause gave them. Do not do them again."
+        "\n\n### Next\nTell the user why the run paused."
+    ) in text
