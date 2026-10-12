@@ -5,10 +5,11 @@
 A skill can say what the agent does when its run pauses, so an unattended run leaves a trace (#158).
 
 - **`on_pause`:** a new optional top-level key, a `.md` file or the text itself, like an instruction. It can use `{{ }}`, such as `run.mode` for steps that only an autonomous run needs.
-- **The pause packet** shows it under the error, as `### Pause steps of <skill>`, and its Next part starts with "Do the pause steps above". When a called skill pauses, each skill on the call stack with an `on_pause` gets its section, the paused skill first, each with its own values. A text that renders empty adds no section. A text that fails to render shows the error and the text as written: the pause never fails. A skill without `on_pause` gets the same packet as before.
+- **The pause packet** shows it under the error, as `### Pause steps of <skill>`, and its Next part starts with "Do the pause steps above". When a called skill pauses, each skill on the call stack with an `on_pause` gets its section, the paused skill first, each with its own values. A text that renders empty adds no section. A text that fails to render shows the error and the text as written: the pause never fails. A skill without `on_pause` gets the same pause packet as before.
+- **A subagent never gets the pause packet:** when its task answer pauses the run, it gets a short note to stop and tell the main agent, who reads the pause (and its steps) with `current`. Before, the subagent got the packet too. This holds for every skill with a parallel block.
 - **Checks:** `pskill validate` rejects an `on_pause` file that does not exist, and checks its `{{ }}` like an instruction's.
 - **Viewer and export:** the skill screen shows the text under the goal, with its help. The Markdown export turns it into a section "If you stop before the end".
-- **Example skills:** an autonomous `implement-issue` run that pauses posts one comment on its pull request, or on the issue before the pull request exists.
+- **Example skills:** an autonomous `implement-issue` run that pauses posts one comment on its pull request, or on the issue before the pull request exists, through its new script `post_comment.py`.
 - **A limit:** when the Stop hook gives up, or a session dies, no agent sees the packet (SPEC L9).
 
 ## 0.37.0 (2026-10-10)
