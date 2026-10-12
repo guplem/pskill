@@ -1210,3 +1210,16 @@ def test_a_last_task_whose_join_pauses_the_run_gives_the_subagent_no_pause_steps
     assert "Pause steps" not in reply
     assert reply.startswith("Task 0 is recorded, and the run is paused. Stop here, and tell the main agent")
     assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+
+
+def test_a_task_answer_that_pauses_the_run_without_subagents_gives_the_main_agent_the_pause_packet(
+    tmp_path: Path,
+) -> None:
+    skill_yaml = PAUSING_PARALLEL_SKILL.replace("    agent: checker\n", "    agent: checker\n    retries: 0\n")
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="autonomous", harness="generic")
+
+    reply = submit_answer(project, run_id, "$cannot_complete: no access\n", task=0)
+
+    assert "### Pause steps of fanout\nPost one comment.\n" in reply
+    assert "tell the main agent" not in reply
