@@ -1103,7 +1103,7 @@ class Run:
 
         A text that renders empty (such as steps for autonomous runs only, in an interactive run) adds no section.
         """
-        steps = []
+        steps: list[PauseSteps] = []
         for frame in reversed(self.state["frames"]):
             skill = self.skill_of(frame)
             if skill.on_pause is None:
