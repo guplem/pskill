@@ -1202,9 +1202,20 @@ class Run:
             return self.reject(["This block has several tasks. Add `--task <n>` to the submit command."], answer_text)
         answer, _, errors = self.read_answer(answer_text, block)
         if errors:
-            return self.reject(errors, answer_text, task)
+            return self.task_reply(task, recorded=False, text=self.reject(errors, answer_text, task))
         self.answer_recorded = True
-        return self.guarded(lambda: self.accept_task(block, task, answer))
+        text = self.guarded(lambda: self.accept_task(block, task, answer))
+        return self.task_reply(task, recorded=True, text=text)
+
+    def task_reply(self, task: int, recorded: bool, text: str) -> str:
+        """The reply to a subagent. A pause and its pause steps are the main agent's work, read with `current`."""
+        if self.info["status"] != "paused" or not self.adapter.can_spawn_subagents:
+            return text
+        state = "recorded" if recorded else "not recorded"
+        return (
+            f"Task {task} is {state}, and the run is paused. Stop here, and tell the main agent: it reads the pause "
+            f"with `{runner_command(self.project)} current {self.info['run_id']}`.\n"
+        )
 
     def record_task_while_paused(self, answer_text: str, task: int) -> str:
         """Keep a subagent's answer when the main agent's stop attempts paused the run. Only `resume` advances."""

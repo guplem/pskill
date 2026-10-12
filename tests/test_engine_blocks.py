@@ -1174,3 +1174,39 @@ def test_a_pause_in_the_root_skips_the_child_and_a_skill_without_pause_steps(tmp
     assert "### Pause steps" not in root_packet
     assert "### Pause steps of child\nRelease the claim.\n\n### Next\n" in child_packet
     assert "### Pause steps of parent" not in child_packet
+
+
+PAUSING_PARALLEL_SKILL = PARALLEL_SKILL.replace(
+    "goal: Find the wrong claims.\n", 'goal: Find the wrong claims.\non_pause: "Post one comment."\n'
+)
+
+
+def test_a_task_answer_that_pauses_the_run_gives_the_subagent_no_pause_steps(tmp_path: Path) -> None:
+    skill_yaml = PAUSING_PARALLEL_SKILL.replace("    agent: checker\n", "    agent: checker\n    retries: 0\n")
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="autonomous", harness="subagents-for-tests"
+    )
+
+    reply = submit_answer(project, run_id, "$cannot_complete: no access\n", task=0)
+
+    assert reply == (
+        f"Task 0 is not recorded, and the run is paused. Stop here, and tell the main agent: it reads the pause "
+        f"with `uv run .pskill/pskill.py current {run_id}`.\n"
+    )
+    assert read_run_info(project, run_id)["status"] == "paused"
+    assert "### Pause steps of fanout\nPost one comment." in current_packet(project, run_id)
+
+
+def test_a_last_task_whose_join_pauses_the_run_gives_the_subagent_no_pause_steps(tmp_path: Path) -> None:
+    skill_yaml = PAUSING_PARALLEL_SKILL.replace(
+        "    next: done\n", '    next:\n      - when: "{{ false }}"\n        to: done\n'
+    )
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="autonomous", harness="subagents-for-tests")
+
+    reply = submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    assert "Pause steps" not in reply
+    assert reply.startswith("Task 0 is recorded, and the run is paused. Stop here, and tell the main agent")
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
