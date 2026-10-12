@@ -91,6 +91,7 @@ def build_skill(raw: dict[str, Any], folder: Path) -> Skill:
         entry=parse_edges(raw["entry"]),
         blocks={block_id: build_block(block_id, raw_block) for block_id, raw_block in raw["blocks"].items()},
         folder=folder,
+        on_pause=raw.get("on_pause"),
     )
 
 

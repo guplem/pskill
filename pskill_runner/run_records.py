@@ -28,6 +28,7 @@ class RunInfo(TypedDict):
     status: str
     pause_reason: str | None
     pause_error: str | None
+    pause_steps_shown: bool  # a packet of this pause gave its pause steps; absent in runs before 0.38.0
     current_block: str | None
     packet_issued_at: str | None
     attempts: int

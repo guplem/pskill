@@ -1136,3 +1136,90 @@ def test_a_state_file_from_before_tool_profiles_still_gives_its_packet(tmp_path:
     packet = current_packet(project, run_id)
 
     assert "#### Task 0" in packet and "pskill-" not in packet
+
+
+def test_a_pause_in_a_child_shows_the_pause_steps_of_each_skill_with_its_own_values(tmp_path: Path) -> None:
+    parent = PARENT_SKILL.replace(
+        "goal: Get a greeting from the child.\n",
+        'goal: Get a greeting from the child.\non_pause: "Tell them: {{ steps.greet.text }}"\n',
+    )
+    child = CHILD_SKILL.replace(
+        "goal: Greet the person by name.\n",
+        'goal: Greet the person by name.\non_pause: "Release the claim for {{ inputs.name }}."\n',
+    )
+    project = make_project(tmp_path, {"parent": parent, "child": child})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello from the parent.\n")
+
+    packet = pause_run(project, run_id)
+
+    assert (
+        "### Pause steps of child\nRelease the claim for Ada.\n\n"
+        "### Pause steps of parent\nTell them: Hello from the parent.\n\n### Next\n"
+    ) in packet
+
+
+def test_a_pause_in_the_root_skips_the_child_and_a_skill_without_pause_steps(tmp_path: Path) -> None:
+    child = CHILD_SKILL.replace(
+        "goal: Greet the person by name.\n", 'goal: Greet the person by name.\non_pause: "Release the claim."\n'
+    )
+    project = make_project(tmp_path, {"parent": PARENT_SKILL, "child": child})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    root_packet = pause_run(project, run_id)
+    resume_run(project, run_id)
+    submit_answer(project, run_id, "text: Hello from the parent.\n")
+
+    child_packet = pause_run(project, run_id)
+
+    assert "### Pause steps" not in root_packet
+    assert "### Pause steps of child\nRelease the claim.\n\n### Next\n" in child_packet
+    assert "### Pause steps of parent" not in child_packet
+
+
+PAUSING_PARALLEL_SKILL = PARALLEL_SKILL.replace(
+    "goal: Find the wrong claims.\n", 'goal: Find the wrong claims.\non_pause: "Post one comment."\n'
+)
+
+
+def test_a_task_answer_that_pauses_the_run_gives_the_subagent_no_pause_steps(tmp_path: Path) -> None:
+    skill_yaml = PAUSING_PARALLEL_SKILL.replace("    agent: checker\n", "    agent: checker\n    retries: 0\n")
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="autonomous", harness="subagents-for-tests"
+    )
+
+    reply = submit_answer(project, run_id, "$cannot_complete: no access\n", task=0)
+
+    assert reply == (
+        f"Task 0 is not recorded, and the run is paused. Stop here, and tell the main agent: it reads the pause "
+        f"with `uv run .pskill/pskill.py current {run_id}`.\n"
+    )
+    assert read_run_info(project, run_id)["status"] == "paused"
+    assert "### Pause steps of fanout\nPost one comment." in current_packet(project, run_id)
+
+
+def test_a_last_task_whose_join_pauses_the_run_gives_the_subagent_no_pause_steps(tmp_path: Path) -> None:
+    skill_yaml = PAUSING_PARALLEL_SKILL.replace(
+        "    next: done\n", '    next:\n      - when: "{{ false }}"\n        to: done\n'
+    )
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="autonomous", harness="subagents-for-tests")
+
+    reply = submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    assert "Pause steps" not in reply
+    assert reply.startswith("Task 0 is recorded, and the run is paused. Stop here, and tell the main agent")
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+
+
+def test_a_task_answer_that_pauses_the_run_without_subagents_gives_the_main_agent_the_pause_packet(
+    tmp_path: Path,
+) -> None:
+    skill_yaml = PAUSING_PARALLEL_SKILL.replace("    agent: checker\n", "    agent: checker\n    retries: 0\n")
+    project = make_project(tmp_path, {"fanout": skill_yaml}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="autonomous", harness="generic")
+
+    reply = submit_answer(project, run_id, "$cannot_complete: no access\n", task=0)
+
+    assert "### Pause steps of fanout\nPost one comment.\n" in reply
+    assert "tell the main agent" not in reply

@@ -1,8 +1,9 @@
 """The logic of the two harness hooks (SPEC.md section 9.2), independent of any harness format.
 
 - Stop: while a run of this session has an open block, keep the agent working, at most
-  `stop_hook_max_blocks` times in a row. Then allow the stop and pause the run, so a stuck agent never
-  loops forever. Another session in the same checkout stops freely. While a `pskill wait` runs, and the
+  `stop_hook_max_blocks` times in a row. Then pause the run and allow the stop, so a stuck agent never
+  loops forever. When that pause has `on_pause` steps, the hook blocks that stop once more, with the
+  pause packet. Another session in the same checkout stops freely. While a `pskill wait` runs, and the
   harness wakes the agent after a background command (Claude Code), allow the stop with no message and no
   count.
 - Session start: refresh stale skill stubs. It lists no runs: a run of another live session would invite
@@ -10,7 +11,7 @@
 """
 
 from pskill_runner.adapters import adapter_for
-from pskill_runner.engine import list_runs, register_stop_attempt
+from pskill_runner.engine import list_runs, register_stop_attempt, unshown_pause_packet
 from pskill_runner.project import Project
 from pskill_runner.run_records import RunInfo
 from pskill_runner.run_store import utc_now
@@ -39,7 +40,7 @@ def stop_hook_reason(project: Project, harness: str, session_id: str | None = No
     if can_wait and is_waiting(active_runs[0], utc_now()):
         return None
     if not register_stop_attempt(project, run_id):
-        return None
+        return give_up_reason(project, run_id)
     reason = (
         f"pskill run {run_id} has an open block. Continue it: run `{RUNNER} current {run_id}` and follow the "
         f"packet. If the user asked to stop, run `{RUNNER} pause {run_id}` instead."
@@ -50,6 +51,21 @@ def stop_hook_reason(project: Project, harness: str, session_id: str | None = No
         f"{reason}\n"
         f'If you wait on background work, run `{RUNNER} wait {run_id} --reason "<what you wait on>"` in the '
         "background, then end your turn."
+    )
+
+
+def give_up_reason(project: Project, run_id: str) -> str | None:
+    """The stop that paused the run passes, unless the pause has steps: then it is blocked once more, with them.
+
+    The run is paused now, so the next stop passes and nothing loops. This also covers a run whose waits used up
+    `max_wait_minutes`: its stops count again, and the same pause follows.
+    """
+    packet = unshown_pause_packet(project, run_id)
+    if packet is None:
+        return None
+    return (
+        f"pskill run {run_id} is paused: the agent ended its turn with an open block, several times. Do its pause "
+        f"steps now, then end your turn.\n\n{packet}"
     )
 
 

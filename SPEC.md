@@ -92,6 +92,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 - **L7. Codex needs Full access.** Inside the Codex sandbox, `uv` cannot open its cache (outside the project) or reach PyPI. The Codex rule lets only plain runner commands, such as `start` and `current`, run outside the sandbox: Codex does not match the rule to the `submit` form with an answer on stdin (verified in #24). So the user runs Codex with Full access (`--sandbox danger-full-access`), or approves each `submit`. pskill never changes this setting. Full access also means that the runner's `script` blocks run without the sandbox.
 - **L6. No isolation without subagents.** With the `generic` adapter, parallel tasks run one by one in the main agent's context, so each task can see the earlier ones.
 - **L8. `pskill wait` needs a harness that wakes the agent when a background command ends.** Claude Code does (no time limit locally; 30 minutes by default in a cloud session). Codex does not document it, so its Stop hook ignores waits and keeps 3 refused stops, then a pause (9.2).
+- **L9. `on_pause` reaches only a live agent.** A session that dies shows nothing to anyone, and a later `current` of that pause only says that the steps were given if its packet was printed before. Every pause of a live agent gives them, the Stop hook's give-up pause too (9.2), also after the waits of a block used up `max_wait_minutes`. `resume` goes straight back to the block. Write the steps so that running them twice does no harm: `implement-issue` updates its own pause comment instead of posting a second one.
 
 ### 3.2 Items to verify at implementation time
 
@@ -139,6 +140,7 @@ description: >-                 # required, max 1024 chars. Goes into the stubs 
 goal: >-                        # required. Goes into the stub, and into packets only where D8 says.
   Resolve the issue with a reviewed pull request that follows the plan the user approved.
 invocation: auto                # auto (default) | manual | internal
+on_pause: instructions/on_pause.md  # optional. What the agent does when the run pauses (8).
 inputs: {}                      # field map (5.3)
 outputs: {}                     # field map
 entry: read_issue               # first block. Same forms as `next` (5.4), except the choice map.
@@ -152,10 +154,11 @@ blocks: {}                      # map: block id -> block
   - `auto`: the agent may start the skill from its description.
   - `manual`: only the user starts it by name. Claude gets `disable-model-invocation: true`; Codex gets an `agents/openai.yaml` sidecar (VERIFY).
   - `internal`: no stub. Only a `call` block can start it, and any number of skills may call it. `pskill start` refuses it; `pskill test` still replays its cases. The viewer lists it in its own "Internal skills" section.
+- `on_pause`: the steps that the agent does when the run pauses, before it tells the user: post a comment, remove a label, release a claim. An unattended run needs them, because nobody reads its pause. The pause packet shows them (section 8). Use `run.mode` in it for steps that only an autonomous run needs. Added in 0.38.0 (#158): text only, never blocks, because blocks would bring back `on_error` (section 18).
 
 ### 5.2 Instructions
 
-- Every agent block has an `instruction`. The same rule applies to `report` on `end` blocks:
+- Every agent block has an `instruction`. The same rule applies to `report` on `end` blocks and to the skill's `on_pause`:
   - A value that ends in `.md` is a path, relative to the skill folder. Name the file `instructions/<block-id>.md`.
   - Any other value is the instruction text itself.
 - Both forms are Markdown and may use `{{ }}` (section 7.1).
@@ -467,7 +470,7 @@ done:
 - **Shell detection.** On macOS and Linux, use the bash form. On Windows, use the bash form when the env var `MSYSTEM` is set (Git Bash), else the PowerShell form. The adapter may override this (VERIFY which shell Codex uses on Windows). When `submit` fails to parse, its error message shows the other form too.
 - **No answer.** When stdin is a terminal, or no data arrives within 10 s, `submit` fails at once with the correct command form. It never hangs.
 - **Parsing.** Read the answer with PyYAML's `BaseLoader`, so every value arrives as text. Then convert each field to its declared type from the block's output schema: `integer`, `number`, `boolean` (only `true` or `false`), arrays and objects field by field. So `choice: no` stays the text `no`, and `question: 1.10` stays `1.10`. A value that does not convert is a validation error that names the field.
-- **Parallel tasks:** each subagent runs `submit <run> --task <n>` with its own answer. The reply only says that the task is recorded, also for the last task: the main agent reads the next block with `current`.
+- **Parallel tasks:** each subagent runs `submit <run> --task <n>` with its own answer. The reply only says that the task is recorded, also for the last task: the main agent reads the next block with `current`. When the answer pauses the run, the reply says that the run is paused and tells the subagent to stop and tell the main agent, who reads the pause with `current` (section 8).
 - **A task answer while the run is paused:** when the Stop hook paused the run (reason `agent_stopped`), `submit --task` still records a valid task answer, so a subagent that was still working loses nothing. It only records: `resume` advances, and it completes a parallel block whose tasks all have answers. Any other pause still refuses every answer.
 - **Reserved keys**, removed before validation:
   - `$answered_by`: `human` or `agent`. Required for human decisions in interactive mode.
@@ -481,7 +484,7 @@ Two kinds of failure exist:
 - **Retried failures** can succeed on a second try: an invalid submission, a `$cannot_complete`, and a failed script. The runner retries up to `retries` times (config, default 2): it reprints the packet with the errors, or it runs the script again. After that it pauses the run with the reason `block_failed`. A `task`, `decision`, `parallel`, or `script` block can set its own `retries: <n>` (0 means no second try), which overrides the config value for that block.
 - **Runner-side failures** fail the same way every time, because nothing changed: a computed value that fails, no matching edge, invalid end outputs, and a visit cap with no `on_max_visits` (only in a run copy from before 0.33.0, because the validator now requires it). The runner pauses the run at once with the reason `runner_error`.
 
-The pause packet shows the error and three commands: `resume` (retry the block with a fresh count), `cancel`, and `current`.
+The pause packet shows the error, the `on_pause` steps of the skills (section 8), and three commands: `resume` (retry the block with a fresh count), `cancel`, and `current`.
 
 As a guard, a run pauses when more than 1,000 runner-only blocks run without an agent block in between.
 
@@ -547,6 +550,7 @@ Additions by block type:
 - **Parallel with subagents:** the packet lists every open task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with a one-line prompt: "You are a subagent of pskill run <run>. In the folder `<project root>`, run `pskill task <run> <n>`, and do what it prints." A task with a tool profile or a tier gets one more line under its heading, with the harness wording for both (for Claude Code: "Pass `subagent_type: pskill-read` in this task's Agent call, instead of `general-purpose`. If that agent type is unknown, use `general-purpose`. Pass `model: haiku` in this task's Agent call."). The fallback covers a profile agent that is missing (no `sync` yet, or `claude-code` not in `permissions`) or that Claude Code does not see yet (a `.claude/agents/` folder newer than the session). `pskill task` prints the task's full prompt: the work folder, the agent role, the goal, the instruction, the return format, and its own submit command with `--task <n>`, plus its `--file` line. The packet says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each subagent exactly the one-line prompt of its task. When every subagent has finished, run `pskill current <run>`." The same line restarts a task whose subagent stalled. Changed in 0.12.0: before, the packet held every full prompt, which the main agent copied by hand.
 - **Parallel without subagents:** the packet gives one task at a time, like a normal block.
 - **Final packet:** the status, the rendered `report`, the outputs, and "The run is finished."
+- **Pause packet:** the block and the reason, the error, then one `### Pause steps of <skill>` section per skill on the call stack that has an `on_pause`, the paused skill first and the root last. Each text is rendered with the names of its own skill's frame (7.1), so a child skill and its caller each name their own values. A text that renders empty adds no section. A text that fails to render, with any error (or whose file is missing from the run copy, or is not UTF-8), shows the error and the text as written, so a pause never fails. With a section, the Next part starts "Do the pause steps above. Then tell the user why the run paused." With none, the packet is the same as before 0.38.0. Every pause reason gets the same packet. **The steps run once:** only the first packet that reaches an agent gives them. A later `current` of the same pause shows `### Pause steps` with "The first packet of this pause gave them. Do not do them again." instead, so the agent does not post a comment twice; `run.json` records it as `pause_steps_shown`. A new pause gives them again. A subagent whose task answer pauses the run gets only a short note to stop and tell the main agent, because the pause steps are the main agent's work: it reads the packet with `current`. That pause reached no agent, so the next `current` gives the steps. The Stop hook's give-up pause gives them in the hook's reason (9.2).
 
 ---
 
@@ -604,6 +608,7 @@ class HarnessAdapter(Protocol):
     - A killed `wait` holds the stop only until `wait_until`. Only an adapter with `wakes_after_background_command` (Claude Code) gets the quiet stop and the wait line. Every other harness (Codex: not documented) keeps the old behavior, because nothing would wake the agent and the run would stay active and idle.
   - Never block the stop of a subagent. Claude Code sends subagent stops as a separate `SubagentStop` event, which pskill does not hook. VERIFY how Codex marks a subagent stop.
   - After 3 blocks in a row (config `stop_hook_max_blocks`) with no submission, resume, or `pskill wait` between them, allow the stop and pause the run with reason `agent_stopped`. This prevents an endless loop.
+  - **Pause steps (since 0.38.0).** When that pause has `on_pause` steps, block this stop once more, with the reason "pskill run <id> is paused: the agent ended its turn with an open block, several times. Do its pause steps now, then end your turn." and the pause packet. The run is paused now, so the next stop passes and nothing loops. In an unattended run nobody calls `current`, so this is the only way the steps reach the agent. It also covers a run whose waits used up `max_wait_minutes`, because its stops count again.
   - For any other case, allow the stop.
 - **Session start.** One job:
   - **Refresh the stubs.** Run the stub part of `sync` (not hooks, not permission rules). When it changed files, print one line: "pskill: updated <n> stubs (<skill ids>)." Skip a skill whose `skill.yaml` does not load, and print one warning line for it. This covers skill edits from any source: the agent, an IDE, `git pull`, or a teammate.
@@ -788,7 +793,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 7. A choice map does not match `choices` one to one.
 8. A `{{ }}` does not compile, or a `when` (of an edge, or of an item of a fixed `for_each` list) is not exactly one `{{ ... }}`.
 9. A reference to an unknown input, `steps` block, or `history` block. The strings inside the items of a fixed `for_each` list count too.
-10. An `instruction` or `report` value ends in `.md`, but the file is missing.
+10. An `instruction`, `report`, or `on_pause` value ends in `.md`, but the file is missing. (The `{{ }}` of `on_pause` gets the checks 8 and 9 too.)
 11. A top-level field of `inputs`, `outputs`, or a block `output` has no `description`.
 12. An `agent` names a file that does not exist in `.pskill/agents/`. The validator checks plain names and the items of a fixed `for_each` list. An agent name computed from run data is checked at run time, and a missing file fails the block.
 13. A `call` to an unknown skill, with an unknown input, or with a missing required input.
@@ -802,7 +807,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 
 **Warnings:**
 1. A condition list whose last item has a `when`.
-2. An instruction file that no block uses.
+2. An instruction file that no block (and not the skill's `on_pause`) uses.
 3. A Codex row in `tiers` whose model the local Codex model catalog does not list, or lists with an `upgrade` (named in the warning). The catalog is `models_cache.json` in `$CODEX_HOME`, else `~/.codex`. With no catalog, or one that cannot be read, there is no check. Checked when `validate` checks every skill.
 
 ---
@@ -918,6 +923,7 @@ The example skills together must exercise every runtime feature. pytest fixtures
 | `autonomous` mode | test cases below |
 | `$cannot_complete`, retries, then pause | test cases below |
 | `invocation: manual` | `review-pr` |
+| `on_pause`, with `run.mode` | `implement-issue` (a comment on the pull request or the issue when an autonomous run pauses) |
 | Parallel one by one, Stop hook, resume in a new session | the M3 and M4 acceptance runs |
 
 ### 13.4 Tests to ship
@@ -996,13 +1002,13 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
    - The same canvas as the run screen, with every block and every edge, and no run parts: no status, no current step, no timeline, and no replay bar. Every node has the same plain style.
    - **Child skills:** each call block is drawn as a dashed frame that holds its child skill, in the call block's place. The edges into the call block end at the frame, and its exits leave from the frame. The frame's title, at its top left, is the call block's name, with `call: <child skill>` below it. A click on the title or on the frame's empty area selects the call block. A child's own call blocks are frames inside its frame. (The run screen keeps the call block as a node, with the child's frame next to it.) A child that does not load, or a call back into a skill of its own chain, gets no frame. A click on a block of a child frame shows its details read-only, with a link to the child skill's own screen, where it can be edited. The panel finds a child block by its node id, because its name can be the name of a block of the parent.
    - **Collapse sub-skills:** an on and off switch in the top bar draws each call block as one node instead of its child's frame. It is on by default, for a quick look at the flow of a skill with many child skills. The server sends this second canvas too (`collapsed_canvas`). A block of a child frame that the panel shows gives way to the call block that holds it. The page keeps only a choice to expand, in `localStorage`. A skill with no child skill has no switch.
-   - The side panel with nothing selected: the goal, the inputs and outputs, and the `pskill validate` problems.
+   - The side panel with nothing selected: the goal, the `on_pause` text, the inputs and outputs, and the `pskill validate` problems.
    - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A name that leads to another screen is a link with an arrow: the child skill of a call block, and the agent of a parallel block (one link per agent of a fixed `for_each` list). An agent name computed from run data has no link.
    - A script block also shows the text of each file inside its skill folder that its command runs as `{{ skill.dir }}/<path>`.
    - Each output field is a card: its name, its type, optional, its default, its allowed values, its description, and its nested fields.
    - Each exit is a card: the target block, a tag (if, otherwise, always, choice, or visit cap), and the whole condition. A hover on the card highlights its edge and its target on the canvas. A click opens the target.
    - **References:** each `steps.<block>` and `history.<block>` in the panel (an instruction, a fact, a command, an input or output value, an item's `when`, an exit condition) is a teal reference to that block of the same frame. A hover lights up the block on the canvas, and a click opens it. A hover on an edge of the canvas lights up the blocks that its condition reads. A problem whose location is a block, and the call block that runs a child, are references too.
-   - **Field help:** each field of a block (in the panel and in the editor), and the goal, inputs, and outputs of the skill, has a "?" button. Its tooltip says what the field is. A click opens a dialog with the details and YAML examples. `viewer/field_help.js` holds the texts; a test checks that every block field of the schema has one.
+   - **Field help:** each field of a block (in the panel and in the editor), and the goal, `on_pause`, inputs, and outputs of the skill, has a "?" button. Its tooltip says what the field is. A click opens a dialog with the details and YAML examples. `viewer/field_help.js` holds the texts; a test checks that every block field of the schema has one.
    - A skill that does not load shows its load error instead of a graph.
    - An "Export" button downloads the export as Markdown (section 14.1).
    - An "Edit" button turns on the skill editor (section 14.2).
@@ -1022,6 +1028,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 - **Files:** the zip holds `<skill>/SKILL.md`, the skill's `scripts/`, and each pskill agent that it uses as `<skill>/subagents/<name>.md`. (Not `agents/`: Codex reads `agents/openai.yaml` there.)
 - **Child skills:** each child skill of a call block is exported as its own folder in the same zip. The call step tells the agent to follow it, then to come back.
 - **Script input:** a script step with an `input` tells the agent what to send on the command's standard input: each field of the JSON object, or the text.
+- **On pause:** the skill's `on_pause` becomes a section "If you stop before the end", before the start: what to do first when a step fails or the user asks to stop.
 
 ### 14.2 The skill editor
 

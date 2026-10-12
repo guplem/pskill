@@ -391,3 +391,26 @@ def test_an_elif_tag_reads_as_else_when() -> None:
     text = "{% if a %}one{% elif b %}two{% else %}three{% endif %}"
 
     assert plain_text(text) == "(only when `a`:) one(else, when `b`:) two(otherwise:) three(end)"
+
+
+def test_the_on_pause_text_becomes_a_section_for_a_stop_before_the_end(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "goal: Produce a plan that the user approved.\n",
+        "goal: Produce a plan that the user approved.\non_pause: instructions/on_pause.md\n",
+    )
+    files = {**PLAN_SKILL_FILES, "instructions/on_pause.md": "Comment on {{ inputs.topic }}."}
+    write_skill(tmp_path / ".pskill" / "skills", "plan-work", skill_yaml, files)
+
+    markdown = skill_markdown(find_project(tmp_path), "plan-work")
+
+    assert (
+        "## If you stop before the end\n\n"
+        "When you stop before an end step, because a step failed or the user asked you to stop, "
+        "do this first:\n\nComment on `inputs.topic`.\n\n## Start"
+    ) in markdown
+
+
+def test_a_skill_without_on_pause_has_no_stop_section(tmp_path: Path) -> None:
+    markdown = roles_export(tmp_path)["roles/SKILL.md"].decode("utf-8")
+
+    assert "## If you stop before the end" not in markdown

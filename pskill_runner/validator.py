@@ -55,6 +55,7 @@ def validate_skill(skill: Skill, catalog: SkillCatalog | None = None) -> list[Pr
         problems += block_problems(skill, block)
         if catalog is not None:
             problems += catalog_problems(skill, block, catalog)
+    problems += on_pause_problems(skill)
     problems += loop_problems(skill)
     problems += unused_instruction_file_warnings(skill)
     return problems
@@ -293,11 +294,27 @@ def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Pro
         texts += nested_strings(block.for_each) + string_values([block.agent, block.task_name, block.tier, block.tools])
     prose = prose_value(block)
     if prose is not None:
-        if prose.endswith(".md") and not (skill.folder / prose).is_file():
-            problems.append(error(location, f"the file {prose!r} does not exist"))
-        else:
-            texts.append(skill.instruction_text(prose))
+        text = prose_text(skill, location, prose, problems)
+        if text is not None:
+            texts.append(text)
     return texts
+
+
+def prose_text(skill: Skill, location: str, value: str, problems: list[Problem]) -> str | None:
+    """The text of an `instruction`, `report`, or `on_pause`. A missing `.md` file is reported in problems."""
+    if value.endswith(".md") and not (skill.folder / value).is_file():
+        problems.append(error(location, f"the file {value!r} does not exist"))
+        return None
+    return skill.instruction_text(value)
+
+
+def on_pause_problems(skill: Skill) -> list[Problem]:
+    """The skill's `on_pause` text: a missing `.md` file, or a {{ }} that fails like an instruction's."""
+    if skill.on_pause is None:
+        return []
+    problems: list[Problem] = []
+    text = prose_text(skill, "on_pause", skill.on_pause, problems)
+    return problems if text is None else text_problems(skill, "on_pause", text)
 
 
 def text_problems(skill: Skill, location: str, text: str) -> list[Problem]:
@@ -349,7 +366,7 @@ def loop_problems(skill: Skill) -> list[Problem]:
 
 
 def unused_instruction_file_warnings(skill: Skill) -> list[Problem]:
-    used = {prose_value(block) for block in skill.blocks.values()}
+    used = {prose_value(block) for block in skill.blocks.values()} | {skill.on_pause}
     instruction_folder = skill.folder / "instructions"
     if not instruction_folder.is_dir():
         return []

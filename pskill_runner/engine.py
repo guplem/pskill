@@ -24,6 +24,7 @@ from pskill_runner.packets import (
     VISIT_CAP_CHOICES,
     VISIT_CAP_ROUNDS,
     AgentPacket,
+    PauseSteps,
     TaskPrompt,
     render_agent_packet,
     render_final_packet,
@@ -145,6 +146,7 @@ def start_run(
         status="active",
         pause_reason=None,
         pause_error=None,
+        pause_steps_shown=False,
         current_block=None,
         packet_issued_at=None,
         attempts=0,
@@ -178,7 +180,10 @@ def start_run(
 def current_packet(
     project: Project, run_id: str | None, harness: str | None = None, session_id: str | None = None
 ) -> str:
-    """Print the current packet again, worded for the calling harness. Only a harness or session change is recorded."""
+    """Print the current packet again, worded for the calling harness.
+
+    Only a harness or session change is recorded, and, on a paused run, that its pause steps were given.
+    """
     resolved_run_id = resolve_run_id(project, run_id)
     with run_lock(run_folder(project, resolved_run_id)):
         run = Run.load(project, resolved_run_id)
@@ -296,8 +301,23 @@ def register_stop_attempt(project: Project, run_id: str) -> bool:
             if run.info.get("wait_reason"):
                 error += f" The last wait was on: {run.info.get('wait_reason')}."
             run.pause("agent_stopped", error)
+            run.pause_steps_not_shown()
         run.save()
     return keep_working
+
+
+def unshown_pause_packet(project: Project, run_id: str) -> str | None:
+    """The pause packet of a paused run whose pause steps no agent got yet, or None. It records them as given.
+
+    The Stop hook gives it when its own pause has steps, so a run with no one to call `current` still does them.
+    """
+    with run_lock(run_folder(project, run_id)):
+        run = Run.load(project, run_id)
+        if run.info["status"] != "paused" or run.info.get("pause_steps_shown", False) or not run.pause_steps():
+            return None
+        text = run.pause_text()
+        run.save()
+    return text
 
 
 def read_run_info(project: Project, run_id: str, runs_folder: Path | None = None) -> RunInfo:
@@ -602,8 +622,11 @@ class Run:
         return self.project.config.retries
 
     def context(self, item: Any = None) -> dict[str, Any]:
-        """The names that `{{ }}` values can read (SPEC.md section 7.1)."""
-        frame = self.frame
+        """The names that `{{ }}` values can read in the current frame (SPEC.md section 7.1)."""
+        return self.context_of(self.frame, item)
+
+    def context_of(self, frame: Frame, item: Any = None) -> dict[str, Any]:
+        """The names that `{{ }}` values can read in one frame of the call stack."""
         skill = self.skill_of(frame)
         context = {
             "inputs": frame["inputs"],
@@ -1080,10 +1103,15 @@ class Run:
         self.info["status"] = "paused"
         self.info["pause_reason"] = reason
         self.info["pause_error"] = error
+        self.info["pause_steps_shown"] = False
         self.log("run_paused", reason=reason, error=error)
         return self.pause_text()
 
     def pause_text(self) -> str:
+        """The pause packet. Only its first printing gives the pause steps; a later `current` only names them."""
+        steps = self.pause_steps()
+        shown_before = bool(steps) and self.info.get("pause_steps_shown", False)
+        self.info["pause_steps_shown"] = True
         return render_pause_packet(
             self.info["run_id"],
             self.info["skill_id"],
@@ -1091,7 +1119,39 @@ class Run:
             self.info["pause_reason"] or "paused",
             self.info["pause_error"],
             runner_command(self.project),
+            [] if shown_before else steps,
+            steps_shown_before=shown_before,
         )
+
+    def pause_steps_not_shown(self) -> None:
+        """Nobody got the pause packet (the Stop hook or a subagent dropped it): the next `current` gives the steps."""
+        self.info["pause_steps_shown"] = False
+
+    def pause_steps(self) -> list[PauseSteps]:
+        """The `on_pause` text of each skill on the call stack, the paused skill first.
+
+        A text that renders empty (such as steps for autonomous runs only, in an interactive run) adds no section.
+        """
+        steps: list[PauseSteps] = []
+        for frame in reversed(self.state["frames"]):
+            skill = self.skill_of(frame)
+            if skill.on_pause is None:
+                continue
+            text = self.pause_steps_text(skill, skill.on_pause, frame)
+            if text.strip():
+                steps.append(PauseSteps(skill.id, text))
+        return steps
+
+    def pause_steps_text(self, skill: Skill, written: str, frame: Frame) -> str:
+        """A skill's `on_pause`, rendered with its frame's names. A failure shows the error, so a pause never fails."""
+        try:
+            text = skill.instruction_text(written)
+        except (OSError, UnicodeDecodeError) as error:
+            return f"The pause steps could not be read: {error}\nAs written:\n{written}"
+        try:
+            return render_text(text, self.context_of(frame))
+        except Exception as error:  # any error of the author's {{ }}, such as a TypeError: a pause never fails
+            return f"The pause steps could not be computed: {error}\nAs written:\n{text}"
 
     def clear_wait(self) -> None:
         """Something new happened, so the next `pskill wait` starts a fresh `max_wait_minutes`."""
@@ -1171,9 +1231,21 @@ class Run:
             return self.reject(["This block has several tasks. Add `--task <n>` to the submit command."], answer_text)
         answer, _, errors = self.read_answer(answer_text, block)
         if errors:
-            return self.reject(errors, answer_text, task)
+            return self.task_reply(task, recorded=False, text=self.reject(errors, answer_text, task))
         self.answer_recorded = True
-        return self.guarded(lambda: self.accept_task(block, task, answer))
+        text = self.guarded(lambda: self.accept_task(block, task, answer))
+        return self.task_reply(task, recorded=True, text=text)
+
+    def task_reply(self, task: int, recorded: bool, text: str) -> str:
+        """The reply to a subagent. A pause and its pause steps are the main agent's work, read with `current`."""
+        if self.info["status"] != "paused" or not self.adapter.can_spawn_subagents:
+            return text
+        self.pause_steps_not_shown()
+        state = "recorded" if recorded else "not recorded"
+        return (
+            f"Task {task} is {state}, and the run is paused. Stop here, and tell the main agent: it reads the pause "
+            f"with `{runner_command(self.project)} current {self.info['run_id']}`.\n"
+        )
 
     def record_task_while_paused(self, answer_text: str, task: int) -> str:
         """Keep a subagent's answer when the main agent's stop attempts paused the run. Only `resume` advances."""

@@ -139,6 +139,7 @@ Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`
 - **Codex needs "Full access".** Its sandbox (the area that limits what commands can do) stops the runner from sending answers. Choose "Full access" in Codex's permissions menu, or start it with `codex --sandbox danger-full-access`. This turns off the sandbox for every command, not only for pskill.
 - **One session per folder, in apps other than Claude Code and Codex.** There, two sessions in the same folder share the hooks.
 - **`wait` needs an app that wakes the agent** when a background command ends. Claude Code does: with no time limit on your computer, and up to 30 minutes by default in a cloud session. Codex does not say that it does, so there the hook ignores waits and works as before: 3 refused stops, then a pause.
+- **A skill's pause steps need a live agent.** A skill can name steps for a pause (`on_pause`), such as a comment on the issue. Every pause gives them to the agent, also when the hook gives up after 3 refused stops: the hook holds the agent once more to do them. When the session dies, nobody does them. Write them so that running them twice does no harm.
 - **pskill trusts the agent** when it says that you answered a question.
 - **The steps are plain files.** The agent could read the later steps. This is not a security barrier.
 

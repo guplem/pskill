@@ -109,7 +109,7 @@ def load_exported_skill(project: Project, skill_id: str) -> Skill:
 
 
 def prose(skill: Skill, value: str) -> str:
-    """An instruction or report text. A missing `.md` file stops the export (the loader accepts it)."""
+    """An instruction, report, or on_pause text. A missing `.md` file stops the export (the loader accepts it)."""
     if value.endswith(".md") and not (skill.folder / value).is_file():
         raise ExportError(f"The skill {skill.id!r} names the file {value}, which is missing.")
     return skill.instruction_text(value)
@@ -148,6 +148,11 @@ def skill_markdown(skill: Skill, default_retries: int) -> str:
         parts.append(
             "## Outputs\n\nThe end step gives these values to whoever started the skill:\n\n"
             + field_lines(skill.outputs)
+        )
+    if skill.on_pause is not None:
+        parts.append(
+            "## If you stop before the end\n\nWhen you stop before an end step, because a step failed or the user asked"
+            " you to stop, do this first:\n\n" + plain_text(prose(skill, skill.on_pause))
         )
     parts.append("## Start\n\n" + edge_lines(skill.entry, numbers, skill))
     parts += [step_markdown(skill, skill.blocks[block_id], numbers, default_retries) for block_id in order]

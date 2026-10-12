@@ -435,6 +435,16 @@ export const FIELD_HELP = {
     ],
     examples: [{ caption: "A goal", code: "goal: A plan that the user approved, with the names in the changed files checked." }],
   },
+  on_pause: {
+    title: "on_pause",
+    short: "What the agent does when the run pauses. The pause packet shows it under the error.",
+    details: [
+      "Optional, at the top of `skill.yaml`. Like an instruction, it is a path that ends in `.md` (a file in the skill folder) or the text itself, and it can use `{{ }}`.",
+      "Use it for the steps that an unattended run must not skip when it stops early: post a comment, remove a label, release a claim. Use `run.mode` for steps that only an autonomous run needs.",
+      "When a called skill pauses, the packet shows the text of each skill on the call stack, the paused skill first.",
+    ],
+    examples: [{ caption: "Steps in a file", code: "on_pause: instructions/on_pause.md" }],
+  },
   skill_inputs: {
     title: "inputs (of the skill)",
     short: "The values that a run of the skill starts with. Blocks read them as inputs.<name>.",

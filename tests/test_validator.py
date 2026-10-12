@@ -551,3 +551,35 @@ def test_references_in_a_tool_profile_are_checked(tmp_path: Path) -> None:
     assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(
         tmp_path, with_tools('"{{ steps.nowhere.x }}"')
     )
+
+
+ON_PAUSE_FILE_SKILL = PLAN_SKILL.replace(
+    "goal: Produce a plan that the user approved.\n",
+    "goal: Produce a plan that the user approved.\non_pause: instructions/on_pause.md\n",
+)
+
+
+def test_a_missing_on_pause_file_is_an_error(tmp_path: Path) -> None:
+    assert "on_pause: the file 'instructions/on_pause.md' does not exist" in messages(
+        problems_for(tmp_path, ON_PAUSE_FILE_SKILL), "error"
+    )
+
+
+def test_an_on_pause_file_is_used_and_checked_like_an_instruction(tmp_path: Path) -> None:
+    files = {**PLAN_SKILL_FILES, "instructions/on_pause.md": "Comment on {{ inputs.topik }}."}
+
+    problems = problems_for(tmp_path, ON_PAUSE_FILE_SKILL, files)
+
+    assert messages(problems, "error") == ["on_pause: 'inputs.topik' is not a declared input"]
+    assert messages(problems, "warning") == []
+
+
+def test_an_inline_on_pause_that_does_not_compile_is_an_error(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "goal: Produce a plan that the user approved.\n",
+        'goal: Produce a plan that the user approved.\non_pause: "Post {{ inputs.topic"\n',
+    )
+
+    errors = messages(problems_for(tmp_path, skill_yaml), "error")
+
+    assert len(errors) == 1 and errors[0].startswith("on_pause: the {{ }} does not compile")

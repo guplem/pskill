@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.38.0 (2026-10-11)
+
+A skill can say what the agent does when its run pauses, so an unattended run leaves a trace (#158).
+
+- **`on_pause`:** a new optional top-level key, a `.md` file or the text itself, like an instruction. It can use `{{ }}`, such as `run.mode` for steps that only an autonomous run needs.
+- **The pause packet** shows it under the error, as `### Pause steps of <skill>`, and its Next part starts with "Do the pause steps above". When a called skill pauses, each skill on the call stack with an `on_pause` gets its section, the paused skill first, each with its own values. A text that renders empty adds no section. A text that fails to render shows the error and the text as written: the pause never fails. A skill without `on_pause` gets the same pause packet as before.
+- **The steps run once:** only the first packet of a pause gives them. A later `current` of the same pause says that the first packet gave them and not to do them again, so an unattended run does not post its comment twice. When the first packet reached no agent (a subagent got the note below), the next `current` gives them.
+- **The Stop hook gives the steps too:** when it gives up after its refused stops (also after the waits of a block used up `max_wait_minutes`) and the pause has steps, it blocks that stop once more, with the pause packet. The run is paused then, so the next stop passes. An unattended run, where nobody calls `current`, still does its steps.
+- **A subagent never gets the pause packet:** when its task answer pauses the run, it gets a short note to stop and tell the main agent, who reads the pause (and its steps) with `current`. Before, the subagent got the packet too. This holds for every skill with a parallel block.
+- **Checks:** `pskill validate` rejects an `on_pause` file that does not exist, and checks its `{{ }}` like an instruction's.
+- **Viewer and export:** the skill screen shows the text under the goal, with its help. The Markdown export turns it into a section "If you stop before the end".
+- **Example skills:** an autonomous `implement-issue` run that pauses posts one comment on its pull request, or on the issue before the pull request exists, through its new script `post_comment.py`. A second run of the steps updates that comment instead of posting another.
+- **A limit:** when a session dies, no agent sees the packet (SPEC L9). Write the steps so that running them twice does no harm.
+
 ## 0.37.0 (2026-10-10)
 
 An agent that waits on background work tells the runner with `pskill wait`, so the Stop hook does not pause the run (#150).

@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from pskill_runner.computed_values import render_text
 from pskill_runner.skill_loader import load_skill
 from pskill_runner.skill_model import EndBlock, TaskBlock
 from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
@@ -493,3 +494,88 @@ def test_open_draft_pr_finds_the_pull_request_of_a_branch_that_gh_would_rewrite(
     run_main(monkeypatch, capsys, script, {**DRAFT_INPUT, "branch": "repo-cleanup", "issue": 0})
 
     assert shell.ran("gh api GET repos/{owner}/{repo}/pulls?head=ana%3Arepo-cleanup&state=open")
+
+
+def on_pause_text(mode: str, steps: dict[str, Any]) -> str:
+    skill = load_skill(SKILLS_FOLDER / SKILL)
+    assert skill.on_pause is not None
+    context = {
+        "inputs": {"request": "42"},
+        "steps": steps,
+        "history": {},
+        "run": {"id": "r-1", "mode": mode, "harness": "claude-code", "dir": "runs/r-1"},
+        "skill": {"id": SKILL, "dir": str(skill.folder)},
+    }
+    return render_text(skill.instruction_text(skill.on_pause), context).strip()
+
+
+def test_an_autonomous_pause_comments_on_the_pull_request_when_one_exists() -> None:
+    text = on_pause_text(
+        "autonomous", {"read_issue": {"json": {"number": 42}}, "open_draft_pr": {"json": {"pr_number": 57}}}
+    )
+
+    assert '{"number": 57, "run_id": "r-1", "body_file": "<file>"}' in text
+    assert "scripts/post_comment.py" in text
+    assert '"number": 42' not in text
+    assert "#42" not in text
+    assert "r-1" in text
+
+
+def test_an_autonomous_pause_comments_on_the_issue_before_the_pull_request_exists() -> None:
+    text = on_pause_text("autonomous", {"read_issue": {"json": {"number": 42}}})
+
+    assert '{"number": 42, "run_id": "r-1", "body_file": "<file>"}' in text
+
+
+def test_an_autonomous_pause_with_no_issue_yet_posts_nothing() -> None:
+    text = on_pause_text("autonomous", {})
+
+    assert "post_comment.py" not in text
+    assert text
+
+
+def test_an_interactive_pause_has_no_pause_steps() -> None:
+    assert on_pause_text("interactive", {"read_issue": {"json": {"number": 42}}}) == ""
+
+
+def post_comment(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path, comments: list[Any]
+) -> tuple[dict[str, Any], FakeShell]:
+    script = load_skill_script(SKILL, "post_comment")
+    body_file = tmp_path / "comment.md"
+    body_file.write_bytes(b'Paused at `review`: $(rm -rf) "quoted".\r\n')
+    outputs = {
+        "gh api GET repos/{owner}/{repo}/issues/57/comments": json.dumps(comments),
+        "gh api POST repos/{owner}/{repo}/issues/57/comments": json.dumps({"html_url": "https://x/57#c1"}),
+        "gh api PATCH repos/{owner}/{repo}/issues/comments/8": json.dumps({"html_url": "https://x/57#c8"}),
+    }
+    shell = install_shell(monkeypatch, script, FakeShell(outputs))
+    printed = run_main(monkeypatch, capsys, script, {"number": 57, "run_id": "r-1", "body_file": str(body_file)})
+    return printed, shell
+
+
+POSTED_PAUSE_BODY = 'Paused at `review`: $(rm -rf) "quoted".\n\n<!-- implement-issue-pause: r-1 -->'
+
+
+def test_post_comment_posts_the_file_as_a_comment_with_no_shell_in_between(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    printed, shell = post_comment(monkeypatch, capsys, tmp_path, [{"id": 7, "body": "Another comment."}])
+
+    assert printed == {"comment_url": "https://x/57#c1", "updated": False}
+    expected_body = json.dumps({"body": POSTED_PAUSE_BODY})
+    assert shell.ran(f"gh api POST repos/{{owner}}/{{repo}}/issues/57/comments {expected_body}")
+
+
+def test_post_comment_run_twice_updates_the_comment_of_its_run(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    earlier = {"id": 8, "body": "Paused earlier.\n\n<!-- implement-issue-pause: r-1 -->"}
+
+    printed, shell = post_comment(monkeypatch, capsys, tmp_path, [{"id": 7, "body": "Another comment."}, earlier])
+
+    assert printed == {"comment_url": "https://x/57#c8", "updated": True}
+    assert shell.ran(
+        f"gh api PATCH repos/{{owner}}/{{repo}}/issues/comments/8 {json.dumps({'body': POSTED_PAUSE_BODY})}"
+    )
+    assert not shell.ran("gh api POST")

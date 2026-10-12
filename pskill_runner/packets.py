@@ -3,6 +3,7 @@
 A packet holds only the current block. It never shows future blocks.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -247,16 +248,40 @@ def render_final_packet(run_id: str, skill_id: str, status: str, report: str | N
     return "\n".join(lines) + "\n"
 
 
+@dataclass(frozen=True)
+class PauseSteps:
+    """A skill's `on_pause` text, rendered, for the pause packet."""
+
+    skill_id: str
+    text: str
+
+
 def render_pause_packet(
-    run_id: str, skill_id: str, block_id: str, reason: str, error: str | None, runner_command: str
+    run_id: str,
+    skill_id: str,
+    block_id: str,
+    reason: str,
+    error: str | None,
+    runner_command: str,
+    pause_steps: Sequence[PauseSteps] = (),
+    steps_shown_before: bool = False,
 ) -> str:
+    """The pause packet. The pause steps of each skill on the call stack sit between the error and the commands.
+
+    With `steps_shown_before`, an earlier packet of this pause gave them: this one names them, so they run once.
+    """
     lines = [f"## pskill · {skill_id} · paused", f"Run {run_id} is paused at block {block_id} ({reason})."]
     if error:
         lines += ["", "### Error", error.strip()]
+    for steps in pause_steps:
+        lines += ["", f"### Pause steps of {steps.skill_id}", steps.text.strip()]
+    if steps_shown_before:
+        lines += ["", "### Pause steps", "The first packet of this pause gave them. Do not do them again."]
+    first_step = "Do the pause steps above. Then tell the user" if pause_steps else "Tell the user"
     lines += [
         "",
         "### Next",
-        "Tell the user why the run paused. Then, when the user decides:",
+        f"{first_step} why the run paused. Then, when the user decides:",
         f"- To try the block again: {runner_command} resume {run_id}",
         f"- To stop the run: {runner_command} cancel {run_id}",
         f"- To see the current block: {runner_command} current {run_id}",
