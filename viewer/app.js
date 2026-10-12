@@ -2072,24 +2072,25 @@ function skillSections() {
     return parts;
   }
   parts.push(section(withHelp("h3", "Goal", "goal"), element("p", skill.goal)));
-  if (skill.on_pause !== null) {
-    const source = skill.on_pause_file ? `From ${skill.on_pause_file}. ` : "";
-    parts.push(
-      section(
-        withHelp("h3", "When the run pauses", "on_pause"),
-        element("p", `${source}Values in {{ }} are filled in during a run.`, "note"),
-        folded(markdown(skill.on_pause), "skill:on_pause"),
-      ),
-    );
-  } else if (skill.on_pause_file) {
-    const heading = withHelp("h3", "When the run pauses", "on_pause");
-    parts.push(section(heading, element("p", `The file ${skill.on_pause_file} is missing.`, "errors")));
-  }
+  const onPause = proseSection("When the run pauses", "on_pause", skill.on_pause, skill.on_pause_file, "skill:on_pause");
+  if (onPause) parts.push(onPause);
   parts.push(problemsSection());
   if (skill.inputs.length) parts.push(section(withHelp("h3", "Inputs", "skill_inputs"), fieldList(skill.inputs)));
   if (skill.outputs.length) parts.push(section(withHelp("h3", "Outputs", "skill_outputs"), fieldList(skill.outputs)));
   parts.push(element("p", "Click a block on the canvas to see its instruction, its fields, and where it can go.", "note"));
   return parts;
+}
+
+// An instruction, report, or on_pause: its text and where it comes from, or the error of its missing file.
+function proseSection(title, helpKey, text, file, foldKey) {
+  const heading = withHelp("h3", title, helpKey);
+  if (text !== null) {
+    const source = file ? `From ${file}. ` : "";
+    const note = element("p", `${source}Values in {{ }} are filled in during a run.`, "note");
+    return section(heading, note, folded(markdown(text), foldKey));
+  }
+  if (file) return section(heading, element("p", `The file ${file} is missing.`, "errors"));
+  return null;
 }
 
 function problemsSection() {
@@ -2141,21 +2142,10 @@ function blockSections(details) {
     const note = element("p", `The command runs ${file.path}. Change it in your code editor.`, "note");
     parts.push(section("Script file", note, folded(element("pre", file.text), `${block}:script:${file.path}`)));
   }
-  if (details.instruction !== null) {
-    const title = details.type === "end" ? "Report" : "Instruction";
-    const source = details.instruction_file ? `From ${details.instruction_file}. ` : "";
-    parts.push(
-      section(
-        withHelp("h3", title, details.type === "end" ? "report" : "instruction"),
-        element("p", `${source}Values in {{ }} are filled in during a run.`, "note"),
-        folded(markdown(details.instruction), `${block}:instruction`),
-      ),
-    );
-  } else if (details.instruction_file) {
-    const field = details.type === "end" ? "report" : "instruction";
-    const heading = withHelp("h3", field === "report" ? "Report" : "Instruction", field);
-    parts.push(section(heading, element("p", `The file ${details.instruction_file} is missing.`, "errors")));
-  }
+  const proseField = details.type === "end" ? "report" : "instruction";
+  const proseTitle = proseField === "report" ? "Report" : "Instruction";
+  const prose = proseSection(proseTitle, proseField, details.instruction, details.instruction_file, `${block}:instruction`);
+  if (prose) parts.push(prose);
   if (details.choices.length) {
     const list = element("dl", null, "facts");
     for (const choice of details.choices) list.append(element("dt", choice.choice), element("dd", choice.meaning));

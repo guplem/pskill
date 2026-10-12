@@ -445,7 +445,7 @@ def test_the_skill_screen_shows_the_on_pause_text_with_its_help() -> None:
     script = (VIEWER / "app.js").read_text(encoding="utf-8")
     help_script = (VIEWER / "field_help.js").read_text(encoding="utf-8")
 
-    assert 'withHelp("h3", "When the run pauses", "on_pause")' in script
+    assert 'proseSection("When the run pauses", "on_pause", skill.on_pause, skill.on_pause_file' in script
     assert "\n  on_pause: {\n" in help_script
-    assert "From ${skill.on_pause_file}. " in script  # which file to edit, as in the instruction panel
-    assert "The file ${skill.on_pause_file} is missing." in script
+    assert "From ${file}. " in script  # which file to edit, as in the instruction panel
+    assert "The file ${file} is missing." in script
