@@ -1116,11 +1116,13 @@ class Run:
     def pause_steps_text(self, skill: Skill, written: str, frame: Frame) -> str:
         """A skill's `on_pause`, rendered with its frame's names. A failure shows the error, so a pause never fails."""
         try:
-            return render_text(skill.instruction_text(written), self.context_of(frame))
-        except OSError as error:
+            text = skill.instruction_text(written)
+        except (OSError, UnicodeDecodeError) as error:
             return f"The pause steps could not be read: {error}\nAs written:\n{written}"
-        except ComputedValueError as error:
-            return f"The pause steps could not be computed: {error}\nAs written:\n{skill.instruction_text(written)}"
+        try:
+            return render_text(text, self.context_of(frame))
+        except Exception as error:  # any error of the author's {{ }}, such as a TypeError: a pause never fails
+            return f"The pause steps could not be computed: {error}\nAs written:\n{text}"
 
     def clear_wait(self) -> None:
         """Something new happened, so the next `pskill wait` starts a fresh `max_wait_minutes`."""

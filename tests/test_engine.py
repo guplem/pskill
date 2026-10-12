@@ -919,3 +919,29 @@ def test_pause_steps_that_render_empty_add_no_section(tmp_path: Path) -> None:
 
     assert "### Pause steps" not in packet
     assert "### Next\nTell the user why the run paused." in packet
+
+
+def test_pause_steps_that_fail_with_any_error_still_pause_the_run(tmp_path: Path) -> None:
+    skill_yaml = SMALL_SKILL.replace("goal: Say hello.\n", 'goal: Say hello.\non_pause: "Retry {{ run.id + 1 }}."\n')
+    project = make_project(tmp_path, "small", skill_yaml)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+
+    packet = pause_run(project, run_id)
+
+    assert "### Pause steps of small\nThe pause steps could not be computed: " in packet
+    assert "As written:\nRetry {{ run.id + 1 }}.\n" in packet
+    assert read_run_info(project, run_id)["status"] == "paused"
+
+
+def test_a_pause_steps_file_that_is_not_utf8_shows_the_error(tmp_path: Path) -> None:
+    skill_yaml = SMALL_SKILL.replace("goal: Say hello.\n", "goal: Say hello.\non_pause: instructions/on_pause.md\n")
+    write_skill(tmp_path / ".pskill" / "skills", "small", skill_yaml, {"instructions/on_pause.md": "Release it."})
+    project = find_project(tmp_path)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+    run_copy = project.runs_folder / run_id / "skills" / "small" / "instructions" / "on_pause.md"
+    run_copy.write_bytes("Release it.".encode("utf-16"))
+
+    packet = pause_run(project, run_id)
+
+    assert "### Pause steps of small\nThe pause steps could not be read: " in packet
+    assert read_run_info(project, run_id)["status"] == "paused"
