@@ -6,7 +6,8 @@ description: >-
   review it with fresh subagents and resolve the findings and comments, round after round. Then mark it ready, get CI
   green, give each later fix a review for required findings only, and label it when a human must look. It never
   merges. Use when the user asks to implement, fix, or work on an issue or a change. Starting it authorizes the issue
-  assignment, the branch, the commits and pushes, the pull request, and the replies to its comments.
+  assignment, the branch, the commits and pushes, the pull request, the replies to its comments, and, when an
+  autonomous run pauses, one comment on the pull request or the issue.
 goal: >-
   A pull request that is ready to merge as it is: every CI check green, every review finding fixed or dismissed, no
   plan file, and the waiting-for-human-review label only when a human must look before the merge.
