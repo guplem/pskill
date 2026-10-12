@@ -133,6 +133,7 @@ def skill_facts(skill: Skill) -> dict[str, Any]:
         "inputs": field_rows(skill.inputs),
         "outputs": field_rows(skill.outputs),
         "on_pause": prose_text(skill, skill.on_pause),
+        "on_pause_file": prose_file(skill.on_pause),
     }
 
 
@@ -258,7 +259,7 @@ def block_details(skill: Skill, block: AnyBlock, agent_names: set[str], frame: i
         "notes": node_notes(block),
         "facts": block_facts(block),
         "instruction": prose_text(skill, instruction_value),
-        "instruction_file": instruction_value if instruction_value and instruction_value.endswith(".md") else None,
+        "instruction_file": prose_file(instruction_value),
         "fields": field_rows(block.output) if isinstance(block, TaskBlock | DecisionBlock | ParallelBlock) else [],
         "choices": [],
         "command": None,
@@ -285,6 +286,11 @@ def block_details(skill: Skill, block: AnyBlock, agent_names: set[str], frame: i
     if isinstance(block, EndBlock):
         details["outputs"] = value_rows(block.outputs)
     return details
+
+
+def prose_file(value: str | None) -> str | None:
+    """The `.md` file of an instruction, report, or on_pause, or None for inline text."""
+    return value if value and value.endswith(".md") else None
 
 
 def prose_text(skill: Skill, value: str | None) -> str | None:

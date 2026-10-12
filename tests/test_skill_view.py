@@ -541,4 +541,18 @@ def test_the_skill_panel_shows_the_on_pause_text_or_none(tmp_path: Path) -> None
     without_steps = detail_of(project, "plan-work")["skill"]
 
     assert with_steps["on_pause"] == "Comment on {{ inputs.topic }}."
+    assert with_steps["on_pause_file"] == "instructions/on_pause.md"
     assert without_steps["on_pause"] is None
+    assert without_steps["on_pause_file"] is None
+
+
+def test_a_missing_on_pause_file_is_named_with_no_text(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "goal: Produce a plan that the user approved.\n",
+        "goal: Produce a plan that the user approved.\non_pause: instructions/on_pause.md\n",
+    )
+    write_skill(tmp_path / ".pskill" / "skills", "plan-work", skill_yaml, PLAN_SKILL_FILES)
+
+    skill = detail_of(find_project(tmp_path), "plan-work")["skill"]
+
+    assert (skill["on_pause"], skill["on_pause_file"]) == (None, "instructions/on_pause.md")

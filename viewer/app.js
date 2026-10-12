@@ -2073,13 +2073,17 @@ function skillSections() {
   }
   parts.push(section(withHelp("h3", "Goal", "goal"), element("p", skill.goal)));
   if (skill.on_pause !== null) {
+    const source = skill.on_pause_file ? `From ${skill.on_pause_file}. ` : "";
     parts.push(
       section(
         withHelp("h3", "When the run pauses", "on_pause"),
-        element("p", "Values in {{ }} are filled in during a run.", "note"),
+        element("p", `${source}Values in {{ }} are filled in during a run.`, "note"),
         folded(markdown(skill.on_pause), "skill:on_pause"),
       ),
     );
+  } else if (skill.on_pause_file) {
+    const heading = withHelp("h3", "When the run pauses", "on_pause");
+    parts.push(section(heading, element("p", `The file ${skill.on_pause_file} is missing.`, "errors")));
   }
   parts.push(problemsSection());
   if (skill.inputs.length) parts.push(section(withHelp("h3", "Inputs", "skill_inputs"), fieldList(skill.inputs)));
