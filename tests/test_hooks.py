@@ -252,3 +252,51 @@ def test_a_run_from_before_the_wait_fields_still_counts_stops_and_pauses(tmp_pat
     assert read_run_info(project, run_id)["pause_error"] == (
         "The agent ended its turn with an open block, several times in a row."
     )
+
+
+PAUSING_PLAN_SKILL = PLAN_SKILL.replace(
+    "goal: Produce a plan that the user approved.\n",
+    'goal: Produce a plan that the user approved.\non_pause: "Comment on the issue: the run paused."\n',
+)
+
+
+def make_pausing_project(tmp_path: Path) -> Project:
+    write_skill(tmp_path / ".pskill" / "skills", "plan-work", PAUSING_PLAN_SKILL, PLAN_SKILL_FILES)
+    return find_project(tmp_path)
+
+
+def test_a_give_up_pause_with_pause_steps_blocks_the_stop_once_more_with_the_pause_packet(tmp_path: Path) -> None:
+    project = make_pausing_project(tmp_path)
+    run_id = start(project)
+
+    reasons = [stop_hook_reason(project, "claude-code") for _ in range(5)]
+
+    give_up = reasons[3]
+    assert give_up is not None
+    assert f"pskill run {run_id} is paused: the agent ended its turn with an open block, several times." in give_up
+    assert "### Pause steps of plan-work\nComment on the issue: the run paused." in give_up
+    assert reasons[4] is None  # the run is paused, so the next stop passes
+    assert read_run_info(project, run_id)["status"] == "paused"
+    assert "Comment on the issue" not in current_packet(project, run_id)  # the hook gave the steps
+
+
+def test_a_pause_after_the_wait_limit_gives_the_pause_steps_too(tmp_path: Path) -> None:
+    project = make_pausing_project(tmp_path)
+    run_id = start(project)
+    start_wait(project, run_id, "the CI checks", utc_now() - timedelta(hours=3))  # a wait whose alarm is long past
+
+    reasons = [stop_hook_reason(project, "claude-code") for _ in range(4)]
+
+    give_up = reasons[3]
+    assert give_up is not None
+    assert "The last wait was on: the CI checks." in give_up
+    assert "### Pause steps of plan-work\nComment on the issue: the run paused." in give_up
+
+
+def test_a_give_up_pause_without_pause_steps_still_allows_the_stop(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    start(project)
+
+    reasons = [stop_hook_reason(project, "claude-code") for _ in range(4)]
+
+    assert reasons[3] is None

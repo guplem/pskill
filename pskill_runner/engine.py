@@ -306,6 +306,20 @@ def register_stop_attempt(project: Project, run_id: str) -> bool:
     return keep_working
 
 
+def unshown_pause_packet(project: Project, run_id: str) -> str | None:
+    """The pause packet of a paused run whose pause steps no agent got yet, or None. It records them as given.
+
+    The Stop hook gives it when its own pause has steps, so a run with no one to call `current` still does them.
+    """
+    with run_lock(run_folder(project, run_id)):
+        run = Run.load(project, run_id)
+        if run.info["status"] != "paused" or run.info.get("pause_steps_shown", False) or not run.pause_steps():
+            return None
+        text = run.pause_text()
+        run.save()
+    return text
+
+
 def read_run_info(project: Project, run_id: str, runs_folder: Path | None = None) -> RunInfo:
     return cast(RunInfo, read_json(run_folder(project, run_id, runs_folder) / "run.json"))
 
