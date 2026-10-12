@@ -514,23 +514,40 @@ def test_an_autonomous_pause_comments_on_the_pull_request_when_one_exists() -> N
         "autonomous", {"read_issue": {"json": {"number": 42}}, "open_draft_pr": {"json": {"pr_number": 57}}}
     )
 
-    assert "gh api repos/{owner}/{repo}/issues/57/comments" in text
-    assert "/issues/42/" not in text
+    assert '{"number": 57, "body_file": "<file>"}' in text
+    assert "scripts/post_comment.py" in text
+    assert "42" not in text
     assert "r-1" in text
 
 
 def test_an_autonomous_pause_comments_on_the_issue_before_the_pull_request_exists() -> None:
     text = on_pause_text("autonomous", {"read_issue": {"json": {"number": 42}}})
 
-    assert "gh api repos/{owner}/{repo}/issues/42/comments" in text
+    assert '{"number": 42, "body_file": "<file>"}' in text
 
 
 def test_an_autonomous_pause_with_no_issue_yet_posts_nothing() -> None:
     text = on_pause_text("autonomous", {})
 
-    assert "gh api" not in text
+    assert "post_comment.py" not in text
     assert text
 
 
 def test_an_interactive_pause_has_no_pause_steps() -> None:
     assert on_pause_text("interactive", {"read_issue": {"json": {"number": 42}}}) == ""
+
+
+def test_post_comment_posts_the_file_as_a_comment_with_no_shell_in_between(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    script = load_skill_script(SKILL, "post_comment")
+    body_file = tmp_path / "comment.md"
+    body_file.write_bytes(b'Paused at `review`: $(rm -rf) "quoted".\r\n')
+    outputs = {"gh api POST repos/{owner}/{repo}/issues/57/comments": json.dumps({"html_url": "https://x/57#c1"})}
+    shell = install_shell(monkeypatch, script, FakeShell(outputs))
+
+    printed = run_main(monkeypatch, capsys, script, {"number": 57, "body_file": str(body_file)})
+
+    assert printed == {"comment_url": "https://x/57#c1"}
+    expected_body = json.dumps({"body": 'Paused at `review`: $(rm -rf) "quoted".\r\n'})
+    assert shell.ran(f"gh api POST repos/{{owner}}/{{repo}}/issues/57/comments {expected_body}")
