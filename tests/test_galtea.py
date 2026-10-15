@@ -542,3 +542,47 @@ def test_a_run_cancelled_inside_a_child_call_finishes_the_child_session(tmp_path
 
     finishes = [body for _, path, body in fake.calls if path.endswith("/finish")]
     assert finishes == [{"error": "cancelled"}]
+
+
+def test_a_metadata_failure_in_one_frame_still_updates_the_next_frame(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    two_step_child = CHILD_SKILL.replace(
+        "    next: done\n",
+        "    next: confirm\n"
+        "  confirm:\n"
+        "    type: task\n"
+        '    instruction: "Confirm the greeting."\n'
+        "    output:\n"
+        '      ok: {type: boolean, description: "Whether it is right."}\n'
+        "    next: done\n",
+        1,
+    )
+    child_metadata = '  metadata:\n    name: "{{ inputs.name }}"\n'
+    parent_metadata = '  metadata:\n    run: "{{ run.id }}"\n'
+    project = make_project(
+        tmp_path,
+        {
+            "parent": with_product(PARENT_SKILL, "p", parent_metadata),
+            "child": with_product(two_step_child, "c", child_metadata),
+        },
+    )
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello from the parent.\n")
+    submit_answer(project, run_id, "text: Hello, Ada!\n")  # the child's first block: both frames have a session
+    real_rendered_metadata = galtea.rendered_metadata
+    calls: list[int] = []
+
+    def fail_first_frame(templates: dict[str, Any], context: dict[str, Any]) -> dict[str, str]:
+        calls.append(1)
+        if len(calls) == 1:
+            raise ValueError("the parent's templates break")
+        return real_rendered_metadata(templates, context)
+
+    monkeypatch.setattr(galtea, "rendered_metadata", fail_first_frame)
+    fake = FakeGaltea()
+
+    upload(project, run_id, fake)
+
+    updates = [body for method, path, body in fake.calls if method == "PATCH" and path.startswith("/sessions/")]
+    assert [update["metadata"].get("name") for update in updates] == ["Ada"]
