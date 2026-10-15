@@ -81,6 +81,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D26 | Example skills: `implement-issue` (one pull request, built red-green, then reviewed and resolved round after round until CI is green), `review-pr` (a deep review that posts one GitHub review), `resolve-pr-feedback`, `fix-ci`, `create-issue`, and the internal `checkout-pr`, `review-round`, `review-head-check`, and `review-doubt` (section 13). They are a base that most software projects on GitHub can copy, so they read the project's rules from its own files and hard-code no project detail. Together they must exercise every feature (section 13.3). Changed after 0.23.1: before, three proof skills ported from the setup-guplem-standard templates. Changed after 0.32.0: before, `review-pr` was one round that posted loose comments. | Real runs of the first version showed what a useful base needs: a plan in a draft pull request, separate find and fix steps, replies to comments, and a CI wait. Stacked pull requests and worktree subagents can come later. |
 | D27 | `pskill test` runs skill tests with a scripted fake agent. | Test graph paths with no LLM, no cost, in CI. |
 | D28 | `pskill sync` adds one narrow allow rule to each harness's project settings: the runner command. | Without it, the user gets a permission prompt on every block. Every other agent action still asks as usual. |
+| D29 | A skill that names `x-galtea.product` uploads each of its runs to Galtea as production usage, live, after each run command (section 10.4). Only with a Galtea key; best effort, outside the run lock. | One place to watch, debug, and evaluate real skill runs. With no key there is no network call, no output, and no file, so D20 (no network after the install) still holds for everyone else. |
 
 ### 3.1 Known limitations (accepted)
 
@@ -149,7 +150,7 @@ blocks: {}                      # map: block id -> block
 
 - Block ids use lowercase letters, digits, and underscores.
 - Load `skill.yaml` with a PyYAML `SafeLoader` subclass in which only `true` and `false` are booleans (the YAML 1.2 rule). `yes`, `no`, `on`, and `off` stay text, so a choice named `no` works.
-- Top-level keys that start with `x-` are free. Use them for YAML anchors (reusable pieces, see 13.2).
+- Top-level keys that start with `x-` are free. Use them for YAML anchors (reusable pieces, see 13.2). The runner reads one of them: `x-galtea`, the upload to Galtea (section 10.4).
 - `invocation`:
   - `auto`: the agent may start the skill from its description.
   - `manual`: only the user starts it by name. Claude gets `disable-model-invocation: true`; Codex gets an `agents/openai.yaml` sidecar (VERIFY).
@@ -506,6 +507,7 @@ Set the mode with `start --mode interactive|autonomous` (default from config: `i
 
 - Write `run.json` and `state.json` to a temp file, then call `os.replace` (atomic on every OS).
 - Every command holds a lock on `runs/<run-id>/.lock`. Create it with `os.open(O_CREAT | O_EXCL)`. Wait up to 10 s. Break a lock older than 60 s. Parallel task submissions depend on this lock.
+- The upload to Galtea (10.4) runs after the command, outside the lock, so a slow network never blocks a submit. It writes `galtea.json` with `os.replace` too.
 - `wait` holds the lock only while it writes or reads `run.json`, never while it sleeps: a lock held for minutes would block every submit, and other commands would break it after 60 s.
 
 ---
@@ -643,7 +645,8 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
    - `issue` (string): issue number, or a text that describes new work.
    - `unattended` (boolean, optional, default: false): true when the user wants no questions.
    Ask the user for each required input that the request does not give, before you run `start`.
-2. Run: `uv run .pskill/pskill.py start implement-issue --harness auto --input issue=<value>`
+2. Run: `uv run .pskill/pskill.py start implement-issue --harness auto --model <your model id> --input issue=<value>`
+   Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.
    Add `--input <name>=<value>` for each optional input that the request gives.
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin, in the same literal form as `submit`.
    Add `--mode autonomous` only when the user asked for no questions.
@@ -709,7 +712,8 @@ pskill/
 .pskill/
 ├── pskill.py            # the entry script with the pin (D20). Never edit; `pskill update` moves the pin.
 ├── config.yaml
-├── .gitignore           # runs/
+├── .gitignore           # runs/, galtea.env
+├── galtea.env           # optional: one person's Galtea key (10.4). Never in git.
 ├── skills/<skill-id>/{skill.yaml, instructions/, scripts/, tests/}
 ├── agents/<name>.md     # pskill agents: subagent roles, shared by all skills (section 6.3)
 └── runs/<run-id>/       # gitignored
@@ -750,24 +754,25 @@ runs/<run-id>/
 ├── events.jsonl   # the trace
 ├── skills/        # copies of every skill that this run can reach through calls
 ├── agents/        # copies of every pskill agent in `.pskill/agents/`
-└── answers/       # the files for long answers, one per block or task (section 7.3)
+├── answers/       # the files for long answers, one per block or task (section 7.3)
+└── galtea.json    # the upload to Galtea: the last uploaded event, the product and session ids (10.4)
 ```
 
 `run.json` fields:
 - `schema_version`, `run_id`, `skill_id`, `skill_hash` (sha256 of the copied skill files)
-- `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `session_id` (the owner session, or null), `mode`, `inputs`
+- `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `llm` (the model id from `start --model`, or null; absent in runs before 0.39.0), `session_id` (the owner session, or null), `mode`, `inputs`
 - `status`, `pause_reason`, `current` (`{frame, block, visit}`), `attempts`, `stop_blocks`
 - `wait_reason`, `wait_started_at`, `wait_until`, `waits_since`: the `pskill wait` alarm (section 9.2). Absent in runs before 0.37.0.
 - `created_at`, `updated_at`, `ended_at`, `outputs`
 
 ### 10.3 Events
 
-Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a counter), `type`, and `frame` (for example `implement-issue>review-round`).
+Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a counter), `type`, `frame` (for example `implement-issue>review-round`), and `call_id` (since schema version 7). `call_id` names the call instance of the frame: `""` for the root skill, `<call block>#<visit>` for a child (for example `review#2`), joined with `>` for a nested child (`review#2>doubt#1`). Two calls of the same child have the same `frame` but a different `call_id`.
 
 | type | Extra fields |
 |---|---|
 | `run_started` | `skill_id`, `skill_hash`, `inputs`, `mode`, `harness`, `runner_version` |
-| `block_started` | `block`, `block_type` (`visit_cap` for the question at a visit cap, since schema version 6), `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null), `skipped_tasks?` (a parallel block: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a parallel block with subagents: the full prompt of each task, which the viewer shows; since schema version 4) |
+| `block_started` | `block`, `block_type` (`visit_cap` for the question at a visit cap, since schema version 6), `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null), `skipped_tasks?` (a parallel block: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a parallel block with subagents: the full prompt of each task, which the viewer shows; since schema version 4), `inputs?` (a `call` block: the computed inputs of the child; since schema version 7) |
 | `submission_rejected` | `block`, `task?`, `errors`, `raw` |
 | `block_completed` | `block`, `task?`, `output`, `decided_by` (`agent`, `human`, `agent_autonomous`, `runner`), `duration_ms` |
 | `script_ran` | `block`, `argv`, `input` (what the script read on stdin, or null; since schema version 5), `exit_code`, `stdout` (whole with `parse: json`, else limited as in 6.4), `stderr` (limited as in 6.4), `duration_ms` |
@@ -778,6 +783,29 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 
 - `duration_ms` of an agent block runs from its packet to its valid submission. For human decisions it is mostly human time. The viewer shows it apart.
 - This file is the contract for the viewer and for later evaluation work. A change needs a new `schema_version`.
+
+### 10.4 Upload to Galtea
+
+A skill names a Galtea product, and its runs go to Galtea as production usage (D29). Other skills upload nothing.
+
+```yaml
+x-galtea:
+  product: pskill-implement-issue          # the Galtea product, by its exact name
+  metadata:                                # optional: session metadata, rendered like {{ }} values
+    issue: "{{ steps.find_issue.json.number }}"
+```
+
+- **Key:** the line `GALTEA_API_KEY=<key>` in `.pskill/galtea.env`, else the environment variable `GALTEA_API_KEY`. With no key, nothing happens.
+- **When:** `start`, `current`, `task`, `submit`, `pause`, `resume`, and `cancel` print their packet, then send the run's new events. The hooks and `pskill test` never upload.
+- **Best effort:** one short timeout per call. Any error is swallowed: the command's output and exit code never change. A failed event is not sent again, and nothing records the failure. A refused event (an HTTP error) skips only that event. A network error (no reply) stops the upload for the rest of the command: its other new events are never sent.
+- **Product:** found by its exact name, or created. pskill sets its description to the skill's description, its auto-close to 7 days (a run can pause for days), and the policy for a turn that reaches a closed session to "reopen".
+- **Version:** Galtea's get-or-create by facts: `skill` (the hash of the skill copy), `runner`, `harness`, `llm` (from `start --model`, else `unknown`), and `tiers` (the model of each tier, only for a skill with a `parallel` block).
+- **Session:** one per execution of a skill with a product: the root skill, or one call of a child skill. Its custom id is `<skill id>@<run id>`, plus `/<call id>` for a child. Its metadata holds the run facts (`run_id`, `repo_commit`, `harness`, `llm`, ...), the parent session of a child, the `x-galtea.metadata` values once they render, and the final status.
+- **Turn:** one per completed block, in order: its packet (or a script's command and stdin, or a call's inputs), its answer or outputs, and its duration. A block that pauses the run with `block_failed` or `runner_error` gives a FAILED turn with the error.
+- **Spans** inside each turn: the block (frame, call id, visit, edge, `decided_by`, and the tier model of a parallel task), each rejected submission, each script attempt, and each pause and resume.
+- **Child skills:** in the caller, a call is one turn, whose output names the child's session. The child's own blocks go only to the child's session, and only when the child names a product.
+- **End:** `run_ended` finishes the root session; the return of a child finishes its session. A run that ends inside a child (a cancel, for example) also finishes each open child session, with the run's status. The status `failed` or `cancelled` finishes it with an error.
+- **Secrets:** known key patterns (GitHub, OpenAI, Galtea, AWS, Bearer, private keys) are replaced with `[redacted]`, and each text is cut to 60 000 characters, so a turn fits the 512 KB body limit.
 
 ---
 
@@ -804,6 +832,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 18. A loop that can repeat after every cap is used up: a loop with no `max_visits` on the way (also inside a capped loop), or caps whose `on_max_visits` blocks lead back into the same loop.
 19. `max_visits` without `on_max_visits`; `on_max_visits`, `ask_on_max_visits`, or `autonomous_max_visits` without `max_visits`; `autonomous_max_visits` below `max_visits`.
 20. A `parallel` block's written `tier` is not `fast`, `standard`, or `deep`, or its written `tools` is not `read` or `web`. A computed value is checked at run time, and an unknown one fails the block.
+21. `x-galtea` (section 10.4) is not a mapping, its `product` is not a non-empty text, or its `metadata` is not a mapping of texts.
 
 **Warnings:**
 1. A condition list whose last item has a `when`.
@@ -1064,11 +1093,11 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 
 | Command | Purpose |
 |---|---|
-| `init [--from <source>]` | Create `.pskill/` with only what a project commits: the pinned `pskill.py`, `config.yaml`, `.gitignore` (`runs/`, `__pycache__/`), and `skills/`. Put the release in the cache, then run `sync`. A source is a release `.zip` (a file or a URL). Default: the latest release, pinned by its versioned URL. When `pskill.py` runs alone from a URL, it first downloads the latest release archive (`PSKILL_RELEASE_URL` overrides the URL), so `uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init` installs in one command. |
-| `update [--from <source>]` | Move the pin of `.pskill/pskill.py`, put the release in the cache, then run `sync` with the new runner. Default source: the latest release archive. `--from .` in the pskill repository writes the dev pin. Remove the runner files of a vendored install (`VENDORED`, `pskill_runner/`, `viewer/`, `launchers/`, `AUTHORING.md`). Never touch `skills/`, `agents/`, `runs/`, or `config.yaml`. |
+| `init [--from <source>]` | Create `.pskill/` with only what a project commits: the pinned `pskill.py`, `config.yaml`, `.gitignore` (`runs/`, `__pycache__/`, `galtea.env`), and `skills/`. Put the release in the cache, then run `sync`. A source is a release `.zip` (a file or a URL). Default: the latest release, pinned by its versioned URL. When `pskill.py` runs alone from a URL, it first downloads the latest release archive (`PSKILL_RELEASE_URL` overrides the URL), so `uv run https://raw.githubusercontent.com/guplem/pskill/main/pskill.py init` installs in one command. |
+| `update [--from <source>]` | Move the pin of `.pskill/pskill.py`, put the release in the cache, then run `sync` with the new runner. Default source: the latest release archive. `--from .` in the pskill repository writes the dev pin. Remove the runner files of a vendored install (`VENDORED`, `pskill_runner/`, `viewer/`, `launchers/`, `AUTHORING.md`). Add `galtea.env` to an existing `.pskill/.gitignore` that lacks it. Never touch `skills/`, `agents/`, `runs/`, or `config.yaml`. |
 | `authoring` | Print `AUTHORING.md`, the guide for agents that write skills. |
 | `list` | Skills: id, invocation, description. |
-| `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h]` | Validate the skill (every error except 17: a stale stub or profile agent never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. |
+| `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h] [--model id]` | Validate the skill (every error except 17: a stale stub or profile agent never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. `--model` records the model id that the agent names (`llm` in `run.json`); the stub asks the agent to pass it. |
 | `current [<run>]` | Print the current packet. No state change. |
 | `task <run> <n>` | Print the full prompt of task `<n>` of the current parallel block. A subagent runs it first. No state change. |
 | `submit <run> [--task <n>] [--file <path>]` | Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. |
@@ -1187,7 +1216,7 @@ Each item below exists as a GitHub issue with the label `future` (guplem/pskill 
 | Gemini CLI adapter (hooks, subagents) | `generic` already runs skills there. |
 | Cursor adapter (hooks, subagents) | Same. |
 | `pskill eval`: run one skill headless in several harnesses on the same inputs and compare the traces | Needs the runner to launch agents (the opposite direction of D1). |
-| Export traces to OpenTelemetry, and upload runs to Galtea | The trace format must settle first. |
+| Export traces to OpenTelemetry | The trace format must settle first. The upload to Galtea shipped in 0.39.0 (10.4). |
 | MCP front door (the same commands as MCP tools) | The CLI works everywhere. |
 | `parallel` blocks that run whole skills per item | Tasks are single jobs in the MVP. |
 | Token counts per block | Harness session files are private formats. |

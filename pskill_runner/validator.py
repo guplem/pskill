@@ -32,6 +32,7 @@ from pskill_runner.skill_model import (
     tier_choices,
     tool_profile_choices,
 )
+from pskill_runner.yaml_loading import load_skill_yaml
 
 DESCRIPTION_LIMIT = 1024
 
@@ -58,6 +59,7 @@ def validate_skill(skill: Skill, catalog: SkillCatalog | None = None) -> list[Pr
     problems += on_pause_problems(skill)
     problems += loop_problems(skill)
     problems += unused_instruction_file_warnings(skill)
+    problems += galtea_problems(skill)
     return problems
 
 
@@ -327,6 +329,29 @@ def text_problems(skill: Skill, location: str, text: str) -> list[Problem]:
             problems.append(error(location, f"'inputs.{name}' is not a declared input"))
         if namespace in ("steps", "history") and name not in skill.blocks:
             problems.append(error(location, f"'{namespace}.{name}' is not a block"))
+    return problems
+
+
+def galtea_problems(skill: Skill) -> list[Problem]:
+    """Check `x-galtea`, the one `x-` key that the runner reads (the upload to Galtea, D29)."""
+    skill_file = skill.folder / "skill.yaml"
+    raw = load_skill_yaml(skill_file.read_text(encoding="utf-8")) if skill_file.is_file() else None
+    if not isinstance(raw, dict) or "x-galtea" not in raw:
+        return []
+    settings = raw["x-galtea"]
+    if not isinstance(settings, dict):
+        return [error("x-galtea", "must be a mapping with a product, such as 'product: my-skill'")]
+    problems = []
+    product = settings.get("product")
+    if not isinstance(product, str) or not product.strip():
+        problems.append(error("x-galtea.product", "must be the name of a Galtea product, as a non-empty text"))
+    metadata = settings.get("metadata", {})
+    if not isinstance(metadata, dict):
+        return [*problems, error("x-galtea.metadata", "must be a mapping of names to texts")]
+    for name, value in metadata.items():
+        if not isinstance(value, str):
+            message = 'must be a text, such as "{{ steps.open_pr.json.number }}"'
+            problems.append(error(f"x-galtea.metadata.{name}", message))
     return problems
 
 

@@ -43,6 +43,8 @@ from pskill_runner.run_records import (
     RunInfo,
     RunState,
     SkippedTask,
+    child_call_id,
+    frame_context,
     new_frame,
 )
 from pskill_runner.run_store import (
@@ -112,6 +114,7 @@ def start_run(
     runs_folder: Path | None = None,
     allow_internal: bool = False,
     session_id: str | None = None,
+    llm: str | None = None,
 ) -> tuple[str, str]:
     """Create a run and return its id and its first packet.
 
@@ -140,6 +143,7 @@ def start_run(
         repo_dirty=repo_dirty,
         runner_version=pskill_runner.__version__,
         harness=adapter_for(harness).name,
+        llm=llm,
         session_id=session_id,
         mode=mode,
         inputs=inputs,
@@ -577,7 +581,9 @@ class Run:
         self.info["session_id"] = session_id
 
     def log(self, event_type: str, **fields: Any) -> None:
-        append_event(self.folder, event_type, frame=">".join(self.chain()), **fields)
+        append_event(
+            self.folder, event_type, frame=">".join(self.chain()), call_id=self.frame.get("call_id", ""), **fields
+        )
 
     # --- reading the state -------------------------------------------------------------------
 
@@ -628,18 +634,7 @@ class Run:
     def context_of(self, frame: Frame, item: Any = None) -> dict[str, Any]:
         """The names that `{{ }}` values can read in one frame of the call stack."""
         skill = self.skill_of(frame)
-        context = {
-            "inputs": frame["inputs"],
-            "steps": frame["steps"],
-            "history": {block_id: frame["history"].get(block_id, []) for block_id in skill.blocks},
-            "run": {
-                "id": self.info["run_id"],
-                "mode": self.info["mode"],
-                "harness": self.info["harness"],
-                "dir": str(self.folder),
-            },
-            "skill": {"id": skill.id, "dir": str(skill.folder)},
-        }
+        context = frame_context(self.info, self.folder, frame, skill.folder, skill.blocks)
         if item is not None:
             context["item"] = item
         return context
@@ -758,7 +753,9 @@ class Run:
         self.info["attempts"] = 0
         self.follow_edges(block, value)
 
-    def log_block_started(self, block: AnyBlock, packet: str | None, task: int | None = None) -> None:
+    def log_block_started(
+        self, block: AnyBlock, packet: str | None, task: int | None = None, inputs: dict[str, Any] | None = None
+    ) -> None:
         fields: dict[str, Any] = {
             "block": block.id,
             "block_type": (
@@ -773,6 +770,8 @@ class Run:
         }
         if task is not None:
             fields["task"] = task
+        if inputs is not None:
+            fields["inputs"] = inputs
         task_names = [task.get("name") for task in self.frame["tasks"] or []]
         if isinstance(block, ParallelBlock) and any(task_names):
             fields["task_names"] = task_names  # the viewer names the tasks of finished runs from this
@@ -819,8 +818,12 @@ class Run:
 
     def start_call(self, block: CallBlock) -> None:
         """Push the child skill's frame, or use a ready result (in `pskill test`)."""
-        self.log_block_started(block, packet=None)
-        inputs = self.computed(block.inputs, f"The inputs of {block.id!r}")
+        try:
+            inputs = self.computed(block.inputs, f"The inputs of {block.id!r}")
+        except RunnerStop:
+            self.log_block_started(block, packet=None)
+            raise
+        self.log_block_started(block, packet=None, inputs=inputs)
         ready_result = self.executor.call_result(block.id, block.skill, inputs)
         if ready_result is not None:
             value = {"status": ready_result.status, "outputs": ready_result.outputs}
@@ -830,7 +833,9 @@ class Run:
         errors = check_typed_values(inputs, callee.inputs)
         if errors:
             raise RunnerStop(f"The inputs of {block.id!r} are invalid: " + "; ".join(errors))
-        self.state["frames"].append(new_frame(callee.id, with_defaults(inputs, callee.inputs), timestamp(utc_now())))
+        call_id = child_call_id(self.frame.get("call_id", ""), block.id, self.frame["visits"].get(block.id, 0))
+        frame = new_frame(callee.id, with_defaults(inputs, callee.inputs), timestamp(utc_now()), call_id)
+        self.state["frames"].append(frame)
         target, reason = self.choose_edge(callee.entry)
         self.go_to(target, from_block=None, reason=reason)
 

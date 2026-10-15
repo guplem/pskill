@@ -11,7 +11,8 @@ Goal: A pull request that is ready to merge as it is: every CI check green, ever
 1. Map the request to the inputs:
    - `request` (string): The issue number or link ('#123' too), or a description of the change to build.
    Ask the user for each required input that the request does not give, before you run `start`.
-2. Run: `uv run .pskill/pskill.py start implement-issue --harness auto --input request=<value>`
+2. Run: `uv run .pskill/pskill.py start implement-issue --harness auto --model <your model id> --input request=<value>`
+   Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,
    in the same literal form that the runner's packets show for `submit`.
    Add `--mode autonomous` only when the user asked for no questions.

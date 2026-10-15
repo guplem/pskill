@@ -13,7 +13,8 @@ Goal: File one clear GitHub issue that the user approved, or reuse an existing i
    - `mark_unchecked` (boolean, optional, default: true): false when a person asked for the issue and will act on it at once, so it needs no waiting-for-human-check label even in autonomous mode.
    - `repo` (string, optional, default: ""): The repository that gets the issue, as owner/name. Empty means the repository of the current folder. Set it when the issue belongs to another repository than the one you work in.
    Ask the user for each required input that the request does not give, before you run `start`.
-2. Run: `uv run .pskill/pskill.py start create-issue --harness auto --input description=<value>`
+2. Run: `uv run .pskill/pskill.py start create-issue --harness auto --model <your model id> --input description=<value>`
+   Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.
    Add `--input <name>=<value>` for each optional input that the request gives.
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,
    in the same literal form that the runner's packets show for `submit`.

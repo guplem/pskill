@@ -121,6 +121,15 @@ The skills read your project's rules from its own files, so they work in most re
 
 This repository follows the same setup, with two differences: it requires no approval (it has one maintainer), and its decisions live in `SPEC.md` section 3, which `AGENTS.md` names.
 
+## Upload runs to Galtea
+
+pskill can send each run of a skill to [Galtea](https://galtea.ai) as production usage, to watch, debug, and evaluate real runs. It is off unless a skill names a product and you have a key.
+
+1. Add `x-galtea: {product: <product name>}` to the skill's `skill.yaml` (see `AUTHORING.md`).
+2. Put your key in `.pskill/galtea.env` as `GALTEA_API_KEY=<key>`. Git ignores this file. The environment variable `GALTEA_API_KEY` works too.
+
+Each run becomes a Galtea session, with one turn per block. An upload error never breaks a run. The agent passes its model with `pskill start --model`, so each Galtea version names the model too.
+
 ## Write a skill
 
 Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`. The example skills are working examples of every feature.

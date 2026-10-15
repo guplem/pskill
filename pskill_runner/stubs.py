@@ -55,7 +55,7 @@ def render_stub(skill: Skill) -> str:
     required_inputs = [name for name, spec in skill.inputs.items() if not spec.optional]
     has_optional_inputs = len(required_inputs) < len(skill.inputs)
     input_options = " ".join(f"--input {name}=<value>" for name in required_inputs)
-    start_command = f"{RUNNER} start {skill.id} --harness auto {input_options}".rstrip()
+    start_command = f"{RUNNER} start {skill.id} --harness auto --model <your model id> {input_options}".rstrip()
     body = [
         GENERATED_MARKER,
         f"Source: `.pskill/skills/{skill.id}/`. This is a programmatic skill: the pskill runner gives you its steps,",
@@ -71,6 +71,7 @@ def render_stub(skill: Skill) -> str:
             else []
         ),
         f"2. Run: `{start_command}`",
+        "   Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.",
         *(
             ["   Add `--input <name>=<value>` for each optional input that the request gives."]
             if has_optional_inputs

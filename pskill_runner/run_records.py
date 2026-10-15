@@ -1,11 +1,14 @@
-"""The typed shape of `run.json` and `state.json` (SPEC.md section 10.2)."""
+"""The typed shape of `run.json` and `state.json` (SPEC.md section 10.2), and the shared frame helpers."""
 
+from collections.abc import Iterable
+from pathlib import Path
 from typing import Any, TypedDict
 
-SCHEMA_VERSION = 6  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
+SCHEMA_VERSION = 7  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
 # 4: a parallel block with subagents logs the full prompt of each task (`task_prompts`).
 # 5: a `script_ran` event holds the `input` that the script read on stdin.
 # 6: `block_type` is `visit_cap` for the question at a visit cap.
+# 7: every event has the `call_id` of its call instance; a call's `block_started` has its `inputs`.
 
 ACTIVE_STATUSES = ("active", "waiting_for_human")
 UNFINISHED_STATUSES = ("active", "waiting_for_human", "paused")
@@ -22,6 +25,7 @@ class RunInfo(TypedDict):
     repo_dirty: bool | None
     runner_version: str
     harness: str
+    llm: str | None  # the model that the agent named with `start --model`; absent in runs before 0.39.0
     session_id: str | None  # the app session that owns the run; absent in runs before 0.9.0
     mode: str
     inputs: dict[str, Any]
@@ -83,6 +87,7 @@ class Frame(TypedDict):
     goal_shown: bool  # a child skill's first packet showed its goal; absent in runs before 0.10.0
     visit_cap_question: bool  # the current block's visit cap question is open; absent in runs before 0.33.0
     extra_visits: dict[str, int]  # the rounds that "more" added to each capped block; absent before 0.33.0
+    call_id: str  # the call instance, like `review#2>doubt#1`; "" for the root; absent before 0.39.0
 
 
 class RunState(TypedDict):
@@ -91,7 +96,26 @@ class RunState(TypedDict):
     frames: list[Frame]
 
 
-def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str) -> Frame:
+def frame_context(
+    info: RunInfo, run_folder: Path, frame: Frame, skill_folder: Path, block_ids: Iterable[str]
+) -> dict[str, Any]:
+    """The names that `{{ }}` values can read in one frame of the call stack (SPEC.md section 7.1)."""
+    return {
+        "inputs": frame["inputs"],
+        "steps": frame["steps"],
+        "history": {block_id: frame["history"].get(block_id, []) for block_id in block_ids},
+        "run": {"id": info["run_id"], "mode": info["mode"], "harness": info["harness"], "dir": str(run_folder)},
+        "skill": {"id": frame["skill_id"], "dir": str(skill_folder)},
+    }
+
+
+def child_call_id(call_id: str, block: str, visit: int) -> str:
+    """The call id of the child that a call block starts: `<block>#<visit>`, after the caller's own id."""
+    own = f"{block}#{visit}"
+    return f"{call_id}>{own}" if call_id else own
+
+
+def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str, call_id: str = "") -> Frame:
     return Frame(
         skill_id=skill_id,
         inputs=inputs,
@@ -107,4 +131,5 @@ def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str) -> Frame:
         goal_shown=False,
         visit_cap_question=False,
         extra_visits={},
+        call_id=call_id,
     )

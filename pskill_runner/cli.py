@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pskill_runner
-from pskill_runner import __version__, claude_code, codex
+from pskill_runner import __version__, claude_code, codex, galtea
 from pskill_runner.adapters import GENERIC, AdapterError, detect_harness, detect_hook_harness, detect_session_id
 from pskill_runner.answer_input import AnswerInputError, read_answer, read_answer_file
 from pskill_runner.engine import (
@@ -23,6 +23,7 @@ from pskill_runner.engine import (
     delete_run,
     list_runs,
     pause_run,
+    resolve_run_id,
     resume_run,
     start_run,
     submit_answer,
@@ -66,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--inputs", choices=["-"], help="Read the inputs as YAML from stdin.")
     start.add_argument("--mode", choices=["interactive", "autonomous"], help="Default: from config.yaml.")
     start.add_argument("--harness", default="auto", help="The harness that runs the agent. Default: detect it.")
+    start.add_argument("--model", help="The model id of the agent that runs the skill.")
 
     current = commands.add_parser("current", help="Print the current block of a run again.")
     current.add_argument("run_id", nargs="?", help="Default: the newest unfinished run.")
@@ -168,14 +170,18 @@ def run_command(options: argparse.Namespace) -> int:
     harness = specific_harness()
     session_id = detect_session_id(os.environ)
     if command == "start":
-        return print_text(start_command(project, options))
+        run_id, packet = start_command(project, options)
+        return print_and_upload(project, run_id, packet)
     if command == "current":
-        return print_text(current_packet(project, options.run_id, harness, session_id))
+        packet = current_packet(project, options.run_id, harness, session_id)
+        return print_and_upload(project, resolve_run_id(project, options.run_id), packet)
     if command == "task":
-        return print_text(task_packet(project, options.run_id, options.index))
+        return print_and_upload(project, options.run_id, task_packet(project, options.run_id, options.index))
     if command == "submit":
         answer = read_answer_file(options.file) if options.file else read_answer(sys.stdin)
-        return print_text(
+        return print_and_upload(
+            project,
+            options.run_id,
             submit_answer(
                 project,
                 options.run_id,
@@ -184,14 +190,14 @@ def run_command(options: argparse.Namespace) -> int:
                 harness=harness,
                 session_id=session_id,
                 answer_file=options.file,
-            )
+            ),
         )
     if command == "pause":
-        return print_text(pause_run(project, options.run_id))
+        return print_and_upload(project, options.run_id, pause_run(project, options.run_id))
     if command == "resume":
-        return print_text(resume_run(project, options.run_id, harness, session_id))
+        return print_and_upload(project, options.run_id, resume_run(project, options.run_id, harness, session_id))
     if command == "cancel":
-        return print_text(cancel_run(project, options.run_id))
+        return print_and_upload(project, options.run_id, cancel_run(project, options.run_id))
     if command == "delete":
         return print_text(delete_run(project, options.run_id))
     if command == "wait":
@@ -230,7 +236,15 @@ def print_text(text: str) -> int:
     return EXIT_OK
 
 
-def start_command(project: Project, options: argparse.Namespace) -> str:
+def print_and_upload(project: Project, run_id: str, text: str) -> int:
+    """Print a command's packet, then send the run's new events to Galtea (nothing without a key)."""
+    exit_code = print_text(text)
+    sys.stdout.flush()
+    galtea.upload_run(project, run_id)
+    return exit_code
+
+
+def start_command(project: Project, options: argparse.Namespace) -> tuple[str, str]:
     inputs: dict[str, Any] = {}
     if options.inputs == "-":
         stdin_inputs = load_answer_yaml(read_answer(sys.stdin))
@@ -245,8 +259,9 @@ def start_command(project: Project, options: argparse.Namespace) -> str:
     harness = detect_harness(os.environ) if options.harness == "auto" else options.harness
     mode = options.mode or project.config.default_mode
     session_id = detect_session_id(os.environ)
-    _, packet = start_run(project, options.skill, inputs, mode=mode, harness=harness, session_id=session_id)
-    return packet
+    return start_run(
+        project, options.skill, inputs, mode=mode, harness=harness, session_id=session_id, llm=options.model
+    )
 
 
 def runs_table(project: Project, only_open: bool) -> str:

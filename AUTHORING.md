@@ -198,6 +198,21 @@ blocks:
 | A mechanical check (a quote is in the diff, a file exists) | A `script` block |
 | A file whose headings another skill reads | Typed `outputs` of a skill, read through a `call` block |
 
+## Upload runs to Galtea
+
+Add `x-galtea` at the top of `skill.yaml` to send every run of the skill to a Galtea product, as production usage. Each person who runs it puts their own key in `.pskill/galtea.env` (`GALTEA_API_KEY=<key>`), which git ignores. With no key, nothing is sent.
+
+```yaml
+x-galtea:
+  product: pskill-review-pr
+  metadata:
+    pr: "{{ inputs.pr }}"
+```
+
+- `product` is the exact name of the Galtea product. pskill creates it when it is missing.
+- `metadata` values are texts with `{{ }}`. A value whose step has not run yet is sent later, when it renders.
+- A child skill with its own `x-galtea` gets its own session for each call. Without it, the call is one turn of the caller.
+
 ## The edit loop (red-green)
 
 1. Write or change a test case in `tests/<case>.yaml`: the answers per block, the recorded script and call results, and the expected `path`, `status`, and `outputs`. A visit cap question takes its answers from `caps: {<block>: [{choice: move_on, rationale: ..., $answered_by: human}]}`. A recorded call can also state the `inputs` that the call block must send: `{status: succeeded, outputs: {...}, inputs: {pr: 9}}`. The case then fails when the block sends another value. Inside `{ }`, put a value with `?` or `: ` in quotes: `{question: "Which database?"}`. Without quotes, YAML fails to parse the case.

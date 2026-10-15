@@ -583,3 +583,33 @@ def test_an_inline_on_pause_that_does_not_compile_is_an_error(tmp_path: Path) ->
     errors = messages(problems_for(tmp_path, skill_yaml), "error")
 
     assert len(errors) == 1 and errors[0].startswith("on_pause: the {{ }} does not compile")
+
+
+def test_x_galtea_needs_a_product_name_and_text_metadata(tmp_path: Path) -> None:
+    galtea_block = "x-galtea:\n  product: ''\n  metadata: {pr: 7, repo: '{{ inputs.topic }}'}\n"
+    problems = problems_for(tmp_path, PLAN_SKILL.replace("schema: pskill/v1\n", "schema: pskill/v1\n" + galtea_block))
+
+    assert messages(problems, "error") == [
+        "x-galtea.product: must be the name of a Galtea product, as a non-empty text",
+        'x-galtea.metadata.pr: must be a text, such as "{{ steps.open_pr.json.number }}"',
+    ]
+
+
+def test_x_galtea_metadata_must_be_a_mapping(tmp_path: Path) -> None:
+    galtea_block = "x-galtea:\n  product: p\n  metadata: [a]\n"
+    problems = problems_for(tmp_path, PLAN_SKILL.replace("schema: pskill/v1\n", "schema: pskill/v1\n" + galtea_block))
+
+    assert messages(problems, "error") == ["x-galtea.metadata: must be a mapping of names to texts"]
+
+
+def test_x_galtea_must_be_a_mapping(tmp_path: Path) -> None:
+    problems = problems_for(tmp_path, PLAN_SKILL.replace("schema: pskill/v1\n", "schema: pskill/v1\nx-galtea: p\n"))
+
+    assert messages(problems, "error") == ["x-galtea: must be a mapping with a product, such as 'product: my-skill'"]
+
+
+def test_a_valid_x_galtea_has_no_problem(tmp_path: Path) -> None:
+    galtea_block = "x-galtea:\n  product: p\n  metadata: {topic: '{{ inputs.topic }}'}\n"
+    problems = problems_for(tmp_path, PLAN_SKILL.replace("schema: pskill/v1\n", "schema: pskill/v1\n" + galtea_block))
+
+    assert messages(problems, "error") == []

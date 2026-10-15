@@ -114,13 +114,18 @@ def adapter_for(name: str) -> HarnessAdapter:
     return ADAPTERS[name]
 
 
+def tier_row(adapter: HarnessAdapter, project_tiers: Mapping[str, Mapping[str, TierRow]], tier: str) -> TierRow:
+    """The row of a tier: the project's row from config.yaml, which replaces the harness's default row."""
+    project_rows = project_tiers.get(adapter.name, {})
+    return project_rows[tier] if tier in project_rows else adapter.tier_rows.get(tier, TierRow())
+
+
 def tier_wording(adapter: HarnessAdapter, project_tiers: Mapping[str, Mapping[str, TierRow]], tier: str) -> str:
     """How to spawn a task's subagent with its model tier, in one line. Empty when the row asks for nothing.
 
     `project_tiers` holds the project's rows from config.yaml, per harness: a project row replaces the default row.
     """
-    project_rows = project_tiers.get(adapter.name, {})
-    row = project_rows[tier] if tier in project_rows else adapter.tier_rows.get(tier, TierRow())
+    row = tier_row(adapter, project_tiers, tier)
     settings = []
     if row.model:
         settings.append(f"`model: {row.model}`")

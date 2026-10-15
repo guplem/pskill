@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from pskill_runner import cli
+from pskill_runner import cli, galtea
 from pskill_runner.engine import read_run_info
 from pskill_runner.install import CACHE_VARIABLE
 from pskill_runner.project import Project, find_project
@@ -159,6 +159,42 @@ def test_start_and_submit_run_a_skill_to_the_end(
     finished = capsys.readouterr().out
     assert "finished with status succeeded" in finished
     assert finished.endswith("\n")
+
+
+def test_start_records_the_model_that_the_agent_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, monkeypatch)
+
+    run_id = start_plan(monkeypatch, capsys, "--model", "claude-opus-5-5")
+    plain_run_id = start_plan(monkeypatch, capsys)
+
+    assert read_run_info(project, run_id)["llm"] == "claude-opus-5-5"
+    assert read_run_info(project, plain_run_id)["llm"] is None
+
+
+def test_each_run_command_uploads_its_run_to_galtea_after_it_prints(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_project(tmp_path, monkeypatch)
+    uploads: list[tuple[str, str]] = []  # each upload, with what the command printed before it
+
+    def record_upload(project: Project, run_id: str) -> None:
+        uploads.append((run_id, capsys.readouterr().out))
+
+    monkeypatch.setattr(galtea, "upload_run", record_upload)
+
+    run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x")
+    run_id = uploads[0][0]
+    run_cli(monkeypatch, "current")
+    run_cli(monkeypatch, "submit", run_id, stdin="status: finished\nplan: Build it.\n")
+    run_cli(monkeypatch, "pause", run_id)
+    run_cli(monkeypatch, "resume", run_id)
+    run_cli(monkeypatch, "cancel", run_id)
+    run_cli(monkeypatch, "runs")
+
+    assert [uploaded_run for uploaded_run, _ in uploads] == [run_id] * 6
+    assert all(f"Run {run_id}" in printed for _, printed in uploads)  # the packet comes first
 
 
 def test_start_reads_the_inputs_from_stdin_as_yaml(
@@ -350,6 +386,21 @@ def test_current_from_an_unknown_shell_keeps_the_harness_of_the_run(
 
     assert exit_code == cli.EXIT_OK
     assert read_run_info(project, run_id)["harness"] == "claude-code"
+
+
+def test_the_task_command_uploads_its_run_to_galtea(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "spell", SPELL_SKILL)
+    monkeypatch.chdir(tmp_path)
+    run_cli(monkeypatch, "start", "spell")
+    run_id = run_id_of(capsys.readouterr().out)
+    uploads: list[str] = []
+    monkeypatch.setattr(galtea, "upload_run", lambda project, run_id: uploads.append(run_id))
+
+    run_cli(monkeypatch, "task", run_id, "0")
+
+    assert uploads == [run_id]
 
 
 def test_task_and_submit_with_a_task_number_drive_a_parallel_block(
