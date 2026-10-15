@@ -143,6 +143,10 @@ def test_a_run_becomes_one_production_session_with_a_turn_per_block(tmp_path: Pa
     assert all(turn["status"] == "GENERATED" for turn in turns)
     finish = fake.bodies("PATCH", f"/sessions/{fake_session_id(fake)}/finish")
     assert finish == [{"stoppingReason": "succeeded"}]
+    [final_update] = fake.bodies("PATCH", f"/sessions/{fake_session_id(fake)}")
+    assert final_update["metadata"]["status"] == "succeeded"
+    assert final_update["metadata"]["ended_at"].endswith("Z")
+    assert final_update["metadata"]["duration_ms"] >= 0
 
 
 def fake_session_id(fake: FakeGaltea) -> str:
