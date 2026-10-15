@@ -287,6 +287,22 @@ def test_a_template_that_cannot_render_yet_is_skipped() -> None:
     assert galtea.rendered_metadata({"pr": "{{ steps.open_pr.number }}", "fixed": "x"}, context) == {"fixed": "x"}
 
 
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY-----",
+        "ghp_" + "a" * 36,
+        "github_pat_" + "b" * 30,
+        "sk-" + "c" * 30,
+        "gsk_" + "d" * 20,
+        "AKIA" + "E" * 16,
+        "Bearer " + "f" * 20,
+    ],
+)
+def test_each_known_secret_pattern_is_redacted(secret: str) -> None:
+    assert galtea.redacted(f"before {secret} after") == "before [redacted] after"
+
+
 def test_secrets_are_redacted_and_long_texts_are_cut() -> None:
     value = {"a": ["token ghp_" + "a" * 36, "Bearer abcdefghijklmnopqrstu"], "b": "x" * 200_000, "c": 3}
 
