@@ -352,8 +352,10 @@ def test_parallel_task_turns_name_their_tier_model(tmp_path: Path) -> None:
     assert root["metadata"]["tier_model"] == "opus"
 
 
-@pytest.mark.parametrize(("tier", "expected"), [("deep", "opus"), ("other", "inherited")])
+@pytest.mark.parametrize(("tier", "expected"), [("deep", "opus-for-tests"), ("fast", "haiku"), ("other", "inherited")])
 def test_a_project_tier_row_replaces_the_default_model(tmp_path: Path, tier: str, expected: str) -> None:
+    (tmp_path / ".pskill").mkdir()
+    (tmp_path / ".pskill" / "config.yaml").write_text("tiers:\n  claude-code:\n    deep: {model: opus-for-tests}\n")
     project = make_project(tmp_path, {})
     upload_state = galtea.RunUpload.__new__(galtea.RunUpload)
     upload_state.project = project

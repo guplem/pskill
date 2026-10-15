@@ -20,7 +20,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
-from pskill_runner.adapters import adapter_for
+from pskill_runner.adapters import adapter_for, tier_row
 from pskill_runner.computed_values import ComputedValueError, render_text
 from pskill_runner.galtea_client import GalteaClient, urllib_sender
 from pskill_runner.project import Project
@@ -318,10 +318,8 @@ class RunUpload:
         return {}  # no tier, or the block is over and the run no longer holds its tasks
 
     def tier_model(self, tier: str) -> str:
-        adapter = adapter_for(self.info["harness"])
-        project_rows = self.project.config.tiers.get(adapter.name, {})
-        row = project_rows.get(tier) or adapter.tier_rows.get(tier)
-        return (row.model if row is not None else None) or "inherited"
+        row = tier_row(adapter_for(self.info["harness"]), self.project.config.tiers, tier)
+        return row.model or "inherited"
 
     # --- finding events ---------------------------------------------------------------------------
 
