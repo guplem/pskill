@@ -586,3 +586,21 @@ def test_a_metadata_failure_in_one_frame_still_updates_the_next_frame(
 
     updates = [body for method, path, body in fake.calls if method == "PATCH" and path.startswith("/sessions/")]
     assert [update["metadata"].get("name") for update in updates] == ["Ada"]
+
+
+def test_a_failed_turn_takes_the_error_of_its_own_pause(tmp_path: Path) -> None:
+    failing = SCRIPT_SKILL.replace(
+        "\"import json; print(json.dumps({'files': ['a.md', 'b.md']}))\"", '"import sys; sys.exit(3)"'
+    )
+    project = make_project(tmp_path, {"scripted": with_product(failing, "s")})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    run_path = project.runs_folder / run_id / "run.json"
+    info = read_json(run_path)
+    info["pause_error"] = None  # as after a resume, before this pause was uploaded
+    run_path.write_text(json.dumps(info), encoding="utf-8")
+    fake = FakeGaltea()
+
+    upload(project, run_id, fake)
+
+    [turn] = fake.bodies("POST", "/inferenceResults")
+    assert "exit code 3" in turn["error"]

@@ -203,7 +203,7 @@ class RunUpload:
         session = self.session_for(started.get("call_id", ""), skill_id_of(started))
         if session is None:
             return
-        error = self.info.get("pause_error") or event.get("reason", "")
+        error = event.get("error") or event.get("reason", "")  # the event keeps the error of this pause
         turn = {
             "input": as_text(self.turn_input(started)),
             "actualOutput": "",
