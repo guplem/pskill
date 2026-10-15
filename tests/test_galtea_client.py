@@ -115,3 +115,12 @@ def test_the_urllib_sender_sends_json_with_the_bearer_key(galtea_server: str) ->
         ("PATCH", "/sessions/s/finish", "Bearer gsk_test", {"stoppingReason": "done"}),
         ("GET", "/products?names=p", "Bearer gsk_test", None),
     ]
+
+
+def test_find_session_asks_by_custom_id_and_version() -> None:
+    sender = RecordingSender([{"id": "ses_1"}], [])
+    client = GalteaClient(sender)
+
+    assert client.find_session("a@r/b#1", "ver_1") == {"id": "ses_1"}
+    assert client.find_session("a@r", "ver_1") is None
+    assert sender.calls[0] == ("GET", "/sessions?customIds=a%40r%2Fb%231&versionIds=ver_1", None)

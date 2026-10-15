@@ -1,5 +1,7 @@
 """Tests for pskill_runner.galtea: the upload of runs to Galtea, with a fake Galtea."""
 
+import urllib.error
+from email.message import Message
 from pathlib import Path
 from typing import Any
 
@@ -19,19 +21,27 @@ KEY = {"GALTEA_API_KEY": "gsk_test"}
 class FakeGaltea:
     """A Galtea stand-in: it records every call and gives each created object a numbered id."""
 
-    def __init__(self, products: list[dict[str, Any]] | None = None, fail_on: str | None = None) -> None:
+    def __init__(
+        self,
+        products: list[dict[str, Any]] | None = None,
+        fail_on: str | None = None,
+        sessions: list[dict[str, Any]] | None = None,
+        error: Exception | None = None,
+    ) -> None:
         self.calls: list[tuple[str, str, Any]] = []
         self.products = products or []
+        self.sessions = sessions or []
+        self.error = error or OSError("Galtea is down")
         self.fail_on = fail_on
         self.count = 0
 
     def send(self, method: str, path: str, body: Any) -> Any:
         self.calls.append((method, path, body))
         if self.fail_on is not None and self.fail_on in path:
-            raise OSError("Galtea is down")
+            raise self.error
         self.count += 1
         if method == "GET":
-            return self.products
+            return self.sessions if path.startswith("/sessions") else self.products
         replies = {
             "/products": "prod",
             "/versions/get-or-create": "ver",
@@ -427,3 +437,25 @@ def test_an_odd_galtea_reply_skips_only_its_event(tmp_path: Path) -> None:
     upload(project, run_id, fake)
 
     assert len(fake.bodies("GET", "/products?names=s")) == 2  # one try for each of the two turns
+
+
+def test_a_session_that_another_command_created_is_reused(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"scripted": with_product(SCRIPT_SKILL, "s")})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    fake = FakeGaltea(sessions=[{"id": "ses_other"}])
+
+    upload(project, run_id, fake)
+
+    assert fake.bodies("POST", "/sessions") == []
+    assert {turn["sessionId"] for turn in fake.bodies("POST", "/inferenceResults")} == {"ses_other"}
+
+
+def test_an_http_error_from_galtea_does_not_stop_the_command(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"scripted": with_product(SCRIPT_SKILL, "s")})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    refused = urllib.error.HTTPError("https://api.galtea.ai/products", 400, "Bad Request", Message(), None)
+    fake = FakeGaltea(fail_on="/products", error=refused)
+
+    upload(project, run_id, fake)
+
+    assert len(fake.bodies("GET", "/products?names=s")) == 2  # each turn tries again

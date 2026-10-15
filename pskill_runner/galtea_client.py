@@ -58,6 +58,11 @@ class GalteaClient:
     def get_or_create_version(self, product_id: str, facts: dict[str, str]) -> dict[str, Any]:
         return dict(self.send("POST", "/versions/get-or-create", {"productId": product_id, "facts": facts}))
 
+    def find_session(self, custom_id: str, version_id: str) -> dict[str, Any] | None:
+        query = f"customIds={urllib.parse.quote(custom_id, safe='')}&versionIds={urllib.parse.quote(version_id)}"
+        sessions = self.send("GET", f"/sessions?{query}", None)
+        return sessions[0] if sessions else None
+
     def create_session(self, body: dict[str, Any]) -> dict[str, Any]:
         return dict(self.send("POST", "/sessions", body))
 

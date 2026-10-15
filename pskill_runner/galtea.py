@@ -12,6 +12,7 @@ prints and returns what it would print and return without Galtea.
 import json
 import os
 import re
+import urllib.error
 import uuid
 from collections.abc import Callable, Mapping
 from datetime import timedelta
@@ -147,6 +148,8 @@ class RunUpload:
             try:
                 if reachable:
                     self.upload_event(event)
+            except urllib.error.HTTPError:  # Galtea refused this event: the next one may pass
+                pass
             except OSError:  # Galtea is down or blocked: every call would wait for the timeout, so stop trying
                 reachable = False
             except Exception:  # fire and forget: a failed event is not sent again
@@ -367,7 +370,8 @@ class RunUpload:
         facts = self.version_facts(skill_id, skill_folder, raw)
         version = self.client.get_or_create_version(product_id, facts)
         metadata = self.automatic_metadata(call_id)
-        session = self.client.create_session(
+        # Parallel commands upload at once with no lock, so another one may have created the session.
+        session = self.client.find_session(custom_id, version["id"]) or self.client.create_session(
             redacted(
                 {
                     "versionId": version["id"],
