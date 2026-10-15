@@ -797,7 +797,7 @@ x-galtea:
 
 - **Key:** the line `GALTEA_API_KEY=<key>` in `.pskill/galtea.env`, else the environment variable `GALTEA_API_KEY`. With no key, nothing happens.
 - **When:** `start`, `current`, `task`, `submit`, `pause`, `resume`, and `cancel` print their packet, then send the run's new events. The hooks and `pskill test` never upload.
-- **Best effort:** one short timeout per call. Any error is swallowed: the command's output and exit code never change. A failed event is not sent again, and nothing records the failure.
+- **Best effort:** one short timeout per call. Any error is swallowed: the command's output and exit code never change. A failed event is not sent again, and nothing records the failure. A refused event (an HTTP error) skips only that event. A network error (no reply) stops the upload for the rest of the command: its other new events are never sent.
 - **Product:** found by its exact name, or created. pskill sets its description to the skill's description, its auto-close to 7 days (a run can pause for days), and the policy for a turn that reaches a closed session to "reopen".
 - **Version:** Galtea's get-or-create by facts: `skill` (the hash of the skill copy), `runner`, `harness`, `llm` (from `start --model`, else `unknown`), and `tiers` (the model of each tier, only for a skill with a `parallel` block).
 - **Session:** one per execution of a skill with a product: the root skill, or one call of a child skill. Its custom id is `<skill id>@<run id>`, plus `/<call id>` for a child. Its metadata holds the run facts (`run_id`, `repo_commit`, `harness`, `llm`, ...), the parent session of a child, the `x-galtea.metadata` values once they render, and the final status.

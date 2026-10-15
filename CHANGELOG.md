@@ -10,7 +10,7 @@ A skill can upload its runs to Galtea as production usage, live, block by block 
 - **Versions:** Galtea versions come from facts: the skill hash, the runner version, the harness, the model, and the tier models.
 - **`pskill start --model`:** records the agent's model in `run.json` as `llm`. The generated stubs ask the agent to pass it.
 - **Events schema 7:** every event has the `call_id` of its call instance, and a call's `block_started` has its `inputs`.
-- **Best effort:** the upload runs after each run command, outside the run lock. Any error is swallowed, and a failed event is not sent again.
+- **Best effort:** the upload runs after each run command, outside the run lock. Any error is swallowed, and a failed event is not sent again. A network error skips the rest of that command's events.
 
 ## 0.38.0 (2026-10-11)
 
