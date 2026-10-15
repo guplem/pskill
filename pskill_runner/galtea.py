@@ -34,8 +34,8 @@ STATE_FILE_NAME = "galtea.json"
 AUTO_CLOSE_MINUTES = 10080
 # A paused run that resumes sends turns to a closed session: Galtea must reopen it, not drop them.
 CLOSED_SESSION_POLICY = "REOPEN_AND_REEVALUATE"
-# Each text goes into a request body of at most 512 KB, with other fields beside it.
-TEXT_LIMIT = 100_000
+# A turn holds two texts in a body of at most 512 KB: 60 000 characters of 4 UTF-8 bytes each still fit.
+TEXT_LIMIT = 60_000
 FAILURE_PAUSE_REASONS = ("block_failed", "runner_error")
 FAILED_END_STATUSES = ("failed", "cancelled")
 SPAN_TYPES = {"task": "AGENT", "decision": "AGENT", "parallel": "AGENT", "visit_cap": "AGENT"}

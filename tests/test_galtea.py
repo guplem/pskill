@@ -1,5 +1,6 @@
 """Tests for pskill_runner.galtea: the upload of runs to Galtea, with a fake Galtea."""
 
+import json
 import urllib.error
 from email.message import Message
 from pathlib import Path
@@ -460,3 +461,10 @@ def test_an_http_error_from_galtea_does_not_stop_the_command(tmp_path: Path) -> 
     upload(project, run_id, fake)
 
     assert len(fake.bodies("GET", "/products?names=s")) == 2  # each turn tries again
+
+
+def test_a_turn_with_two_texts_at_the_limit_fits_the_galtea_body_limit() -> None:
+    worst_text = "😀" * 200_000  # 4 bytes in UTF-8 for each character
+    body = galtea.redacted({"input": worst_text, "actualOutput": worst_text, "sessionId": "ses_1", "index": 0})
+
+    assert len(json.dumps(body, ensure_ascii=False).encode("utf-8")) < 512 * 1024

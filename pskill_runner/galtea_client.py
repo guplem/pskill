@@ -28,7 +28,7 @@ def urllib_sender(api_key: str, base_url: str = DEFAULT_BASE_URL) -> Sender:
     """The real sender: urllib with the Bearer key and a short timeout. An HTTP error raises."""
 
     def send(method: str, path: str, body: Any) -> Any:
-        data = None if body is None else json.dumps(body).encode("utf-8")
+        data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(base_url + path, data=data, method=method)
         request.add_header("Authorization", f"Bearer {api_key}")
         request.add_header("Content-Type", "application/json")
