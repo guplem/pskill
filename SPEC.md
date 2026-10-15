@@ -804,7 +804,7 @@ x-galtea:
 - **Turn:** one per completed block, in order: its packet (or a script's command and stdin, or a call's inputs), its answer or outputs, and its duration. A block that pauses the run with `block_failed` or `runner_error` gives a FAILED turn with the error.
 - **Spans** inside each turn: the block (frame, call id, visit, edge, `decided_by`, and the tier model of a parallel task), each rejected submission, each script attempt, and each pause and resume.
 - **Child skills:** in the caller, a call is one turn, whose output names the child's session. The child's own blocks go only to the child's session, and only when the child names a product.
-- **End:** `run_ended` finishes the root session; the return of a child finishes its session. The status `failed` or `cancelled` finishes it with an error.
+- **End:** `run_ended` finishes the root session; the return of a child finishes its session. A run that ends inside a child (a cancel, for example) also finishes each open child session, with the run's status. The status `failed` or `cancelled` finishes it with an error.
 - **Secrets:** known key patterns (GitHub, OpenAI, Galtea, AWS, Bearer, private keys) are replaced with `[redacted]`, and each text is cut to 60 000 characters, so a turn fits the 512 KB body limit.
 
 ---
