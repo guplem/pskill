@@ -9,6 +9,7 @@ The upload is best effort. With no key it does nothing. Any error is swallowed, 
 prints and returns what it would print and return without Galtea.
 """
 
+import contextlib
 import json
 import os
 import re
@@ -446,7 +447,8 @@ class RunUpload:
             return
         final = {"status": event.get("status"), "ended_at": event["ts"], "duration_ms": event.get("duration_ms")}
         record["metadata"] = {**record["metadata"], **final}
-        self.client.update_session(record["session_id"], {"metadata": redacted(record["metadata"])})
+        with contextlib.suppress(urllib.error.HTTPError):  # a refused update must not keep the session open
+            self.client.update_session(record["session_id"], {"metadata": redacted(record["metadata"])})
         self.finish_session(record["session_id"], str(event.get("status", "")))
 
     def finish_session(self, session_id: str, status: str) -> None:

@@ -470,3 +470,14 @@ def test_a_turn_with_two_texts_at_the_limit_fits_the_galtea_body_limit() -> None
     body = galtea.redacted({"input": worst_text, "actualOutput": worst_text, "sessionId": "ses_1", "index": 0})
 
     assert len(json.dumps(body, ensure_ascii=False).encode("utf-8")) < 512 * 1024
+
+
+def test_a_refused_final_metadata_update_still_finishes_the_session(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"scripted": with_product(SCRIPT_SKILL, "s")})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    refused = urllib.error.HTTPError("https://api.galtea.ai/sessions", 400, "Bad Request", Message(), None)
+    fake = FakeGaltea(fail_on="/sessions/", error=refused)
+
+    upload(project, run_id, fake)
+
+    assert any(path.endswith("/finish") for _, path, _ in fake.calls)
