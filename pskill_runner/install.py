@@ -19,6 +19,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from pskill_runner.galtea import KEY_FILE_NAME as GALTEA_KEY_FILE
 from pskill_runner.project import PSKILL_FOLDER_NAME
 from pskill_runner.release import (
     DEFAULT_RELEASE_URL,
@@ -35,8 +36,7 @@ CACHE_VARIABLE = "PSKILL_CACHE_DIR"
 PIN_NAMES = ("PSKILL_VERSION", "PSKILL_URL", "PSKILL_SHA256")
 # The runner files that a vendored install kept in `.pskill/`, before 0.22.
 LEGACY_PATHS = ["AUTHORING.md", "VENDORED", "launchers", "pskill_runner", "viewer"]
-GALTEA_KEY_FILE = "galtea.env"  # the Galtea key of one person (D29), never in git
-PROJECT_GITIGNORE = "runs/\n__pycache__/\ngaltea.env\n"
+PROJECT_GITIGNORE = f"runs/\n__pycache__/\n{GALTEA_KEY_FILE}\n"  # the key of one person, never in git
 DEFAULT_CONFIG = """\
 # pskill settings (SPEC.md section 10.1). Every setting is optional; these are the defaults.
 stub_folders: [.agents/skills, .claude/skills]          # where `pskill sync` writes the skill stubs
