@@ -52,6 +52,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `viewer_server.py` | `pskill view`: the local server on 127.0.0.1 (the static files, and the API through `viewer_api.py`). |
 | `viewer_api.py` | The viewer's API as plain functions, for the local server and for the hosted viewer (Pyodide). |
 | `hosted_site.py` | Builds the hosted viewer for GitHub Pages: `viewer/` plus `pskill_runner.zip`. |
+| `galtea.py` | The upload of runs to Galtea: new events to sessions, turns, and spans; state in `galtea.json`. |
 | `galtea_client.py` | The Galtea REST calls of the run upload, over an injected sender (urllib by default). |
 
 ## Commands
