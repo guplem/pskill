@@ -68,6 +68,7 @@ class UploadState(TypedDict):
 
     last_seq: int
     products: dict[str, str]  # product name -> product id
+    versions: dict[str, str]  # product id and facts (JSON) -> version id; Galtea allows 10 a minute
     sessions: dict[str, SessionRecord]  # call id -> its session ("" is the root skill)
 
 
@@ -137,7 +138,7 @@ class RunUpload:
         self.client = client
         self.info = cast(RunInfo, read_json(folder / "run.json"))
         state_path = folder / STATE_FILE_NAME
-        empty = UploadState(last_seq=0, products={}, sessions={})
+        empty = UploadState(last_seq=0, products={}, versions={}, sessions={})
         self.state = cast(UploadState, read_json(state_path)) if state_path.is_file() else empty
         self.events: list[dict[str, Any]] = []
 
@@ -370,13 +371,13 @@ class RunUpload:
         raw = load_skill_yaml((skill_folder / "skill.yaml").read_text(encoding="utf-8"))
         product_id = self.product_id(product_name.strip(), str(raw.get("description") or skill_id))
         facts = self.version_facts(skill_id, skill_folder, raw)
-        version = self.client.get_or_create_version(product_id, facts)
+        version_id = self.version_id(product_id, facts)
         metadata = self.automatic_metadata(call_id)
         # Parallel commands upload at once with no lock, so another one may have created the session.
-        session = self.client.find_session(custom_id, version["id"]) or self.client.create_session(
+        session = self.client.find_session(custom_id, version_id) or self.client.create_session(
             redacted(
                 {
-                    "versionId": version["id"],
+                    "versionId": version_id,
                     "customId": custom_id,
                     "isProduction": True,
                     "context": str(raw.get("goal") or ""),
@@ -400,6 +401,14 @@ class RunUpload:
             )
             self.state["products"][name] = product["id"]
         return self.state["products"][name]
+
+    def version_id(self, product_id: str, facts: dict[str, str]) -> str:
+        """The id of the version with these facts, asked of Galtea once per run (its rate limit is low)."""
+        versions = self.state.setdefault("versions", {})
+        key = json.dumps([product_id, facts], sort_keys=True)
+        if key not in versions:
+            versions[key] = self.client.get_or_create_version(product_id, facts)["id"]
+        return versions[key]
 
     def version_facts(self, skill_id: str, skill_folder: Path, raw: dict[str, Any]) -> dict[str, str]:
         """What can change how the skill behaves. A new value gives a new Galtea version."""

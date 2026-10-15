@@ -407,6 +407,26 @@ def test_two_sessions_of_one_product_share_its_product_id(tmp_path: Path) -> Non
 
     assert len(fake.bodies("GET", "/products?names=p")) == 1
     assert len(fake.bodies("POST", "/sessions")) == 2
+    # the parent and the child share the product but not the skill hash: two versions
+    assert len(fake.bodies("POST", "/versions/get-or-create")) == 2
+
+
+def test_each_call_of_a_child_reuses_its_cached_version(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"parent": PARENT_SKILL, "child": with_product(CHILD_SKILL, "c")})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello from the parent.\n")
+    submit_answer(project, run_id, "text: Hello, Ada!\n")
+    fake = FakeGaltea()
+    upload(project, run_id, fake)
+    state_path = project.runs_folder / run_id / "galtea.json"
+    state = read_json(state_path)
+    del state["sessions"]["child#1"]  # as if a second call of the child starts a new session
+    state["last_seq"] = 0
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    upload(project, run_id, fake)
+
+    assert len(fake.bodies("POST", "/versions/get-or-create")) == 1
 
 
 def test_a_failed_metadata_update_is_swallowed(tmp_path: Path) -> None:
