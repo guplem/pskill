@@ -645,7 +645,8 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
    - `issue` (string): issue number, or a text that describes new work.
    - `unattended` (boolean, optional, default: false): true when the user wants no questions.
    Ask the user for each required input that the request does not give, before you run `start`.
-2. Run: `uv run .pskill/pskill.py start implement-issue --harness auto --input issue=<value>`
+2. Run: `uv run .pskill/pskill.py start implement-issue --harness auto --model <your model id> --input issue=<value>`
+   Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.
    Add `--input <name>=<value>` for each optional input that the request gives.
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin, in the same literal form as `submit`.
    Add `--mode autonomous` only when the user asked for no questions.
