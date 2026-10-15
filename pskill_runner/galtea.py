@@ -23,7 +23,7 @@ from pskill_runner.adapters import adapter_for
 from pskill_runner.computed_values import ComputedValueError, render_text
 from pskill_runner.galtea_client import GalteaClient, urllib_sender
 from pskill_runner.project import Project
-from pskill_runner.run_records import RunInfo, RunState, child_call_id
+from pskill_runner.run_records import RunInfo, RunState, child_call_id, frame_context
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, read_json, timestamp, write_json_atomic
 from pskill_runner.yaml_loading import load_skill_yaml
 
@@ -465,34 +465,26 @@ class RunUpload:
                 continue
             try:
                 templates = galtea_settings(self.folder / "skills" / frame["skill_id"]).get("metadata") or {}
-                rendered = self.rendered_metadata(templates, frame)
+                skill_folder = self.folder / "skills" / frame["skill_id"]
+                raw = load_skill_yaml((skill_folder / "skill.yaml").read_text(encoding="utf-8"))
+                context = frame_context(self.info, self.folder, frame, skill_folder, raw.get("blocks") or {})
+                rendered = rendered_metadata(templates, context)
                 if any(record["metadata"].get(name) != value for name, value in rendered.items()):
                     record["metadata"] = {**record["metadata"], **rendered}
                     self.client.update_session(record["session_id"], {"metadata": redacted(record["metadata"])})
             except Exception:  # fire and forget, as for the events
                 continue
 
-    def rendered_metadata(self, templates: dict[str, Any], frame: Mapping[str, Any]) -> dict[str, str]:
-        skill_folder = self.folder / "skills" / frame["skill_id"]
-        context = {
-            "inputs": frame["inputs"],
-            "steps": frame["steps"],
-            "history": frame["history"],
-            "run": {
-                "id": self.info["run_id"],
-                "mode": self.info["mode"],
-                "harness": self.info["harness"],
-                "dir": str(self.folder),
-            },
-            "skill": {"id": frame["skill_id"], "dir": str(skill_folder)},
-        }
-        values: dict[str, str] = {}
-        for name, template in templates.items():
-            try:
-                values[str(name)] = render_text(str(template), context)
-            except ComputedValueError:
-                continue  # a template whose step has not run yet waits for a later command
-        return values
+
+def rendered_metadata(templates: dict[str, Any], context: dict[str, Any]) -> dict[str, str]:
+    """The metadata templates that render now. A template whose step has not run yet waits for a later command."""
+    values: dict[str, str] = {}
+    for name, template in templates.items():
+        try:
+            values[str(name)] = render_text(str(template), context)
+        except ComputedValueError:
+            continue
+    return values
 
 
 def skill_id_of(event: dict[str, Any]) -> str:

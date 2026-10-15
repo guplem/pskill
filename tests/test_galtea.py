@@ -281,12 +281,9 @@ def test_metadata_templates_are_sent_once_their_steps_have_run(tmp_path: Path) -
 
 
 def test_a_template_that_cannot_render_yet_is_skipped() -> None:
-    upload_state = galtea.RunUpload.__new__(galtea.RunUpload)
-    upload_state.info = {"run_id": "r", "mode": "interactive", "harness": "generic"}  # type: ignore[typeddict-item]
-    upload_state.folder = Path("run")
-    frame = {"skill_id": "s", "inputs": {}, "steps": {}, "history": {}}
+    context: dict[str, Any] = {"inputs": {}, "steps": {}}
 
-    assert upload_state.rendered_metadata({"pr": "{{ steps.open_pr.number }}", "fixed": "x"}, frame) == {"fixed": "x"}
+    assert galtea.rendered_metadata({"pr": "{{ steps.open_pr.number }}", "fixed": "x"}, context) == {"fixed": "x"}
 
 
 def test_secrets_are_redacted_and_long_texts_are_cut() -> None:

@@ -1,5 +1,7 @@
 """The typed shape of `run.json` and `state.json` (SPEC.md section 10.2)."""
 
+from collections.abc import Iterable
+from pathlib import Path
 from typing import Any, TypedDict
 
 SCHEMA_VERSION = 7  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
@@ -92,6 +94,19 @@ class RunState(TypedDict):
     """`state.json`: the call stack. The last frame is the one that runs."""
 
     frames: list[Frame]
+
+
+def frame_context(
+    info: RunInfo, run_folder: Path, frame: Frame, skill_folder: Path, block_ids: Iterable[str]
+) -> dict[str, Any]:
+    """The names that `{{ }}` values can read in one frame of the call stack (SPEC.md section 7.1)."""
+    return {
+        "inputs": frame["inputs"],
+        "steps": frame["steps"],
+        "history": {block_id: frame["history"].get(block_id, []) for block_id in block_ids},
+        "run": {"id": info["run_id"], "mode": info["mode"], "harness": info["harness"], "dir": str(run_folder)},
+        "skill": {"id": frame["skill_id"], "dir": str(skill_folder)},
+    }
 
 
 def child_call_id(call_id: str, block: str, visit: int) -> str:

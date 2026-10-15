@@ -44,6 +44,7 @@ from pskill_runner.run_records import (
     RunState,
     SkippedTask,
     child_call_id,
+    frame_context,
     new_frame,
 )
 from pskill_runner.run_store import (
@@ -633,18 +634,7 @@ class Run:
     def context_of(self, frame: Frame, item: Any = None) -> dict[str, Any]:
         """The names that `{{ }}` values can read in one frame of the call stack."""
         skill = self.skill_of(frame)
-        context = {
-            "inputs": frame["inputs"],
-            "steps": frame["steps"],
-            "history": {block_id: frame["history"].get(block_id, []) for block_id in skill.blocks},
-            "run": {
-                "id": self.info["run_id"],
-                "mode": self.info["mode"],
-                "harness": self.info["harness"],
-                "dir": str(self.folder),
-            },
-            "skill": {"id": skill.id, "dir": str(skill.folder)},
-        }
+        context = frame_context(self.info, self.folder, frame, skill.folder, skill.blocks)
         if item is not None:
             context["item"] = item
         return context
