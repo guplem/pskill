@@ -194,7 +194,7 @@ def test_a_failing_script_gives_a_failed_turn_with_its_attempts(tmp_path: Path) 
     assert spans[1]["outputData"]["exit_code"] == 3
 
 
-def test_a_script_turn_shows_its_command_and_a_cancelled_run_finishes_with_an_error(tmp_path: Path) -> None:
+def test_a_script_turn_shows_its_command_and_an_end_turn_names_its_block(tmp_path: Path) -> None:
     project = make_project(tmp_path, {"scripted": with_product(SCRIPT_SKILL, "s")})
     run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
     fake = FakeGaltea()
