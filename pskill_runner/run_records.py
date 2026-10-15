@@ -1,4 +1,4 @@
-"""The typed shape of `run.json` and `state.json` (SPEC.md section 10.2)."""
+"""The typed shape of `run.json` and `state.json` (SPEC.md section 10.2), and the shared frame helpers."""
 
 from collections.abc import Iterable
 from pathlib import Path

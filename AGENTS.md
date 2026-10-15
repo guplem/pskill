@@ -21,7 +21,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 |---|---|
 | `cli.py` | Commands, arguments, exit codes. No logic beyond calling the engine. |
 | `engine.py` | Runs a skill block by block: edges, answers, visit caps, retries, pause and resume. |
-| `run_records.py` | The typed shape of `run.json` and `state.json`. |
+| `run_records.py` | The typed shape of `run.json` and `state.json`, and the frame helpers that the engine and the Galtea upload share: the `{{ }}` context and the call id of a child. |
 | `run_store.py` | Run files on disk: atomic JSON, the event trace, skill copies. |
 | `packets.py` | The text that the agent sees for each block. |
 | `skill_loader.py`, `skill_schema.py`, `skill_model.py` | Read `skill.yaml`, check its structure, build typed objects. |
