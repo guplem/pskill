@@ -123,7 +123,7 @@ def test_init_creates_only_the_files_that_a_project_needs(tmp_path: Path, archiv
         ".pskill/pskill.py",
         ".pskill/skills",
     ]
-    assert (project_root / ".pskill" / ".gitignore").read_text(encoding="utf-8") == "runs/\n__pycache__/\n"
+    assert (project_root / ".pskill" / ".gitignore").read_text(encoding="utf-8") == "runs/\n__pycache__/\ngaltea.env\n"
     pin = read_pin((project_root / ".pskill" / "pskill.py").read_text(encoding="utf-8"))
     assert pin == Pin(__version__, archive.resolve().as_uri(), hashlib.sha256(archive.read_bytes()).hexdigest())
     assert lines[0] == f"Installed pskill {__version__} in .pskill/pskill.py."
@@ -278,3 +278,21 @@ def test_this_repository_runs_its_own_checkout() -> None:
 
     assert entry_script == pin_entry_script(TEMPLATE, DEV_PIN), "run `uv run pskill.py update --from .`"
     assert not (REPOSITORY_ROOT / ".pskill" / "pskill_runner").exists()
+
+
+def test_update_adds_the_galtea_key_file_to_an_old_gitignore_once(tmp_path: Path, archive: Path) -> None:
+    project_root = make_project(tmp_path)
+    pskill_folder = project_root / ".pskill"
+    pskill_folder.mkdir()
+    (pskill_folder / "pskill.py").write_text(
+        pin_entry_script(TEMPLATE, Pin("0.1.0", "https://example.com/old.zip", "cd" * 32)), encoding="utf-8"
+    )
+    (pskill_folder / ".gitignore").write_text("runs/\n__pycache__/", encoding="utf-8")
+
+    first_lines = update_project(project_root, str(archive))
+    second_lines = update_project(project_root, str(archive))
+
+    gitignore = (pskill_folder / ".gitignore").read_text(encoding="utf-8")
+    assert gitignore == "runs/\n__pycache__/\ngaltea.env\n"
+    assert first_lines[1] == "Added galtea.env to .pskill/.gitignore, so a Galtea key stays out of git."
+    assert len(second_lines) == 1

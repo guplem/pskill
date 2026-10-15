@@ -35,7 +35,8 @@ CACHE_VARIABLE = "PSKILL_CACHE_DIR"
 PIN_NAMES = ("PSKILL_VERSION", "PSKILL_URL", "PSKILL_SHA256")
 # The runner files that a vendored install kept in `.pskill/`, before 0.22.
 LEGACY_PATHS = ["AUTHORING.md", "VENDORED", "launchers", "pskill_runner", "viewer"]
-PROJECT_GITIGNORE = "runs/\n__pycache__/\n"
+GALTEA_KEY_FILE = "galtea.env"  # the Galtea key of one person (D29), never in git
+PROJECT_GITIGNORE = "runs/\n__pycache__/\ngaltea.env\n"
 DEFAULT_CONFIG = """\
 # pskill settings (SPEC.md section 10.1). Every setting is optional; these are the defaults.
 stub_folders: [.agents/skills, .claude/skills]          # where `pskill sync` writes the skill stubs
@@ -131,6 +132,8 @@ def update_project(project_root: Path, source: str) -> list[str]:
         pin, entry_script = install_release(source)
     write_text(entry_path, entry_script)
     lines = [f"Updated pskill from {old_version} to {pin.version}."]
+    if add_gitignore_line(pskill_folder / ".gitignore", GALTEA_KEY_FILE):
+        lines.append(f"Added {GALTEA_KEY_FILE} to .pskill/.gitignore, so a Galtea key stays out of git.")
     removed = remove_legacy_files(pskill_folder)
     if removed:
         lines.append(f"Removed the old runner files: {', '.join(removed)}.")
@@ -206,6 +209,21 @@ def remove_legacy_files(pskill_folder: Path) -> list[str]:
 def write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def add_gitignore_line(path: Path, line: str) -> bool:
+    """Add one line to a .gitignore file that lacks it. Return whether the file changed.
+
+    `init` always writes the file, so a missing one was removed on purpose: it stays missing.
+    """
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    if line in text.splitlines():
+        return False
+    separator = "\n" if text and not text.endswith("\n") else ""
+    write_text(path, f"{text}{separator}{line}\n")
+    return True
 
 
 def write_if_missing(path: Path, text: str) -> None:

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from pskill_runner import cli
+from pskill_runner import cli, galtea
 from pskill_runner.engine import read_run_info
 from pskill_runner.install import CACHE_VARIABLE
 from pskill_runner.project import Project, find_project
@@ -171,6 +171,24 @@ def test_start_records_the_model_that_the_agent_names(
 
     assert read_run_info(project, run_id)["llm"] == "claude-opus-5-5"
     assert read_run_info(project, plain_run_id)["llm"] is None
+
+
+def test_each_run_command_uploads_its_run_to_galtea_after_it_prints(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_project(tmp_path, monkeypatch)
+    uploads: list[str] = []
+    monkeypatch.setattr(galtea, "upload_run", lambda project, run_id: uploads.append(run_id))
+
+    run_id = start_plan(monkeypatch, capsys)
+    run_cli(monkeypatch, "current")
+    run_cli(monkeypatch, "submit", run_id, stdin="status: finished\nplan: Build it.\n")
+    run_cli(monkeypatch, "pause", run_id)
+    run_cli(monkeypatch, "resume", run_id)
+    run_cli(monkeypatch, "cancel", run_id)
+    run_cli(monkeypatch, "runs")
+
+    assert uploads == [run_id] * 6
 
 
 def test_start_reads_the_inputs_from_stdin_as_yaml(
