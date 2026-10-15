@@ -762,12 +762,12 @@ runs/<run-id>/
 
 ### 10.3 Events
 
-Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a counter), `type`, and `frame` (for example `implement-issue>review-round`).
+Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a counter), `type`, `frame` (for example `implement-issue>review-round`), and `call_id` (since schema version 7). `call_id` names the call instance of the frame: `""` for the root skill, `<call block>#<visit>` for a child (for example `review#2`), joined with `>` for a nested child (`review#2>doubt#1`). Two calls of the same child have the same `frame` but a different `call_id`.
 
 | type | Extra fields |
 |---|---|
 | `run_started` | `skill_id`, `skill_hash`, `inputs`, `mode`, `harness`, `runner_version` |
-| `block_started` | `block`, `block_type` (`visit_cap` for the question at a visit cap, since schema version 6), `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null), `skipped_tasks?` (a parallel block: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a parallel block with subagents: the full prompt of each task, which the viewer shows; since schema version 4) |
+| `block_started` | `block`, `block_type` (`visit_cap` for the question at a visit cap, since schema version 6), `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null), `skipped_tasks?` (a parallel block: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a parallel block with subagents: the full prompt of each task, which the viewer shows; since schema version 4), `inputs?` (a `call` block: the computed inputs of the child; since schema version 7) |
 | `submission_rejected` | `block`, `task?`, `errors`, `raw` |
 | `block_completed` | `block`, `task?`, `output`, `decided_by` (`agent`, `human`, `agent_autonomous`, `runner`), `duration_ms` |
 | `script_ran` | `block`, `argv`, `input` (what the script read on stdin, or null; since schema version 5), `exit_code`, `stdout` (whole with `parse: json`, else limited as in 6.4), `stderr` (limited as in 6.4), `duration_ms` |

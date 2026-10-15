@@ -1223,3 +1223,30 @@ def test_a_task_answer_that_pauses_the_run_without_subagents_gives_the_main_agen
 
     assert "### Pause steps of fanout\nPost one comment.\n" in reply
     assert "tell the main agent" not in reply
+
+
+def test_events_name_their_call_instance_and_a_call_logs_its_inputs(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"parent": PARENT_SKILL, "child": CHILD_SKILL})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello from the parent.\n")
+    submit_answer(project, run_id, "text: Hello, Ada!\n")
+
+    events = read_events(project.runs_folder / run_id)
+
+    assert {event["call_id"] for event in events if event["frame"] == "parent"} == {""}
+    assert {event["call_id"] for event in events if event["frame"] == "parent>child"} == {"child#1"}
+    call_started = next(e for e in events if e["type"] == "block_started" and e.get("block_type") == "call")
+    assert call_started["inputs"] == {"name": "Ada"}
+
+
+def test_a_call_whose_inputs_fail_still_logs_its_start(tmp_path: Path) -> None:
+    parent = PARENT_SKILL.replace("inputs: {name: Ada}", 'inputs: {name: "{{ steps.greet.missing }}"}')
+    project = make_project(tmp_path, {"parent": parent, "child": CHILD_SKILL})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+
+    submit_answer(project, run_id, "text: Hello from the parent.\n")
+
+    events = read_events(project.runs_folder / run_id)
+    call_started = next(e for e in events if e["type"] == "block_started" and e.get("block_type") == "call")
+    assert "inputs" not in call_started
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
