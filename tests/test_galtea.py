@@ -481,3 +481,28 @@ def test_a_refused_final_metadata_update_still_finishes_the_session(tmp_path: Pa
     upload(project, run_id, fake)
 
     assert any(path.endswith("/finish") for _, path, _ in fake.calls)
+
+
+def test_a_run_cancelled_inside_a_child_call_finishes_the_child_session(tmp_path: Path) -> None:
+    two_step_child = CHILD_SKILL.replace(
+        "    next: done\n",
+        "    next: confirm\n"
+        "  confirm:\n"
+        "    type: task\n"
+        '    instruction: "Confirm the greeting."\n'
+        "    output:\n"
+        '      ok: {type: boolean, description: "Whether it is right."}\n'
+        "    next: done\n",
+        1,
+    )
+    project = make_project(tmp_path, {"parent": PARENT_SKILL, "child": with_product(two_step_child, "c")})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello from the parent.\n")
+    submit_answer(project, run_id, "text: Hello, Ada!\n")  # the child's first block: its session starts
+    cancel_run(project, run_id)
+    fake = FakeGaltea()
+
+    upload(project, run_id, fake)
+
+    finishes = [body for _, path, body in fake.calls if path.endswith("/finish")]
+    assert finishes == [{"error": "cancelled"}]

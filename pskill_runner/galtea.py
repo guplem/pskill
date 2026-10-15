@@ -60,6 +60,7 @@ class SessionRecord(TypedDict):
     custom_id: str
     turns: int
     metadata: dict[str, Any]
+    finished: bool  # the session got its finish call
 
 
 class UploadState(TypedDict):
@@ -360,7 +361,7 @@ class RunUpload:
 
     def new_session(self, call_id: str, skill_id: str) -> SessionRecord:
         custom_id = f"{skill_id}@{self.info['run_id']}" + (f"/{call_id}" if call_id else "")
-        record = SessionRecord(session_id=None, custom_id=custom_id, turns=0, metadata={})
+        record = SessionRecord(session_id=None, custom_id=custom_id, turns=0, metadata={}, finished=False)
         skill_folder = self.folder / "skills" / skill_id
         settings = galtea_settings(skill_folder)
         product_name = settings.get("product")
@@ -383,7 +384,7 @@ class RunUpload:
                 }
             )
         )
-        return SessionRecord(session_id=session["id"], custom_id=custom_id, turns=0, metadata=metadata)
+        return SessionRecord(session_id=session["id"], custom_id=custom_id, turns=0, metadata=metadata, finished=False)
 
     def product_id(self, name: str, description: str) -> str:
         """The id of the product, created when missing. Its description and session settings follow the skill."""
@@ -439,9 +440,13 @@ class RunUpload:
         if record is None or record["session_id"] is None:
             return
         status = str(output.get("status", "")) if isinstance(output, dict) else ""
-        self.finish_session(record["session_id"], status)
+        self.finish_session(record, status)
 
     def finish_root(self, event: dict[str, Any]) -> None:
+        """Finish the root session, and each child session that the run ended inside (a cancel in a child)."""
+        for call_id, child in self.state["sessions"].items():
+            if call_id and child["session_id"] is not None and not child.get("finished"):
+                self.finish_session(child, str(event.get("status", "")))
         record = self.state["sessions"].get("")
         if record is None or record["session_id"] is None:
             return
@@ -449,9 +454,11 @@ class RunUpload:
         record["metadata"] = {**record["metadata"], **final}
         with contextlib.suppress(urllib.error.HTTPError):  # a refused update must not keep the session open
             self.client.update_session(record["session_id"], {"metadata": redacted(record["metadata"])})
-        self.finish_session(record["session_id"], str(event.get("status", "")))
+        self.finish_session(record, str(event.get("status", "")))
 
-    def finish_session(self, session_id: str, status: str) -> None:
+    def finish_session(self, record: SessionRecord, status: str) -> None:
+        record["finished"] = True
+        session_id = str(record["session_id"])
         if status in FAILED_END_STATUSES:
             self.client.finish_session(session_id, {"error": status})
         else:
