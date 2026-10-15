@@ -70,10 +70,13 @@ class RecordingHandler(BaseHTTPRequestHandler):
     """A local Galtea stand-in: it records each request and answers with JSON, or with no body."""
 
     requests: ClassVar[list[tuple[str, str, str | None, Any]]] = []
+    raw_bodies: ClassVar[list[bytes]] = []
 
     def handle_request(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
-        body = json.loads(self.rfile.read(length)) if length else None
+        raw_body = self.rfile.read(length)
+        RecordingHandler.raw_bodies.append(raw_body)
+        body = json.loads(raw_body) if length else None
         RecordingHandler.requests.append((self.command, self.path, self.headers.get("Authorization"), body))
         reply = b"" if self.path.endswith("/finish") else json.dumps({"ok": True}).encode()
         self.send_response(200)
@@ -92,6 +95,7 @@ class RecordingHandler(BaseHTTPRequestHandler):
 @pytest.fixture
 def galtea_server() -> Iterator[str]:
     RecordingHandler.requests = []
+    RecordingHandler.raw_bodies = []
     server = ThreadingHTTPServer(("127.0.0.1", 0), RecordingHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -124,3 +128,9 @@ def test_find_session_asks_by_custom_id_and_version() -> None:
     assert client.find_session("a@r/b#1", "ver_1") == {"id": "ses_1"}
     assert client.find_session("a@r", "ver_1") is None
     assert sender.calls[0] == ("GET", "/sessions?customIds=a%40r%2Fb%231&versionIds=ver_1", None)
+
+
+def test_the_urllib_sender_writes_raw_utf_8_so_a_turn_keeps_its_size(galtea_server: str) -> None:
+    urllib_sender("gsk_test", galtea_server)("POST", "/inferenceResults", {"input": "\U0001f600"})
+
+    assert "\U0001f600".encode() in RecordingHandler.raw_bodies[0]
