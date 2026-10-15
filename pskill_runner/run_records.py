@@ -23,6 +23,7 @@ class RunInfo(TypedDict):
     repo_dirty: bool | None
     runner_version: str
     harness: str
+    llm: str | None  # the model that the agent named with `start --model`; absent in runs before 0.39.0
     session_id: str | None  # the app session that owns the run; absent in runs before 0.9.0
     mode: str
     inputs: dict[str, Any]

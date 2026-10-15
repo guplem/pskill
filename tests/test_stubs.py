@@ -23,7 +23,9 @@ def test_a_stub_has_the_frontmatter_and_the_start_command(tmp_path: Path) -> Non
     assert stub.startswith('---\nname: plan-work\ndescription: "Plan a piece of work with the user."\n---\n')
     assert GENERATED_MARKER in stub
     assert "- `topic` (string): What to plan." in stub
-    assert "uv run .pskill/pskill.py start plan-work --harness auto --input topic=<value>" in stub
+    assert (
+        "uv run .pskill/pskill.py start plan-work --harness auto --model <your model id> --input topic=<value>" in stub
+    )
     assert "--inputs -" in stub
     assert "--mode autonomous" in stub
 
@@ -52,7 +54,7 @@ def test_a_skill_with_only_optional_inputs_asks_for_nothing(tmp_path: Path) -> N
     stub = render_stub(skill)
 
     assert "Ask the user" not in stub
-    assert "start plan-work --harness auto`" in stub
+    assert "start plan-work --harness auto --model <your model id>`" in stub
 
 
 def test_an_optional_input_shows_its_default(tmp_path: Path) -> None:
@@ -69,7 +71,10 @@ def test_the_start_command_names_only_the_required_inputs(tmp_path: Path) -> Non
 
     stub = render_stub(skill)
 
-    assert "Run: `uv run .pskill/pskill.py start plan-work --harness auto --input topic=<value>`\n" in stub
+    assert (
+        "Run: `uv run .pskill/pskill.py start plan-work --harness auto --model <your model id> --input topic=<value>`\n"
+        in stub
+    )
     assert "   Add `--input <name>=<value>` for each optional input that the request gives.\n" in stub
 
 

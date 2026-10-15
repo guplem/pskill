@@ -112,6 +112,7 @@ def start_run(
     runs_folder: Path | None = None,
     allow_internal: bool = False,
     session_id: str | None = None,
+    llm: str | None = None,
 ) -> tuple[str, str]:
     """Create a run and return its id and its first packet.
 
@@ -140,6 +141,7 @@ def start_run(
         repo_dirty=repo_dirty,
         runner_version=pskill_runner.__version__,
         harness=adapter_for(harness).name,
+        llm=llm,
         session_id=session_id,
         mode=mode,
         inputs=inputs,

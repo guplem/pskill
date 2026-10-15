@@ -161,6 +161,18 @@ def test_start_and_submit_run_a_skill_to_the_end(
     assert finished.endswith("\n")
 
 
+def test_start_records_the_model_that_the_agent_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, monkeypatch)
+
+    run_id = start_plan(monkeypatch, capsys, "--model", "claude-opus-5-5")
+    plain_run_id = start_plan(monkeypatch, capsys)
+
+    assert read_run_info(project, run_id)["llm"] == "claude-opus-5-5"
+    assert read_run_info(project, plain_run_id)["llm"] is None
+
+
 def test_start_reads_the_inputs_from_stdin_as_yaml(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

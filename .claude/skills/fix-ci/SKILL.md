@@ -11,7 +11,8 @@ Goal: Every CI check on the head commit of the pull request passed, or each chec
 1. Map the request to the inputs:
    - `pr` (integer): Number of the pull request.
    Ask the user for each required input that the request does not give, before you run `start`.
-2. Run: `uv run .pskill/pskill.py start fix-ci --harness auto --input pr=<value>`
+2. Run: `uv run .pskill/pskill.py start fix-ci --harness auto --model <your model id> --input pr=<value>`
+   Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,
    in the same literal form that the runner's packets show for `submit`.
    Add `--mode autonomous` only when the user asked for no questions.

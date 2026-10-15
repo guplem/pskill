@@ -13,7 +13,8 @@ Goal: Every given finding and every unaddressed comment has a verdict (fixed or 
    - `findings` (array, optional): Findings to resolve, for example from review-round.
    - `scope_sha` (string, optional, default: ""): The commit that ends the scope, as review-round gives it. Empty means the head commit.
    Ask the user for each required input that the request does not give, before you run `start`.
-2. Run: `uv run .pskill/pskill.py start resolve-pr-feedback --harness auto --input pr=<value>`
+2. Run: `uv run .pskill/pskill.py start resolve-pr-feedback --harness auto --model <your model id> --input pr=<value>`
+   Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.
    Add `--input <name>=<value>` for each optional input that the request gives.
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,
    in the same literal form that the runner's packets show for `submit`.

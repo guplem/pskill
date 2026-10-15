@@ -15,7 +15,8 @@ Goal: One review on the pull request that the user confirmed: it holds every new
    - `rounds_without_required` (integer, optional, default: 4): Stop when this many rounds in total found no new required finding.
    - `rounds_without_findings` (integer, optional, default: 1): Stop when this many rounds in total found no new finding.
    Ask the user for each required input that the request does not give, before you run `start`.
-2. Run: `uv run .pskill/pskill.py start review-pr --harness auto --input pr=<value>`
+2. Run: `uv run .pskill/pskill.py start review-pr --harness auto --model <your model id> --input pr=<value>`
+   Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.
    Add `--input <name>=<value>` for each optional input that the request gives.
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,
    in the same literal form that the runner's packets show for `submit`.

@@ -66,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--inputs", choices=["-"], help="Read the inputs as YAML from stdin.")
     start.add_argument("--mode", choices=["interactive", "autonomous"], help="Default: from config.yaml.")
     start.add_argument("--harness", default="auto", help="The harness that runs the agent. Default: detect it.")
+    start.add_argument("--model", help="The model id of the agent that runs the skill.")
 
     current = commands.add_parser("current", help="Print the current block of a run again.")
     current.add_argument("run_id", nargs="?", help="Default: the newest unfinished run.")
@@ -245,7 +246,9 @@ def start_command(project: Project, options: argparse.Namespace) -> str:
     harness = detect_harness(os.environ) if options.harness == "auto" else options.harness
     mode = options.mode or project.config.default_mode
     session_id = detect_session_id(os.environ)
-    _, packet = start_run(project, options.skill, inputs, mode=mode, harness=harness, session_id=session_id)
+    _, packet = start_run(
+        project, options.skill, inputs, mode=mode, harness=harness, session_id=session_id, llm=options.model
+    )
     return packet
 
 
