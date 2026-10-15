@@ -12,7 +12,7 @@ from pskill_runner import galtea
 from pskill_runner.engine import cancel_run, pause_run, resume_run, start_run, submit_answer
 from pskill_runner.galtea_client import GalteaClient
 from pskill_runner.project import Project, find_project
-from pskill_runner.run_store import read_json
+from pskill_runner.run_store import read_events, read_json
 from tests.skill_files import write_skill
 from tests.test_engine_blocks import CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
 
@@ -403,6 +403,8 @@ def test_a_failed_metadata_update_is_swallowed(tmp_path: Path) -> None:
     upload(project, run_id, fake)
 
     assert any(path.startswith("/sessions/ses") for _, path, _ in fake.calls)
+    last_event = read_events(project.runs_folder / run_id)[-1]
+    assert read_json(project.runs_folder / run_id / "galtea.json")["last_seq"] == last_event["seq"]
 
 
 def test_a_task_with_no_tier_or_a_finished_block_names_no_model(tmp_path: Path) -> None:
