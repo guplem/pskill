@@ -5,6 +5,7 @@ Verified against the Galtea monorepo (api/src) on 2026-10-15:
 - The REST names are older than the product names: `/inferenceResults` is a turn ("trace" in the app),
   and `/traces` is a span.
 - `POST /sessions`: `customId` is unique per version and cannot change. `isProduction` marks real usage.
+- `GET /sessions` and `GET /products` filter by `customIds` and `versionIds`, or by `names`, and return a list.
 - `POST /inferenceResults` has no metadata and no timestamp. The client may set `index`.
 - `POST /traces/batch`: a span `id` is a global key, so it must be unique (a UUID). The body may hold 20 MB.
 - Every other body may hold 512 KB. `POST /versions/get-or-create` allows 10 calls a minute per user.
