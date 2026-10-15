@@ -382,6 +382,21 @@ def test_current_from_an_unknown_shell_keeps_the_harness_of_the_run(
     assert read_run_info(project, run_id)["harness"] == "claude-code"
 
 
+def test_the_task_command_uploads_its_run_to_galtea(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "spell", SPELL_SKILL)
+    monkeypatch.chdir(tmp_path)
+    run_cli(monkeypatch, "start", "spell")
+    run_id = run_id_of(capsys.readouterr().out)
+    uploads: list[str] = []
+    monkeypatch.setattr(galtea, "upload_run", lambda project, run_id: uploads.append(run_id))
+
+    run_cli(monkeypatch, "task", run_id, "0")
+
+    assert uploads == [run_id]
+
+
 def test_task_and_submit_with_a_task_number_drive_a_parallel_block(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
