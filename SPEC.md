@@ -81,6 +81,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D26 | Example skills: `implement-issue` (one pull request, built red-green, then reviewed and resolved round after round until CI is green), `review-pr` (a deep review that posts one GitHub review), `resolve-pr-feedback`, `fix-ci`, `create-issue`, and the internal `checkout-pr`, `review-round`, `review-head-check`, and `review-doubt` (section 13). They are a base that most software projects on GitHub can copy, so they read the project's rules from its own files and hard-code no project detail. Together they must exercise every feature (section 13.3). Changed after 0.23.1: before, three proof skills ported from the setup-guplem-standard templates. Changed after 0.32.0: before, `review-pr` was one round that posted loose comments. | Real runs of the first version showed what a useful base needs: a plan in a draft pull request, separate find and fix steps, replies to comments, and a CI wait. Stacked pull requests and worktree subagents can come later. |
 | D27 | `pskill test` runs skill tests with a scripted fake agent. | Test graph paths with no LLM, no cost, in CI. |
 | D28 | `pskill sync` adds one narrow allow rule to each harness's project settings: the runner command. | Without it, the user gets a permission prompt on every block. Every other agent action still asks as usual. |
+| D29 | A skill that names `x-galtea.product` uploads each of its runs to Galtea as production usage, live, after each run command (section 10.4). Only with a Galtea key; best effort, outside the run lock. | One place to watch, debug, and evaluate real skill runs. With no key there is no network call, no output, and no file, so D20 (no network after the install) still holds for everyone else. |
 
 ### 3.1 Known limitations (accepted)
 
@@ -149,7 +150,7 @@ blocks: {}                      # map: block id -> block
 
 - Block ids use lowercase letters, digits, and underscores.
 - Load `skill.yaml` with a PyYAML `SafeLoader` subclass in which only `true` and `false` are booleans (the YAML 1.2 rule). `yes`, `no`, `on`, and `off` stay text, so a choice named `no` works.
-- Top-level keys that start with `x-` are free. Use them for YAML anchors (reusable pieces, see 13.2).
+- Top-level keys that start with `x-` are free. Use them for YAML anchors (reusable pieces, see 13.2). The runner reads one of them: `x-galtea`, the upload to Galtea (section 10.4).
 - `invocation`:
   - `auto`: the agent may start the skill from its description.
   - `manual`: only the user starts it by name. Claude gets `disable-model-invocation: true`; Codex gets an `agents/openai.yaml` sidecar (VERIFY).
@@ -506,6 +507,7 @@ Set the mode with `start --mode interactive|autonomous` (default from config: `i
 
 - Write `run.json` and `state.json` to a temp file, then call `os.replace` (atomic on every OS).
 - Every command holds a lock on `runs/<run-id>/.lock`. Create it with `os.open(O_CREAT | O_EXCL)`. Wait up to 10 s. Break a lock older than 60 s. Parallel task submissions depend on this lock.
+- The upload to Galtea (10.4) runs after the command, outside the lock, so a slow network never blocks a submit. It writes `galtea.json` with `os.replace` too.
 - `wait` holds the lock only while it writes or reads `run.json`, never while it sleeps: a lock held for minutes would block every submit, and other commands would break it after 60 s.
 
 ---
@@ -709,7 +711,8 @@ pskill/
 .pskill/
 ├── pskill.py            # the entry script with the pin (D20). Never edit; `pskill update` moves the pin.
 ├── config.yaml
-├── .gitignore           # runs/
+├── .gitignore           # runs/, galtea.env
+├── galtea.env           # optional: one person's Galtea key (10.4). Never in git.
 ├── skills/<skill-id>/{skill.yaml, instructions/, scripts/, tests/}
 ├── agents/<name>.md     # pskill agents: subagent roles, shared by all skills (section 6.3)
 └── runs/<run-id>/       # gitignored
@@ -750,7 +753,8 @@ runs/<run-id>/
 ├── events.jsonl   # the trace
 ├── skills/        # copies of every skill that this run can reach through calls
 ├── agents/        # copies of every pskill agent in `.pskill/agents/`
-└── answers/       # the files for long answers, one per block or task (section 7.3)
+├── answers/       # the files for long answers, one per block or task (section 7.3)
+└── galtea.json    # the upload to Galtea: the last uploaded event, the product and session ids (10.4)
 ```
 
 `run.json` fields:
@@ -778,6 +782,29 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 
 - `duration_ms` of an agent block runs from its packet to its valid submission. For human decisions it is mostly human time. The viewer shows it apart.
 - This file is the contract for the viewer and for later evaluation work. A change needs a new `schema_version`.
+
+### 10.4 Upload to Galtea
+
+A skill names a Galtea product, and its runs go to Galtea as production usage (D29). Other skills upload nothing.
+
+```yaml
+x-galtea:
+  product: pskill-implement-issue          # the Galtea product, by its exact name
+  metadata:                                # optional: session metadata, rendered like {{ }} values
+    issue: "{{ steps.find_issue.json.number }}"
+```
+
+- **Key:** the line `GALTEA_API_KEY=<key>` in `.pskill/galtea.env`, else the environment variable `GALTEA_API_KEY`. With no key, nothing happens.
+- **When:** `start`, `current`, `task`, `submit`, `pause`, `resume`, and `cancel` print their packet, then send the run's new events. The hooks and `pskill test` never upload.
+- **Best effort:** one short timeout per call. Any error is swallowed: the command's output and exit code never change. A failed event is not sent again, and nothing records the failure.
+- **Product:** found by its exact name, or created. pskill sets its description to the skill's description, its auto-close to 7 days (a run can pause for days), and the policy for a turn that reaches a closed session to "reopen".
+- **Version:** Galtea's get-or-create by facts: `skill` (the hash of the skill copy), `runner`, `harness`, `llm` (from `start --model`, else `unknown`), and `tiers` (the model of each tier, only for a skill with a `parallel` block).
+- **Session:** one per execution of a skill with a product: the root skill, or one call of a child skill. Its custom id is `<skill id>@<run id>`, plus `/<call id>` for a child. Its metadata holds the run facts (`run_id`, `repo_commit`, `harness`, `llm`, ...), the parent session of a child, the `x-galtea.metadata` values once they render, and the final status.
+- **Turn:** one per completed block, in order: its packet (or a script's command and stdin, or a call's inputs), its answer or outputs, and its duration. A block that pauses the run with `block_failed` or `runner_error` gives a FAILED turn with the error.
+- **Spans** inside each turn: the block (frame, call id, visit, edge, `decided_by`, and the tier model of a parallel task), each rejected submission, each script attempt, and each pause and resume.
+- **Child skills:** in the caller, a call is one turn, whose output names the child's session. The child's own blocks go only to the child's session, and only when the child names a product.
+- **End:** `run_ended` finishes the root session; the return of a child finishes its session. The status `failed` or `cancelled` finishes it with an error.
+- **Secrets:** known key patterns (GitHub, OpenAI, Galtea, AWS, Bearer, private keys) are replaced with `[redacted]`, and each text is cut to 100 000 characters.
 
 ---
 
@@ -1187,7 +1214,7 @@ Each item below exists as a GitHub issue with the label `future` (guplem/pskill 
 | Gemini CLI adapter (hooks, subagents) | `generic` already runs skills there. |
 | Cursor adapter (hooks, subagents) | Same. |
 | `pskill eval`: run one skill headless in several harnesses on the same inputs and compare the traces | Needs the runner to launch agents (the opposite direction of D1). |
-| Export traces to OpenTelemetry, and upload runs to Galtea | The trace format must settle first. |
+| Export traces to OpenTelemetry | The trace format must settle first. The upload to Galtea shipped in 0.39.0 (10.4). |
 | MCP front door (the same commands as MCP tools) | The CLI works everywhere. |
 | `parallel` blocks that run whole skills per item | Tasks are single jobs in the MVP. |
 | Token counts per block | Harness session files are private formats. |

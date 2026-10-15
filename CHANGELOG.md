@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.39.0 (2026-10-15)
+
+A skill can upload its runs to Galtea as production usage, live, block by block (#5).
+
+- **`x-galtea`:** a top-level key of `skill.yaml` with the Galtea `product` and optional session `metadata` (`{{ }}` texts). `pskill validate` checks it.
+- **The key:** `.pskill/galtea.env` (`GALTEA_API_KEY=<key>`), else the environment variable. `init` and `update` add `galtea.env` to `.pskill/.gitignore`. With no key, nothing changes.
+- **What goes up:** a production session per execution of a skill with a product, a turn per block (a FAILED turn for a block that pauses the run), and spans for rejected submissions, script attempts, and pauses. A child skill with its own product gets its own session; in the caller, its call is one turn. Secrets are redacted.
+- **Versions:** Galtea versions come from facts: the skill hash, the runner version, the harness, the model, and the tier models.
+- **`pskill start --model`:** records the agent's model in `run.json` as `llm`. The generated stubs ask the agent to pass it.
+- **Events schema 7:** every event has the `call_id` of its call instance, and a call's `block_started` has its `inputs`.
+- **Best effort:** the upload runs after each run command, outside the run lock. Any error is swallowed, and a failed event is not sent again.
+
 ## 0.38.0 (2026-10-11)
 
 A skill can say what the agent does when its run pauses, so an unattended run leaves a trace (#158).
