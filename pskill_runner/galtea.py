@@ -9,7 +9,6 @@ The upload is best effort. With no key it does nothing. Any error is swallowed, 
 prints and returns what it would print and return without Galtea.
 """
 
-import contextlib
 import json
 import os
 import re
@@ -141,14 +140,21 @@ class RunUpload:
 
     def upload_new_events(self) -> None:
         self.events = read_events(self.folder)
+        reachable = True
         for event in self.events:
             if event["seq"] <= self.state["last_seq"]:
                 continue
-            with contextlib.suppress(Exception):  # fire and forget: a failed event is not sent again
-                self.upload_event(event)
+            try:
+                if reachable:
+                    self.upload_event(event)
+            except OSError:  # Galtea is down or blocked: every call would wait for the timeout, so stop trying
+                reachable = False
+            except Exception:  # fire and forget: a failed event is not sent again
+                pass
             self.state["last_seq"] = event["seq"]
             self.save()
-        self.update_metadata()
+        if reachable:
+            self.update_metadata()
         self.save()
 
     def save(self) -> None:

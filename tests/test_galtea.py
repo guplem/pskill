@@ -406,3 +406,24 @@ def test_a_task_with_no_tier_or_a_finished_block_names_no_model(tmp_path: Path) 
     task_roots = [root for root in roots if "task" in root["metadata"]]
     assert len(task_roots) == 2
     assert all("tier_model" not in root["metadata"] for root in task_roots)
+
+
+def test_an_unreachable_galtea_is_tried_once_per_command(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"scripted": with_product(SCRIPT_SKILL, "s")})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    fake = FakeGaltea(fail_on="/products")
+
+    upload(project, run_id, fake)
+
+    assert len(fake.calls) == 1  # the script turn and the end turn would each try again
+    assert read_json(project.runs_folder / run_id / "galtea.json")["last_seq"] > 0
+
+
+def test_an_odd_galtea_reply_skips_only_its_event(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"scripted": with_product(SCRIPT_SKILL, "s")})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    fake = FakeGaltea(products=[{"name": "s"}])  # a product with no id
+
+    upload(project, run_id, fake)
+
+    assert len(fake.bodies("GET", "/products?names=s")) == 2  # one try for each of the two turns
