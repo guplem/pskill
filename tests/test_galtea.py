@@ -606,3 +606,18 @@ def test_a_failed_turn_takes_the_error_of_its_own_pause(tmp_path: Path) -> None:
 
     [turn] = fake.bodies("POST", "/inferenceResults")
     assert "exit code 3" in turn["error"]
+
+
+def test_a_script_that_fails_before_it_runs_still_gets_a_failed_turn(tmp_path: Path) -> None:
+    unrenderable = SCRIPT_SKILL.replace(
+        "    parse: json\n", '    input: "{{ (1).missing.deeper }}"\n    parse: json\n', 1
+    )
+    project = make_project(tmp_path, {"scripted": with_product(unrenderable, "s")})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    fake = FakeGaltea()
+
+    upload(project, run_id, fake)
+
+    [turn] = fake.bodies("POST", "/inferenceResults")
+    assert turn["status"] == "FAILED"
+    assert turn["input"] == '{"block": "list_files"}'

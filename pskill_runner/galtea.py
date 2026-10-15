@@ -234,7 +234,8 @@ class RunUpload:
             return started.get("inputs", {})
         if started.get("block_type") == "script":
             script_runs = [e for e in self.block_window(started, None) if e["type"] == "script_ran"]
-            return {"argv": script_runs[0].get("argv"), "input": script_runs[0].get("input")}
+            if script_runs:  # none when its command or input failed to compute: the script never ran
+                return {"argv": script_runs[0].get("argv"), "input": script_runs[0].get("input")}
         return {"block": started.get("block")}
 
     # --- spans ------------------------------------------------------------------------------------
