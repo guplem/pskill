@@ -94,6 +94,12 @@ class RunState(TypedDict):
     frames: list[Frame]
 
 
+def child_call_id(call_id: str, block: str, visit: int) -> str:
+    """The call id of the child that a call block starts: `<block>#<visit>`, after the caller's own id."""
+    own = f"{block}#{visit}"
+    return f"{call_id}>{own}" if call_id else own
+
+
 def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str, call_id: str = "") -> Frame:
     return Frame(
         skill_id=skill_id,

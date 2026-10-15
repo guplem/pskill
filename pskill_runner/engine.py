@@ -43,6 +43,7 @@ from pskill_runner.run_records import (
     RunInfo,
     RunState,
     SkippedTask,
+    child_call_id,
     new_frame,
 )
 from pskill_runner.run_store import (
@@ -842,10 +843,7 @@ class Run:
         errors = check_typed_values(inputs, callee.inputs)
         if errors:
             raise RunnerStop(f"The inputs of {block.id!r} are invalid: " + "; ".join(errors))
-        parent_call_id = self.frame.get("call_id", "")
-        call_id = f"{block.id}#{self.frame['visits'].get(block.id, 0)}"
-        if parent_call_id:
-            call_id = f"{parent_call_id}>{call_id}"
+        call_id = child_call_id(self.frame.get("call_id", ""), block.id, self.frame["visits"].get(block.id, 0))
         frame = new_frame(callee.id, with_defaults(inputs, callee.inputs), timestamp(utc_now()), call_id)
         self.state["frames"].append(frame)
         target, reason = self.choose_edge(callee.entry)

@@ -23,7 +23,7 @@ from pskill_runner.adapters import adapter_for
 from pskill_runner.computed_values import ComputedValueError, render_text
 from pskill_runner.galtea_client import GalteaClient, urllib_sender
 from pskill_runner.project import Project
-from pskill_runner.run_records import RunInfo, RunState
+from pskill_runner.run_records import RunInfo, RunState, child_call_id
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, read_json, timestamp, write_json_atomic
 from pskill_runner.yaml_loading import load_skill_yaml
 
@@ -124,12 +124,6 @@ def redacted(value: Any) -> Any:
 
 def as_text(value: Any) -> str:
     return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-
-
-def child_call_id(call_id: str, block: str, visit: int) -> str:
-    """The call id of the child that a call block starts, as the engine names it."""
-    own = f"{block}#{visit}"
-    return f"{call_id}>{own}" if call_id else own
 
 
 class RunUpload:
