@@ -177,10 +177,15 @@ def test_each_run_command_uploads_its_run_to_galtea_after_it_prints(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     make_project(tmp_path, monkeypatch)
-    uploads: list[str] = []
-    monkeypatch.setattr(galtea, "upload_run", lambda project, run_id: uploads.append(run_id))
+    uploads: list[tuple[str, str]] = []  # each upload, with what the command printed before it
 
-    run_id = start_plan(monkeypatch, capsys)
+    def record_upload(project: Project, run_id: str) -> None:
+        uploads.append((run_id, capsys.readouterr().out))
+
+    monkeypatch.setattr(galtea, "upload_run", record_upload)
+
+    run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x")
+    run_id = uploads[0][0]
     run_cli(monkeypatch, "current")
     run_cli(monkeypatch, "submit", run_id, stdin="status: finished\nplan: Build it.\n")
     run_cli(monkeypatch, "pause", run_id)
@@ -188,7 +193,8 @@ def test_each_run_command_uploads_its_run_to_galtea_after_it_prints(
     run_cli(monkeypatch, "cancel", run_id)
     run_cli(monkeypatch, "runs")
 
-    assert uploads == [run_id] * 6
+    assert [uploaded_run for uploaded_run, _ in uploads] == [run_id] * 6
+    assert all(f"Run {run_id}" in printed for _, printed in uploads)  # the packet comes first
 
 
 def test_start_reads_the_inputs_from_stdin_as_yaml(
