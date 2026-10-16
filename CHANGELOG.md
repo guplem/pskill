@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.40.0 (2026-10-16)
+
+The Galtea upload sends the token use of each block, in Claude Code (#161).
+
+- **Turns:** `inputTokens` (input plus cache write: Galtea has no cache-write field), `cacheReadInputTokens`, and `outputTokens` of the model calls made while the block ran.
+- **Spans:** the block span holds the four counts. One GENERATION span per source (`main agent`, `subagents <tier>`) holds its counts, models, and number of calls.
+- **Source:** the Claude Code session transcript and its `subagents/` transcripts. A call counts once, for the block that started last before it. Codex runs send no token fields.
+
 ## 0.39.0 (2026-10-15)
 
 A skill can upload its runs to Galtea as production usage, live, block by block (#5).
