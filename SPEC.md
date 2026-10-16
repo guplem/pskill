@@ -803,6 +803,13 @@ x-galtea:
 - **Session:** one per execution of a skill with a product: the root skill, or one call of a child skill. Its custom id is `<skill id>@<run id>`, plus `/<call id>` for a child. Its metadata holds the run facts (`run_id`, `repo_commit`, `harness`, `llm`, ...), the parent session of a child, the `x-galtea.metadata` values once they render, and the final status.
 - **Turn:** one per completed block, in order: its packet (or a script's command and stdin, or a call's inputs), its answer or outputs, and its duration. A block that pauses the run with `block_failed` or `runner_error` gives a FAILED turn with the error.
 - **Spans** inside each turn: the block (frame, call id, visit, edge, `decided_by`, and the tier model of a parallel task), each rejected submission, each script attempt, and each pause and resume.
+- **Token use:** read from the Claude Code session transcript of the run (`~/.claude/projects/*/<session id>.jsonl`) and its `subagents/` transcripts, at each upload.
+  - A model call counts once, by its message id. It belongs to the block that started last before it, in any frame of the run. Calls before the first block, and calls after the end of their block, count nowhere.
+  - A turn counts the calls of its block from the block start to the turn's end. It also counts the calls of the child skills that it calls, unless a child has its own session.
+  - The turn gets `inputTokens` (input plus cache write: Galtea has no cache-write field), `cacheReadInputTokens`, and `outputTokens`, also when all are 0.
+  - The block span gets `tokens` in its metadata: `input`, `cache_write`, `cache_read`, `output`.
+  - Each source of calls gets a GENERATION span with its four counts, its models, and its number of calls: `main agent`, and `subagents <tier>`. The model family of a subagent names its tier: `haiku` is `fast`, `sonnet` is `standard`, `opus` is `deep`, and any other family is `other`.
+  - With no transcript (Codex, or a run with no session id), the turn and its spans get no token fields.
 - **Child skills:** in the caller, a call is one turn, whose output names the child's session. The child's own blocks go only to the child's session, and only when the child names a product.
 - **End:** `run_ended` finishes the root session; the return of a child finishes its session. A run that ends inside a child (a cancel, for example) also finishes each open child session, with the run's status. The status `failed` or `cancelled` finishes it with an error.
 - **Secrets:** known key patterns (GitHub, OpenAI, Galtea, AWS, Bearer, private keys) are replaced with `[redacted]`, and each text is cut to 60 000 characters, so a turn fits the 512 KB body limit.
