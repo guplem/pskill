@@ -212,6 +212,7 @@ x-galtea:
 - `product` is the exact name of the Galtea product. pskill creates it when it is missing.
 - `metadata` values are texts with `{{ }}`. A value whose step has not run yet is sent later, when it renders.
 - A child skill with its own `x-galtea` gets its own session for each call. Without it, the call is one turn of the caller.
+- In Claude Code, each turn also gets the tokens of the model calls made while its block ran: input, cache write, cache read, and output, for the main agent and for each subagent tier. Codex runs send no token counts.
 
 ## The edit loop (red-green)
 

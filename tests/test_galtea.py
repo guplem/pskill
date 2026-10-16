@@ -621,3 +621,111 @@ def test_a_script_that_fails_before_it_runs_still_gets_a_failed_turn(tmp_path: P
     [turn] = fake.bodies("POST", "/inferenceResults")
     assert turn["status"] == "FAILED"
     assert turn["input"] == '{"block": "list_files"}'
+
+
+# --- token use --------------------------------------------------------------------------------------
+
+
+def space_event_times(folder: Path) -> list[dict[str, Any]]:
+    """Give the events one second each from 10:00:00, so a test can place model calls between them."""
+    events = read_events(folder)
+    for event in events:
+        event["ts"] = f"2026-10-16T10:{event['seq'] // 60:02d}:{event['seq'] % 60:02d}.000Z"
+    (folder / "events.jsonl").write_text("".join(json.dumps(event) + "\n" for event in events), encoding="utf-8")
+    return events
+
+
+def call_line(message_id: str, moment: str, model: str, **usage: int) -> str:
+    message = {"id": message_id, "model": model, "usage": usage}
+    return json.dumps({"type": "assistant", "timestamp": moment, "message": message})
+
+
+def half_second_after(events: list[dict[str, Any]], block: str, call_id: str) -> str:
+    started = next(e for e in events if e["type"] == "block_started" and (e["block"], e["call_id"]) == (block, call_id))
+    return str(started["ts"]).replace(".000Z", ".500Z")
+
+
+def run_parent_with_transcript(tmp_path: Path, child_yaml: str) -> tuple[Project, str, Path]:
+    """A finished claude-code run of the parent, and a transcript with calls in its blocks and before them."""
+    project = make_project(tmp_path / "repo", {"parent": with_product(PARENT_SKILL, "p"), "child": child_yaml})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="claude-code", session_id="s-1")
+    submit_answer(project, run_id, "text: Hello from the parent.\n")
+    submit_answer(project, run_id, "text: Hello, Ada!\n")
+    events = space_event_times(project.runs_folder / run_id)
+    projects_folder = tmp_path / "claude-projects"
+    transcript = projects_folder / "C--repo" / "s-1.jsonl"
+    subagents = transcript.parent / "s-1" / "subagents"
+    subagents.mkdir(parents=True)
+    greet, child_greet = half_second_after(events, "greet", ""), half_second_after(events, "greet", "child#1")
+    lines = [
+        call_line("m0", "2026-10-16T09:00:00.000Z", "claude-opus-5-5", input_tokens=1000),  # before the run
+        call_line("m1", greet, "claude-opus-5-5", input_tokens=10, cache_creation_input_tokens=5, output_tokens=7),
+        call_line("m1", greet, "claude-opus-5-5", input_tokens=10, cache_creation_input_tokens=5, output_tokens=7),
+        call_line("m2", child_greet, "claude-opus-5-5", cache_read_input_tokens=100, output_tokens=3),
+    ]
+    transcript.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    subagent_line = call_line("s1", child_greet, "claude-haiku-5-5", input_tokens=20, output_tokens=2)
+    (subagents / "agent-a.jsonl").write_text(subagent_line + "\n", encoding="utf-8")
+    return project, run_id, projects_folder
+
+
+def upload_with_transcripts(project: Project, run_id: str, fake: FakeGaltea, projects_folder: Path) -> None:
+    galtea.upload_run(project, run_id, make_client=fake.client, environment=KEY, projects_folder=projects_folder)
+
+
+def test_each_turn_gets_the_tokens_of_the_model_calls_made_while_its_block_ran(tmp_path: Path) -> None:
+    project, run_id, projects_folder = run_parent_with_transcript(tmp_path, CHILD_SKILL)
+    fake = FakeGaltea()
+
+    upload_with_transcripts(project, run_id, fake, projects_folder)
+
+    greet, call, done = fake.bodies("POST", "/inferenceResults")
+    assert (greet["inputTokens"], greet["cacheReadInputTokens"], greet["outputTokens"]) == (15, 0, 7)
+    # The child has no session of its own, so the call turn holds the calls of the child's blocks.
+    assert (call["inputTokens"], call["cacheReadInputTokens"], call["outputTokens"]) == (20, 100, 5)
+    assert (done["inputTokens"], done["cacheReadInputTokens"], done["outputTokens"]) == (0, 0, 0)
+    greet_spans, call_spans, done_spans = [
+        body["traces"] for body in fake.bodies("POST", "/traces/batch?includeRejected=true")
+    ]
+    assert greet_spans[0]["metadata"]["tokens"] == {"input": 10, "cache_write": 5, "cache_read": 0, "output": 7}
+    [main] = [span for span in greet_spans if span["type"] == "GENERATION"]
+    assert main["name"] == "main agent"
+    assert main["parentTraceId"] == greet_spans[0]["id"]
+    assert main["metadata"] == {
+        "models": ["claude-opus-5-5"],
+        "model_calls": 1,
+        "input": 10,
+        "cache_write": 5,
+        "cache_read": 0,
+        "output": 7,
+    }
+    generations = [span for span in call_spans if span["type"] == "GENERATION"]
+    assert [span["name"] for span in generations] == ["main agent", "subagents fast"]
+    assert generations[1]["metadata"]["models"] == ["claude-haiku-5-5"]
+    assert generations[1]["startTime"] == generations[1]["endTime"]
+    assert [span for span in done_spans if span["type"] == "GENERATION"] == []
+
+
+def test_a_call_turn_leaves_out_the_tokens_of_a_child_with_its_own_session(tmp_path: Path) -> None:
+    project, run_id, projects_folder = run_parent_with_transcript(tmp_path, with_product(CHILD_SKILL, "c"))
+    fake = FakeGaltea()
+
+    upload_with_transcripts(project, run_id, fake, projects_folder)
+
+    turns = fake.bodies("POST", "/inferenceResults")
+    call_turn = next(turn for turn in turns if turn["input"] == '{"name": "Ada"}')
+    assert call_turn["inputTokens"] == 0
+    child_greet = next(turn for turn in turns if turn["sessionId"] != turns[0]["sessionId"])
+    assert (child_greet["inputTokens"], child_greet["cacheReadInputTokens"]) == (20, 100)
+
+
+def test_a_run_with_no_transcript_sends_no_token_fields(tmp_path: Path) -> None:
+    project, run_id, _ = run_parent_with_transcript(tmp_path, CHILD_SKILL)
+    fake = FakeGaltea()
+
+    upload_with_transcripts(project, run_id, fake, tmp_path / "no-projects")
+
+    for turn in fake.bodies("POST", "/inferenceResults"):
+        assert "inputTokens" not in turn
+    for body in fake.bodies("POST", "/traces/batch?includeRejected=true"):
+        assert "tokens" not in body["traces"][0]["metadata"]

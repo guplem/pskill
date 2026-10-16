@@ -3,7 +3,8 @@
 After each run command, `upload_run` reads the new events of the run and sends them to Galtea:
 - one session for each execution of a skill whose `skill.yaml` names `x-galtea.product`,
 - one turn for each block that completes, and one FAILED turn for a block that pauses the run,
-- spans inside each turn: the block itself, its rejected submissions, its script attempts, its pauses.
+- spans inside each turn: the block itself, its rejected submissions, its script attempts, its pauses,
+- the tokens of the model calls made while each block ran, from the Claude Code transcripts.
 
 The upload is best effort. With no key it does nothing. Any error is swallowed, and the command
 prints and returns what it would print and return without Galtea.
@@ -15,8 +16,10 @@ import os
 import re
 import urllib.error
 import uuid
+from bisect import bisect_right
 from collections.abc import Callable, Mapping
-from datetime import timedelta
+from datetime import datetime, timedelta
+from functools import cached_property
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
@@ -26,6 +29,15 @@ from pskill_runner.galtea_client import GalteaClient, urllib_sender
 from pskill_runner.project import Project
 from pskill_runner.run_records import RunInfo, RunState, child_call_id, frame_context
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, read_json, timestamp, write_json_atomic
+from pskill_runner.token_usage import (
+    MAIN_AGENT,
+    ModelCall,
+    Usage,
+    default_projects_folder,
+    find_transcript,
+    read_model_calls,
+    zero_usage,
+)
 from pskill_runner.yaml_loading import load_skill_yaml
 
 KEY_FILE_NAME = "galtea.env"
@@ -84,12 +96,18 @@ def upload_run(
     run_id: str,
     make_client: ClientFactory = default_client,
     environment: Mapping[str, str] = os.environ,
+    projects_folder: Path | None = None,
 ) -> None:
-    """Send the new events of a run to Galtea. Never raises: an upload must never break a command."""
+    """Send the new events of a run to Galtea. Never raises: an upload must never break a command.
+
+    `projects_folder` holds the Claude Code transcripts: `~/.claude/projects` by default.
+    """
     try:
         api_key = read_api_key(project, environment)
         if api_key is not None:
-            RunUpload(project, project.runs_folder / run_id, make_client(api_key)).upload_new_events()
+            transcripts = projects_folder or default_projects_folder()
+            upload = RunUpload(project, project.runs_folder / run_id, make_client(api_key), transcripts)
+            upload.upload_new_events()
     except Exception:  # an upload must never break a command, so every failure ends quietly
         return
 
@@ -132,8 +150,9 @@ def as_text(value: Any) -> str:
 class RunUpload:
     """The upload of one run's new events, with the state that `galtea.json` keeps between commands."""
 
-    def __init__(self, project: Project, folder: Path, client: GalteaClient) -> None:
+    def __init__(self, project: Project, folder: Path, client: GalteaClient, projects_folder: Path) -> None:
         self.project = project
+        self.projects_folder = projects_folder
         self.folder = folder
         self.client = client
         self.info = cast(RunInfo, read_json(folder / "run.json"))
@@ -223,8 +242,11 @@ class RunUpload:
     ) -> None:
         body = redacted({"sessionId": session["session_id"], "index": session["turns"], **turn})
         session["turns"] += 1
+        calls = self.block_calls(started, ended)
+        if calls is not None:
+            body.update(turn_token_fields(sum_usage(calls)))
         created = self.client.create_turn(body)
-        self.client.create_spans(redacted(self.spans(created["id"], started, ended, decided_by)))
+        self.client.create_spans(redacted(self.spans(created["id"], started, ended, decided_by, calls)))
 
     def turn_input(self, started: dict[str, Any]) -> Any:
         """What went into the block: the packet, a script's command and stdin, or a call's inputs."""
@@ -241,7 +263,12 @@ class RunUpload:
     # --- spans ------------------------------------------------------------------------------------
 
     def spans(
-        self, turn_id: str, started: dict[str, Any], ended: dict[str, Any], decided_by: str | None
+        self,
+        turn_id: str,
+        started: dict[str, Any],
+        ended: dict[str, Any],
+        decided_by: str | None,
+        calls: list[ModelCall] | None,
     ) -> list[dict[str, Any]]:
         root_id = str(uuid.uuid4())
         metadata = {
@@ -256,6 +283,8 @@ class RunUpload:
         if "task" in ended:
             metadata["task"] = ended["task"]
             metadata.update(self.task_model(started, ended["task"]))
+        if calls is not None:
+            metadata["tokens"] = sum_usage(calls)
         root = {
             "id": root_id,
             "inferenceResultId": turn_id,
@@ -266,7 +295,8 @@ class RunUpload:
             "metadata": metadata,
         }
         children = [self.detail_span(turn_id, root_id, event) for event in self.block_window(started, ended)]
-        return [root, *[child for child in children if child is not None]]
+        generations = generation_spans(turn_id, root_id, calls or [])
+        return [root, *[child for child in children if child is not None], *generations]
 
     def detail_span(self, turn_id: str, parent_id: str, event: dict[str, Any]) -> dict[str, Any] | None:
         base = {"id": str(uuid.uuid4()), "inferenceResultId": turn_id, "parentTraceId": parent_id}
@@ -321,6 +351,53 @@ class RunUpload:
     def tier_model(self, tier: str) -> str:
         row = tier_row(adapter_for(self.info["harness"]), self.project.config.tiers, tier)
         return row.model or "inherited"
+
+    # --- token use --------------------------------------------------------------------------------
+
+    @cached_property
+    def model_calls(self) -> list[ModelCall] | None:
+        """Every model call of the run's Claude Code session, or None with no transcript (Codex, no session id)."""
+        transcript = find_transcript(self.projects_folder, self.info["harness"], self.info.get("session_id"))
+        return read_model_calls(transcript) if transcript is not None else None
+
+    @cached_property
+    def block_starts(self) -> list[tuple[datetime, int]]:
+        """The time and seq of every `block_started` of the run, in any frame, in order."""
+        return [
+            (parse_timestamp(event["ts"]), event["seq"]) for event in self.events if event["type"] == "block_started"
+        ]
+
+    def block_calls(self, started: dict[str, Any], ended: dict[str, Any]) -> list[ModelCall] | None:
+        """The model calls of a turn. Each call belongs to the block that started last before it.
+
+        A turn holds the calls of its own block, and of the child calls inside it that have no session of their own,
+        up to the end of the turn.
+        """
+        if self.model_calls is None:
+            return None
+        owned_starts = {
+            event["seq"]
+            for event in self.events[started["seq"] - 1 : ended["seq"] - 1]
+            if event["type"] == "block_started"
+            and self.uploading_call(event.get("call_id", "")) == started.get("call_id", "")
+        }
+        end = parse_timestamp(ended["ts"])
+        start_times = [moment for moment, _ in self.block_starts]
+        calls = []
+        for call in self.model_calls:
+            index = bisect_right(start_times, call.moment) - 1
+            if index >= 0 and self.block_starts[index][1] in owned_starts and call.moment <= end:
+                calls.append(call)
+        return calls
+
+    def uploading_call(self, call_id: str) -> str:
+        """The nearest call, from this one up to the root, whose turns go to a session of its own."""
+        while call_id:
+            record = self.state["sessions"].get(call_id)
+            if record is not None and record["session_id"] is not None:
+                return call_id
+            call_id = call_id.rpartition(">")[0]
+        return ""
 
     # --- finding events ---------------------------------------------------------------------------
 
@@ -502,6 +579,48 @@ def rendered_metadata(templates: dict[str, Any], context: dict[str, Any]) -> dic
         except ComputedValueError:
             continue
     return values
+
+
+def sum_usage(calls: list[ModelCall]) -> Usage:
+    total = zero_usage()
+    for call in calls:
+        for name, count in call.usage.items():
+            total[name] += count
+    return total
+
+
+def turn_token_fields(usage: Usage) -> dict[str, int]:
+    """The token fields of a Galtea turn. Galtea has no cache-write field, so a cache write counts as input."""
+    return {
+        "inputTokens": usage["input"] + usage["cache_write"],
+        "cacheReadInputTokens": usage["cache_read"],
+        "outputTokens": usage["output"],
+    }
+
+
+def generation_spans(turn_id: str, parent_id: str, calls: list[ModelCall]) -> list[dict[str, Any]]:
+    """One GENERATION span per source of calls: the main agent first, then each subagent tier."""
+    sources = sorted({call.source for call in calls}, key=lambda source: (source != MAIN_AGENT, source))
+    spans = []
+    for source in sources:
+        own_calls = [call for call in calls if call.source == source]
+        spans.append(
+            {
+                "id": str(uuid.uuid4()),
+                "inferenceResultId": turn_id,
+                "parentTraceId": parent_id,
+                "name": source,
+                "type": "GENERATION",
+                "metadata": {
+                    "models": sorted({call.model for call in own_calls}),
+                    "model_calls": len(own_calls),
+                    **sum_usage(own_calls),
+                },
+                "startTime": timestamp(min(call.moment for call in own_calls)),
+                "endTime": timestamp(max(call.moment for call in own_calls)),
+            }
+        )
+    return spans
 
 
 def skill_id_of(event: dict[str, Any]) -> str:
