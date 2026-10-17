@@ -18,3 +18,9 @@ def test_the_complete_example_in_authoring_md_is_a_valid_skill(tmp_path: Path) -
     skill = load_skill(write_skill(tmp_path, "my-skill", match["yaml"]))
 
     assert [problem for problem in validate_skill(skill) if problem.level == "error"] == []
+
+
+def test_authoring_md_says_that_a_script_exit_code_other_than_0_fails_the_block() -> None:
+    text = AUTHORING.read_text(encoding="utf-8")
+
+    assert "An exit code other than 0 fails the block" in text

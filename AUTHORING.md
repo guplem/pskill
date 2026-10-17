@@ -112,7 +112,8 @@ blocks:
     - {name: docs, brief: "Find stale docs."}
     - {name: api, brief: "Check the API rules.", when: "{{ steps.read.json.paths | select('matches', '^api/') | list }}"}
   ```
-- A `script` gives `steps.<id>.exit_code`, `.stdout`, and `.stderr`, plus `.json` with `parse: json`. A `parse: json` stdout is kept whole; any other stdout, and stderr, keep their first 64 KiB and a note that says they were cut.
+- A `script` gives `steps.<id>.stdout` and `.stderr`, plus `.json` with `parse: json`. A `parse: json` stdout is kept whole; any other stdout, and stderr, keep their first 64 KiB and a note that says they were cut.
+- An exit code other than 0 fails the block: it tries again, then the run pauses (see `retries` below), and no edge runs. So `steps.<id>.exit_code` is always 0 when a skill can read it: never route on it. A script that answers a normal "no" (no tests found, nothing to fix) exits 0 and says so on stdout, for example `{"found": false}` with `parse: json`, and the edge reads `steps.<id>.json.found`. Exit with another code only when the script itself broke.
 - A `script` gets its data only through `input`, on stdin: a mapping goes as one JSON object, a text as it is. Stdin has no length limit. A Python script reads `json.load(sys.stdin)` and prints JSON:
   ```yaml
   verify:
