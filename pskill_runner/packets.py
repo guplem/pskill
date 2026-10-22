@@ -42,6 +42,7 @@ class AgentPacket:
     task_index: int | None = None  # set for one task of a parallel block
     subagent_wording: str = ""  # how this harness spawns subagents, for parallel packets
     work_folder: str = ""  # the project root, where every subagent of a parallel block works
+    can_wait: bool = False  # the harness wakes the agent after a background command, so `pskill wait` works
     # The stub gives the goal and the rules once. A packet repeats them only where the agent never saw them.
     show_goal: bool = False  # the first packet of a child skill, and `current` and `resume`
     show_rules: bool = False  # `current` and `resume`: a new session may not have read the stub
@@ -157,12 +158,23 @@ def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], to
         *([packet.subagent_wording] if packet.subagent_wording else []),
         f"{len(open_tasks)} of {total_tasks} tasks are still open.",
         f"When every subagent has finished, run: {packet.runner_command} current {packet.run_id}",
+        *([background_subagent_line(packet)] if packet.can_wait else []),
     ]
     for task in open_tasks:
         name = f" · {task.name}" if task.name else ""
         lines += ["", f"#### Task {task.index}{name}", *([task.spawn_wording] if task.spawn_wording else [])]
         lines.append(task_line(packet, task.index))
     return "\n".join(lines) + "\n"
+
+
+def background_subagent_line(packet: AgentPacket) -> str:
+    """A subagent that goes on in the background is still at work: wait for its submit, never spawn it twice."""
+    wait = f'{packet.runner_command} wait {packet.run_id} --reason "the subagents of {packet.block_id}"'
+    return (
+        "If a subagent call returns before its subagent submitted its task (it went on in the background), do not "
+        f"spawn that task again and do not go on: run `{wait}` in the background, then end your turn. Each "
+        "submitted task ends the wait."
+    )
 
 
 def task_line(packet: AgentPacket, index: int) -> str:

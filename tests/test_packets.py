@@ -335,3 +335,24 @@ def test_the_pause_packet_can_name_pause_steps_that_an_earlier_packet_gave() -> 
         "### Error\nplan: required\n\n### Pause steps\nThe first packet of this pause gave them. Do not do them again."
         "\n\n### Next\nTell the user why the run paused."
     ) in text
+
+
+def test_a_parallel_packet_that_can_wait_says_to_wait_for_a_background_subagent() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
+
+    text = render_parallel_packet(replace(PLAN_PACKET, can_wait=True), [task], total_tasks=1)
+
+    assert (
+        "If a subagent call returns before its subagent submitted its task (it went on in the background), do "
+        "not spawn that task again and do not go on: run `uv run .pskill/pskill.py wait r-20260927-1432-ab12 "
+        '--reason "the subagents of create_plan"` in the background, then end your turn. Each submitted task '
+        "ends the wait." in text
+    )
+
+
+def test_a_parallel_packet_that_cannot_wait_says_nothing_about_waiting() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
+
+    assert " wait " not in render_parallel_packet(PLAN_PACKET, [task], total_tasks=1)

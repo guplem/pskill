@@ -1250,3 +1250,26 @@ def test_a_call_whose_inputs_fail_still_logs_its_start(tmp_path: Path) -> None:
     call_started = next(e for e in events if e["type"] == "block_started" and e.get("block_type") == "call")
     assert "inputs" not in call_started
     assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+
+
+def test_claude_code_waits_for_a_background_subagent_until_every_task_is_submitted(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, packet = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code"
+    )
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+
+    current = current_packet(project, run_id)
+
+    wait_line = f'wait {run_id} --reason "the subagents of check"` in the background, then end your turn.'
+    assert wait_line in packet and wait_line in current
+    assert "1 of 2 tasks are still open." in current
+    assert read_run_info(project, run_id)["current_block"] == "check"
+
+
+def test_codex_gets_no_wait_line_in_a_parallel_packet(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+
+    _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="codex")
+
+    assert "--reason" not in packet
