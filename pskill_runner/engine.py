@@ -1075,6 +1075,7 @@ class Run:
             task_index=task_index,
             subagent_wording=self.adapter.subagent_wording,
             work_folder=self.project.root.as_posix(),
+            can_wait=self.adapter.wakes_after_background_command,
         )
 
     def answers_folder(self) -> str:

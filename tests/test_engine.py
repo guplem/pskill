@@ -852,11 +852,23 @@ def test_an_answer_that_is_not_yaml_is_rejected(tmp_path: Path) -> None:
     assert read_run_info(project, run_id)["attempts"] == 1
 
 
-def test_a_colon_in_plain_text_gets_the_free_text_hint(tmp_path: Path) -> None:
+def test_a_colon_in_plain_text_is_accepted_on_the_first_submit(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id = start(project)
 
-    packet = submit_answer(project, run_id, "status: finished\nnote: getOneById(id): Promise<Group>\n")
+    packet = submit_answer(project, run_id, "status: finished\nplan: api/src/a.ts:12: unused import\n")
+
+    assert "### Errors" not in packet
+    assert read_run_state(project, run_id)["frames"][0]["steps"]["create_plan"]["plan"] == (
+        "api/src/a.ts:12: unused import"
+    )
+
+
+def test_an_answer_that_quoting_cannot_fix_gets_the_free_text_hint(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    packet = submit_answer(project, run_id, "status: finished\nplan: first line\n  second: line\n")
 
     errors = packet.split("### Errors")[1]
     assert "- The answer is not valid YAML: " in errors
