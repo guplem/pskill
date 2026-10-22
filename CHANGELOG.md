@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.41.0 (2026-10-22)
+
+An answer with a colon in its free text passes on the first submit, and a subagent that goes on in the background no longer pauses the run (#164).
+
+- **A colon in a plain value:** `summary: api/src/a.ts:12: unused import` is read as the text `api/src/a.ts:12: unused import`. Before, the runner rejected it as invalid YAML (`mapping values are not allowed here`). The runner quotes the value of the line that fails and parses again. The value ends at ` #`, as a plain value does. A line that quoting cannot fix still rejects the answer with the first error.
+- **A background subagent:** in Claude Code, the parallel packet says what to do when a subagent call returns before its subagent submitted: do not spawn the task again and do not go on, run `pskill wait <run> --reason "the subagents of <block>"` in the background, and end the turn. Each task's submit ends the wait. Codex and the generic adapter get no new line.
+
 ## 0.40.0 (2026-10-16)
 
 The Galtea upload sends the token use of each block, in Claude Code (#161).
