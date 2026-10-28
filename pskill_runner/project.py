@@ -33,6 +33,8 @@ class Config:
     wait_minutes: int = 20  # how long one `pskill wait` sleeps when nothing changes
     max_wait_minutes: int = 120  # how long the waits of one block may last with nothing new
     viewer_port: int = 7777
+    worktree_folder: str = ".worktrees"  # where `start --worktree` puts the run's git worktree, from the project root
+    worktree_setup: list[str] = field(default_factory=list)  # the command that prepares a new worktree, as argv
     # The project's tier rows, per harness and tier. Each replaces the adapter's default row (adapters.py).
     tiers: Mapping[str, Mapping[str, TierRow]] = field(default_factory=dict)
 
@@ -85,7 +87,25 @@ def load_config(path: Path) -> Config:
     for app in raw.get("permissions") or []:
         if app not in PERMISSION_APPS:
             raise ProjectError(f"{path}: unknown app {app!r} in permissions (known apps: {', '.join(PERMISSION_APPS)})")
+    if "worktree_folder" in raw and not is_relative_folder(raw["worktree_folder"]):
+        raise ProjectError(
+            f"{path}: 'worktree_folder' must be a relative folder inside the project, such as '.worktrees'"
+        )
+    if "worktree_setup" in raw and not is_list_of_texts(raw["worktree_setup"]):
+        raise ProjectError(f"{path}: 'worktree_setup' must be a list of non-empty texts, such as '[npm, ci]'")
     return Config(**{**raw, "tiers": load_tiers(path, raw.get("tiers"))})
+
+
+def is_relative_folder(value: Any) -> bool:
+    """A folder inside the project: a relative path that is not the project itself and has no `..`."""
+    if not isinstance(value, str):
+        return False
+    folder = Path(value)
+    return bool(folder.parts) and not folder.anchor and ".." not in folder.parts
+
+
+def is_list_of_texts(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) and item.strip() for item in value)
 
 
 def load_tiers(path: Path, raw: Any) -> dict[str, dict[str, TierRow]]:

@@ -88,6 +88,35 @@ def test_known_apps_in_permissions_are_kept(tmp_path: Path) -> None:
     assert config.permissions == ["codex", "claude-code"]
 
 
+def test_the_worktree_settings_default_to_a_dot_worktrees_folder_and_no_setup(tmp_path: Path) -> None:
+    config = find_project(make_project(tmp_path)).config
+
+    assert (config.worktree_folder, config.worktree_setup) == (".worktrees", [])
+
+
+def test_the_worktree_settings_can_be_set(tmp_path: Path) -> None:
+    config = find_project(make_project(tmp_path, "worktree_folder: build/trees\nworktree_setup: [npm, ci]\n")).config
+
+    assert (config.worktree_folder, config.worktree_setup) == ("build/trees", ["npm", "ci"])
+
+
+@pytest.mark.parametrize(
+    ("setting_yaml", "message"),
+    [
+        ("worktree_folder: ../trees", r"'worktree_folder' must be a relative folder inside the project"),
+        ("worktree_folder: /tmp/trees", r"'worktree_folder' must be a relative folder inside the project"),
+        ("worktree_folder: '.'", r"'worktree_folder' must be a relative folder inside the project"),
+        ("worktree_folder: 3", r"'worktree_folder' must be a relative folder inside the project"),
+        ("worktree_setup: npm ci", r"'worktree_setup' must be a list of non-empty texts, such as '\[npm, ci\]'"),
+        ("worktree_setup: [npm, '']", r"'worktree_setup' must be a list of non-empty texts"),
+        ("worktree_setup: [npm, 3]", r"'worktree_setup' must be a list of non-empty texts"),
+    ],
+)
+def test_a_wrong_worktree_setting_is_an_error(tmp_path: Path, setting_yaml: str, message: str) -> None:
+    with pytest.raises(ProjectError, match=message):
+        find_project(make_project(tmp_path, setting_yaml + "\n"))
+
+
 def test_the_project_tier_rows_are_read_per_harness_and_tier(tmp_path: Path) -> None:
     config_yaml = (
         "tiers:\n"
