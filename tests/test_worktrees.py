@@ -9,10 +9,17 @@ from typing import Any
 import pytest
 
 from pskill_runner import worktrees
-from pskill_runner.engine import RunError, start_run
+from pskill_runner.engine import RunError, cancel_run, start_run
 from pskill_runner.project import Config, Project, find_project
 from pskill_runner.run_store import new_run_id, utc_now
-from pskill_runner.worktrees import check_run_is_here, run_worktree, worktree_mode, worktree_projects
+from pskill_runner.worktrees import (
+    check_newest_run_is_here,
+    check_run_is_here,
+    run_worktree,
+    worktree_mode,
+    worktree_projects,
+    worktree_runs,
+)
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 GIT_IDENTITY = ("-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false")
@@ -50,6 +57,9 @@ def with_setup(project: Project, command: list[str], timeout_s: int = 300) -> Pr
 
 def a_run_id() -> str:
     return new_run_id(utc_now())
+
+
+REMOVED_NOTE = "No run started. pskill removed the worktree that it made for it."
 
 
 def remove_line(tree: Path) -> str:
@@ -212,7 +222,7 @@ def test_the_setup_command_runs_in_the_project_folder_of_the_new_worktree(tmp_pa
     assert not (tmp_path / "app" / "setup-ran.txt").exists()
 
 
-def test_a_failing_setup_stops_the_start_and_names_the_worktree_to_remove(tmp_path: Path) -> None:
+def test_a_failing_setup_stops_the_start_and_removes_the_worktree(tmp_path: Path) -> None:
     command = [sys.executable, "-c", "import sys; print('npm ERR! broken', file=sys.stderr); sys.exit(3)"]
     project = with_setup(make_checkout(tmp_path), command)
     run_id = a_run_id()
@@ -224,8 +234,9 @@ def test_a_failing_setup_stops_the_start_and_names_the_worktree_to_remove(tmp_pa
     message = str(error.value)
     assert "failed with exit code 3" in message
     assert "npm ERR! broken" in message
-    assert f"No run started. If the worktree `{tree.as_posix()}` exists, remove it with: {remove_line(tree)}" in message
-    assert tree.is_dir()  # the runner never removes a worktree
+    assert message.endswith(f"\n{REMOVED_NOTE}")
+    assert not tree.exists()  # no run lives in it yet, so the runner removes it
+    assert tree.as_posix() not in git(tmp_path, "worktree", "list", "--porcelain")
 
 
 def failed_setup_message(project: Project) -> str:
@@ -239,7 +250,7 @@ def test_a_failing_setup_with_no_error_output_shows_its_standard_output(tmp_path
 
     message = failed_setup_message(with_setup(make_checkout(tmp_path), command))
 
-    assert "failed with exit code 1:\nnpm notice: no lock file\nNo run started." in message
+    assert f"failed with exit code 1:\nnpm notice: no lock file\n{REMOVED_NOTE}" in message
 
 
 def test_a_failing_setup_shows_only_the_last_20_lines_of_its_output(tmp_path: Path) -> None:
@@ -249,7 +260,7 @@ def test_a_failing_setup_shows_only_the_last_20_lines_of_its_output(tmp_path: Pa
     message = failed_setup_message(with_setup(make_checkout(tmp_path), command))
 
     shown = "\n".join(f"line {n}" for n in range(6, 26))
-    assert f"failed with exit code 1:\n{shown}\nNo run started." in message
+    assert f"failed with exit code 1:\n{shown}\n{REMOVED_NOTE}" in message
 
 
 def test_a_failing_setup_with_no_output_ends_its_first_line_with_a_period(tmp_path: Path) -> None:
@@ -257,7 +268,7 @@ def test_a_failing_setup_with_no_output_ends_its_first_line_with_a_period(tmp_pa
 
     message = failed_setup_message(with_setup(make_checkout(tmp_path), command))
 
-    assert "failed with exit code 4.\nNo run started." in message
+    assert f"failed with exit code 4.\n{REMOVED_NOTE}" in message
 
 
 def test_a_setup_that_runs_past_the_script_timeout_stops_the_start(tmp_path: Path) -> None:
@@ -267,7 +278,7 @@ def test_a_setup_that_runs_past_the_script_timeout_stops_the_start(tmp_path: Pat
 
     assert "The worktree setup" in message
     assert "failed: it did not finish within 1 s." in message
-    assert "git worktree remove --force" in message
+    assert message.endswith(REMOVED_NOTE)
 
 
 def test_a_setup_command_that_does_not_exist_stops_the_start(tmp_path: Path) -> None:
@@ -277,7 +288,8 @@ def test_a_setup_command_that_does_not_exist_stops_the_start(tmp_path: Path) -> 
     with pytest.raises(RunError, match="failed: the command 'no-such-program-for-pskill-tests' was not found") as error:
         run_worktree(project, "plan-work", INPUTS, run_id)
 
-    assert remove_line(tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}") in str(error.value)
+    assert str(error.value).endswith(REMOVED_NOTE)
+    assert not (tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}").exists()
 
 
 def test_a_setup_command_that_cannot_start_stops_the_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -296,7 +308,9 @@ def test_a_setup_command_that_cannot_start_stops_the_start(tmp_path: Path, monke
     assert "The worktree setup `setup-tool` did not start: Permission denied: 'setup-tool'" in message
 
 
-def test_a_git_error_stops_the_start_and_names_the_worktree(tmp_path: Path) -> None:
+def test_a_git_error_stops_the_start_and_names_a_folder_that_is_no_worktree_without_removing_it(
+    tmp_path: Path,
+) -> None:
     project = make_checkout(tmp_path)
     run_id = a_run_id()
     tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
@@ -306,7 +320,10 @@ def test_a_git_error_stops_the_start_and_names_the_worktree(tmp_path: Path) -> N
     with pytest.raises(RunError, match="worktree add") as error:
         run_worktree(project, "plan-work", INPUTS, run_id)
 
-    assert remove_line(tree) in str(error.value)
+    assert str(error.value).endswith(
+        f"No run started. If the worktree `{tree.as_posix()}` is yours to drop, remove it with: {remove_line(tree)}"
+    )
+    assert (tree / "in-the-way.txt").is_file()  # git refuses to remove a folder that is not a worktree
 
 
 def test_a_project_that_is_not_committed_has_no_project_in_the_worktree(tmp_path: Path) -> None:
@@ -316,7 +333,8 @@ def test_a_project_that_is_not_committed_has_no_project_in_the_worktree(tmp_path
     with pytest.raises(RunError, match=r"has no \.pskill folder.*commit") as error:
         run_worktree(project, "plan-work", INPUTS, run_id)
 
-    assert remove_line(tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}") in str(error.value)
+    assert str(error.value).endswith(REMOVED_NOTE)
+    assert not (tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}").exists()
 
 
 def test_a_skill_that_is_not_committed_stops_the_start(tmp_path: Path) -> None:
@@ -329,7 +347,8 @@ def test_a_skill_that_is_not_committed_stops_the_start(tmp_path: Path) -> None:
     with pytest.raises(RunError, match="There is no skill 'new-skill'") as error:
         run_worktree(project, "new-skill", INPUTS, run_id)
 
-    assert remove_line(tmp_path / ".pskill" / "worktrees" / f"new-skill-{run_id}") in str(error.value)
+    assert str(error.value).endswith(REMOVED_NOTE)
+    assert not (tmp_path / ".pskill" / "worktrees" / f"new-skill-{run_id}").exists()
 
 
 @pytest.mark.parametrize(
@@ -479,3 +498,60 @@ def test_outside_git_a_worktree_folder_gives_no_projects(tmp_path: Path) -> None
     (tmp_path / ".pskill" / "worktrees" / "plan-work-r-1" / ".pskill").mkdir(parents=True)
 
     assert worktree_projects(find_project(tmp_path)) == []
+
+
+def test_the_galtea_key_file_of_the_checkout_is_copied_into_the_worktree(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path, project_folder="app")
+    (project.pskill_folder / "galtea.env").write_text("GALTEA_API_KEY=key-1\n", encoding="utf-8")
+
+    run_project, _, _ = run_worktree(project, "plan-work", INPUTS, a_run_id())
+
+    assert (run_project.pskill_folder / "galtea.env").read_text(encoding="utf-8") == "GALTEA_API_KEY=key-1\n"
+
+
+def test_a_checkout_with_no_galtea_key_file_copies_nothing(tmp_path: Path) -> None:
+    run_project, _, _ = run_worktree(make_checkout(tmp_path), "plan-work", INPUTS, a_run_id())
+
+    assert not (run_project.pskill_folder / "galtea.env").exists()
+
+
+# --- worktree_runs and check_newest_run_is_here ----------------------------------------------------
+
+
+def test_the_runs_of_the_worktrees_come_with_their_project(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path, project_folder="app")
+    run_id, run_root = start_in_tree(project)
+
+    assert [(tree_project.root, info["run_id"]) for tree_project, info in worktree_runs(project)] == [
+        (run_root, run_id)
+    ]
+
+
+def test_current_with_no_run_id_names_the_worktree_of_the_newest_unfinished_run(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path)
+    start_in_tree(project)
+    newest_id, newest_root = start_in_tree(project)
+
+    with pytest.raises(RunError) as error:
+        check_newest_run_is_here(project)
+
+    assert str(error.value) == (
+        f"There is no unfinished run here. Run {newest_id} lives in `{newest_root.as_posix()}`: "
+        "run this command from that folder."
+    )
+
+
+def test_an_unfinished_run_of_the_checkout_passes_the_newest_run_check(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path)
+    start_in_tree(project)
+    start_run(project, "plan-work", INPUTS, mode="interactive", harness="generic")
+
+    check_newest_run_is_here(project)
+
+
+def test_finished_worktree_runs_pass_the_newest_run_check(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path)
+    run_id, run_root = start_in_tree(project)
+    cancel_run(find_project(run_root), run_id)
+
+    check_newest_run_is_here(project)

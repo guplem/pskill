@@ -110,8 +110,8 @@ def render_pskill_stub() -> str:
             f"- Stop a run for good: `{RUNNER} cancel <run-id>`",
             f"- Open the run viewer: `{RUNNER} view`",
             "",
-            "A run started with `--worktree` is listed only from its own folder in `.pskill/worktrees/`: "
-            "run these commands from there.",
+            "A run started with `--worktree` lives in its own folder in `.pskill/worktrees/`, which `runs` names: "
+            "run the other commands from that folder.",
             "",
         ]
     )

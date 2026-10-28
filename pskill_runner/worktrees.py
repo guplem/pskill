@@ -1,21 +1,26 @@
 """Worktree runs: a run that works in its own git worktree (SPEC.md section 7.8).
 
 Such a run never switches the branch of the checkout that other agent sessions share. The runner makes the
-worktree and never removes it: the run folder, the only record of the run, lives inside it.
+worktree and never removes the worktree of a run: the run folder, the only record of the run, lives inside it.
+Only a start that fails before its run exists removes its worktree.
 """
 
 import os
+import shutil
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from pskill_runner.engine import RunError, startable_skill
+from pskill_runner.engine import RunError, list_runs, startable_skill
+from pskill_runner.galtea import KEY_FILE_NAME as GALTEA_KEY_FILE
 from pskill_runner.inline_executor import RealExecutor
 from pskill_runner.project import PSKILL_FOLDER_NAME, Config, Project, ProjectError, find_project
+from pskill_runner.run_records import UNFINISHED_STATUSES, RunInfo
 
 WORKTREE_VARIABLE = "PSKILL_RUN_IN_WORKTREE"
 SETUP_ERROR_LINES = 20  # the last lines of a failed setup's output that the error shows
+REMOVED_NOTE = "No run started. pskill removed the worktree that it made for it."
 UNCOMMITTED_NOTE = (
     f"The checkout has uncommitted changes in `{PSKILL_FOLDER_NAME}/`. This run does not use them: its worktree "
     "starts at the last commit. Tell the user."
@@ -33,8 +38,9 @@ def run_worktree(
     """The project that a worktree run starts in, the worktree made for it, and a note for the first packet.
 
     A project that already sits in a linked worktree uses it: (project, None, ""). Else the runner makes a
-    detached worktree at HEAD, named `<skill>-<run>`. A failure after that names the worktree to remove. The note
-    says when the checkout's `.pskill/` has uncommitted changes, which the worktree does not have.
+    detached worktree at HEAD, named `<skill>-<run>`, and copies the checkout's Galtea key file, which git ignores.
+    A failure after that removes the worktree: no run lives in it yet. The note says when the checkout's
+    `.pskill/` has uncommitted changes, which the worktree does not have.
     """
     try:
         linked = in_linked_worktree(project.root)
@@ -52,13 +58,34 @@ def run_worktree(
         add_worktree(project.root, tree)
         tree_project = project_in_worktree(project, tree)
         startable_skill(tree_project, skill_id, raw_inputs)  # the skill as committed: the worktree starts at HEAD
+        copy_galtea_key(project, tree_project)
         run_setup(project.config, tree_project.root)
     except (RunError, ProjectError) as error:
-        raise RunError(
-            f"{error}\nNo run started. If the worktree `{tree.as_posix()}` exists, remove it with: "
-            f'`git worktree remove --force "{tree.as_posix()}"`'
-        ) from error
+        raise RunError(f"{error}\n{remove_failed_worktree(project.root, tree)}") from error
     return tree_project, tree, UNCOMMITTED_NOTE if changes else ""
+
+
+def remove_failed_worktree(checkout: Path, tree: Path) -> str:
+    """Remove the worktree of a start that failed, and return the last line of its error.
+
+    No run lives in it yet, so nothing is lost. Git refuses a folder that is not a worktree (one that was in the
+    way of `worktree add`): the line then names the command, and the folder stays.
+    """
+    try:
+        git(checkout, "worktree", "remove", "--force", str(tree))
+    except RunError:
+        return (
+            f"No run started. If the worktree `{tree.as_posix()}` is yours to drop, remove it with: "
+            f'`git worktree remove --force "{tree.as_posix()}"`'
+        )
+    return REMOVED_NOTE
+
+
+def copy_galtea_key(project: Project, tree_project: Project) -> None:
+    """Copy `.pskill/galtea.env` into the worktree: git ignores it, so `worktree add` leaves it out."""
+    key_file = project.pskill_folder / GALTEA_KEY_FILE
+    if key_file.is_file():
+        shutil.copyfile(key_file, tree_project.pskill_folder / GALTEA_KEY_FILE)
 
 
 def in_linked_worktree(root: Path) -> bool:
@@ -171,6 +198,27 @@ def worktree_projects(project: Project) -> list[Project]:
         except ProjectError:
             continue
     return projects
+
+
+def worktree_runs(project: Project) -> list[tuple[Project, RunInfo]]:
+    """The runs in the worktrees of the project, each with the project in its worktree, newest first."""
+    runs = [(tree_project, info) for tree_project in worktree_projects(project) for info in list_runs(tree_project)]
+    return sorted(runs, key=lambda pair: pair[1]["updated_at"], reverse=True)
+
+
+def check_newest_run_is_here(project: Project) -> None:
+    """With no unfinished run here, name the worktree of the newest unfinished worktree run, if any.
+
+    For `current` with no run id: else it says that there is no unfinished run, and the agent stops looking.
+    """
+    if any(info["status"] in UNFINISHED_STATUSES for info in list_runs(project)):
+        return
+    for tree_project, info in worktree_runs(project):
+        if info["status"] in UNFINISHED_STATUSES:
+            raise RunError(
+                f"There is no unfinished run here. Run {info['run_id']} lives in `{tree_project.root.as_posix()}`: "
+                "run this command from that folder."
+            )
 
 
 def git(folder: Path, *arguments: str) -> str:

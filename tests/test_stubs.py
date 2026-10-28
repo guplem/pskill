@@ -279,8 +279,8 @@ def test_deleting_a_manual_skill_removes_its_whole_stub_folder(tmp_path: Path) -
     assert not (tmp_path / ".agents/skills/plan-work").exists()
 
 
-def test_the_pskill_stub_says_where_a_worktree_run_is_listed() -> None:
+def test_the_pskill_stub_says_where_a_worktree_run_lives() -> None:
     assert (
-        "A run started with `--worktree` is listed only from its own folder in `.pskill/worktrees/`: "
-        "run these commands from there." in render_pskill_stub()
+        "A run started with `--worktree` lives in its own folder in `.pskill/worktrees/`, which `runs` names: "
+        "run the other commands from that folder." in render_pskill_stub()
     )

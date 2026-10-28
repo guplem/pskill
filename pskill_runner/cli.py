@@ -45,7 +45,13 @@ from pskill_runner.stubs import StubError, sync_stubs
 from pskill_runner.sync import sync_project, sync_with_the_installed_runner
 from pskill_runner.validator import Problem, validate_skill
 from pskill_runner.viewer_server import serve_viewer
-from pskill_runner.worktrees import check_run_is_here, run_worktree, worktree_mode
+from pskill_runner.worktrees import (
+    check_newest_run_is_here,
+    check_run_is_here,
+    run_worktree,
+    worktree_mode,
+    worktree_runs,
+)
 from pskill_runner.yaml_loading import load_answer_yaml
 
 EXIT_OK = 0
@@ -178,6 +184,8 @@ def run_command(options: argparse.Namespace) -> int:
     session_id = detect_session_id(os.environ)
     if command in RUN_ID_COMMANDS and options.run_id is not None:
         check_run_is_here(project, options.run_id)
+    if command == "current" and options.run_id is None:
+        check_newest_run_is_here(project)
     if command == "start":
         run_project, run_id, packet = start_command(project, options)
         return print_and_upload(run_project, run_id, packet)
@@ -289,14 +297,18 @@ def start_command(project: Project, options: argparse.Namespace) -> tuple[Projec
 
 
 def runs_table(project: Project, only_open: bool) -> str:
-    runs = [info for info in list_runs(project) if not only_open or info["status"] in UNFINISHED_STATUSES]
+    """The runs of this project, then those of its worktrees, each with the folder to run its commands from."""
+    places = [(info, "") for info in list_runs(project)]
+    places += [(info, f"  in `{tree_project.root.as_posix()}`") for tree_project, info in worktree_runs(project)]
+    runs = [(info, place) for info, place in places if not only_open or info["status"] in UNFINISHED_STATUSES]
     if not runs:
         return "No runs."
     now = utc_now()
     rows = [
         f"{info['run_id']}  {info['skill_id']}  {info['status']}  {info['current_block'] or '-'}  {info['updated_at']}"
         + wait_note(info, now)
-        for info in runs
+        + place
+        for info, place in runs
     ]
     return "\n".join(["run  skill  status  block  updated", *rows])
 

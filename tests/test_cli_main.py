@@ -21,7 +21,7 @@ from pskill_runner.release import build_release_archive, release_file_map
 from pskill_runner.run_store import utc_now
 from pskill_runner.run_waits import start_wait
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_worktrees import UNCOMMITTED_NOTE, make_checkout, remove_line
+from tests.test_worktrees import REMOVED_NOTE, UNCOMMITTED_NOTE, make_checkout
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
@@ -483,9 +483,9 @@ def test_start_with_a_failing_worktree_setup_starts_no_run(
     assert run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x", "--worktree") == cli.EXIT_USAGE_ERROR
 
     error = capsys.readouterr().err
-    [tree] = [folder for folder in (tmp_path / ".pskill" / "worktrees").iterdir() if folder.is_dir()]
     assert "failed with exit code 4" in error
-    assert f"No run started. If the worktree `{tree.as_posix()}` exists, remove it with: {remove_line(tree)}" in error
+    assert REMOVED_NOTE in error
+    assert [folder for folder in (tmp_path / ".pskill" / "worktrees").iterdir() if folder.is_dir()] == []
     assert list(tmp_path.rglob("run.json")) == []
 
 
@@ -547,6 +547,37 @@ def test_a_run_command_from_the_worktree_finds_its_run(
     monkeypatch.chdir(tree)
     assert run_cli(monkeypatch, "current", run_id) == cli.EXIT_OK
     assert f"Run {run_id} · interactive" in capsys.readouterr().out
+
+
+def test_runs_in_the_checkout_lists_the_worktree_runs_with_their_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    tree_run = start_plan(monkeypatch, capsys, "--worktree")
+    checkout_run = start_plan(monkeypatch, capsys)
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{tree_run}"
+
+    run_cli(monkeypatch, "runs", "--open")
+
+    lines = capsys.readouterr().out.splitlines()
+    [tree_row] = [line for line in lines if line.startswith(tree_run)]
+    [checkout_row] = [line for line in lines if line.startswith(checkout_run)]
+    assert tree_row.endswith(f"  in `{tree.as_posix()}`")
+    assert " in `" not in checkout_row
+
+
+def test_current_with_no_run_id_in_the_checkout_names_the_worktree_of_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    run_id = start_plan(monkeypatch, capsys, "--worktree")
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
+
+    assert run_cli(monkeypatch, "current") == cli.EXIT_USAGE_ERROR
+
+    assert f"Run {run_id} lives in `{tree.as_posix()}`: run this command from that folder." in capsys.readouterr().err
 
 
 # --- wait -----------------------------------------------------------------------------------------
