@@ -489,20 +489,46 @@ def test_the_environment_variable_turns_the_worktree_mode_on(
     assert (tmp_path / ".worktrees" / f"plan-work-{run_id}" / ".pskill" / "runs" / run_id / "run.json").is_file()
 
 
-def test_a_command_from_the_checkout_names_the_worktree_that_holds_the_run(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    ("command", "options"),
+    [
+        ("current", []),
+        ("task", ["0"]),
+        ("submit", []),
+        ("pause", []),
+        ("resume", []),
+        ("cancel", []),
+        ("delete", []),
+        ("wait", ["--reason", "the CI checks"]),
+    ],
+)
+def test_a_run_command_from_the_checkout_names_the_worktree_that_holds_the_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    options: list[str],
 ) -> None:
     make_checkout(tmp_path)
     monkeypatch.chdir(tmp_path)
     run_id = start_plan(monkeypatch, capsys, "--worktree")
     tree = tmp_path / ".worktrees" / f"plan-work-{run_id}"
 
-    for command in ("current", "pause", "submit"):
-        assert run_cli(monkeypatch, command, run_id, stdin="status: finished\n") == cli.EXIT_USAGE_ERROR
-        assert (
-            f"pskill: Run {run_id} lives in `{tree.as_posix()}`: run this command from that folder."
-            in capsys.readouterr().err
-        )
+    assert run_cli(monkeypatch, command, run_id, *options, stdin="status: finished\n") == cli.EXIT_USAGE_ERROR
+
+    assert (
+        f"pskill: Run {run_id} lives in `{tree.as_posix()}`: run this command from that folder."
+        in capsys.readouterr().err
+    )
+
+
+def test_a_run_command_from_the_worktree_finds_its_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    run_id = start_plan(monkeypatch, capsys, "--worktree")
+    tree = tmp_path / ".worktrees" / f"plan-work-{run_id}"
 
     monkeypatch.chdir(tree)
     assert run_cli(monkeypatch, "current", run_id) == cli.EXIT_OK
