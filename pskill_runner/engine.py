@@ -115,10 +115,13 @@ def start_run(
     allow_internal: bool = False,
     session_id: str | None = None,
     llm: str | None = None,
+    run_id: str | None = None,
+    worktree: Path | None = None,
 ) -> tuple[str, str]:
     """Create a run and return its id and its first packet.
 
     `runs_folder` and `allow_internal` let `pskill test` use a temp folder and replay an internal skill.
+    `run_id` and `worktree` come from a worktree run, whose worktree is named after the run before it starts.
     """
     catalog = load_catalog(project.skills_folder, project.agents_folder)
     skill = load_valid_skill(project, skill_id, catalog)
@@ -129,7 +132,7 @@ def start_run(
         )
     inputs = checked_inputs(skill, raw_inputs)
     now = utc_now()
-    run_id = new_run_id(now)
+    run_id = run_id or new_run_id(now)
     folder = (runs_folder or project.runs_folder) / run_id
     folder.mkdir(parents=True)
     copy_run_snapshot(project, folder, skill, catalog)
@@ -144,6 +147,7 @@ def start_run(
         runner_version=pskill_runner.__version__,
         harness=adapter_for(harness).name,
         llm=llm,
+        worktree=worktree.as_posix() if worktree else None,
         session_id=session_id,
         mode=mode,
         inputs=inputs,
@@ -805,7 +809,9 @@ class Run:
             return None
         report = self.rendered(skill.instruction_text(block.report), "The report") if block.report else None
         self.end_run(block.status, outputs, report)
-        return render_final_packet(self.info["run_id"], skill.id, block.status, report, outputs)
+        return render_final_packet(
+            self.info["run_id"], skill.id, block.status, report, outputs, self.info.get("worktree")
+        )
 
     def end_run(self, status: str, outputs: dict[str, Any], report: str | None) -> None:
         self.info["status"] = status
@@ -1076,6 +1082,7 @@ class Run:
             subagent_wording=self.adapter.subagent_wording,
             work_folder=self.project.root.as_posix(),
             can_wait=self.adapter.wakes_after_background_command,
+            in_worktree=bool(self.info.get("worktree")),
         )
 
     def answers_folder(self) -> str:
@@ -1100,7 +1107,12 @@ class Run:
         if status == "paused":
             return self.pause_text()
         return render_final_packet(
-            self.info["run_id"], self.info["skill_id"], status, self.info["final_report"], self.info["outputs"] or {}
+            self.info["run_id"],
+            self.info["skill_id"],
+            status,
+            self.info["final_report"],
+            self.info["outputs"] or {},
+            self.info.get("worktree"),
         )
 
     # --- pause and resume ----------------------------------------------------------------------
@@ -1127,6 +1139,7 @@ class Run:
             runner_command(self.project),
             [] if shown_before else steps,
             steps_shown_before=shown_before,
+            work_folder=self.project.root.as_posix() if self.info.get("worktree") else None,
         )
 
     def pause_steps_not_shown(self) -> None:

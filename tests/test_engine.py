@@ -725,6 +725,58 @@ def test_a_run_records_the_git_commit_and_the_uncommitted_changes(tmp_path: Path
     assert info["repo_dirty"] is True  # the skill files are not committed
 
 
+def test_start_uses_the_run_id_that_the_caller_gives(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL)
+
+    run_id, packet = start_run(
+        project, "small", {}, mode="interactive", harness="generic", run_id="r-20261028-1200-abcd"
+    )
+
+    assert run_id == "r-20261028-1200-abcd"
+    assert "Run r-20261028-1200-abcd · interactive" in packet
+    assert read_run_info(project, run_id)["run_id"] == run_id
+
+
+def test_a_worktree_run_records_its_worktree_and_every_packet_names_its_folder(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL)
+    worktree = tmp_path / ".worktrees" / "small-r-1"
+    folder_line = f"This run works in the folder `{project.root.as_posix()}`. Run every command of this run from that"
+
+    run_id, packet = start_run(project, "small", {}, mode="interactive", harness="generic", worktree=worktree)
+
+    assert read_run_info(project, run_id)["worktree"] == worktree.as_posix()
+    assert folder_line in packet
+    assert folder_line in current_packet(project, run_id)
+    assert folder_line in pause_run(project, run_id)
+    resume_run(project, run_id)
+    finished = submit_answer(project, run_id, "text: Hello\n")
+    remove_line = f"`git worktree remove {worktree.as_posix()}`."
+    assert remove_line in finished
+    assert remove_line in current_packet(project, run_id)
+
+
+def test_a_run_in_the_checkout_records_no_worktree_and_names_no_folder(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL)
+
+    run_id, packet = start_run(project, "small", {}, mode="interactive", harness="generic")
+
+    assert read_run_info(project, run_id)["worktree"] is None
+    assert "This run works in the folder" not in packet
+    assert "git worktree" not in submit_answer(project, run_id, "text: Hello\n")
+
+
+def test_a_run_from_before_0_42_has_no_worktree_key_and_names_no_folder(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+    run_file = project.runs_folder / run_id / "run.json"
+    old_info = json.loads(run_file.read_text(encoding="utf-8"))
+    del old_info["worktree"]
+    run_file.write_text(json.dumps(old_info), encoding="utf-8")
+
+    assert "This run works in the folder" not in current_packet(project, run_id)
+    assert "git worktree" not in submit_answer(project, run_id, "text: Hello\n")
+
+
 def test_a_run_outside_git_records_no_commit(tmp_path: Path) -> None:
     project = make_project(tmp_path)
 
