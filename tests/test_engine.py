@@ -376,14 +376,18 @@ def test_rounds_that_are_not_a_whole_number_are_rejected(tmp_path: Path, rounds:
 
 def test_in_autonomous_mode_the_agent_answers_the_cap_question_and_never_sees_the_ceiling(tmp_path: Path) -> None:
     project = make_project(tmp_path)
-    run_id = start(project, mode="autonomous")
+    # A run id holds the time: one made at 15:0x holds "150", which must not count as showing the ceiling.
+    run_id, _ = start_run(
+        project, "plan-work", {"topic": "x"}, mode="autonomous", harness="generic", run_id="r-20261028-1500-abcd"
+    )
 
     packet = reach_the_cap(project, run_id)
     submit_answer(project, run_id, "choice: more\nrounds: 1\nrationale: One more plan can settle it.\n")
 
     assert "it ran 3 times." in packet
     assert "The user wants few extra runs." in packet
-    assert "150" not in packet and "ceiling" not in packet
+    packet_without_run_id = packet.replace(run_id, "<run>")
+    assert "150" not in packet_without_run_id and "ceiling" not in packet_without_run_id
     completed = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_completed"]
     assert (completed[-1]["block"], completed[-1]["decided_by"]) == ("create_plan", "agent_autonomous")
     assert read_run_info(project, run_id)["status"] == "active"
