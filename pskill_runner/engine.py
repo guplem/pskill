@@ -123,14 +123,7 @@ def start_run(
     `runs_folder` and `allow_internal` let `pskill test` use a temp folder and replay an internal skill.
     `run_id` and `worktree` come from a worktree run, whose worktree is named after the run before it starts.
     """
-    catalog = load_catalog(project.skills_folder, project.agents_folder)
-    skill = load_valid_skill(project, skill_id, catalog)
-    if skill.invocation == "internal" and not allow_internal:
-        raise RunError(
-            f"{skill_id!r} is an internal skill: only a call block of another skill starts it. "
-            "Start the skill that calls it."
-        )
-    inputs = checked_inputs(skill, raw_inputs)
+    skill, catalog, inputs = startable_skill(project, skill_id, raw_inputs, allow_internal)
     now = utc_now()
     run_id = run_id or new_run_id(now)
     folder = (runs_folder or project.runs_folder) / run_id
@@ -183,6 +176,20 @@ def start_run(
     text = run.guarded(lambda: run.enter_skill(skill))
     run.save()
     return run_id, text
+
+
+def startable_skill(
+    project: Project, skill_id: str, raw_inputs: dict[str, Any], allow_internal: bool = False
+) -> tuple[Skill, SkillCatalog, dict[str, Any]]:
+    """The skill, its catalog, and the checked inputs of a new run. Raise RunError when the run cannot start."""
+    catalog = load_catalog(project.skills_folder, project.agents_folder)
+    skill = load_valid_skill(project, skill_id, catalog)
+    if skill.invocation == "internal" and not allow_internal:
+        raise RunError(
+            f"{skill_id!r} is an internal skill: only a call block of another skill starts it. "
+            "Start the skill that calls it."
+        )
+    return skill, catalog, checked_inputs(skill, raw_inputs)
 
 
 def current_packet(

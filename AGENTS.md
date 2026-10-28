@@ -34,6 +34,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | `inline_executor.py` | Runs `script` commands and child skills; `pskill test` swaps in recorded results. |
 | `skill_tests.py` | `pskill test`: replays a case file's answers against a skill. |
 | `project.py` | Finding `.pskill/` and reading `config.yaml`. |
+| `worktrees.py` | Worktree runs (`start --worktree`): the git worktree of a run, its setup command, and naming the worktree that holds a run. |
 | `stubs.py`, `sync.py` | The generated `SKILL.md` stubs, and `pskill sync` (stubs plus harness settings). |
 | `profile_agents.py` | The harness agents that `pskill sync` writes for the tool profiles (`tools`) that skills use. |
 | `hook_settings.py` | The JSON hook merge that Claude Code and Codex share. |
