@@ -43,7 +43,7 @@ def run_worktree(
     except (RunError, ProjectError) as error:
         raise RunError(
             f"{error}\nNo run started. If the worktree `{tree.as_posix()}` exists, remove it with: "
-            f"`git worktree remove --force {tree.as_posix()}`"
+            f'`git worktree remove --force "{tree.as_posix()}"`'
         ) from error
     return tree_project, tree
 

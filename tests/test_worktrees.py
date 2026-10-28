@@ -53,7 +53,7 @@ def a_run_id() -> str:
 
 
 def remove_line(tree: Path) -> str:
-    return f"`git worktree remove --force {tree.as_posix()}`"
+    return f'`git worktree remove --force "{tree.as_posix()}"`'
 
 
 # --- worktree_mode ---------------------------------------------------------------------------------

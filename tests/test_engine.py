@@ -753,7 +753,7 @@ def test_a_worktree_run_records_its_worktree_and_every_packet_names_its_folder(t
     assert folder_line in pause_run(project, run_id)
     resume_run(project, run_id)
     finished = submit_answer(project, run_id, "text: Hello\n")
-    remove_line = f"`git worktree remove {worktree.as_posix()}`."
+    remove_line = f'`git worktree remove "{worktree.as_posix()}"`.'
     assert remove_line in finished
     assert remove_line in current_packet(project, run_id)
 

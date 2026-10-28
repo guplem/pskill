@@ -275,7 +275,7 @@ def render_final_packet(
     if worktree:
         lines.append(
             f"The run worked in the worktree `{worktree}`. Remove it when you no longer need it: "
-            f"`git worktree remove {worktree}`."
+            f'`git worktree remove "{worktree}"`.'
         )
     lines.append("The run is finished. No more pskill commands are needed.")
     return "\n".join(lines) + "\n"

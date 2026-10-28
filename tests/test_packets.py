@@ -426,6 +426,6 @@ def test_the_final_packet_of_a_worktree_run_says_how_to_remove_the_worktree() ->
     assert text == (
         "## pskill · plan-work · finished\nRun r-1 finished with status succeeded.\n\n"
         "The run worked in the worktree `/work/trees/plan-work-r-1`. Remove it when you no longer need it: "
-        "`git worktree remove /work/trees/plan-work-r-1`.\n"
+        '`git worktree remove "/work/trees/plan-work-r-1"`.\n'
         "The run is finished. No more pskill commands are needed.\n"
     )
