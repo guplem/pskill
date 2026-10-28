@@ -331,7 +331,10 @@ def test_a_worktree_run_holds_the_stop_of_its_session_in_the_checkout(tmp_path: 
     reason = stop_hook_reason(checkout, "claude-code", session_id="session-a")
 
     assert reason is not None
-    assert f"pskill run {run_id} has an open block. It works in the folder `{tree_project.root.as_posix()}`" in reason
+    assert (
+        f"pskill run {run_id} has an open block. It works in the folder `{tree_project.root.as_posix()}`: run "
+        "these commands from that folder. Continue it:"
+    ) in reason
     assert f"current {run_id}" in reason
     assert read_run_info(tree_project, run_id)["stop_blocks"] == 1
 

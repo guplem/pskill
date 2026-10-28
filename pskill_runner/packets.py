@@ -279,10 +279,15 @@ def render_final_packet(
 
 
 def worktree_removal_line(worktree: str) -> str:
-    """The line of an ended worktree run: the runner never removes the worktree, since the run lives there."""
+    """The line of an ended worktree run: the runner never removes the worktree, since the run lives there.
+
+    The worktree is detached, so a commit made there on no branch is lost with it. On Windows a folder that is the
+    shell's working folder cannot be removed: the agent removes it from the checkout.
+    """
     return (
-        f"The run worked in the worktree `{worktree}`. Remove it when you no longer need it: "
-        f'`git worktree remove "{worktree}"`.'
+        f"The run worked in the worktree `{worktree}`. Before you remove it, push every commit that you want to "
+        "keep: a commit on no branch is lost with the worktree. Then, from the checkout and not from inside the "
+        f'worktree, run: `git worktree remove "{worktree}"`.'
     )
 
 

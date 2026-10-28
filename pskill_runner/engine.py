@@ -298,11 +298,13 @@ def delete_run(project: Project, run_id: str) -> str:
     if folder.resolve().parent != project.runs_folder.resolve():
         raise RunError(f"There is no run {run_id!r}. List the runs with `pskill runs`.")
     with run_lock(folder):
-        status = read_run_info(project, run_id)["status"]
-        if status in UNFINISHED_STATUSES:
-            raise RunError(f"Run {run_id} is {status}, so it cannot be deleted. Cancel it first.")
+        info = read_run_info(project, run_id)
+        if info["status"] in UNFINISHED_STATUSES:
+            raise RunError(f"Run {run_id} is {info['status']}, so it cannot be deleted. Cancel it first.")
     shutil.rmtree(folder)
-    return f"Run {run_id} is deleted.\n"
+    worktree = info.get("worktree")
+    removal = f"{worktree_removal_line(worktree)}\n" if worktree else ""
+    return f"Run {run_id} is deleted.\n{removal}"
 
 
 def register_stop_attempt(project: Project, run_id: str) -> bool:

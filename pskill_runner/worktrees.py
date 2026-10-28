@@ -73,15 +73,22 @@ def in_linked_worktree(root: Path) -> bool:
 
 
 def worktree_folder(project: Project) -> Path:
-    """The folder of the worktrees. When this start makes it, it ignores itself, so git status stays clean."""
+    """The folder of the worktrees. It ignores itself, so git status stays clean.
+
+    The `.gitignore` is written whenever it is missing: a folder made by hand, or cleaned by `git clean -fdx`,
+    would else show the worktrees as uncommitted changes. A `.gitignore` that exists is kept.
+    """
     folder = project.root / project.config.worktree_folder
     try:
-        folder.mkdir(parents=True)
+        folder.mkdir(parents=True, exist_ok=True)
     except OSError as error:
-        if folder.is_dir():  # made before: by the user, or by another start at the same moment
-            return folder
         raise RunError(f"pskill could not make the worktree folder `{folder.as_posix()}`: {error}") from error
-    (folder / ".gitignore").write_text("*\n", encoding="utf-8", newline="\n")
+    ignore_file = folder / ".gitignore"
+    if not ignore_file.exists():
+        try:
+            ignore_file.write_text("*\n", encoding="utf-8", newline="\n")
+        except OSError as error:
+            raise RunError(f"pskill could not write `{ignore_file.as_posix()}`: {error}") from error
     return folder
 
 

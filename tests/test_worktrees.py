@@ -141,6 +141,33 @@ def test_a_worktree_folder_that_exists_keeps_its_own_files(tmp_path: Path) -> No
     assert (folder / ".gitignore").read_text(encoding="utf-8") == "keep-me\n"
 
 
+def test_a_worktree_folder_with_no_gitignore_gets_one(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path)
+    folder = tmp_path / ".pskill" / "worktrees"
+    folder.mkdir()  # made by hand, or its .gitignore removed by `git clean -fdx`
+
+    run_worktree(project, "plan-work", INPUTS, a_run_id())
+    _, _, note = run_worktree(project, "plan-work", INPUTS, a_run_id())
+
+    assert (folder / ".gitignore").read_text(encoding="utf-8") == "*\n"
+    assert note == ""  # the first worktree does not count as an uncommitted change
+    assert git(tmp_path, "status", "--porcelain") == ""
+
+
+def test_a_gitignore_that_cannot_be_written_stops_the_start_with_a_clear_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = make_checkout(tmp_path)
+
+    def read_only(*arguments: Any, **options: Any) -> None:
+        raise PermissionError("read-only file system")
+
+    monkeypatch.setattr(Path, "write_text", read_only)
+
+    with pytest.raises(RunError, match=r"pskill could not write `.*/\.pskill/worktrees/\.gitignore`: read-only"):
+        run_worktree(project, "plan-work", INPUTS, a_run_id())
+
+
 def test_a_file_in_the_place_of_the_worktree_folder_stops_the_start_with_a_clear_error(tmp_path: Path) -> None:
     project = make_checkout(tmp_path)
     (tmp_path / ".pskill" / "worktrees").write_text("not a folder\n", encoding="utf-8")

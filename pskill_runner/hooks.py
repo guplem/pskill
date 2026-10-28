@@ -40,7 +40,11 @@ def stop_hook_reason(project: Project, harness: str, session_id: str | None = No
         return None
     if not register_stop_attempt(run_project, run_id):
         return give_up_reason(run_project, run_id)
-    folder = "" if run_project is project else f"It works in the folder `{run_project.root.as_posix()}`. "
+    folder = (
+        ""
+        if run_project is project
+        else f"It works in the folder `{run_project.root.as_posix()}`: run these commands from that folder. "
+    )
     reason = (
         f"pskill run {run_id} has an open block. {folder}Continue it: run `{RUNNER} current {run_id}` and follow "
         f"the packet. If the user asked to stop, run `{RUNNER} pause {run_id}` instead."

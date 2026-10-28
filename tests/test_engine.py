@@ -765,9 +765,22 @@ def test_cancel_of_a_worktree_run_says_how_to_remove_the_worktree(tmp_path: Path
 
     assert cancel_run(project, run_id) == (
         f"Run {run_id} is cancelled. No more pskill commands are needed.\n"
-        f"The run worked in the worktree `{worktree}`. Remove it when you no longer need it: "
-        f'`git worktree remove "{worktree}"`.\n'
+        f"The run worked in the worktree `{worktree}`. Before you remove it, push every commit that you want to "
+        "keep: a commit on no branch is lost with the worktree. Then, from the checkout and not from inside the "
+        f'worktree, run: `git worktree remove "{worktree}"`.\n'
     )
+
+
+def test_delete_of_a_worktree_run_says_how_to_remove_the_worktree(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL)
+    worktree = (tmp_path / ".pskill" / "worktrees" / "small-r-1").as_posix()
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic", worktree=Path(worktree))
+    cancel_run(project, run_id)
+
+    text = delete_run(project, run_id)
+
+    assert text.startswith(f"Run {run_id} is deleted.\nThe run worked in the worktree `{worktree}`.")
+    assert f'`git worktree remove "{worktree}"`.' in text
 
 
 def test_cancel_of_a_run_in_the_checkout_names_no_worktree(tmp_path: Path) -> None:

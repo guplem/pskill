@@ -1009,7 +1009,7 @@ def test_the_claude_stop_hook_in_the_checkout_blocks_the_session_that_owns_a_wor
     exit_code = run_cli(monkeypatch, "hook", "stop", "--harness", "claude-code", stdin='{"session_id": "session-a"}')
 
     assert exit_code == cli.EXIT_OK
-    assert f"pskill run {run_id} has an open block. It works in the folder `{tree.as_posix()}`." in (
+    assert f"pskill run {run_id} has an open block. It works in the folder `{tree.as_posix()}`: run" in (
         capsys.readouterr().out
     )
 
