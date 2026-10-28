@@ -43,8 +43,8 @@ def make_checkout(root: Path, project_folder: str = "", commit_the_project: bool
     return find_project(root / project_folder)
 
 
-def with_setup(project: Project, command: list[str]) -> Project:
-    return replace(project, config=Config(worktree_setup=command))
+def with_setup(project: Project, command: list[str], timeout_s: int = 300) -> Project:
+    return replace(project, config=Config(worktree_setup=command, script_timeout_s=timeout_s))
 
 
 def a_run_id() -> str:
@@ -138,15 +138,14 @@ def test_no_git_hook_runs_when_the_worktree_is_made(tmp_path: Path) -> None:
     assert not marker.exists()
 
 
-def test_the_setup_command_runs_in_the_new_worktree(tmp_path: Path) -> None:
+def test_the_setup_command_runs_in_the_project_folder_of_the_new_worktree(tmp_path: Path) -> None:
     command = [sys.executable, "-c", "open('setup-ran.txt', 'w').close()"]
-    project = with_setup(make_checkout(tmp_path), command)
+    project = with_setup(make_checkout(tmp_path, project_folder="app"), command)
 
-    _, tree = run_worktree(project, "plan-work", INPUTS, a_run_id())
+    run_project, _ = run_worktree(project, "plan-work", INPUTS, a_run_id())
 
-    assert tree is not None
-    assert (tree / "setup-ran.txt").is_file()
-    assert not (tmp_path / "setup-ran.txt").exists()
+    assert (run_project.root / "setup-ran.txt").is_file()
+    assert not (tmp_path / "app" / "setup-ran.txt").exists()
 
 
 def test_a_failing_setup_stops_the_start_and_names_the_worktree_to_remove(tmp_path: Path) -> None:
@@ -165,14 +164,72 @@ def test_a_failing_setup_stops_the_start_and_names_the_worktree_to_remove(tmp_pa
     assert tree.is_dir()  # the runner never removes a worktree
 
 
+def failed_setup_message(project: Project) -> str:
+    with pytest.raises(RunError) as error:
+        run_worktree(project, "plan-work", INPUTS, a_run_id())
+    return str(error.value)
+
+
+def test_a_failing_setup_with_no_error_output_shows_its_standard_output(tmp_path: Path) -> None:
+    command = [sys.executable, "-c", "import sys; print('npm notice: no lock file'); sys.exit(1)"]
+
+    message = failed_setup_message(with_setup(make_checkout(tmp_path), command))
+
+    assert "failed with exit code 1:\nnpm notice: no lock file\nNo run started." in message
+
+
+def test_a_failing_setup_shows_only_the_last_20_lines_of_its_output(tmp_path: Path) -> None:
+    lines_on_stderr = "import sys; [print(f'line {n}', file=sys.stderr) for n in range(1, 26)]; sys.exit(1)"
+    command = [sys.executable, "-c", lines_on_stderr]
+
+    message = failed_setup_message(with_setup(make_checkout(tmp_path), command))
+
+    shown = "\n".join(f"line {n}" for n in range(6, 26))
+    assert f"failed with exit code 1:\n{shown}\nNo run started." in message
+
+
+def test_a_failing_setup_with_no_output_ends_its_first_line_with_a_period(tmp_path: Path) -> None:
+    command = [sys.executable, "-c", "import sys; sys.exit(4)"]
+
+    message = failed_setup_message(with_setup(make_checkout(tmp_path), command))
+
+    assert "failed with exit code 4.\nNo run started." in message
+
+
+def test_a_setup_that_runs_past_the_script_timeout_stops_the_start(tmp_path: Path) -> None:
+    command = [sys.executable, "-c", "import time; time.sleep(30)"]
+
+    message = failed_setup_message(with_setup(make_checkout(tmp_path), command, timeout_s=1))
+
+    assert "The worktree setup" in message
+    assert "failed: it did not finish within 1 s." in message
+    assert "git worktree remove --force" in message
+
+
 def test_a_setup_command_that_does_not_exist_stops_the_start(tmp_path: Path) -> None:
     project = with_setup(make_checkout(tmp_path), ["no-such-program-for-pskill-tests"])
     run_id = a_run_id()
 
-    with pytest.raises(RunError, match="did not start") as error:
+    with pytest.raises(RunError, match="failed: the command 'no-such-program-for-pskill-tests' was not found") as error:
         run_worktree(project, "plan-work", INPUTS, run_id)
 
     assert remove_line(tmp_path / ".worktrees" / f"plan-work-{run_id}") in str(error.value)
+
+
+def test_a_setup_command_that_cannot_start_stops_the_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = with_setup(make_checkout(tmp_path), ["setup-tool"])
+    real_run = subprocess.run
+
+    def setup_not_allowed(arguments: list[str], **options: Any) -> Any:
+        if arguments[0] == "setup-tool":
+            raise PermissionError("Permission denied: 'setup-tool'")
+        return real_run(arguments, **options)
+
+    monkeypatch.setattr(subprocess, "run", setup_not_allowed)
+
+    message = failed_setup_message(project)
+
+    assert "The worktree setup `setup-tool` did not start: Permission denied: 'setup-tool'" in message
 
 
 def test_a_git_error_stops_the_start_and_names_the_worktree(tmp_path: Path) -> None:

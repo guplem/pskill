@@ -5,14 +5,14 @@ worktree and never removes it: the run folder, the only record of the run, lives
 """
 
 import os
-import shutil
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from pskill_runner.engine import RunError, startable_skill
-from pskill_runner.project import PSKILL_FOLDER_NAME, Project, ProjectError, find_project
+from pskill_runner.inline_executor import RealExecutor
+from pskill_runner.project import PSKILL_FOLDER_NAME, Config, Project, ProjectError, find_project
 
 WORKTREE_VARIABLE = "PSKILL_RUN_IN_WORKTREE"
 SETUP_ERROR_LINES = 20  # the last lines of a failed setup's output that the error shows
@@ -39,7 +39,7 @@ def run_worktree(
         add_worktree(project.root, tree)
         tree_project = project_in_worktree(project, tree)
         startable_skill(tree_project, skill_id, raw_inputs)  # the skill as committed: the worktree starts at HEAD
-        run_setup(project.config.worktree_setup, tree)
+        run_setup(project.config, tree_project.root)
     except (RunError, ProjectError) as error:
         raise RunError(
             f"{error}\nNo run started. If the worktree `{tree.as_posix()}` exists, remove it with: "
@@ -83,28 +83,22 @@ def project_in_worktree(project: Project, tree: Path) -> Project:
     return find_project(root)
 
 
-def run_setup(command: list[str], tree: Path) -> None:
-    """Run `worktree_setup` in the new worktree, with no shell."""
+def run_setup(config: Config, folder: Path) -> None:
+    """Run `worktree_setup` in the project folder of the new worktree, like a script block: no shell, same timeout."""
+    command = config.worktree_setup
     if not command:
         return
     shown = " ".join(command)
-    program = shutil.which(command[0]) or command[0]  # on Windows, `npm` is `npm.cmd`
     try:
-        result = subprocess.run(
-            [program, *command[1:]],
-            cwd=tree,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-    except OSError as error:
+        result = RealExecutor().run_script("worktree_setup", command, folder, dict(os.environ), config.script_timeout_s)
+    except OSError as error:  # RealExecutor turns only a missing command into a problem
         raise RunError(f"The worktree setup `{shown}` did not start: {error}") from error
-    if result.returncode != 0:
+    if result.problem is not None:
+        raise RunError(f"The worktree setup `{shown}` failed: {result.problem}.")
+    if result.exit_code != 0:
+        failure = f"The worktree setup `{shown}` failed with exit code {result.exit_code}"
         output = (result.stderr.strip() or result.stdout.strip()).splitlines()[-SETUP_ERROR_LINES:]
-        raise RunError(f"The worktree setup `{shown}` failed with exit code {result.returncode}:\n" + "\n".join(output))
+        raise RunError(f"{failure}:\n" + "\n".join(output) if output else f"{failure}.")
 
 
 def check_run_is_here(project: Project, run_id: str) -> None:
