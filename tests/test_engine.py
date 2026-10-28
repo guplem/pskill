@@ -739,7 +739,7 @@ def test_start_uses_the_run_id_that_the_caller_gives(tmp_path: Path) -> None:
 
 def test_a_worktree_run_records_its_worktree_and_every_packet_names_its_folder(tmp_path: Path) -> None:
     project = make_project(tmp_path, "small", SMALL_SKILL)
-    worktree = tmp_path / ".worktrees" / "small-r-1"
+    worktree = tmp_path / ".pskill" / "worktrees" / "small-r-1"
     folder_line = (
         f"This run works in the folder `{project.root.as_posix()}`. "
         "Run every command and make every file change of this run in that folder."
@@ -760,7 +760,7 @@ def test_a_worktree_run_records_its_worktree_and_every_packet_names_its_folder(t
 
 def test_cancel_of_a_worktree_run_says_how_to_remove_the_worktree(tmp_path: Path) -> None:
     project = make_project(tmp_path, "small", SMALL_SKILL)
-    worktree = (tmp_path / ".worktrees" / "small-r-1").as_posix()
+    worktree = (tmp_path / ".pskill" / "worktrees" / "small-r-1").as_posix()
     run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic", worktree=Path(worktree))
 
     assert cancel_run(project, run_id) == (

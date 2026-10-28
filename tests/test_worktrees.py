@@ -89,7 +89,7 @@ def test_a_run_gets_a_detached_worktree_at_head_named_after_the_skill_and_the_ru
 
     run_project, tree, _ = run_worktree(project, "plan-work", INPUTS, run_id)
 
-    assert tree == tmp_path / ".worktrees" / f"plan-work-{run_id}"
+    assert tree == tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
     assert run_project.root == tree
     assert (tree / ".pskill" / "skills" / "plan-work" / "skill.yaml").is_file()
     assert git(tree, "rev-parse", "HEAD") == git(tmp_path, "rev-parse", "HEAD")
@@ -126,13 +126,13 @@ def test_the_worktree_folder_ignores_itself_so_the_checkout_stays_clean(tmp_path
 
     run_worktree(project, "plan-work", INPUTS, a_run_id())
 
-    assert (tmp_path / ".worktrees" / ".gitignore").read_text(encoding="utf-8") == "*\n"
+    assert (tmp_path / ".pskill" / "worktrees" / ".gitignore").read_text(encoding="utf-8") == "*\n"
     assert git(tmp_path, "status", "--porcelain") == ""
 
 
 def test_a_worktree_folder_that_exists_keeps_its_own_files(tmp_path: Path) -> None:
     project = make_checkout(tmp_path)
-    folder = tmp_path / ".worktrees"
+    folder = tmp_path / ".pskill" / "worktrees"
     folder.mkdir()
     (folder / ".gitignore").write_text("keep-me\n", encoding="utf-8")
 
@@ -143,9 +143,9 @@ def test_a_worktree_folder_that_exists_keeps_its_own_files(tmp_path: Path) -> No
 
 def test_a_file_in_the_place_of_the_worktree_folder_stops_the_start_with_a_clear_error(tmp_path: Path) -> None:
     project = make_checkout(tmp_path)
-    (tmp_path / ".worktrees").write_text("not a folder\n", encoding="utf-8")
+    (tmp_path / ".pskill" / "worktrees").write_text("not a folder\n", encoding="utf-8")
 
-    with pytest.raises(RunError, match=r"pskill could not make the worktree folder `.*/\.worktrees`") as error:
+    with pytest.raises(RunError, match=r"pskill could not make the worktree folder `.*/\.pskill/worktrees`") as error:
         run_worktree(project, "plan-work", INPUTS, a_run_id())
 
     assert "git worktree remove" not in str(error.value)  # no worktree exists yet
@@ -189,7 +189,7 @@ def test_a_failing_setup_stops_the_start_and_names_the_worktree_to_remove(tmp_pa
     command = [sys.executable, "-c", "import sys; print('npm ERR! broken', file=sys.stderr); sys.exit(3)"]
     project = with_setup(make_checkout(tmp_path), command)
     run_id = a_run_id()
-    tree = tmp_path / ".worktrees" / f"plan-work-{run_id}"
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
 
     with pytest.raises(RunError) as error:
         run_worktree(project, "plan-work", INPUTS, run_id)
@@ -250,7 +250,7 @@ def test_a_setup_command_that_does_not_exist_stops_the_start(tmp_path: Path) -> 
     with pytest.raises(RunError, match="failed: the command 'no-such-program-for-pskill-tests' was not found") as error:
         run_worktree(project, "plan-work", INPUTS, run_id)
 
-    assert remove_line(tmp_path / ".worktrees" / f"plan-work-{run_id}") in str(error.value)
+    assert remove_line(tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}") in str(error.value)
 
 
 def test_a_setup_command_that_cannot_start_stops_the_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -272,7 +272,7 @@ def test_a_setup_command_that_cannot_start_stops_the_start(tmp_path: Path, monke
 def test_a_git_error_stops_the_start_and_names_the_worktree(tmp_path: Path) -> None:
     project = make_checkout(tmp_path)
     run_id = a_run_id()
-    tree = tmp_path / ".worktrees" / f"plan-work-{run_id}"
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
     tree.mkdir(parents=True)
     (tree / "in-the-way.txt").write_text("x", encoding="utf-8")
 
@@ -289,7 +289,7 @@ def test_a_project_that_is_not_committed_has_no_project_in_the_worktree(tmp_path
     with pytest.raises(RunError, match=r"has no \.pskill folder.*commit") as error:
         run_worktree(project, "plan-work", INPUTS, run_id)
 
-    assert remove_line(tmp_path / ".worktrees" / f"plan-work-{run_id}") in str(error.value)
+    assert remove_line(tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}") in str(error.value)
 
 
 def test_a_skill_that_is_not_committed_stops_the_start(tmp_path: Path) -> None:
@@ -302,7 +302,7 @@ def test_a_skill_that_is_not_committed_stops_the_start(tmp_path: Path) -> None:
     with pytest.raises(RunError, match="There is no skill 'new-skill'") as error:
         run_worktree(project, "new-skill", INPUTS, run_id)
 
-    assert remove_line(tmp_path / ".worktrees" / f"new-skill-{run_id}") in str(error.value)
+    assert remove_line(tmp_path / ".pskill" / "worktrees" / f"new-skill-{run_id}") in str(error.value)
 
 
 @pytest.mark.parametrize(
@@ -318,7 +318,7 @@ def test_a_wrong_skill_or_input_fails_before_any_worktree_exists(
         run_worktree(project, skill_id, inputs, a_run_id())
 
     assert "git worktree" not in str(error.value)
-    assert not (tmp_path / ".worktrees").exists()
+    assert not (tmp_path / ".pskill" / "worktrees").exists()
 
 
 def test_a_project_in_a_linked_worktree_uses_that_worktree(tmp_path: Path) -> None:
@@ -328,7 +328,7 @@ def test_a_project_in_a_linked_worktree_uses_that_worktree(tmp_path: Path) -> No
     project = find_project(linked)
 
     assert run_worktree(project, "plan-work", INPUTS, a_run_id()) == (project, None, "")
-    assert not (linked / ".worktrees").exists()
+    assert not (linked / ".pskill" / "worktrees").exists()
 
 
 def test_a_project_in_a_subfolder_of_the_checkout_gets_its_worktree_with_the_same_subfolder(tmp_path: Path) -> None:
@@ -337,7 +337,7 @@ def test_a_project_in_a_subfolder_of_the_checkout_gets_its_worktree_with_the_sam
 
     run_project, tree, _ = run_worktree(project, "plan-work", INPUTS, run_id)
 
-    assert tree == tmp_path / "app" / ".worktrees" / f"plan-work-{run_id}"
+    assert tree == tmp_path / "app" / ".pskill" / "worktrees" / f"plan-work-{run_id}"
     assert run_project.root == tree / "app"
 
 
@@ -359,7 +359,7 @@ def test_a_git_older_than_2_31_makes_the_worktree_of_a_project_in_a_subfolder(
 
     _, tree, _ = run_worktree(project, "plan-work", INPUTS, run_id)
 
-    assert tree == tmp_path / "app" / ".worktrees" / f"plan-work-{run_id}"
+    assert tree == tmp_path / "app" / ".pskill" / "worktrees" / f"plan-work-{run_id}"
 
 
 def test_a_folder_outside_git_cannot_run_in_a_worktree_and_the_error_names_the_worktree_mode(tmp_path: Path) -> None:

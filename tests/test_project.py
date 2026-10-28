@@ -88,10 +88,10 @@ def test_known_apps_in_permissions_are_kept(tmp_path: Path) -> None:
     assert config.permissions == ["codex", "claude-code"]
 
 
-def test_the_worktree_settings_default_to_a_dot_worktrees_folder_and_no_setup(tmp_path: Path) -> None:
+def test_the_worktree_settings_default_to_a_worktrees_folder_in_pskill_and_no_setup(tmp_path: Path) -> None:
     config = find_project(make_project(tmp_path)).config
 
-    assert (config.worktree_folder, config.worktree_setup) == (".worktrees", [])
+    assert (config.worktree_folder, config.worktree_setup) == (".pskill/worktrees", [])
 
 
 def test_the_worktree_settings_can_be_set(tmp_path: Path) -> None:

@@ -453,7 +453,7 @@ def test_start_with_worktree_runs_in_a_new_worktree_and_uploads_the_run_from_the
 
     packet = capsys.readouterr().out
     run_id = run_id_of(packet)
-    tree = tmp_path / ".worktrees" / f"plan-work-{run_id}"
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
     assert f"This run works in the folder `{tree.as_posix()}`." in packet
     assert read_run_info(find_project(tree), run_id)["worktree"] == tree.as_posix()
     assert not (tmp_path / ".pskill" / "runs" / run_id).exists()
@@ -483,7 +483,7 @@ def test_start_with_a_failing_worktree_setup_starts_no_run(
     assert run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x", "--worktree") == cli.EXIT_USAGE_ERROR
 
     error = capsys.readouterr().err
-    [tree] = [folder for folder in (tmp_path / ".worktrees").iterdir() if folder.is_dir()]
+    [tree] = [folder for folder in (tmp_path / ".pskill" / "worktrees").iterdir() if folder.is_dir()]
     assert "failed with exit code 4" in error
     assert f"No run started. If the worktree `{tree.as_posix()}` exists, remove it with: {remove_line(tree)}" in error
     assert list(tmp_path.rglob("run.json")) == []
@@ -498,7 +498,7 @@ def test_the_environment_variable_turns_the_worktree_mode_on(
 
     run_id = start_plan(monkeypatch, capsys)
 
-    assert (tmp_path / ".worktrees" / f"plan-work-{run_id}" / ".pskill" / "runs" / run_id / "run.json").is_file()
+    assert (tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}" / ".pskill" / "runs" / run_id / "run.json").is_file()
 
 
 @pytest.mark.parametrize(
@@ -524,7 +524,7 @@ def test_a_run_command_from_the_checkout_names_the_worktree_that_holds_the_run(
     make_checkout(tmp_path)
     monkeypatch.chdir(tmp_path)
     run_id = start_plan(monkeypatch, capsys, "--worktree")
-    tree = tmp_path / ".worktrees" / f"plan-work-{run_id}"
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
 
     assert run_cli(monkeypatch, command, run_id, *options, stdin="status: finished\n") == cli.EXIT_USAGE_ERROR
 
@@ -540,7 +540,7 @@ def test_a_run_command_from_the_worktree_finds_its_run(
     make_checkout(tmp_path)
     monkeypatch.chdir(tmp_path)
     run_id = start_plan(monkeypatch, capsys, "--worktree")
-    tree = tmp_path / ".worktrees" / f"plan-work-{run_id}"
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
 
     monkeypatch.chdir(tree)
     assert run_cli(monkeypatch, "current", run_id) == cli.EXIT_OK

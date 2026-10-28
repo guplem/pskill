@@ -243,6 +243,7 @@ def test_without_a_local_server_the_page_is_the_hosted_viewer() -> None:
     assert "indexedDB.open(DATABASE" in hosted  # the picked folders survive a reload
     assert "answer_get, answer_post" in hosted  # the same API code as the local server
     assert "WORKTREE_HOMES" in hosted  # the worktrees of each clone are found too
+    assert '[".pskill", "worktrees"]' in hosted  # the worktrees of `start --worktree` runs (SPEC.md 7.8)
 
 
 def test_a_message_screen_drops_the_loading_padding_so_the_top_bar_spans_the_page() -> None:

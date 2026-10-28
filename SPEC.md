@@ -746,7 +746,7 @@ The runner itself lives in the user's cache: `PSKILL_CACHE_DIR` when set, else `
 - **`hook_files`** are paths, because every hooks file has the same shape (`{"hooks": {...}}`). An app's own file (`.claude/settings.json`, `.codex/hooks.json`) gets that app's hook commands. Any other file, such as a project's own source of hooks that generates the app files, gets shared commands that pass `--harness auto`. The runner then detects the app from the hook input (`turn_id` means Codex) or the environment (`CLAUDE_PROJECT_DIR` means Claude Code). `sync` removes an app's own pskill hooks from its app file when that file is not listed. It keeps the shared hooks there: only the project's generator puts them there, when it copies the listed source.
 - **`permissions`** are app names, because each app keeps its rules in its own format, in a fixed place: Claude Code in `permissions.allow` of `.claude/settings.json`, Codex in `.codex/rules/pskill.rules`. An app in this list is one that pskill sets up, so `claude-code` here also gets the profile agents in `.claude/agents/` (9.3).
 - The old setting `harnesses` stops with an error that names these two settings.
-- **`worktree_folder`** is where a worktree run (7.8) gets its worktree: a folder relative to the project root, with no `..`. **`worktree_setup`** is the command that prepares a new worktree, run in its project folder, as a list of non-empty texts (no shell), such as `[npm, ci]`; empty by default. Anything else stops with an error. Added in 0.42.0.
+- **`worktree_folder`** is where a worktree run (7.8) gets its worktree: a folder relative to the project root, with no `..`. The default `.pskill/worktrees` keeps it inside `.pskill/` (D23). **`worktree_setup`** is the command that prepares a new worktree, run in its project folder, as a list of non-empty texts (no shell), such as `[npm, ci]`; empty by default. Anything else stops with an error. Added in 0.42.0.
 - **`tiers`** changes rows of the tier table (section 6.3): a harness (`claude-code` or `codex`), a tier, and a row with `model` and `effort`, each optional. A row replaces the default row of its harness and tier; every other row keeps its default. An unknown harness, tier, or key, or a value that is not a non-empty text, stops with an error.
 
 ```yaml
@@ -761,7 +761,7 @@ stop_hook_max_blocks: 3
 wait_minutes: 20                                         # how long one `pskill wait` sleeps when nothing changes
 max_wait_minutes: 120                                    # the waits of one block with nothing new, before wait refuses
 viewer_port: 7777
-worktree_folder: .worktrees                              # where `start --worktree` makes the run's worktree (7.8)
+worktree_folder: .pskill/worktrees                       # where `start --worktree` makes the run's worktree (7.8)
 worktree_setup: []                                       # the command that prepares a new worktree, such as [npm, ci]
 tiers:                                                   # rows that replace the default tier rows (6.3)
   codex:
@@ -1107,7 +1107,7 @@ The viewer also runs on GitHub Pages, with no server: <https://guplem.github.io/
 
 - **Which mode:** the page asks `/api/version` first. When no local server answers, `app.js` loads `hosted.js`, and the page is the hosted viewer.
 - **Folders:** the Folders tab picks folders with the File System Access API (Chrome and Edge only). A folder is one project, or a folder of projects. IndexedDB keeps the picked folders, so a reload only asks the browser for permission again.
-- **Finding the projects:** each folder that holds `.pskill/` is a place. The scan looks at the picked folder, its subfolders up to 3 levels down (without hidden folders and folders such as `node_modules`), and the worktrees of each git checkout (`.claude/worktrees/`, `.worktrees/`, `worktrees/`). It does not go inside a checkout otherwise. It looks again every minute and on "Look again", so new clones and worktrees appear by themselves.
+- **Finding the projects:** each folder that holds `.pskill/` is a place. The scan looks at the picked folder, its subfolders up to 3 levels down (without hidden folders and folders such as `node_modules`), and the worktrees of each git checkout (`.claude/worktrees/`, `.pskill/worktrees/`, `.worktrees/`, `worktrees/`). It does not go inside a checkout otherwise. It looks again every minute and on "Look again", so new clones and worktrees appear by themselves.
 - **A pattern per folder:** a regular expression that a place's path must match, such as `monorepo-clone-\d+`. An empty pattern keeps every place. An invalid pattern shows its error and keeps every place.
 - **The branch:** a clone's branch comes from `.git/HEAD`. A worktree's branch comes from its clone's `.git/worktrees/<name>/HEAD`, when the clone is in the same picked folder.
 - **Python in the browser:** Pyodide (pinned in the import map, with a hash per module) runs the runner from `pskill_runner.zip`. `micropip` installs `ruamel.yaml`, which Pyodide does not ship. The first visit downloads about 15 MB.
