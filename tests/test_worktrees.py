@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from pskill_runner import worktrees
 from pskill_runner.engine import RunError, start_run
 from pskill_runner.project import Config, Project, find_project
 from pskill_runner.run_store import new_run_id, utc_now
@@ -312,6 +313,27 @@ def test_a_project_in_a_subfolder_of_the_checkout_gets_its_worktree_with_the_sam
 
     assert tree == tmp_path / "app" / ".worktrees" / f"plan-work-{run_id}"
     assert run_project.root == tree / "app"
+
+
+def test_a_git_older_than_2_31_makes_the_worktree_of_a_project_in_a_subfolder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = make_checkout(tmp_path, project_folder="app")
+    real_git = worktrees.git
+
+    def git_before_2_31(folder: Path, *arguments: str) -> str:
+        """Git before 2.31 does not know --path-format: rev-parse prints the option back, and exits 0."""
+        if "--path-format=absolute" in arguments:
+            known = [argument for argument in arguments if argument != "--path-format=absolute"]
+            return "--path-format=absolute\n" + real_git(folder, *known)
+        return real_git(folder, *arguments)
+
+    monkeypatch.setattr(worktrees, "git", git_before_2_31)
+    run_id = a_run_id()
+
+    _, tree = run_worktree(project, "plan-work", INPUTS, run_id)
+
+    assert tree == tmp_path / "app" / ".worktrees" / f"plan-work-{run_id}"
 
 
 def test_a_folder_outside_git_cannot_run_in_a_worktree(tmp_path: Path) -> None:

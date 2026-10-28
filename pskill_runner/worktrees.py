@@ -51,11 +51,12 @@ def run_worktree(
 def in_linked_worktree(root: Path) -> bool:
     """True in a worktree made by `git worktree add`, False in the main checkout.
 
-    Absolute paths only: in a subfolder of the main checkout, plain `--git-common-dir` prints `../.git`.
+    Git prints each path absolute or relative to `root` (in a subfolder, `--git-common-dir` prints `../.git`), so
+    both resolve from `root`. Not `--path-format=absolute`: git before 2.31 prints that option back and exits 0.
     """
-    git_dir = git(root, "rev-parse", "--path-format=absolute", "--git-dir")
-    common_dir = git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    return Path(git_dir).resolve() != Path(common_dir).resolve()
+    git_dir = root / git(root, "rev-parse", "--git-dir")
+    common_dir = root / git(root, "rev-parse", "--git-common-dir")
+    return git_dir.resolve() != common_dir.resolve()
 
 
 def worktree_folder(project: Project) -> Path:
