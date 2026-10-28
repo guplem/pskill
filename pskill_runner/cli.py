@@ -14,7 +14,14 @@ from typing import Any
 
 import pskill_runner
 from pskill_runner import __version__, claude_code, codex, galtea
-from pskill_runner.adapters import GENERIC, AdapterError, detect_harness, detect_hook_harness, detect_session_id
+from pskill_runner.adapters import (
+    GENERIC,
+    AdapterError,
+    adapter_for,
+    detect_harness,
+    detect_hook_harness,
+    detect_session_id,
+)
 from pskill_runner.answer_input import AnswerInputError, read_answer, read_answer_file
 from pskill_runner.engine import (
     RunError,
@@ -275,6 +282,7 @@ def start_command(project: Project, options: argparse.Namespace) -> tuple[Projec
             raise RunError(f"--input {pair!r} must look like NAME=VALUE.")
         inputs[name] = value
     harness = detect_harness(os.environ) if options.harness == "auto" else options.harness
+    adapter_for(harness)  # an unknown harness fails before a worktree run makes its worktree
     mode = options.mode or project.config.default_mode
     session_id = detect_session_id(os.environ)
     run_id = new_run_id(utc_now())

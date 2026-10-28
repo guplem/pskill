@@ -489,6 +489,19 @@ def test_start_with_a_failing_worktree_setup_starts_no_run(
     assert list(tmp_path.rglob("run.json")) == []
 
 
+def test_start_with_worktree_and_an_unknown_harness_makes_no_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x", "--worktree", "--harness", "bogus")
+
+    assert exit_code == cli.EXIT_USAGE_ERROR
+    assert "unknown harness 'bogus'" in capsys.readouterr().err
+    assert not (tmp_path / ".pskill" / "worktrees").exists()
+
+
 def test_the_environment_variable_turns_the_worktree_mode_on(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

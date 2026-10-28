@@ -1,5 +1,6 @@
 """Tests for pskill_runner.worktrees: a run in its own git worktree, against real git repositories."""
 
+import shutil
 import subprocess
 import sys
 from dataclasses import replace
@@ -308,9 +309,7 @@ def test_a_setup_command_that_cannot_start_stops_the_start(tmp_path: Path, monke
     assert "The worktree setup `setup-tool` did not start: Permission denied: 'setup-tool'" in message
 
 
-def test_a_git_error_stops_the_start_and_names_a_folder_that_is_no_worktree_without_removing_it(
-    tmp_path: Path,
-) -> None:
+def test_a_failed_worktree_add_stops_the_start_and_removes_nothing(tmp_path: Path) -> None:
     project = make_checkout(tmp_path)
     run_id = a_run_id()
     tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
@@ -320,10 +319,65 @@ def test_a_git_error_stops_the_start_and_names_a_folder_that_is_no_worktree_with
     with pytest.raises(RunError, match="worktree add") as error:
         run_worktree(project, "plan-work", INPUTS, run_id)
 
+    assert "remove" not in str(error.value)
+    assert (tree / "in-the-way.txt").is_file()
+
+
+def test_a_start_whose_path_is_another_runs_worktree_never_removes_that_worktree(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path)
+    run_id = a_run_id()
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
+    run_worktree(project, "plan-work", INPUTS, run_id)  # another start that drew the same run id
+    (tree / "work-in-progress.txt").write_text("x", encoding="utf-8")
+
+    with pytest.raises(RunError, match="worktree add"):
+        run_worktree(project, "plan-work", INPUTS, run_id)
+
+    assert (tree / "work-in-progress.txt").is_file()
+    assert tree.as_posix() in git(tmp_path, "worktree", "list", "--porcelain")
+
+
+def test_a_worktree_that_git_cannot_remove_after_a_failed_start_is_named_with_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = with_setup(make_checkout(tmp_path), [sys.executable, "-c", "import sys; sys.exit(4)"])
+    run_id = a_run_id()
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
+    real_git = worktrees.git
+
+    def remove_refused(folder: Path, *arguments: str) -> str:
+        if arguments[:2] == ("worktree", "remove"):
+            raise RunError("`git worktree remove` failed: Permission denied")
+        return real_git(folder, *arguments)
+
+    monkeypatch.setattr(worktrees, "git", remove_refused)
+
+    with pytest.raises(RunError) as error:
+        run_worktree(project, "plan-work", INPUTS, run_id)
+
     assert str(error.value).endswith(
-        f"No run started. If the worktree `{tree.as_posix()}` is yours to drop, remove it with: {remove_line(tree)}"
+        f"No run started. pskill could not remove the worktree `{tree.as_posix()}` that it made for it: "
+        f"remove it with {remove_line(tree)}"
     )
-    assert (tree / "in-the-way.txt").is_file()  # git refuses to remove a folder that is not a worktree
+
+
+def test_a_galtea_key_that_cannot_be_copied_stops_the_start_and_removes_the_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = make_checkout(tmp_path)
+    (project.pskill_folder / "galtea.env").write_text("GALTEA_API_KEY=key-1\n", encoding="utf-8")
+    run_id = a_run_id()
+
+    def disk_full(*arguments: Any, **options: Any) -> None:
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(shutil, "copyfile", disk_full)
+
+    with pytest.raises(RunError, match="No space left on device") as error:
+        run_worktree(project, "plan-work", INPUTS, run_id)
+
+    assert str(error.value).endswith(REMOVED_NOTE)
+    assert not (tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}").exists()
 
 
 def test_a_project_that_is_not_committed_has_no_project_in_the_worktree(tmp_path: Path) -> None:

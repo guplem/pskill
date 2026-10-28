@@ -281,6 +281,6 @@ def test_deleting_a_manual_skill_removes_its_whole_stub_folder(tmp_path: Path) -
 
 def test_the_pskill_stub_says_where_a_worktree_run_lives() -> None:
     assert (
-        "A run started with `--worktree` lives in its own folder in `.pskill/worktrees/`, which `runs` names: "
+        "A worktree run (`start --worktree`) lives in its own worktree folder, which `runs` names: "
         "run the other commands from that folder." in render_pskill_stub()
     )

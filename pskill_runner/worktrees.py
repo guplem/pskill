@@ -54,29 +54,29 @@ def run_worktree(
     startable_skill(project, skill_id, raw_inputs)  # a wrong skill id or input fails before any worktree exists
     changes = git(project.root, "status", "--porcelain", "--", PSKILL_FOLDER_NAME)
     tree = worktree_folder(project) / f"{skill_id}-{run_id}"
+    add_worktree(project.root, tree)  # outside the try: a path that git refused may be another run's worktree
     try:
-        add_worktree(project.root, tree)
         tree_project = project_in_worktree(project, tree)
         startable_skill(tree_project, skill_id, raw_inputs)  # the skill as committed: the worktree starts at HEAD
         copy_galtea_key(project, tree_project)
         run_setup(project.config, tree_project.root)
-    except (RunError, ProjectError) as error:
+    except (RunError, ProjectError, OSError) as error:
         raise RunError(f"{error}\n{remove_failed_worktree(project.root, tree)}") from error
     return tree_project, tree, UNCOMMITTED_NOTE if changes else ""
 
 
 def remove_failed_worktree(checkout: Path, tree: Path) -> str:
-    """Remove the worktree of a start that failed, and return the last line of its error.
+    """Remove the worktree that this start made, after the start failed, and return the last line of its error.
 
-    No run lives in it yet, so nothing is lost. Git refuses a folder that is not a worktree (one that was in the
-    way of `worktree add`): the line then names the command, and the folder stays.
+    No run lives in it yet, so nothing is lost. When git cannot remove it (a file in use on Windows), the line
+    names the command.
     """
     try:
         git(checkout, "worktree", "remove", "--force", str(tree))
     except RunError:
         return (
-            f"No run started. If the worktree `{tree.as_posix()}` is yours to drop, remove it with: "
-            f'`git worktree remove --force "{tree.as_posix()}"`'
+            f"No run started. pskill could not remove the worktree `{tree.as_posix()}` that it made for it: "
+            f'remove it with `git worktree remove --force "{tree.as_posix()}"`'
         )
     return REMOVED_NOTE
 
