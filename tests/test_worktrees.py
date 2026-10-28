@@ -163,7 +163,6 @@ def test_a_failing_setup_stops_the_start_and_names_the_worktree_to_remove(tmp_pa
     assert "npm ERR! broken" in message
     assert f"No run started. If the worktree `{tree.as_posix()}` exists, remove it with: {remove_line(tree)}" in message
     assert tree.is_dir()  # the runner never removes a worktree
-    assert not (tree / ".pskill" / "runs").exists()
 
 
 def test_a_setup_command_that_does_not_exist_stops_the_start(tmp_path: Path) -> None:

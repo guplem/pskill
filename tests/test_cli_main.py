@@ -21,7 +21,7 @@ from pskill_runner.release import build_release_archive, release_file_map
 from pskill_runner.run_store import utc_now
 from pskill_runner.run_waits import start_wait
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_worktrees import make_checkout
+from tests.test_worktrees import make_checkout, remove_line
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
@@ -458,6 +458,23 @@ def test_start_with_worktree_runs_in_a_new_worktree_and_uploads_the_run_from_the
     assert read_run_info(find_project(tree), run_id)["worktree"] == tree.as_posix()
     assert not (tmp_path / ".pskill" / "runs" / run_id).exists()
     assert uploaded_from == [tree]
+
+
+def test_start_with_a_failing_worktree_setup_starts_no_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    setup = [sys.executable, "-c", "import sys; sys.exit(4)"]
+    (tmp_path / ".pskill" / "config.yaml").write_text(f"worktree_setup: {json.dumps(setup)}\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x", "--worktree") == cli.EXIT_USAGE_ERROR
+
+    error = capsys.readouterr().err
+    [tree] = [folder for folder in (tmp_path / ".worktrees").iterdir() if folder.is_dir()]
+    assert "failed with exit code 4" in error
+    assert f"No run started. If the worktree `{tree.as_posix()}` exists, remove it with: {remove_line(tree)}" in error
+    assert list(tmp_path.rglob("run.json")) == []
 
 
 def test_the_environment_variable_turns_the_worktree_mode_on(
