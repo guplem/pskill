@@ -32,6 +32,7 @@ from pskill_runner.packets import (
     render_pause_packet,
     task_prompt_text,
     visit_cap_instruction,
+    worktree_removal_line,
 )
 from pskill_runner.project import Project
 from pskill_runner.run_records import (
@@ -283,7 +284,9 @@ def cancel_run(project: Project, run_id: str) -> str:
         run.require_status(UNFINISHED_STATUSES, "cancel")
         run.end_run("cancelled", outputs={}, report=None)
         run.save()
-    return f"Run {run_id} is cancelled. No more pskill commands are needed.\n"
+    worktree = run.info.get("worktree")
+    removal = f"{worktree_removal_line(worktree)}\n" if worktree else ""
+    return f"Run {run_id} is cancelled. No more pskill commands are needed.\n{removal}"
 
 
 def delete_run(project: Project, run_id: str) -> str:

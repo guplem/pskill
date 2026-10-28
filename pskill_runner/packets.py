@@ -266,19 +266,24 @@ def field_comment(spec: FieldSpec) -> str:
 def render_final_packet(
     run_id: str, skill_id: str, status: str, report: str | None, outputs: dict[str, Any], worktree: str | None = None
 ) -> str:
-    """The final packet. A worktree run names its worktree: the runner never removes it, since the run lives there."""
+    """The final packet. A worktree run names its worktree."""
     lines = [f"## pskill · {skill_id} · finished", f"Run {run_id} finished with status {status}.", ""]
     if report:
         lines += ["### Report to the user", report.strip(), ""]
     if outputs:
         lines += ["### Outputs", *(f"{name}: {value}" for name, value in outputs.items()), ""]
     if worktree:
-        lines.append(
-            f"The run worked in the worktree `{worktree}`. Remove it when you no longer need it: "
-            f'`git worktree remove "{worktree}"`.'
-        )
+        lines.append(worktree_removal_line(worktree))
     lines.append("The run is finished. No more pskill commands are needed.")
     return "\n".join(lines) + "\n"
+
+
+def worktree_removal_line(worktree: str) -> str:
+    """The line of an ended worktree run: the runner never removes the worktree, since the run lives there."""
+    return (
+        f"The run worked in the worktree `{worktree}`. Remove it when you no longer need it: "
+        f'`git worktree remove "{worktree}"`.'
+    )
 
 
 @dataclass(frozen=True)

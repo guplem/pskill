@@ -758,6 +758,25 @@ def test_a_worktree_run_records_its_worktree_and_every_packet_names_its_folder(t
     assert remove_line in current_packet(project, run_id)
 
 
+def test_cancel_of_a_worktree_run_says_how_to_remove_the_worktree(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL)
+    worktree = (tmp_path / ".worktrees" / "small-r-1").as_posix()
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic", worktree=Path(worktree))
+
+    assert cancel_run(project, run_id) == (
+        f"Run {run_id} is cancelled. No more pskill commands are needed.\n"
+        f"The run worked in the worktree `{worktree}`. Remove it when you no longer need it: "
+        f'`git worktree remove "{worktree}"`.\n'
+    )
+
+
+def test_cancel_of_a_run_in_the_checkout_names_no_worktree(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+
+    assert cancel_run(project, run_id) == f"Run {run_id} is cancelled. No more pskill commands are needed.\n"
+
+
 def test_a_worktree_run_names_its_answer_file_by_its_absolute_path(tmp_path: Path) -> None:
     project = make_project(tmp_path, "small", SMALL_SKILL)
 
