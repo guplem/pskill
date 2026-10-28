@@ -21,7 +21,7 @@ from pskill_runner.release import build_release_archive, release_file_map
 from pskill_runner.run_store import utc_now
 from pskill_runner.run_waits import start_wait
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_worktrees import make_checkout, remove_line
+from tests.test_worktrees import UNCOMMITTED_NOTE, make_checkout, remove_line
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
@@ -458,6 +458,18 @@ def test_start_with_worktree_runs_in_a_new_worktree_and_uploads_the_run_from_the
     assert read_run_info(find_project(tree), run_id)["worktree"] == tree.as_posix()
     assert not (tmp_path / ".pskill" / "runs" / run_id).exists()
     assert uploaded_from == [tree]
+
+
+def test_start_with_worktree_puts_the_note_on_uncommitted_skill_changes_above_the_first_packet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_checkout(tmp_path)
+    (project.skills_folder / "plan-work" / "skill.yaml").write_text(PLAN_SKILL + "# edited\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x", "--worktree") == cli.EXIT_OK
+
+    assert capsys.readouterr().out.startswith(f"{UNCOMMITTED_NOTE}\n\n## pskill · plan-work · create_plan (visit 1)\n")
 
 
 def test_start_with_a_failing_worktree_setup_starts_no_run(

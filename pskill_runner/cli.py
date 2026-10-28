@@ -270,9 +270,10 @@ def start_command(project: Project, options: argparse.Namespace) -> tuple[Projec
     mode = options.mode or project.config.default_mode
     session_id = detect_session_id(os.environ)
     run_id = new_run_id(utc_now())
-    worktree = None
+    worktree: Path | None = None
+    note = ""
     if worktree_mode(options.worktree, os.environ):
-        project, worktree = run_worktree(project, options.skill, inputs, run_id)
+        project, worktree, note = run_worktree(project, options.skill, inputs, run_id)
     run_id, packet = start_run(
         project,
         options.skill,
@@ -284,7 +285,7 @@ def start_command(project: Project, options: argparse.Namespace) -> tuple[Projec
         run_id=run_id,
         worktree=worktree,
     )
-    return project, run_id, packet
+    return project, run_id, f"{note}\n\n{packet}" if note else packet
 
 
 def runs_table(project: Project, only_open: bool) -> str:

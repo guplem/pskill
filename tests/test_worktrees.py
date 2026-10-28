@@ -87,7 +87,7 @@ def test_a_run_gets_a_detached_worktree_at_head_named_after_the_skill_and_the_ru
     project = make_checkout(tmp_path)
     run_id = a_run_id()
 
-    run_project, tree = run_worktree(project, "plan-work", INPUTS, run_id)
+    run_project, tree, _ = run_worktree(project, "plan-work", INPUTS, run_id)
 
     assert tree == tmp_path / ".worktrees" / f"plan-work-{run_id}"
     assert run_project.root == tree
@@ -95,6 +95,30 @@ def test_a_run_gets_a_detached_worktree_at_head_named_after_the_skill_and_the_ru
     assert git(tree, "rev-parse", "HEAD") == git(tmp_path, "rev-parse", "HEAD")
     assert git(tree, "branch", "--show-current") == ""  # detached: no branch of the checkout moves
     assert git(tmp_path, "branch", "--show-current") != ""
+
+
+UNCOMMITTED_NOTE = (
+    "The checkout has uncommitted changes in `.pskill/`. This run does not use them: its worktree starts at the "
+    "last commit. Tell the user."
+)
+
+
+def test_uncommitted_changes_in_the_pskill_folder_give_a_note_for_the_first_packet(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path, project_folder="app")
+    (project.skills_folder / "plan-work" / "instructions" / "approve_plan.md").write_text("Edited.\n", encoding="utf-8")
+
+    _, _, note = run_worktree(project, "plan-work", INPUTS, a_run_id())
+
+    assert note == UNCOMMITTED_NOTE
+
+
+def test_a_checkout_with_no_uncommitted_change_in_the_pskill_folder_gives_no_note(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path, project_folder="app")
+    (tmp_path / "README.md").write_text("Edited.\n", encoding="utf-8")  # outside .pskill/
+
+    _, _, note = run_worktree(project, "plan-work", INPUTS, a_run_id())
+
+    assert note == ""
 
 
 def test_the_worktree_folder_ignores_itself_so_the_checkout_stays_clean(tmp_path: Path) -> None:
@@ -131,7 +155,9 @@ def test_the_worktree_goes_to_the_folder_that_the_config_names(tmp_path: Path) -
     project = make_checkout(tmp_path)
     run_id = a_run_id()
 
-    _, tree = run_worktree(replace(project, config=Config(worktree_folder="build/trees")), "plan-work", INPUTS, run_id)
+    _, tree, _ = run_worktree(
+        replace(project, config=Config(worktree_folder="build/trees")), "plan-work", INPUTS, run_id
+    )
 
     assert tree == tmp_path / "build" / "trees" / f"plan-work-{run_id}"
 
@@ -153,7 +179,7 @@ def test_the_setup_command_runs_in_the_project_folder_of_the_new_worktree(tmp_pa
     command = [sys.executable, "-c", "open('setup-ran.txt', 'w').close()"]
     project = with_setup(make_checkout(tmp_path, project_folder="app"), command)
 
-    run_project, _ = run_worktree(project, "plan-work", INPUTS, a_run_id())
+    run_project, _, _ = run_worktree(project, "plan-work", INPUTS, a_run_id())
 
     assert (run_project.root / "setup-ran.txt").is_file()
     assert not (tmp_path / "app" / "setup-ran.txt").exists()
@@ -301,7 +327,7 @@ def test_a_project_in_a_linked_worktree_uses_that_worktree(tmp_path: Path) -> No
     git(tmp_path / "repo", "worktree", "add", "--quiet", "--detach", str(linked), "HEAD")
     project = find_project(linked)
 
-    assert run_worktree(project, "plan-work", INPUTS, a_run_id()) == (project, None)
+    assert run_worktree(project, "plan-work", INPUTS, a_run_id()) == (project, None, "")
     assert not (linked / ".worktrees").exists()
 
 
@@ -309,7 +335,7 @@ def test_a_project_in_a_subfolder_of_the_checkout_gets_its_worktree_with_the_sam
     project = make_checkout(tmp_path, project_folder="app")
     run_id = a_run_id()
 
-    run_project, tree = run_worktree(project, "plan-work", INPUTS, run_id)
+    run_project, tree, _ = run_worktree(project, "plan-work", INPUTS, run_id)
 
     assert tree == tmp_path / "app" / ".worktrees" / f"plan-work-{run_id}"
     assert run_project.root == tree / "app"
@@ -331,7 +357,7 @@ def test_a_git_older_than_2_31_makes_the_worktree_of_a_project_in_a_subfolder(
     monkeypatch.setattr(worktrees, "git", git_before_2_31)
     run_id = a_run_id()
 
-    _, tree = run_worktree(project, "plan-work", INPUTS, run_id)
+    _, tree, _ = run_worktree(project, "plan-work", INPUTS, run_id)
 
     assert tree == tmp_path / "app" / ".worktrees" / f"plan-work-{run_id}"
 
@@ -362,7 +388,7 @@ def test_a_missing_git_stops_the_start_with_a_clear_error(tmp_path: Path, monkey
 
 def start_in_tree(project: Project) -> tuple[str, Path]:
     run_id = a_run_id()
-    run_project, tree = run_worktree(project, "plan-work", INPUTS, run_id)
+    run_project, tree, _ = run_worktree(project, "plan-work", INPUTS, run_id)
     start_run(run_project, "plan-work", INPUTS, mode="interactive", harness="generic", run_id=run_id, worktree=tree)
     assert tree is not None
     return run_id, run_project.root

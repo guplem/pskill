@@ -16,6 +16,10 @@ from pskill_runner.project import PSKILL_FOLDER_NAME, Config, Project, ProjectEr
 
 WORKTREE_VARIABLE = "PSKILL_RUN_IN_WORKTREE"
 SETUP_ERROR_LINES = 20  # the last lines of a failed setup's output that the error shows
+UNCOMMITTED_NOTE = (
+    f"The checkout has uncommitted changes in `{PSKILL_FOLDER_NAME}/`. This run does not use them: its worktree "
+    "starts at the last commit. Tell the user."
+)
 
 
 def worktree_mode(flag: bool, environment: Mapping[str, str]) -> bool:
@@ -25,15 +29,17 @@ def worktree_mode(flag: bool, environment: Mapping[str, str]) -> bool:
 
 def run_worktree(
     project: Project, skill_id: str, raw_inputs: dict[str, Any], run_id: str
-) -> tuple[Project, Path | None]:
-    """The project that a worktree run starts in, and the worktree made for it.
+) -> tuple[Project, Path | None, str]:
+    """The project that a worktree run starts in, the worktree made for it, and a note for the first packet.
 
-    A project that already sits in a linked worktree uses it: (project, None). Else the runner makes a
-    detached worktree at HEAD, named `<skill>-<run>`. A failure after that names the worktree to remove.
+    A project that already sits in a linked worktree uses it: (project, None, ""). Else the runner makes a
+    detached worktree at HEAD, named `<skill>-<run>`. A failure after that names the worktree to remove. The note
+    says when the checkout's `.pskill/` has uncommitted changes, which the worktree does not have.
     """
     if in_linked_worktree(project.root):
-        return project, None
+        return project, None, ""
     startable_skill(project, skill_id, raw_inputs)  # a wrong skill id or input fails before any worktree exists
+    changes = git(project.root, "status", "--porcelain", "--", PSKILL_FOLDER_NAME)
     tree = worktree_folder(project) / f"{skill_id}-{run_id}"
     try:
         add_worktree(project.root, tree)
@@ -45,7 +51,7 @@ def run_worktree(
             f"{error}\nNo run started. If the worktree `{tree.as_posix()}` exists, remove it with: "
             f'`git worktree remove --force "{tree.as_posix()}"`'
         ) from error
-    return tree_project, tree
+    return tree_project, tree, UNCOMMITTED_NOTE if changes else ""
 
 
 def in_linked_worktree(root: Path) -> bool:
