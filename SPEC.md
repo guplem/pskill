@@ -511,6 +511,22 @@ Set the mode with `start --mode interactive|autonomous` (default from config: `i
 - The upload to Galtea (10.4) runs after the command, outside the lock, so a slow network never blocks a submit. It writes `galtea.json` with `os.replace` too.
 - `wait` holds the lock only while it writes or reads `run.json`, never while it sleeps: a lock held for minutes would block every submit, and other commands would break it after 60 s.
 
+### 7.8 Worktree runs
+
+A run can work in its own git worktree, so it never switches the branch of the checkout that other agent sessions share. Added in 0.42.0.
+
+- **On:** `start --worktree`, or the environment variable `PSKILL_RUN_IN_WORKTREE` set to `true` or `1` (any case), for every run. The variable has the singular `PSKILL_` prefix of every runner variable. With neither, a run works in the checkout, as before.
+- **Already in a worktree:** when the project sits in a linked worktree, the run uses it and makes nothing. The runner compares `git rev-parse --path-format=absolute --git-dir` with `--git-common-dir`. The paths must be absolute: in a subfolder of the main checkout, the plain `--git-common-dir` is `../.git`.
+- **Checks first:** `start` checks the skill id and the inputs before it makes a worktree, so a typo costs no worktree and no setup.
+- **The worktree:** `git -c core.hooksPath=<null device> worktree add --detach <path> HEAD`, from the project root. `<path>` is `<worktree_folder>/<skill>-<run>` (10.1). Detached, so no branch moves. No git hook runs, because the new worktree has no installed dependencies yet. A `worktree_folder` that the runner creates gets a `.gitignore` with the single line `*`, so the worktrees never show in `git status`.
+- **It starts at HEAD:** uncommitted changes of the checkout are not in the worktree. The project sits in the same subfolder of the worktree as in the checkout. When it has no `.pskill/` there, or the skill is not committed, `start` stops.
+- **Setup:** then `worktree_setup` (10.1) runs in the new worktree, with no shell, for example `[npm, ci]`.
+- **Failure:** any failure after `worktree add` stops `start` with the error, the worktree path, and `git worktree remove --force <path>`. No run starts.
+- **The run lives in the worktree:** `.pskill/runs/<id>/` is in the worktree, script blocks run there, and the Galtea upload (10.4) reads the run there. `run.json` records `worktree` (10.2). Every packet names the folder (section 8). The commands in packets stay relative (`uv run .pskill/pskill.py ...`), because the permission rule matches only that form.
+- **The end:** the final packet names the worktree and `git worktree remove <path>`. The runner never removes a worktree: the run folder, the only record of the run, lives in it.
+- **The wrong folder:** a command that takes a run id and does not find the run here looks in the other worktrees of `git worktree list --porcelain`. When one holds the run, it stops with "Run <id> lives in `<path>`: run this command from that folder." It never runs the command there, because the agent's own file edits must happen in that worktree too. Outside git, or when no worktree holds the run, the command gives its usual error.
+- **Limits:** the Stop hook and `runs` read the runs of the folder they run in, so they see a worktree run only from its worktree. A key in the checkout's `.pskill/galtea.env` is not in the worktree (git ignores the file): use the environment variable `GALTEA_API_KEY`.
+
 ---
 
 ## 8. Packets (what the agent sees)
@@ -553,6 +569,7 @@ Additions by block type:
 - **Parallel with subagents:** the packet lists every open task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with a one-line prompt: "You are a subagent of pskill run <run>. In the folder `<project root>`, run `pskill task <run> <n>`, and do what it prints." A task with a tool profile or a tier gets one more line under its heading, with the harness wording for both (for Claude Code: "Pass `subagent_type: pskill-read` in this task's Agent call, instead of `general-purpose`. If that agent type is unknown, use `general-purpose`. Pass `model: haiku` in this task's Agent call."). The fallback covers a profile agent that is missing (no `sync` yet, or `claude-code` not in `permissions`) or that Claude Code does not see yet (a `.claude/agents/` folder newer than the session). `pskill task` prints the task's full prompt: the work folder, the agent role, the goal, the instruction, the return format, and its own submit command with `--task <n>`, plus its `--file` line. The packet says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each subagent exactly the one-line prompt of its task. When every subagent has finished, run `pskill current <run>`." The same line restarts a task whose subagent stalled. Changed in 0.12.0: before, the packet held every full prompt, which the main agent copied by hand.
 - **Parallel without subagents:** the packet gives one task at a time, like a normal block.
 - **Final packet:** the status, the rendered `report`, the outputs, and "The run is finished."
+- **Worktree run (7.8):** every agent, parallel, and pause packet adds one line after the header: "This run works in the folder `<absolute path>`. Run every command of this run from that folder." The final packet adds, before its last line: "The run worked in the worktree `<absolute path>`. Remove it when you no longer need it: `git worktree remove <absolute path>`." Added in 0.42.0.
 - **Pause packet:** the block and the reason, the error, then one `### Pause steps of <skill>` section per skill on the call stack that has an `on_pause`, the paused skill first and the root last. Each text is rendered with the names of its own skill's frame (7.1), so a child skill and its caller each name their own values. A text that renders empty adds no section. A text that fails to render, with any error (or whose file is missing from the run copy, or is not UTF-8), shows the error and the text as written, so a pause never fails. With a section, the Next part starts "Do the pause steps above. Then tell the user why the run paused." With none, the packet is the same as before 0.38.0. Every pause reason gets the same packet. **The steps run once:** only the first packet that reaches an agent gives them. A later `current` of the same pause shows `### Pause steps` with "The first packet of this pause gave them. Do not do them again." instead, so the agent does not post a comment twice; `run.json` records it as `pause_steps_shown`. A new pause gives them again. A subagent whose task answer pauses the run gets only a short note to stop and tell the main agent, because the pause steps are the main agent's work: it reads the packet with `current`. That pause reached no agent, so the next `current` gives the steps. The Stop hook's give-up pause gives them in the hook's reason (9.2).
 
 ---
@@ -651,6 +668,7 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
    Add `--input <name>=<value>` for each optional input that the request gives.
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin, in the same literal form as `submit`.
    Add `--mode autonomous` only when the user asked for no questions.
+   If the request carries `--worktree`, leave it out of the inputs and add `--worktree` to `start`.
 3. The runner prints one step. Do only that step, then run the submit command at its end.
    The runner checks your answer and prints the next step.
 4. Repeat step 3 until the runner says the run is finished. Never skip a step, and never stop before the end.
@@ -660,6 +678,7 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
 
 - The frontmatter follows the Agent Skills spec.
 - **Inputs:** each input shows its type, `optional`, and its `default`. The start command names only the required inputs, so the agent never invents a value for an optional one. When a skill has a required input, the stub tells the agent to ask the user for each one that the request does not give, before `start`. (Added in 0.21.0: before, the start command named every input, and the stub showed no default.)
+- **Worktree:** the `--worktree` line gives every skill the option (7.8) the same way, also a skill whose only input is an integer. Added in 0.42.0.
 - `sync` overwrites and deletes only files that carry the generated marker. If a hand-written skill has the same name, `sync` stops with an error.
 - `sync` also writes one built-in stub, `pskill`: "Resume, inspect, pause, or cancel a pskill run. Use when the user mentions an unfinished skill run." Its body lists `runs`, `current`, `resume`, `wait`, `pause`, `cancel`, and `view`.
 - Commit the stubs. `pskill validate` fails when a stub is out of date.
@@ -727,6 +746,7 @@ The runner itself lives in the user's cache: `PSKILL_CACHE_DIR` when set, else `
 - **`hook_files`** are paths, because every hooks file has the same shape (`{"hooks": {...}}`). An app's own file (`.claude/settings.json`, `.codex/hooks.json`) gets that app's hook commands. Any other file, such as a project's own source of hooks that generates the app files, gets shared commands that pass `--harness auto`. The runner then detects the app from the hook input (`turn_id` means Codex) or the environment (`CLAUDE_PROJECT_DIR` means Claude Code). `sync` removes an app's own pskill hooks from its app file when that file is not listed. It keeps the shared hooks there: only the project's generator puts them there, when it copies the listed source.
 - **`permissions`** are app names, because each app keeps its rules in its own format, in a fixed place: Claude Code in `permissions.allow` of `.claude/settings.json`, Codex in `.codex/rules/pskill.rules`. An app in this list is one that pskill sets up, so `claude-code` here also gets the profile agents in `.claude/agents/` (9.3).
 - The old setting `harnesses` stops with an error that names these two settings.
+- **`worktree_folder`** is where a worktree run (7.8) gets its worktree: a folder relative to the project root, with no `..`. **`worktree_setup`** is the command that prepares a new worktree, as a list of non-empty texts (no shell), such as `[npm, ci]`; empty by default. Anything else stops with an error. Added in 0.42.0.
 - **`tiers`** changes rows of the tier table (section 6.3): a harness (`claude-code` or `codex`), a tier, and a row with `model` and `effort`, each optional. A row replaces the default row of its harness and tier; every other row keeps its default. An unknown harness, tier, or key, or a value that is not a non-empty text, stops with an error.
 
 ```yaml
@@ -741,6 +761,8 @@ stop_hook_max_blocks: 3
 wait_minutes: 20                                         # how long one `pskill wait` sleeps when nothing changes
 max_wait_minutes: 120                                    # the waits of one block with nothing new, before wait refuses
 viewer_port: 7777
+worktree_folder: .worktrees                              # where `start --worktree` makes the run's worktree (7.8)
+worktree_setup: []                                       # the command that prepares a new worktree, such as [npm, ci]
 tiers:                                                   # rows that replace the default tier rows (6.3)
   codex:
     fast: {model: gpt-6-luna, effort: low}
@@ -761,7 +783,7 @@ runs/<run-id>/
 
 `run.json` fields:
 - `schema_version`, `run_id`, `skill_id`, `skill_hash` (sha256 of the copied skill files)
-- `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `llm` (the model id from `start --model`, or null; absent in runs before 0.39.0), `session_id` (the owner session, or null), `mode`, `inputs`
+- `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `llm` (the model id from `start --model`, or null; absent in runs before 0.39.0), `worktree` (the absolute path of the worktree that `start --worktree` made, or null; absent in runs before 0.42.0), `session_id` (the owner session, or null), `mode`, `inputs`
 - `status`, `pause_reason`, `current` (`{frame, block, visit}`), `attempts`, `stop_blocks`
 - `wait_reason`, `wait_started_at`, `wait_until`, `waits_since`: the `pskill wait` alarm (section 9.2). Absent in runs before 0.37.0.
 - `created_at`, `updated_at`, `ended_at`, `outputs`
@@ -1105,7 +1127,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `update [--from <source>]` | Move the pin of `.pskill/pskill.py`, put the release in the cache, then run `sync` with the new runner. Default source: the latest release archive. `--from .` in the pskill repository writes the dev pin. Remove the runner files of a vendored install (`VENDORED`, `pskill_runner/`, `viewer/`, `launchers/`, `AUTHORING.md`). Add `galtea.env` to an existing `.pskill/.gitignore` that lacks it. Never touch `skills/`, `agents/`, `runs/`, or `config.yaml`. |
 | `authoring` | Print `AUTHORING.md`, the guide for agents that write skills. |
 | `list` | Skills: id, invocation, description. |
-| `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h] [--model id]` | Validate the skill (every error except 17: a stale stub or profile agent never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. `--model` records the model id that the agent names (`llm` in `run.json`); the stub asks the agent to pass it. |
+| `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h] [--model id] [--worktree]` | Validate the skill (every error except 17: a stale stub or profile agent never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. `--model` records the model id that the agent names (`llm` in `run.json`); the stub asks the agent to pass it. `--worktree` (or `PSKILL_RUN_IN_WORKTREE=true`) starts the run in a new git worktree (7.8). Added in 0.42.0. |
 | `current [<run>]` | Print the current packet. No state change. |
 | `task <run> <n>` | Print the full prompt of task `<n>` of the current parallel block. A subagent runs it first. No state change. |
 | `submit <run> [--task <n>] [--file <path>]` | Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. |

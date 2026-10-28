@@ -65,7 +65,7 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 | Command | What it does |
 |---|---|
 | `list` | List the skills. |
-| `start <skill> --input name=value` | Start a skill. Add `--mode autonomous` so the agent decides alone, with no questions. |
+| `start <skill> --input name=value` | Start a skill. Add `--mode autonomous` so the agent decides alone, with no questions. Add `--worktree` to run it in a new git worktree (below). |
 | `runs --open` | List the unfinished runs. |
 | `current <run>` | Show the current step of a run. |
 | `task <run> <n>` | Show the full prompt of one parallel task. A subagent runs this first. |
@@ -149,6 +149,7 @@ Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`
 - **One session per folder, in apps other than Claude Code and Codex.** There, two sessions in the same folder share the hooks.
 - **`wait` needs an app that wakes the agent** when a background command ends. Claude Code does: with no time limit on your computer, and up to 30 minutes by default in a cloud session. Codex does not say that it does, so there the hook ignores waits and works as before: 3 refused stops, then a pause.
 - **A skill's pause steps need a live agent.** A skill can name steps for a pause (`on_pause`), such as a comment on the issue. Every pause gives them to the agent, also when the hook gives up after 3 refused stops: the hook holds the agent once more to do them. When the session dies, nobody does them. Write them so that running them twice does no harm.
+- **A worktree run keeps your checkout's branch.** With `start --worktree`, or `PSKILL_RUN_IN_WORKTREE=true` for every run, the run works in a new git worktree in `.worktrees/` (the `worktree_folder` setting), started at your last commit. `worktree_setup` in `.pskill/config.yaml` prepares it, for example `[npm, ci]`. Run the run's commands from that worktree. pskill never removes it, because the run's record lives there: at the end, run `git worktree remove <path>`.
 - **pskill trusts the agent** when it says that you answered a question.
 - **The steps are plain files.** The agent could read the later steps. This is not a security barrier.
 
