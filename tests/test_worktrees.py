@@ -116,6 +116,16 @@ def test_a_worktree_folder_that_exists_keeps_its_own_files(tmp_path: Path) -> No
     assert (folder / ".gitignore").read_text(encoding="utf-8") == "keep-me\n"
 
 
+def test_a_file_in_the_place_of_the_worktree_folder_stops_the_start_with_a_clear_error(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path)
+    (tmp_path / ".worktrees").write_text("not a folder\n", encoding="utf-8")
+
+    with pytest.raises(RunError, match=r"pskill could not make the worktree folder `.*/\.worktrees`") as error:
+        run_worktree(project, "plan-work", INPUTS, a_run_id())
+
+    assert "git worktree remove" not in str(error.value)  # no worktree exists yet
+
+
 def test_the_worktree_goes_to_the_folder_that_the_config_names(tmp_path: Path) -> None:
     project = make_checkout(tmp_path)
     run_id = a_run_id()

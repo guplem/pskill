@@ -59,11 +59,15 @@ def in_linked_worktree(root: Path) -> bool:
 
 
 def worktree_folder(project: Project) -> Path:
-    """The folder of the worktrees. When the runner makes it, it ignores itself, so git status stays clean."""
+    """The folder of the worktrees. When this start makes it, it ignores itself, so git status stays clean."""
     folder = project.root / project.config.worktree_folder
-    if not folder.is_dir():
+    try:
         folder.mkdir(parents=True)
-        (folder / ".gitignore").write_text("*\n", encoding="utf-8", newline="\n")
+    except OSError as error:
+        if folder.is_dir():  # made before: by the user, or by another start at the same moment
+            return folder
+        raise RunError(f"pskill could not make the worktree folder `{folder.as_posix()}`: {error}") from error
+    (folder / ".gitignore").write_text("*\n", encoding="utf-8", newline="\n")
     return folder
 
 
