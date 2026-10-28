@@ -21,6 +21,7 @@ from pskill_runner.release import build_release_archive, release_file_map
 from pskill_runner.run_store import utc_now
 from pskill_runner.run_waits import start_wait
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.test_worktrees import make_checkout
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
@@ -435,6 +436,60 @@ def test_pause_resume_and_cancel_change_the_status_of_a_run(
     assert run_cli(monkeypatch, "delete", run_id) == cli.EXIT_OK
     assert "deleted" in capsys.readouterr().out
     assert not (project.runs_folder / run_id).exists()
+
+
+# --- worktree runs --------------------------------------------------------------------------------
+
+
+def test_start_with_worktree_runs_in_a_new_worktree_and_uploads_the_run_from_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    uploaded_from: list[Path] = []
+    monkeypatch.setattr(galtea, "upload_run", lambda project, run_id: uploaded_from.append(project.root))
+
+    assert run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x", "--worktree") == cli.EXIT_OK
+
+    packet = capsys.readouterr().out
+    run_id = run_id_of(packet)
+    tree = tmp_path / ".worktrees" / f"plan-work-{run_id}"
+    assert f"This run works in the folder `{tree.as_posix()}`." in packet
+    assert read_run_info(find_project(tree), run_id)["worktree"] == tree.as_posix()
+    assert not (tmp_path / ".pskill" / "runs" / run_id).exists()
+    assert uploaded_from == [tree]
+
+
+def test_the_environment_variable_turns_the_worktree_mode_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PSKILL_RUN_IN_WORKTREE", "True")
+
+    run_id = start_plan(monkeypatch, capsys)
+
+    assert (tmp_path / ".worktrees" / f"plan-work-{run_id}" / ".pskill" / "runs" / run_id / "run.json").is_file()
+
+
+def test_a_command_from_the_checkout_names_the_worktree_that_holds_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    run_id = start_plan(monkeypatch, capsys, "--worktree")
+    tree = tmp_path / ".worktrees" / f"plan-work-{run_id}"
+
+    for command in ("current", "pause", "submit"):
+        assert run_cli(monkeypatch, command, run_id, stdin="status: finished\n") == cli.EXIT_USAGE_ERROR
+        assert (
+            f"pskill: Run {run_id} lives in `{tree.as_posix()}`: run this command from that folder."
+            in capsys.readouterr().err
+        )
+
+    monkeypatch.chdir(tree)
+    assert run_cli(monkeypatch, "current", run_id) == cli.EXIT_OK
+    assert f"Run {run_id} · interactive" in capsys.readouterr().out
 
 
 # --- wait -----------------------------------------------------------------------------------------

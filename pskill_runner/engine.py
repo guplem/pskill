@@ -121,7 +121,8 @@ def start_run(
     """Create a run and return its id and its first packet.
 
     `runs_folder` and `allow_internal` let `pskill test` use a temp folder and replay an internal skill.
-    `run_id` and `worktree` come from a worktree run, whose worktree is named after the run before it starts.
+    `run_id` lets the caller pick the id first: `start` names a worktree run's worktree after it. `worktree` is
+    that worktree.
     """
     skill, catalog, inputs = startable_skill(project, skill_id, raw_inputs, allow_internal)
     now = utc_now()

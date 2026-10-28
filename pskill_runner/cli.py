@@ -36,7 +36,7 @@ from pskill_runner.profile_agents import sync_profile_agents
 from pskill_runner.project import Project, ProjectError, find_project
 from pskill_runner.release import release_url
 from pskill_runner.run_records import UNFINISHED_STATUSES, RunInfo
-from pskill_runner.run_store import utc_now
+from pskill_runner.run_store import new_run_id, utc_now
 from pskill_runner.run_waits import is_waiting, wait_for_run_change
 from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
 from pskill_runner.skill_model import SkillCatalog
@@ -45,6 +45,7 @@ from pskill_runner.stubs import StubError, sync_stubs
 from pskill_runner.sync import sync_project, sync_with_the_installed_runner
 from pskill_runner.validator import Problem, validate_skill
 from pskill_runner.viewer_server import serve_viewer
+from pskill_runner.worktrees import check_run_is_here, run_worktree, worktree_mode
 from pskill_runner.yaml_loading import load_answer_yaml
 
 EXIT_OK = 0
@@ -53,6 +54,7 @@ EXIT_VALIDATION_ERROR = 2
 EXIT_INTERNAL_ERROR = 3
 
 USER_ERRORS = (RunError, ProjectError, AnswerInputError, AdapterError, InstallError, SettingsError, StubError)
+RUN_ID_COMMANDS = ("current", "task", "submit", "pause", "resume", "cancel", "delete", "wait")
 HOOK_INPUT_TIMEOUT_S = 2.0
 
 
@@ -68,6 +70,11 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--mode", choices=["interactive", "autonomous"], help="Default: from config.yaml.")
     start.add_argument("--harness", default="auto", help="The harness that runs the agent. Default: detect it.")
     start.add_argument("--model", help="The model id of the agent that runs the skill.")
+    start.add_argument(
+        "--worktree",
+        action="store_true",
+        help="Run in a new git worktree, so this checkout keeps its branch. Also on with PSKILL_RUN_IN_WORKTREE=true.",
+    )
 
     current = commands.add_parser("current", help="Print the current block of a run again.")
     current.add_argument("run_id", nargs="?", help="Default: the newest unfinished run.")
@@ -169,9 +176,11 @@ def run_command(options: argparse.Namespace) -> int:
     project = find_project(Path.cwd())
     harness = specific_harness()
     session_id = detect_session_id(os.environ)
+    if command in RUN_ID_COMMANDS and options.run_id is not None:
+        check_run_is_here(project, options.run_id)
     if command == "start":
-        run_id, packet = start_command(project, options)
-        return print_and_upload(project, run_id, packet)
+        run_project, run_id, packet = start_command(project, options)
+        return print_and_upload(run_project, run_id, packet)
     if command == "current":
         packet = current_packet(project, options.run_id, harness, session_id)
         return print_and_upload(project, resolve_run_id(project, options.run_id), packet)
@@ -244,7 +253,8 @@ def print_and_upload(project: Project, run_id: str, text: str) -> int:
     return exit_code
 
 
-def start_command(project: Project, options: argparse.Namespace) -> tuple[str, str]:
+def start_command(project: Project, options: argparse.Namespace) -> tuple[Project, str, str]:
+    """Start a run. Return the project that holds it (a worktree run's own worktree), its id, and its packet."""
     inputs: dict[str, Any] = {}
     if options.inputs == "-":
         stdin_inputs = load_answer_yaml(read_answer(sys.stdin))
@@ -259,9 +269,22 @@ def start_command(project: Project, options: argparse.Namespace) -> tuple[str, s
     harness = detect_harness(os.environ) if options.harness == "auto" else options.harness
     mode = options.mode or project.config.default_mode
     session_id = detect_session_id(os.environ)
-    return start_run(
-        project, options.skill, inputs, mode=mode, harness=harness, session_id=session_id, llm=options.model
+    run_id = new_run_id(utc_now())
+    worktree = None
+    if worktree_mode(options.worktree, os.environ):
+        project, worktree = run_worktree(project, options.skill, inputs, run_id)
+    run_id, packet = start_run(
+        project,
+        options.skill,
+        inputs,
+        mode=mode,
+        harness=harness,
+        session_id=session_id,
+        llm=options.model,
+        run_id=run_id,
+        worktree=worktree,
     )
+    return project, run_id, packet
 
 
 def runs_table(project: Project, only_open: bool) -> str:
