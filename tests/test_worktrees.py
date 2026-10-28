@@ -362,13 +362,19 @@ def test_a_git_older_than_2_31_makes_the_worktree_of_a_project_in_a_subfolder(
     assert tree == tmp_path / "app" / ".worktrees" / f"plan-work-{run_id}"
 
 
-def test_a_folder_outside_git_cannot_run_in_a_worktree(tmp_path: Path) -> None:
+def test_a_folder_outside_git_cannot_run_in_a_worktree_and_the_error_names_the_worktree_mode(tmp_path: Path) -> None:
     write_project(tmp_path)
 
-    with pytest.raises(RunError, match=r"`git rev-parse .*` failed") as error:
+    with pytest.raises(RunError) as error:
         run_worktree(find_project(tmp_path), "plan-work", INPUTS, a_run_id())
 
-    assert "git worktree remove" not in str(error.value)
+    message = str(error.value)
+    assert message.startswith("A worktree run needs git: `git rev-parse --git-dir` failed: ")
+    assert message.endswith(
+        "\nWorktree runs are on through `start --worktree` or PSKILL_RUN_IN_WORKTREE. With neither, the run works "
+        "in this folder."
+    )
+    assert "git worktree remove" not in message
 
 
 def test_a_missing_git_stops_the_start_with_a_clear_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -36,7 +36,14 @@ def run_worktree(
     detached worktree at HEAD, named `<skill>-<run>`. A failure after that names the worktree to remove. The note
     says when the checkout's `.pskill/` has uncommitted changes, which the worktree does not have.
     """
-    if in_linked_worktree(project.root):
+    try:
+        linked = in_linked_worktree(project.root)
+    except RunError as error:
+        raise RunError(
+            f"A worktree run needs git: {error}\nWorktree runs are on through `start --worktree` or "
+            f"{WORKTREE_VARIABLE}. With neither, the run works in this folder."
+        ) from error
+    if linked:
         return project, None, ""
     startable_skill(project, skill_id, raw_inputs)  # a wrong skill id or input fails before any worktree exists
     changes = git(project.root, "status", "--porcelain", "--", PSKILL_FOLDER_NAME)
