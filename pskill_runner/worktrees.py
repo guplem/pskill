@@ -115,8 +115,9 @@ def run_setup(config: Config, folder: Path) -> None:
         raise RunError(f"The worktree setup `{shown}` failed: {result.problem}.")
     if result.exit_code != 0:
         failure = f"The worktree setup `{shown}` failed with exit code {result.exit_code}"
-        output = (result.stderr.strip() or result.stdout.strip()).splitlines()[-SETUP_ERROR_LINES:]
-        raise RunError(f"{failure}:\n" + "\n".join(output) if output else f"{failure}.")
+        last_lines = (result.stderr.strip() or result.stdout.strip()).splitlines()[-SETUP_ERROR_LINES:]
+        output = "\n".join(last_lines)
+        raise RunError(f"{failure}:\n{output}" if output else f"{failure}.")
 
 
 def check_run_is_here(project: Project, run_id: str) -> None:
