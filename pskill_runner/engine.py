@@ -1096,12 +1096,14 @@ class Run:
     def answers_folder(self) -> str:
         """Create the run's folder for answer files, and return it as the agent writes it.
 
-        Relative to the project root, except for `pskill test`, whose runs live in a temp folder.
+        Relative to the project root, except for `pskill test`, whose runs live in a temp folder, and for a
+        worktree run, whose agent writes files with tools that start from the checkout.
         """
         folder = self.folder / "answers"
         folder.mkdir(exist_ok=True)
-        shown = folder.relative_to(self.project.root) if folder.is_relative_to(self.project.root) else folder
-        return shown.as_posix()
+        if self.info.get("worktree") or not folder.is_relative_to(self.project.root):
+            return folder.as_posix()
+        return folder.relative_to(self.project.root).as_posix()
 
     def return_fields(self, block: AgentBlock) -> FieldMap:
         if isinstance(block, DecisionBlock):

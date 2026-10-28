@@ -740,7 +740,10 @@ def test_start_uses_the_run_id_that_the_caller_gives(tmp_path: Path) -> None:
 def test_a_worktree_run_records_its_worktree_and_every_packet_names_its_folder(tmp_path: Path) -> None:
     project = make_project(tmp_path, "small", SMALL_SKILL)
     worktree = tmp_path / ".worktrees" / "small-r-1"
-    folder_line = f"This run works in the folder `{project.root.as_posix()}`. Run every command of this run from that"
+    folder_line = (
+        f"This run works in the folder `{project.root.as_posix()}`. "
+        "Run every command and make every file change of this run in that folder."
+    )
 
     run_id, packet = start_run(project, "small", {}, mode="interactive", harness="generic", worktree=worktree)
 
@@ -753,6 +756,16 @@ def test_a_worktree_run_records_its_worktree_and_every_packet_names_its_folder(t
     remove_line = f"`git worktree remove {worktree.as_posix()}`."
     assert remove_line in finished
     assert remove_line in current_packet(project, run_id)
+
+
+def test_a_worktree_run_names_its_answer_file_by_its_absolute_path(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL)
+
+    run_id, packet = start_run(project, "small", {}, mode="interactive", harness="generic", worktree=tmp_path / "t")
+
+    answer_file = (project.runs_folder / run_id / "answers" / "greet.yaml").as_posix()
+    assert f"write it to the file `{answer_file}` instead" in packet
+    assert f'submit {run_id} --file "{answer_file}"`' in packet
 
 
 def test_a_run_in_the_checkout_records_no_worktree_and_names_no_folder(tmp_path: Path) -> None:

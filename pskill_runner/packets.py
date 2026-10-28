@@ -79,7 +79,10 @@ def header(packet: AgentPacket) -> str:
 
 def worktree_line(work_folder: str) -> str:
     """The commands of a worktree run stay relative (the permission rule matches only that form): name the folder."""
-    return f"This run works in the folder `{work_folder}`. Run every command of this run from that folder."
+    return (
+        f"This run works in the folder `{work_folder}`. "
+        "Run every command and make every file change of this run in that folder."
+    )
 
 
 def decision_section(packet: AgentPacket) -> str:
@@ -127,11 +130,12 @@ def answer_file_line(packet: AgentPacket, task_index: int | None) -> str:
     """The `--file` form of the submit command, for a long answer (SPEC.md section 7.3).
 
     A long heredoc fails in Claude Code's Bash tool on Windows. Each task gets its own file, so parallel
-    subagents never write the same one.
+    subagents never write the same one. A worktree run's path is absolute, and may hold a space: it is quoted.
     """
     task_suffix = f"-task-{task_index}" if task_index is not None else ""
     path = f"{packet.answers_folder}/{packet.block_id}{task_suffix}.yaml"
-    command = f"{plain_submit_command(packet, task_index)} --file {path}"
+    file_argument = f'"{path}"' if packet.in_worktree else path
+    command = f"{plain_submit_command(packet, task_index)} --file {file_argument}"
     return f"For an answer over about 5 KB, write it to the file `{path}` instead, then run: `{command}`"
 
 

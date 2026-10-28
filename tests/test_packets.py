@@ -359,7 +359,8 @@ def test_a_parallel_packet_that_cannot_wait_says_nothing_about_waiting() -> None
 
 
 WORKTREE_LINE = (
-    "This run works in the folder `/work/trees/plan-work-r-1`. Run every command of this run from that folder."
+    "This run works in the folder `/work/trees/plan-work-r-1`. "
+    "Run every command and make every file change of this run in that folder."
 )
 
 
@@ -372,6 +373,18 @@ def test_a_packet_of_a_worktree_run_names_its_folder_after_the_header() -> None:
         f"## pskill · plan-work · create_plan (visit 2)\nRun r-20260927-1432-ab12 · interactive\n{WORKTREE_LINE}\n\n"
     )
     assert "uv run .pskill/pskill.py submit r-20260927-1432-ab12 <<'PSKILL'" in text  # commands stay relative
+
+
+def test_a_packet_of_a_worktree_run_quotes_its_absolute_answer_file_in_the_submit_command() -> None:
+    folder = "/work/my trees/plan-work-r-1/.pskill/runs/r-20260927-1432-ab12/answers"
+    packet = replace(PLAN_PACKET, answers_folder=folder, work_folder="/work/my trees/plan-work-r-1", in_worktree=True)
+
+    text = render_agent_packet(packet)
+
+    assert (
+        f"write it to the file `{folder}/create_plan.yaml` instead, then run: "
+        f'`uv run .pskill/pskill.py submit r-20260927-1432-ab12 --file "{folder}/create_plan.yaml"`'
+    ) in text
 
 
 def test_a_parallel_packet_of_a_worktree_run_names_its_folder_after_the_header() -> None:
