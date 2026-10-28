@@ -16,6 +16,7 @@ Goal: A pull request that is ready to merge as it is: every CI check green, ever
    If a value has spaces, quotes, or several lines, pass `--inputs -` and give the inputs as YAML on stdin,
    in the same literal form that the runner's packets show for `submit`.
    Add `--mode autonomous` only when the user asked for no questions.
+   If the request carries `--worktree`, leave it out of the inputs and add `--worktree` to `start`.
 3. The runner prints one step. Do only that step, then run the submit command at its end.
    The runner checks your answer and prints the next step.
 4. Repeat step 3 until the runner says the run is finished. Never skip a step, and never stop before the end.
