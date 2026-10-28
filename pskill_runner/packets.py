@@ -43,6 +43,7 @@ class AgentPacket:
     subagent_wording: str = ""  # how this harness spawns subagents, for parallel packets
     work_folder: str = ""  # the project root, where every subagent of a parallel block works
     can_wait: bool = False  # the harness wakes the agent after a background command, so `pskill wait` works
+    in_worktree: bool = False  # the run works in its own git worktree, so the header names the work folder
     # The stub gives the goal and the rules once. A packet repeats them only where the agent never saw them.
     show_goal: bool = False  # the first packet of a child skill, and `current` and `resume`
     show_rules: bool = False  # `current` and `resume`: a new session may not have read the stub
@@ -70,7 +71,18 @@ def render_agent_packet(packet: AgentPacket) -> str:
 
 def header(packet: AgentPacket) -> str:
     chain = " > ".join(packet.chain)
-    return f"## pskill · {chain} · {packet.block_id} (visit {packet.visit})\nRun {packet.run_id} · {packet.mode}"
+    lines = [f"## pskill · {chain} · {packet.block_id} (visit {packet.visit})", f"Run {packet.run_id} · {packet.mode}"]
+    if packet.in_worktree:
+        lines.append(worktree_line(packet.work_folder))
+    return "\n".join(lines)
+
+
+def worktree_line(work_folder: str) -> str:
+    """The commands of a worktree run stay relative (the permission rule matches only that form): name the folder."""
+    return (
+        f"This run works in the folder `{work_folder}`. "
+        "Run every command and make every file change of this run in that folder."
+    )
 
 
 def decision_section(packet: AgentPacket) -> str:
@@ -118,11 +130,12 @@ def answer_file_line(packet: AgentPacket, task_index: int | None) -> str:
     """The `--file` form of the submit command, for a long answer (SPEC.md section 7.3).
 
     A long heredoc fails in Claude Code's Bash tool on Windows. Each task gets its own file, so parallel
-    subagents never write the same one.
+    subagents never write the same one. A worktree run's path is absolute, and may hold a space: it is quoted.
     """
     task_suffix = f"-task-{task_index}" if task_index is not None else ""
     path = f"{packet.answers_folder}/{packet.block_id}{task_suffix}.yaml"
-    command = f"{plain_submit_command(packet, task_index)} --file {path}"
+    file_argument = f'"{path}"' if packet.in_worktree else path
+    command = f"{plain_submit_command(packet, task_index)} --file {file_argument}"
     return f"For an answer over about 5 KB, write it to the file `{path}` instead, then run: `{command}`"
 
 
@@ -250,14 +263,32 @@ def field_comment(spec: FieldSpec) -> str:
     return f"  # {presence}, {kind}{description}"
 
 
-def render_final_packet(run_id: str, skill_id: str, status: str, report: str | None, outputs: dict[str, Any]) -> str:
+def render_final_packet(
+    run_id: str, skill_id: str, status: str, report: str | None, outputs: dict[str, Any], worktree: str | None = None
+) -> str:
+    """The final packet. A worktree run names its worktree."""
     lines = [f"## pskill · {skill_id} · finished", f"Run {run_id} finished with status {status}.", ""]
     if report:
         lines += ["### Report to the user", report.strip(), ""]
     if outputs:
         lines += ["### Outputs", *(f"{name}: {value}" for name, value in outputs.items()), ""]
+    if worktree:
+        lines.append(worktree_removal_line(worktree))
     lines.append("The run is finished. No more pskill commands are needed.")
     return "\n".join(lines) + "\n"
+
+
+def worktree_removal_line(worktree: str) -> str:
+    """The line of an ended worktree run: the runner never removes the worktree, since the run lives there.
+
+    The worktree is detached, so a commit made there on no branch is lost with it. On Windows a folder that is the
+    shell's working folder cannot be removed: the agent removes it from the checkout.
+    """
+    return (
+        f"The run worked in the worktree `{worktree}`. Before you remove it, push every commit that you want to "
+        "keep: a commit on no branch is lost with the worktree. Then, from the checkout and not from inside the "
+        f'worktree, run: `git worktree remove "{worktree}"`.'
+    )
 
 
 @dataclass(frozen=True)
@@ -277,12 +308,16 @@ def render_pause_packet(
     runner_command: str,
     pause_steps: Sequence[PauseSteps] = (),
     steps_shown_before: bool = False,
+    work_folder: str | None = None,
 ) -> str:
     """The pause packet. The pause steps of each skill on the call stack sit between the error and the commands.
 
     With `steps_shown_before`, an earlier packet of this pause gave them: this one names them, so they run once.
+    A worktree run gives its `work_folder`.
     """
     lines = [f"## pskill · {skill_id} · paused", f"Run {run_id} is paused at block {block_id} ({reason})."]
+    if work_folder:
+        lines.append(worktree_line(work_folder))
     if error:
         lines += ["", "### Error", error.strip()]
     for steps in pause_steps:

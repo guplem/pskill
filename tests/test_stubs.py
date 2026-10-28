@@ -30,6 +30,17 @@ def test_a_stub_has_the_frontmatter_and_the_start_command(tmp_path: Path) -> Non
     assert "--mode autonomous" in stub
 
 
+def test_a_stub_turns_a_worktree_request_into_the_start_option(tmp_path: Path) -> None:
+    skill = load_skill(make_project(tmp_path).skills_folder / "plan-work")
+
+    stub = render_stub(skill)
+
+    assert (
+        "   Add `--mode autonomous` only when the user asked for no questions.\n"
+        "   If the request carries `--worktree`, leave it out of the inputs and add `--worktree` to `start`.\n"
+    ) in stub
+
+
 TOPIC_INPUT = '  topic: {type: string, description: "What to plan."}\n'
 OPTIONAL_INPUTS_SKILL = PLAN_SKILL.replace(
     TOPIC_INPUT,
@@ -266,3 +277,10 @@ def test_deleting_a_manual_skill_removes_its_whole_stub_folder(tmp_path: Path) -
     sync_stubs(project, load_catalog(project.skills_folder, project.agents_folder), check_only=False)
 
     assert not (tmp_path / ".agents/skills/plan-work").exists()
+
+
+def test_the_pskill_stub_says_where_a_worktree_run_lives() -> None:
+    assert (
+        "A worktree run (`start --worktree`) lives in its own worktree folder, which `runs` names: "
+        "run the other commands from that folder." in render_pskill_stub()
+    )

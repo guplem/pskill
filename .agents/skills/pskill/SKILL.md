@@ -11,3 +11,5 @@ Commands of the pskill runner:
 - Pause a run: `uv run .pskill/pskill.py pause <run-id>`
 - Stop a run for good: `uv run .pskill/pskill.py cancel <run-id>`
 - Open the run viewer: `uv run .pskill/pskill.py view`
+
+A worktree run (`start --worktree`) lives in its own worktree folder, which `runs` names: run the other commands from that folder.

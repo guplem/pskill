@@ -32,6 +32,7 @@ from pskill_runner.packets import (
     render_pause_packet,
     task_prompt_text,
     visit_cap_instruction,
+    worktree_removal_line,
 )
 from pskill_runner.project import Project
 from pskill_runner.run_records import (
@@ -115,21 +116,18 @@ def start_run(
     allow_internal: bool = False,
     session_id: str | None = None,
     llm: str | None = None,
+    run_id: str | None = None,
+    worktree: Path | None = None,
 ) -> tuple[str, str]:
     """Create a run and return its id and its first packet.
 
     `runs_folder` and `allow_internal` let `pskill test` use a temp folder and replay an internal skill.
+    `run_id` lets the caller pick the id first: `start` names a worktree run's worktree after it. `worktree` is
+    that worktree.
     """
-    catalog = load_catalog(project.skills_folder, project.agents_folder)
-    skill = load_valid_skill(project, skill_id, catalog)
-    if skill.invocation == "internal" and not allow_internal:
-        raise RunError(
-            f"{skill_id!r} is an internal skill: only a call block of another skill starts it. "
-            "Start the skill that calls it."
-        )
-    inputs = checked_inputs(skill, raw_inputs)
+    skill, catalog, inputs = startable_skill(project, skill_id, raw_inputs, allow_internal)
     now = utc_now()
-    run_id = new_run_id(now)
+    run_id = run_id or new_run_id(now)
     folder = (runs_folder or project.runs_folder) / run_id
     folder.mkdir(parents=True)
     copy_run_snapshot(project, folder, skill, catalog)
@@ -144,6 +142,7 @@ def start_run(
         runner_version=pskill_runner.__version__,
         harness=adapter_for(harness).name,
         llm=llm,
+        worktree=worktree.as_posix() if worktree else None,
         session_id=session_id,
         mode=mode,
         inputs=inputs,
@@ -179,6 +178,20 @@ def start_run(
     text = run.guarded(lambda: run.enter_skill(skill))
     run.save()
     return run_id, text
+
+
+def startable_skill(
+    project: Project, skill_id: str, raw_inputs: dict[str, Any], allow_internal: bool = False
+) -> tuple[Skill, SkillCatalog, dict[str, Any]]:
+    """The skill, its catalog, and the checked inputs of a new run. Raise RunError when the run cannot start."""
+    catalog = load_catalog(project.skills_folder, project.agents_folder)
+    skill = load_valid_skill(project, skill_id, catalog)
+    if skill.invocation == "internal" and not allow_internal:
+        raise RunError(
+            f"{skill_id!r} is an internal skill: only a call block of another skill starts it. "
+            "Start the skill that calls it."
+        )
+    return skill, catalog, checked_inputs(skill, raw_inputs)
 
 
 def current_packet(
@@ -271,7 +284,9 @@ def cancel_run(project: Project, run_id: str) -> str:
         run.require_status(UNFINISHED_STATUSES, "cancel")
         run.end_run("cancelled", outputs={}, report=None)
         run.save()
-    return f"Run {run_id} is cancelled. No more pskill commands are needed.\n"
+    worktree = run.info.get("worktree")
+    removal = f"{worktree_removal_line(worktree)}\n" if worktree else ""
+    return f"Run {run_id} is cancelled. No more pskill commands are needed.\n{removal}"
 
 
 def delete_run(project: Project, run_id: str) -> str:
@@ -283,11 +298,13 @@ def delete_run(project: Project, run_id: str) -> str:
     if folder.resolve().parent != project.runs_folder.resolve():
         raise RunError(f"There is no run {run_id!r}. List the runs with `pskill runs`.")
     with run_lock(folder):
-        status = read_run_info(project, run_id)["status"]
-        if status in UNFINISHED_STATUSES:
-            raise RunError(f"Run {run_id} is {status}, so it cannot be deleted. Cancel it first.")
+        info = read_run_info(project, run_id)
+        if info["status"] in UNFINISHED_STATUSES:
+            raise RunError(f"Run {run_id} is {info['status']}, so it cannot be deleted. Cancel it first.")
     shutil.rmtree(folder)
-    return f"Run {run_id} is deleted.\n"
+    worktree = info.get("worktree")
+    removal = f"{worktree_removal_line(worktree)}\n" if worktree else ""
+    return f"Run {run_id} is deleted.\n{removal}"
 
 
 def register_stop_attempt(project: Project, run_id: str) -> bool:
@@ -805,7 +822,9 @@ class Run:
             return None
         report = self.rendered(skill.instruction_text(block.report), "The report") if block.report else None
         self.end_run(block.status, outputs, report)
-        return render_final_packet(self.info["run_id"], skill.id, block.status, report, outputs)
+        return render_final_packet(
+            self.info["run_id"], skill.id, block.status, report, outputs, self.info.get("worktree")
+        )
 
     def end_run(self, status: str, outputs: dict[str, Any], report: str | None) -> None:
         self.info["status"] = status
@@ -1076,17 +1095,20 @@ class Run:
             subagent_wording=self.adapter.subagent_wording,
             work_folder=self.project.root.as_posix(),
             can_wait=self.adapter.wakes_after_background_command,
+            in_worktree=bool(self.info.get("worktree")),
         )
 
     def answers_folder(self) -> str:
         """Create the run's folder for answer files, and return it as the agent writes it.
 
-        Relative to the project root, except for `pskill test`, whose runs live in a temp folder.
+        Relative to the project root, except for `pskill test`, whose runs live in a temp folder, and for a
+        worktree run, whose agent writes files with tools that start from the checkout.
         """
         folder = self.folder / "answers"
         folder.mkdir(exist_ok=True)
-        shown = folder.relative_to(self.project.root) if folder.is_relative_to(self.project.root) else folder
-        return shown.as_posix()
+        if self.info.get("worktree") or not folder.is_relative_to(self.project.root):
+            return folder.as_posix()
+        return folder.relative_to(self.project.root).as_posix()
 
     def return_fields(self, block: AgentBlock) -> FieldMap:
         if isinstance(block, DecisionBlock):
@@ -1100,7 +1122,12 @@ class Run:
         if status == "paused":
             return self.pause_text()
         return render_final_packet(
-            self.info["run_id"], self.info["skill_id"], status, self.info["final_report"], self.info["outputs"] or {}
+            self.info["run_id"],
+            self.info["skill_id"],
+            status,
+            self.info["final_report"],
+            self.info["outputs"] or {},
+            self.info.get("worktree"),
         )
 
     # --- pause and resume ----------------------------------------------------------------------
@@ -1127,6 +1154,7 @@ class Run:
             runner_command(self.project),
             [] if shown_before else steps,
             steps_shown_before=shown_before,
+            work_folder=self.project.root.as_posix() if self.info.get("worktree") else None,
         )
 
     def pause_steps_not_shown(self) -> None:

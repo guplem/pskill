@@ -21,6 +21,7 @@ from pskill_runner.release import build_release_archive, release_file_map
 from pskill_runner.run_store import utc_now
 from pskill_runner.run_waits import start_wait
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.test_worktrees import REMOVED_NOTE, UNCOMMITTED_NOTE, make_checkout
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
@@ -435,6 +436,161 @@ def test_pause_resume_and_cancel_change_the_status_of_a_run(
     assert run_cli(monkeypatch, "delete", run_id) == cli.EXIT_OK
     assert "deleted" in capsys.readouterr().out
     assert not (project.runs_folder / run_id).exists()
+
+
+# --- worktree runs --------------------------------------------------------------------------------
+
+
+def test_start_with_worktree_runs_in_a_new_worktree_and_uploads_the_run_from_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    uploaded_from: list[Path] = []
+    monkeypatch.setattr(galtea, "upload_run", lambda project, run_id: uploaded_from.append(project.root))
+
+    assert run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x", "--worktree") == cli.EXIT_OK
+
+    packet = capsys.readouterr().out
+    run_id = run_id_of(packet)
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
+    assert f"This run works in the folder `{tree.as_posix()}`." in packet
+    assert read_run_info(find_project(tree), run_id)["worktree"] == tree.as_posix()
+    assert not (tmp_path / ".pskill" / "runs" / run_id).exists()
+    assert uploaded_from == [tree]
+
+
+def test_start_with_worktree_puts_the_note_on_uncommitted_skill_changes_above_the_first_packet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_checkout(tmp_path)
+    (project.skills_folder / "plan-work" / "skill.yaml").write_text(PLAN_SKILL + "# edited\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x", "--worktree") == cli.EXIT_OK
+
+    assert capsys.readouterr().out.startswith(f"{UNCOMMITTED_NOTE}\n\n## pskill · plan-work · create_plan (visit 1)\n")
+
+
+def test_start_with_a_failing_worktree_setup_starts_no_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    setup = [sys.executable, "-c", "import sys; sys.exit(4)"]
+    (tmp_path / ".pskill" / "config.yaml").write_text(f"worktree_setup: {json.dumps(setup)}\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x", "--worktree") == cli.EXIT_USAGE_ERROR
+
+    error = capsys.readouterr().err
+    assert "failed with exit code 4" in error
+    assert REMOVED_NOTE in error
+    assert [folder for folder in (tmp_path / ".pskill" / "worktrees").iterdir() if folder.is_dir()] == []
+    assert list(tmp_path.rglob("run.json")) == []
+
+
+def test_start_with_worktree_and_an_unknown_harness_makes_no_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x", "--worktree", "--harness", "bogus")
+
+    assert exit_code == cli.EXIT_USAGE_ERROR
+    assert "unknown harness 'bogus'" in capsys.readouterr().err
+    assert not (tmp_path / ".pskill" / "worktrees").exists()
+
+
+def test_the_environment_variable_turns_the_worktree_mode_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PSKILL_RUN_IN_WORKTREE", "True")
+
+    run_id = start_plan(monkeypatch, capsys)
+
+    assert (
+        tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}" / ".pskill" / "runs" / run_id / "run.json"
+    ).is_file()
+
+
+@pytest.mark.parametrize(
+    ("command", "options"),
+    [
+        ("current", []),
+        ("task", ["0"]),
+        ("submit", []),
+        ("pause", []),
+        ("resume", []),
+        ("cancel", []),
+        ("delete", []),
+        ("wait", ["--reason", "the CI checks"]),
+    ],
+)
+def test_a_run_command_from_the_checkout_names_the_worktree_that_holds_the_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    options: list[str],
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    run_id = start_plan(monkeypatch, capsys, "--worktree")
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
+
+    assert run_cli(monkeypatch, command, run_id, *options, stdin="status: finished\n") == cli.EXIT_USAGE_ERROR
+
+    assert (
+        f"pskill: Run {run_id} lives in `{tree.as_posix()}`: run this command from that folder."
+        in capsys.readouterr().err
+    )
+
+
+def test_a_run_command_from_the_worktree_finds_its_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    run_id = start_plan(monkeypatch, capsys, "--worktree")
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
+
+    monkeypatch.chdir(tree)
+    assert run_cli(monkeypatch, "current", run_id) == cli.EXIT_OK
+    assert f"Run {run_id} · interactive" in capsys.readouterr().out
+
+
+def test_runs_in_the_checkout_lists_the_worktree_runs_with_their_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    tree_run = start_plan(monkeypatch, capsys, "--worktree")
+    checkout_run = start_plan(monkeypatch, capsys)
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{tree_run}"
+
+    run_cli(monkeypatch, "runs", "--open")
+
+    lines = capsys.readouterr().out.splitlines()
+    [tree_row] = [line for line in lines if line.startswith(tree_run)]
+    [checkout_row] = [line for line in lines if line.startswith(checkout_run)]
+    assert tree_row.endswith(f"  in `{tree.as_posix()}`")
+    assert " in `" not in checkout_row
+
+
+def test_current_with_no_run_id_in_the_checkout_names_the_worktree_of_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    run_id = start_plan(monkeypatch, capsys, "--worktree")
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
+
+    assert run_cli(monkeypatch, "current") == cli.EXIT_USAGE_ERROR
+
+    assert f"Run {run_id} lives in `{tree.as_posix()}`: run this command from that folder." in capsys.readouterr().err
 
 
 # --- wait -----------------------------------------------------------------------------------------
@@ -882,6 +1038,24 @@ def test_the_claude_stop_hook_blocks_the_session_that_owns_an_open_run(
     assert other_output == ""
     assert f"pskill run {run_id} has an open block" in owner_output
     assert '"hookEventName": "Stop"' in owner_output
+
+
+def test_the_claude_stop_hook_in_the_checkout_blocks_the_session_that_owns_a_worktree_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "session-a")
+    run_id = start_plan(monkeypatch, capsys, "--worktree")
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
+
+    exit_code = run_cli(monkeypatch, "hook", "stop", "--harness", "claude-code", stdin='{"session_id": "session-a"}')
+
+    assert exit_code == cli.EXIT_OK
+    assert f"pskill run {run_id} has an open block. It works in the folder `{tree.as_posix()}`: run" in (
+        capsys.readouterr().out
+    )
 
 
 def test_a_shared_stop_hook_detects_codex_and_answers_with_a_block_decision(

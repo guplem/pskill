@@ -10,8 +10,8 @@ const FINISHED = new Set(["succeeded", "failed", "cancelled"]);
 const SYNC_MS = 1000; // the shortest time between two copies of the same project
 const SCAN_DEPTH = 3; // how deep a scan looks for projects in a folder that is not a git checkout
 const SKIPPED_FOLDERS = new Set(["node_modules", "__pycache__", "venv", "dist", "build", "target"]);
-// Where worktrees live inside a checkout: Claude Code's own place, and two common ones.
-const WORKTREE_HOMES = [[".claude", "worktrees"], [".worktrees"], ["worktrees"]];
+// Where worktrees live inside a checkout: Claude Code's own place, pskill's (start --worktree), and two common ones.
+const WORKTREE_HOMES = [[".claude", "worktrees"], [".pskill", "worktrees"], [".worktrees"], ["worktrees"]];
 
 // Python, run once after the start: it reads each project from its copy at `root`.
 const GLUE = `

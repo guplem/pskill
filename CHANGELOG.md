@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.42.0 (2026-10-28)
+
+A run can work in its own git worktree, so it never switches the branch of the checkout that other agent sessions share (#166).
+
+- **`pskill start --worktree`:** the run starts in a new worktree detached at HEAD, in `.pskill/worktrees/<skill>-<run>` (the `worktree_folder` setting). `PSKILL_RUN_IN_WORKTREE=true` (or `1`) turns it on for every run. A project already in a linked worktree uses it.
+- **The worktree:** no git hook runs when it is made, and the worktree folder ignores itself (the runner writes its `.gitignore` when it is missing). `worktree_setup` (for example `[npm, ci]`) prepares it in the project folder. A start that fails removes its worktree, and no run starts.
+- **The run lives in the worktree:** run folder, script blocks, and Galtea upload (`start` copies `.pskill/galtea.env` into it). Packets name the folder for every command and file change. The final packet, `cancel`, and `delete` say how to remove it safely: push the commits first, and remove it from the checkout.
+- **The Stop hook:** the checkout's Stop hook holds the session that started a worktree run, as for any run, and names the worktree's folder. The `pskill` stub says where a worktree run lives.
+- **Another worktree's run:** from the checkout, `runs` lists it with its folder, and a command that takes a run id, or `current` with none, names the worktree that holds it.
+- **Stubs:** a request with `--worktree` adds the option to `start`. Run `sync`.
+- **Hosted viewer:** it finds the worktrees in the default `.pskill/worktrees/` too.
+
 ## 0.41.0 (2026-10-22)
 
 An answer with a colon in its free text passes on the first submit, and a subagent that goes on in the background no longer pauses the run (#164).
