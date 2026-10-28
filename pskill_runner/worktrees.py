@@ -141,6 +141,31 @@ def check_run_is_here(project: Project, run_id: str) -> None:
             raise RunError(f"Run {run_id} lives in `{root.as_posix()}`: run this command from that folder.")
 
 
+def worktree_projects(project: Project) -> list[Project]:
+    """The projects in the worktrees of `project.config.worktree_folder`, for the Stop hook of the checkout.
+
+    Git runs only when that folder exists, so a project with no worktree run pays nothing. A worktree whose
+    project does not load (a broken config.yaml) is left out: it must not break the hook.
+    """
+    folder = project.root / project.config.worktree_folder
+    if not folder.is_dir():
+        return []
+    try:
+        prefix = git(project.root, "rev-parse", "--show-prefix")
+    except RunError:
+        return []
+    projects: list[Project] = []
+    for tree in sorted(folder.iterdir()):
+        root = tree / prefix
+        if not (root / PSKILL_FOLDER_NAME).is_dir():  # the folder's .gitignore, or a worktree being made
+            continue
+        try:
+            projects.append(find_project(root))
+        except ProjectError:
+            continue
+    return projects
+
+
 def git(folder: Path, *arguments: str) -> str:
     """Run one git command in `folder` and return its output, or raise RunError with git's message."""
     shown = " ".join(["git", *arguments])

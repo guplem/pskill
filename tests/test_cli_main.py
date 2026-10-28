@@ -498,7 +498,9 @@ def test_the_environment_variable_turns_the_worktree_mode_on(
 
     run_id = start_plan(monkeypatch, capsys)
 
-    assert (tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}" / ".pskill" / "runs" / run_id / "run.json").is_file()
+    assert (
+        tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}" / ".pskill" / "runs" / run_id / "run.json"
+    ).is_file()
 
 
 @pytest.mark.parametrize(
@@ -992,6 +994,24 @@ def test_the_claude_stop_hook_blocks_the_session_that_owns_an_open_run(
     assert other_output == ""
     assert f"pskill run {run_id} has an open block" in owner_output
     assert '"hookEventName": "Stop"' in owner_output
+
+
+def test_the_claude_stop_hook_in_the_checkout_blocks_the_session_that_owns_a_worktree_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "session-a")
+    run_id = start_plan(monkeypatch, capsys, "--worktree")
+    tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
+
+    exit_code = run_cli(monkeypatch, "hook", "stop", "--harness", "claude-code", stdin='{"session_id": "session-a"}')
+
+    assert exit_code == cli.EXIT_OK
+    assert f"pskill run {run_id} has an open block. It works in the folder `{tree.as_posix()}`." in (
+        capsys.readouterr().out
+    )
 
 
 def test_a_shared_stop_hook_detects_codex_and_answers_with_a_block_decision(

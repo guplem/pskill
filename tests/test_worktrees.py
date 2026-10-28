@@ -12,7 +12,7 @@ from pskill_runner import worktrees
 from pskill_runner.engine import RunError, start_run
 from pskill_runner.project import Config, Project, find_project
 from pskill_runner.run_store import new_run_id, utc_now
-from pskill_runner.worktrees import check_run_is_here, run_worktree, worktree_mode
+from pskill_runner.worktrees import check_run_is_here, run_worktree, worktree_mode, worktree_projects
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 GIT_IDENTITY = ("-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false")
@@ -428,3 +428,27 @@ def test_outside_git_the_check_passes(tmp_path: Path) -> None:
     write_project(tmp_path)
 
     check_run_is_here(find_project(tmp_path), "r-20260101-0000-dead")
+
+
+# --- worktree_projects -----------------------------------------------------------------------------
+
+
+def test_the_projects_of_the_worktrees_are_found_in_the_worktree_folder(tmp_path: Path) -> None:
+    project = make_checkout(tmp_path, project_folder="app")
+    _, first_root = start_in_tree(project)
+    _, second_root = start_in_tree(project)
+
+    roots = sorted(tree_project.root for tree_project in worktree_projects(project))
+
+    assert roots == sorted([first_root, second_root])
+
+
+def test_a_project_with_no_worktree_folder_has_no_worktree_projects(tmp_path: Path) -> None:
+    assert worktree_projects(make_checkout(tmp_path)) == []
+
+
+def test_outside_git_a_worktree_folder_gives_no_projects(tmp_path: Path) -> None:
+    write_project(tmp_path)
+    (tmp_path / ".pskill" / "worktrees" / "plan-work-r-1" / ".pskill").mkdir(parents=True)
+
+    assert worktree_projects(find_project(tmp_path)) == []

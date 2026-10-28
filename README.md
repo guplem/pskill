@@ -149,14 +149,14 @@ Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`
 - **One session per folder, in apps other than Claude Code and Codex.** There, two sessions in the same folder share the hooks.
 - **`wait` needs an app that wakes the agent** when a background command ends. Claude Code does: with no time limit on your computer, and up to 30 minutes by default in a cloud session. Codex does not say that it does, so there the hook ignores waits and works as before: 3 refused stops, then a pause.
 - **A skill's pause steps need a live agent.** A skill can name steps for a pause (`on_pause`), such as a comment on the issue. Every pause gives them to the agent, also when the hook gives up after 3 refused stops: the hook holds the agent once more to do them. When the session dies, nobody does them. Write them so that running them twice does no harm.
-- **A worktree run keeps your checkout's branch.** With `start --worktree`, or `PSKILL_RUN_IN_WORKTREE=true` for every run, the run works in a new git worktree in `.worktrees/` (the `worktree_folder` setting), started at your last commit. `worktree_setup` in `.pskill/config.yaml` prepares it, for example `[npm, ci]`. The agent runs every command and makes every file change of the run in that worktree. `runs`, `view`, and the Stop hook see the run only from its worktree. A key in `.pskill/galtea.env` does not reach the worktree: use the `GALTEA_API_KEY` environment variable. pskill never removes the worktree, because the run's record lives there: at the end, run `git worktree remove "<path>"`.
+- **A worktree run keeps your checkout's branch.** With `start --worktree`, or `PSKILL_RUN_IN_WORKTREE=true` for every run, the run works in a new git worktree in `.pskill/worktrees/` (the `worktree_folder` setting), started at your last commit. `worktree_setup` in `.pskill/config.yaml` prepares it, for example `[npm, ci]`. The agent runs every command and makes every file change of the run in that worktree. The Stop hook keeps the session that started the run working on it, as for any run. `runs` and `view` list the run only from its worktree. A key in `.pskill/galtea.env` does not reach the worktree: use the `GALTEA_API_KEY` environment variable. pskill never removes the worktree, because the run's record lives there: at the end, run `git worktree remove "<path>"`.
 - **pskill trusts the agent** when it says that you answered a question.
 - **The steps are plain files.** The agent could read the later steps. This is not a security barrier.
 
 ## Problems
 
 - **The skill does not start:** run `uv run .pskill/pskill.py sync`, then open a new session.
-- **You lost a run:** run `runs --open`, then `current <run>`. A worktree run is listed only from its own folder in `.worktrees/`.
+- **You lost a run:** run `runs --open`, then `current <run>`. A worktree run is listed only from its own folder in `.pskill/worktrees/`.
 - **A run is paused:** the message says why. Fix the cause, then run `resume <run>`.
 - **`update` refuses to run:** someone edited a runner file by hand. Undo it, or run `update --force`.
 

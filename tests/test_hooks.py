@@ -7,11 +7,13 @@ from pathlib import Path
 from pskill_runner.engine import current_packet, pause_run, read_run_info, run_folder, start_run, submit_answer
 from pskill_runner.hooks import session_start_text, stop_hook_reason
 from pskill_runner.project import Project, find_project
-from pskill_runner.run_store import read_events, utc_now
+from pskill_runner.run_store import new_run_id, read_events, utc_now
 from pskill_runner.run_waits import start_wait
 from pskill_runner.skill_loader import load_catalog
 from pskill_runner.stubs import sync_stubs
+from pskill_runner.worktrees import run_worktree
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.test_worktrees import make_checkout
 
 
 def make_project(tmp_path: Path) -> Project:
@@ -300,3 +302,91 @@ def test_a_give_up_pause_without_pause_steps_still_allows_the_stop(tmp_path: Pat
     reasons = [stop_hook_reason(project, "claude-code") for _ in range(4)]
 
     assert reasons[3] is None
+
+
+# --- worktree runs (SPEC.md 7.8) -----------------------------------------------------------------
+
+
+def start_in_worktree(checkout: Project, session_id: str | None) -> tuple[str, Project]:
+    """A `start --worktree` run of plan-work: its id and the project in its worktree."""
+    run_id = new_run_id(utc_now())
+    tree_project, tree, _ = run_worktree(checkout, "plan-work", {"topic": "x"}, run_id)
+    start_run(
+        tree_project,
+        "plan-work",
+        {"topic": "x"},
+        mode="interactive",
+        harness="claude-code",
+        session_id=session_id,
+        run_id=run_id,
+        worktree=tree,
+    )
+    return run_id, tree_project
+
+
+def test_a_worktree_run_holds_the_stop_of_its_session_in_the_checkout(tmp_path: Path) -> None:
+    checkout = make_checkout(tmp_path, project_folder="app")
+    run_id, tree_project = start_in_worktree(checkout, session_id="session-a")
+
+    reason = stop_hook_reason(checkout, "claude-code", session_id="session-a")
+
+    assert reason is not None
+    assert f"pskill run {run_id} has an open block. It works in the folder `{tree_project.root.as_posix()}`" in reason
+    assert f"current {run_id}" in reason
+    assert read_run_info(tree_project, run_id)["stop_blocks"] == 1
+
+
+def test_a_worktree_run_pauses_after_three_blocks_in_a_row_like_any_run(tmp_path: Path) -> None:
+    checkout = make_checkout(tmp_path)
+    run_id, tree_project = start_in_worktree(checkout, session_id="session-a")
+
+    reasons = [stop_hook_reason(checkout, "claude-code", session_id="session-a") for _ in range(4)]
+
+    assert [reason is not None for reason in reasons] == [True, True, True, False]
+    assert read_run_info(tree_project, run_id)["pause_reason"] == "agent_stopped"
+
+
+def test_a_worktree_run_never_holds_another_session_of_the_checkout(tmp_path: Path) -> None:
+    checkout = make_checkout(tmp_path)
+    run_id, tree_project = start_in_worktree(checkout, session_id="session-a")
+
+    assert stop_hook_reason(checkout, "claude-code", session_id="session-b") is None
+    assert stop_hook_reason(checkout, "claude-code") is None  # no session id: no owner to match
+    assert read_run_info(tree_project, run_id)["stop_blocks"] == 0
+
+
+def test_a_worktree_run_with_no_owner_holds_no_session_of_the_checkout(tmp_path: Path) -> None:
+    checkout = make_checkout(tmp_path)
+    start_in_worktree(checkout, session_id=None)
+
+    assert stop_hook_reason(checkout, "claude-code", session_id="session-a") is None
+
+
+def test_the_stop_names_the_newest_held_run_of_the_checkout_and_its_worktrees(tmp_path: Path) -> None:
+    checkout = make_checkout(tmp_path)
+    tree_run, _ = start_in_worktree(checkout, session_id="session-a")
+    checkout_run = start(checkout, session_id="session-a")
+
+    reason = stop_hook_reason(checkout, "claude-code", session_id="session-a")
+
+    assert reason is not None
+    assert f"pskill run {checkout_run} has an open block. Continue it" in reason
+    assert tree_run not in reason
+
+
+def test_the_stop_hook_in_the_worktree_holds_its_run_as_a_plain_run(tmp_path: Path) -> None:
+    checkout = make_checkout(tmp_path)
+    run_id, tree_project = start_in_worktree(checkout, session_id="session-a")
+
+    reason = stop_hook_reason(tree_project, "claude-code", session_id="session-a")
+
+    assert reason is not None
+    assert f"pskill run {run_id} has an open block. Continue it" in reason
+
+
+def test_a_worktree_with_a_broken_config_does_not_break_the_stop_hook(tmp_path: Path) -> None:
+    checkout = make_checkout(tmp_path)
+    _, tree_project = start_in_worktree(checkout, session_id="session-a")
+    (tree_project.pskill_folder / "config.yaml").write_text("permissions: [nope]\n", encoding="utf-8")
+
+    assert stop_hook_reason(checkout, "claude-code", session_id="session-a") is None
