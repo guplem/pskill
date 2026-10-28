@@ -356,3 +356,63 @@ def test_a_parallel_packet_that_cannot_wait_says_nothing_about_waiting() -> None
     task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
 
     assert " wait " not in render_parallel_packet(PLAN_PACKET, [task], total_tasks=1)
+
+
+WORKTREE_LINE = (
+    "This run works in the folder `/work/trees/plan-work-r-1`. Run every command of this run from that folder."
+)
+
+
+def test_a_packet_of_a_worktree_run_names_its_folder_after_the_header() -> None:
+    packet = replace(PLAN_PACKET, work_folder="/work/trees/plan-work-r-1", in_worktree=True)
+
+    text = render_agent_packet(packet)
+
+    assert text.startswith(
+        f"## pskill · plan-work · create_plan (visit 2)\nRun r-20260927-1432-ab12 · interactive\n{WORKTREE_LINE}\n\n"
+    )
+    assert "uv run .pskill/pskill.py submit r-20260927-1432-ab12 <<'PSKILL'" in text  # commands stay relative
+
+
+def test_a_parallel_packet_of_a_worktree_run_names_its_folder_after_the_header() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
+    packet = replace(PLAN_PACKET, work_folder="/work/trees/plan-work-r-1", in_worktree=True)
+
+    text = render_parallel_packet(packet, [task], total_tasks=1)
+
+    assert f"Run r-20260927-1432-ab12 · interactive\n{WORKTREE_LINE}\n\n### Parallel tasks" in text
+
+
+def test_a_packet_of_a_run_in_the_checkout_names_no_folder_in_its_header() -> None:
+    text = render_agent_packet(replace(PLAN_PACKET, work_folder="/work/project"))
+
+    assert "This run works in the folder" not in text
+
+
+def test_the_pause_packet_of_a_worktree_run_names_its_folder_after_the_header() -> None:
+    text = render_pause_packet(
+        "r-1",
+        "plan-work",
+        "create_plan",
+        "paused_by_user",
+        None,
+        "uv run pskill.py",
+        work_folder="/work/trees/plan-work-r-1",
+    )
+
+    assert text.startswith(
+        f"## pskill · plan-work · paused\nRun r-1 is paused at block create_plan (paused_by_user).\n{WORKTREE_LINE}\n\n"
+    )
+    assert "- To try the block again: uv run pskill.py resume r-1\n" in text
+
+
+def test_the_final_packet_of_a_worktree_run_says_how_to_remove_the_worktree() -> None:
+    text = render_final_packet("r-1", "plan-work", "succeeded", None, {}, worktree="/work/trees/plan-work-r-1")
+
+    assert text == (
+        "## pskill · plan-work · finished\nRun r-1 finished with status succeeded.\n\n"
+        "The run worked in the worktree `/work/trees/plan-work-r-1`. Remove it when you no longer need it: "
+        "`git worktree remove /work/trees/plan-work-r-1`.\n"
+        "The run is finished. No more pskill commands are needed.\n"
+    )

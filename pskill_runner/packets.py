@@ -43,6 +43,7 @@ class AgentPacket:
     subagent_wording: str = ""  # how this harness spawns subagents, for parallel packets
     work_folder: str = ""  # the project root, where every subagent of a parallel block works
     can_wait: bool = False  # the harness wakes the agent after a background command, so `pskill wait` works
+    in_worktree: bool = False  # the run works in its own git worktree, so the header names the work folder
     # The stub gives the goal and the rules once. A packet repeats them only where the agent never saw them.
     show_goal: bool = False  # the first packet of a child skill, and `current` and `resume`
     show_rules: bool = False  # `current` and `resume`: a new session may not have read the stub
@@ -70,7 +71,15 @@ def render_agent_packet(packet: AgentPacket) -> str:
 
 def header(packet: AgentPacket) -> str:
     chain = " > ".join(packet.chain)
-    return f"## pskill · {chain} · {packet.block_id} (visit {packet.visit})\nRun {packet.run_id} · {packet.mode}"
+    lines = [f"## pskill · {chain} · {packet.block_id} (visit {packet.visit})", f"Run {packet.run_id} · {packet.mode}"]
+    if packet.in_worktree:
+        lines.append(worktree_line(packet.work_folder))
+    return "\n".join(lines)
+
+
+def worktree_line(work_folder: str) -> str:
+    """The commands of a worktree run stay relative (the permission rule matches only that form): name the folder."""
+    return f"This run works in the folder `{work_folder}`. Run every command of this run from that folder."
 
 
 def decision_section(packet: AgentPacket) -> str:
@@ -250,12 +259,20 @@ def field_comment(spec: FieldSpec) -> str:
     return f"  # {presence}, {kind}{description}"
 
 
-def render_final_packet(run_id: str, skill_id: str, status: str, report: str | None, outputs: dict[str, Any]) -> str:
+def render_final_packet(
+    run_id: str, skill_id: str, status: str, report: str | None, outputs: dict[str, Any], worktree: str | None = None
+) -> str:
+    """The final packet. A worktree run names its worktree: the runner never removes it, since the run lives there."""
     lines = [f"## pskill · {skill_id} · finished", f"Run {run_id} finished with status {status}.", ""]
     if report:
         lines += ["### Report to the user", report.strip(), ""]
     if outputs:
         lines += ["### Outputs", *(f"{name}: {value}" for name, value in outputs.items()), ""]
+    if worktree:
+        lines.append(
+            f"The run worked in the worktree `{worktree}`. Remove it when you no longer need it: "
+            f"`git worktree remove {worktree}`."
+        )
     lines.append("The run is finished. No more pskill commands are needed.")
     return "\n".join(lines) + "\n"
 
@@ -277,12 +294,16 @@ def render_pause_packet(
     runner_command: str,
     pause_steps: Sequence[PauseSteps] = (),
     steps_shown_before: bool = False,
+    work_folder: str | None = None,
 ) -> str:
     """The pause packet. The pause steps of each skill on the call stack sit between the error and the commands.
 
     With `steps_shown_before`, an earlier packet of this pause gave them: this one names them, so they run once.
+    A worktree run gives its `work_folder`.
     """
     lines = [f"## pskill · {skill_id} · paused", f"Run {run_id} is paused at block {block_id} ({reason})."]
+    if work_folder:
+        lines.append(worktree_line(work_folder))
     if error:
         lines += ["", "### Error", error.strip()]
     for steps in pause_steps:
