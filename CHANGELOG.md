@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.43.0 (2026-10-29)
+
+A run ends with a summary card: the same table for every skill, so the user sees at a glance that the run ended, how, and what is left.
+
+- **The card:** the final packet starts with one Markdown table: an icon for the status (✅ succeeded, ❌ failed, ⏹️ cancelled, ⏸️ paused) and the end block's id in capitals (`REVIEWED`, `CAPPED`), then the rows `Result` (the end's `description`), `Run` (id, mode, minutes), `Outputs`, and `Pending`. The packet asks the agent to show it word for word at the top of its message, and a subagent to put it at the top of its answer to the agent that started it. It replaces the `### Outputs` list; the `report` still follows.
+- **`pending` on `end` blocks:** inline text with `{{ }}`: what is left to do. `pending: ""` says that nothing is left. With no `pending`, the card says "⚠️ Not declared by the skill". `pskill validate` checks its `{{ }}`, the viewer shows it, and the Markdown export names it.
+- **Only the root skill:** a child skill's end returns to its caller and gives no card.
+- **Pause and cancel:** the pause packet gives a `PAUSED` card with the `resume` and `cancel` commands as `Pending`, and `cancel` gives a `CANCELLED` card. `current` of a finished run prints the same card again.
+- **`run.json`:** `end_block`, `end_description`, and `final_pending`. A run that ended before 0.43.0 gets a card from its status.
+- **Example skills:** every end of `implement-issue`, `review-pr`, `resolve-pr-feedback`, `fix-ci`, and `create-issue` has a `pending`.
+
 ## 0.42.0 (2026-10-28)
 
 A run can work in its own git worktree, so it never switches the branch of the checkout that other agent sessions share (#166).

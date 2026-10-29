@@ -2,15 +2,19 @@
 
 from dataclasses import replace
 
+import pytest
+
 from pskill_runner.field_types import parse_field_map
 from pskill_runner.packets import (
     AgentPacket,
     PauseSteps,
+    SummaryCard,
     TaskPrompt,
     render_agent_packet,
     render_final_packet,
     render_parallel_packet,
     render_pause_packet,
+    render_summary_card,
     task_prompt_text,
 )
 
@@ -144,13 +148,15 @@ def test_the_powershell_form_is_used_for_powershell() -> None:
     assert "'@ | uv run .pskill/pskill.py submit r-20260927-1432-ab12" in text
 
 
-def test_the_final_packet_reports_the_status_outputs_and_report() -> None:
-    text = render_final_packet("r-1", "plan-work", "succeeded", "Tell the user the plan is approved.", {"result": "ok"})
+def test_the_final_packet_gives_the_card_then_the_report() -> None:
+    text = render_final_packet(CARD, "Tell the user the findings.")
 
-    assert "Run r-1 finished with status succeeded." in text
-    assert "Tell the user the plan is approved." in text
-    assert "result: ok" in text
-    assert "The run is finished. No more pskill commands are needed." in text
+    assert text == (
+        "## pskill · review-pr · finished\nRun r-1 finished with status succeeded.\n\n"
+        + render_summary_card(CARD)
+        + "\n### Report to the user\nTell the user the findings.\n\n"
+        "The run is finished. No more pskill commands are needed.\n"
+    )
 
 
 def test_the_pause_packet_explains_the_reason_and_the_next_commands() -> None:
@@ -282,12 +288,15 @@ def test_a_task_prompt_without_an_agent_goes_from_the_folder_to_the_goal() -> No
     assert "Work in the folder `/work/project`.\n\nGoal: Produce a plan that the user approved." in text
 
 
-def test_the_final_packet_without_a_report_or_outputs_only_says_it_is_finished() -> None:
-    text = render_final_packet("r-1", "plan-work", "cancelled", None, {})
+def test_the_final_packet_without_a_report_gives_only_the_card() -> None:
+    card = replace(CARD, status="cancelled", label="STOPPED", outputs={})
+
+    text = render_final_packet(card, None)
 
     assert text == (
-        "## pskill · plan-work · finished\nRun r-1 finished with status cancelled.\n\n"
-        "The run is finished. No more pskill commands are needed.\n"
+        "## pskill · review-pr · finished\nRun r-1 finished with status cancelled.\n\n"
+        + render_summary_card(card)
+        + "\nThe run is finished. No more pskill commands are needed.\n"
     )
 
 
@@ -421,12 +430,109 @@ def test_the_pause_packet_of_a_worktree_run_names_its_folder_after_the_header() 
 
 
 def test_the_final_packet_of_a_worktree_run_says_how_to_remove_the_worktree() -> None:
-    text = render_final_packet("r-1", "plan-work", "succeeded", None, {}, worktree="/work/trees/plan-work-r-1")
+    text = render_final_packet(CARD, None, worktree="/work/trees/plan-work-r-1")
 
     assert text == (
-        "## pskill · plan-work · finished\nRun r-1 finished with status succeeded.\n\n"
-        "The run worked in the worktree `/work/trees/plan-work-r-1`. Before you remove it, push every commit that "
+        "## pskill · review-pr · finished\nRun r-1 finished with status succeeded.\n\n"
+        + render_summary_card(CARD)
+        + "\nThe run worked in the worktree `/work/trees/plan-work-r-1`. Before you remove it, push every commit that "
         "you want to keep: a commit on no branch is lost with the worktree. Then, from the checkout and not from "
         'inside the worktree, run: `git worktree remove "/work/trees/plan-work-r-1"`.\n'
         "The run is finished. No more pskill commands are needed.\n"
+    )
+
+
+CARD = SummaryCard(
+    run_id="r-1",
+    skill_id="review-pr",
+    status="succeeded",
+    label="REVIEWED",
+    result="The review is on the pull request",
+    mode="interactive",
+    duration_ms=18 * 60_000,
+    outputs={"result": "commented", "review_url": "https://github.com/o/r/pull/7#review-1"},
+    pending="The author answers 3 findings.",
+)
+
+
+def test_the_summary_card_is_one_table_with_fixed_rows() -> None:
+    assert render_summary_card(CARD) == (
+        "### Summary card\n"
+        "Put this card at the top of your next message to the user, word for word. If you are a subagent, put it "
+        "at the top of your answer to the agent that started you, word for word.\n\n"
+        "| ✅ REVIEWED | review-pr · succeeded |\n"
+        "|---|---|\n"
+        "| Result | The review is on the pull request |\n"
+        "| Run | `r-1` · interactive · 18 min |\n"
+        "| Outputs | result: commented · review_url: https://github.com/o/r/pull/7#review-1 |\n"
+        "| Pending | The author answers 3 findings. |\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "icon"), [("succeeded", "✅"), ("failed", "❌"), ("cancelled", "⏹️"), ("paused", "⏸️")]
+)
+def test_the_card_heads_with_the_icon_of_its_status(status: str, icon: str) -> None:
+    card = render_summary_card(replace(CARD, status=status))
+
+    assert f"| {icon} REVIEWED | review-pr · {status} |" in card
+
+
+def test_a_pending_that_the_skill_does_not_declare_says_so() -> None:
+    assert "| Pending | ⚠️ Not declared by the skill |" in render_summary_card(replace(CARD, pending=None))
+
+
+@pytest.mark.parametrize("pending", ["", "  \n "])
+def test_an_empty_pending_says_that_nothing_is_left(pending: str) -> None:
+    assert "| Pending | Nothing left to do |" in render_summary_card(replace(CARD, pending=pending))
+
+
+def test_a_card_with_no_outputs_says_none() -> None:
+    card = render_summary_card(replace(CARD, outputs={"note": "", "items": [], "missing": None}))
+
+    assert "| Outputs | None |" in card
+
+
+def test_card_outputs_are_one_line_each_value_in_plain_words() -> None:
+    outputs = {"done": True, "count": 3, "checks": ["lint", "test"], "pr": {"number": 7, "draft": False}}
+
+    card = render_summary_card(replace(CARD, outputs=outputs))
+
+    assert "| Outputs | done: true · count: 3 · checks: lint; test · pr: number: 7, draft: false |" in card
+
+
+def test_a_long_output_is_cut_and_the_pending_text_is_not() -> None:
+    card = render_summary_card(replace(CARD, outputs={"summary": "x" * 300}, pending="y" * 300))
+
+    assert f"| Outputs | summary: {'x' * 190}… |" in card
+    assert f"| Pending | {'y' * 300} |" in card
+
+
+def test_card_cells_keep_the_table_whole() -> None:
+    card = render_summary_card(replace(CARD, outputs={"text": "a | b\nc"}, pending="Fix:\n- lint | test"))
+
+    assert "| Outputs | text: a \\| b c |" in card
+    assert "| Pending | Fix: - lint \\| test |" in card
+
+
+@pytest.mark.parametrize(
+    ("duration_ms", "text"), [(20_000, "under 1 min"), (59 * 60_000, "59 min"), (125 * 60_000, "2 h 5 min")]
+)
+def test_the_run_row_gives_the_duration_in_minutes(duration_ms: int, text: str) -> None:
+    card = render_summary_card(replace(CARD, duration_ms=duration_ms, mode="autonomous"))
+
+    assert f"| Run | `r-1` · autonomous · {text} |" in card
+
+
+def test_the_pause_packet_gives_its_card_after_the_header() -> None:
+    card = replace(CARD, status="paused", label="PAUSED", outputs={})
+
+    text = render_pause_packet(
+        "r-1", "review-pr", "create_plan", "block_failed", "plan: required", "uv run pskill.py", card=card
+    )
+
+    assert text.startswith(
+        "## pskill · review-pr · paused\nRun r-1 is paused at block create_plan (block_failed).\n\n"
+        + render_summary_card(card)
+        + "\n### Error\nplan: required\n"
     )

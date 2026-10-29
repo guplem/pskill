@@ -163,6 +163,7 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
             "status": {"enum": ["succeeded", "failed", "cancelled"]},
             "outputs": {"type": "object"},
             "report": {"type": "string"},
+            "pending": {"type": "string"},
         },
     ),
 }

@@ -60,6 +60,7 @@ blocks:
     type: end
     description: Every check passed
     status: succeeded
+    pending: ""
     outputs:
       state: passed
       failed_checks: []
@@ -73,6 +74,7 @@ blocks:
     type: end
     description: Checks still fail, from the base branch or after the last try
     status: failed
+    pending: "Fix the CI checks of pull request #{{ inputs.pr }} that still fail: {{ steps.wait_ci.failed_checks | join('; ') }}."
     outputs:
       state: failed
       failed_checks: "{{ steps.wait_ci.failed_checks }}"

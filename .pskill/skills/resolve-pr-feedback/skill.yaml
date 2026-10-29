@@ -99,6 +99,7 @@ blocks:
     type: end
     description: Every item has a verdict
     status: succeeded
+    pending: ""
     outputs:
       decisions: "{{ history.finish_item | default([]) | map(attribute='json') | map(attribute='decision') | list }}"
       fixed: "{{ history.finish_item | default([]) | map(attribute='json') | map(attribute='decision') | selectattr('verdict', 'equalto', 'fixed') | list | length }}"
@@ -112,6 +113,9 @@ blocks:
     type: end
     description: The item cap left items with no verdict
     status: succeeded
+    pending: >-
+      Run the skill again for the {{ steps.collect_items.json.count - (history.finish_item | length) }} items of pull request
+      #{{ inputs.pr }} that have no verdict.
     outputs:
       decisions: "{{ history.finish_item | map(attribute='json') | map(attribute='decision') | list }}"
       fixed: "{{ history.finish_item | map(attribute='json') | map(attribute='decision') | selectattr('verdict', 'equalto', 'fixed') | list | length }}"

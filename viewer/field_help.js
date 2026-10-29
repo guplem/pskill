@@ -371,6 +371,21 @@ export const FIELD_HELP = {
       { caption: "From a file", code: "report: instructions/report_done.md" },
     ],
   },
+  pending: {
+    title: "pending",
+    short: "What is left to do when the run ends here: the Pending row of the summary card.",
+    details: [
+      "Optional, on `end` blocks. When the skill is the root of the run, the final packet gives a summary card (status, result, outputs, pending) that the agent shows the user word for word. A child skill gives no card.",
+      "Inline text, with `{{ }}` values filled in. An empty text (`pending: \"\"`) says that nothing is left to do. With no `pending`, the card says that the skill declares none.",
+    ],
+    examples: [
+      {
+        caption: "Something is left",
+        code: 'capped:\n  type: end\n  status: succeeded\n  pending: "A human reviews {{ steps.open_pr.json.pr_url }}."',
+      },
+      { caption: "Nothing is left", code: 'pending: ""' },
+    ],
+  },
   output: {
     title: "output",
     short: "The fields that the answer must hold. The runner refuses an answer that does not match.",
@@ -482,6 +497,7 @@ export const FACT_FIELDS = {
   timeout: "timeout_s",
   skill: "skill",
   status: "status",
+  pending: "pending",
   "visits at most": "max_visits",
   "at the cap": "ask_on_max_visits",
   "autonomous ceiling": "autonomous_max_visits",

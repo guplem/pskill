@@ -292,6 +292,13 @@ def end_body(skill: Skill, block: EndBlock) -> list[str]:
         lines.append("Its outputs:\n\n" + outputs)
     if block.report is not None:
         lines.append(f"Tell the user: {plain_text(prose(skill, block.report))}")
+    if block.pending is not None:
+        pending = plain_text(block.pending)
+        lines.append(
+            f"Then tell the user what is left to do: {pending}"
+            if pending
+            else "Then tell the user that nothing is left to do."
+        )
     return lines
 
 

@@ -613,3 +613,11 @@ def test_a_valid_x_galtea_has_no_problem(tmp_path: Path) -> None:
     problems = problems_for(tmp_path, PLAN_SKILL.replace("schema: pskill/v1\n", "schema: pskill/v1\n" + galtea_block))
 
     assert messages(problems, "error") == []
+
+
+def test_a_pending_text_gets_the_checks_of_a_report(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "outputs: {result: stopped}", 'outputs: {result: stopped}\n    pending: "Answer {{ steps.nowhere.question }}."'
+    )
+
+    assert "blocks.stopped: 'steps.nowhere' is not a block" in messages(problems_for(tmp_path, skill_yaml), "error")

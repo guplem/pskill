@@ -25,11 +25,13 @@ from pskill_runner.packets import (
     VISIT_CAP_ROUNDS,
     AgentPacket,
     PauseSteps,
+    SummaryCard,
     TaskPrompt,
     render_agent_packet,
     render_final_packet,
     render_parallel_packet,
     render_pause_packet,
+    render_summary_card,
     task_prompt_text,
     visit_cap_instruction,
     worktree_removal_line,
@@ -87,6 +89,7 @@ ENTRY_SCRIPT_NAME = "pskill.py"
 INLINE_BLOCK_LIMIT = 1000
 TASK_NAME_LIMIT = 60  # characters: a task name is a short label
 OUTPUT_LIMIT_CHARACTERS = 64 * 1024  # characters: the most of a text output or a stderr that a run keeps
+CANCELLED_DESCRIPTION = "The run was cancelled with `pskill cancel`."
 
 
 class RunError(Exception):
@@ -163,6 +166,9 @@ def start_run(
         ended_at=None,
         outputs=None,
         final_report=None,
+        end_block=None,
+        end_description=None,
+        final_pending=None,
     )
     state = RunState(frames=[new_frame(skill.id, inputs, started_at=timestamp(now))])
     run = Run(project, folder, info, state, executor)
@@ -282,11 +288,12 @@ def cancel_run(project: Project, run_id: str) -> str:
     with run_lock(run_folder(project, run_id)):
         run = Run.load(project, run_id)
         run.require_status(UNFINISHED_STATUSES, "cancel")
-        run.end_run("cancelled", outputs={}, report=None)
+        run.end_run("cancelled", outputs={}, report=None, description=CANCELLED_DESCRIPTION, pending="")
         run.save()
     worktree = run.info.get("worktree")
-    removal = f"{worktree_removal_line(worktree)}\n" if worktree else ""
-    return f"Run {run_id} is cancelled. No more pskill commands are needed.\n{removal}"
+    removal = f"\n{worktree_removal_line(worktree)}\n" if worktree else ""
+    card = render_summary_card(run.summary_card())
+    return f"Run {run_id} is cancelled. No more pskill commands are needed.\n\n{card}{removal}"
 
 
 def delete_run(project: Project, run_id: str) -> str:
@@ -533,6 +540,12 @@ def task_not_recorded(task: int, errors: list[str]) -> str:
     """The reply to a task answer that fails its checks: the subagent fixes it and submits again."""
     listed = "\n".join(f"- {error}" for error in errors)
     return f"Task {task} is not recorded. Fix these problems and submit again:\n{listed}\n"
+
+
+def run_duration_ms(info: RunInfo) -> int:
+    """From the start of the run to its end, or to now while it is unfinished."""
+    end = parse_timestamp(info["ended_at"]) if info["ended_at"] else utc_now()
+    return int((end - parse_timestamp(info["created_at"])).total_seconds() * 1000)
 
 
 def elapsed_ms_since(timestamp_text: str | None) -> int:
@@ -821,15 +834,26 @@ class Run:
             self.return_to_caller(block.status, outputs)
             return None
         report = self.rendered(skill.instruction_text(block.report), "The report") if block.report else None
-        self.end_run(block.status, outputs, report)
-        return render_final_packet(
-            self.info["run_id"], skill.id, block.status, report, outputs, self.info.get("worktree")
-        )
+        pending = None if block.pending is None else self.rendered(block.pending, "The pending text")
+        self.end_run(block.status, outputs, report, end_block=block.id, description=block.description, pending=pending)
+        return render_final_packet(self.summary_card(), report, self.info.get("worktree"))
 
-    def end_run(self, status: str, outputs: dict[str, Any], report: str | None) -> None:
+    def end_run(
+        self,
+        status: str,
+        outputs: dict[str, Any],
+        report: str | None,
+        end_block: str | None = None,
+        description: str | None = None,
+        pending: str | None = None,
+    ) -> None:
+        """End the run. The end block, its description, and its pending text make the summary card."""
         self.info["status"] = status
         self.info["outputs"] = outputs
         self.info["final_report"] = report
+        self.info["end_block"] = end_block
+        self.info["end_description"] = description
+        self.info["final_pending"] = pending
         self.info["ended_at"] = timestamp(utc_now())
         self.log("run_ended", status=status, outputs=outputs, duration_ms=elapsed_ms_since(self.info["created_at"]))
 
@@ -1121,13 +1145,28 @@ class Run:
             return self.guarded(lambda: self.agent_packet(errors=[], show_goal=True, show_rules=True))
         if status == "paused":
             return self.pause_text()
-        return render_final_packet(
-            self.info["run_id"],
-            self.info["skill_id"],
-            status,
-            self.info["final_report"],
-            self.info["outputs"] or {},
-            self.info.get("worktree"),
+        return render_final_packet(self.summary_card(), self.info["final_report"], self.info.get("worktree"))
+
+    def summary_card(self) -> SummaryCard:
+        """The card of a finished run, from `run.json`, so `current` prints it again.
+
+        A run that ended before 0.43.0 has no end block in `run.json`: its card names its status.
+        """
+        status = self.info["status"]
+        end_block = self.info.get("end_block")
+        description = self.info.get("end_description")
+        if description is None:
+            description = f"The skill ended at its block `{end_block}`." if end_block else f"The run {status}."
+        return SummaryCard(
+            run_id=self.info["run_id"],
+            skill_id=self.info["skill_id"],
+            status=status,
+            label=(end_block or status).upper(),
+            result=description,
+            mode=self.info["mode"],
+            duration_ms=run_duration_ms(self.info),
+            outputs=self.info["outputs"] or {},
+            pending=self.info.get("final_pending"),
         )
 
     # --- pause and resume ----------------------------------------------------------------------
@@ -1145,16 +1184,32 @@ class Run:
         steps = self.pause_steps()
         shown_before = bool(steps) and self.info.get("pause_steps_shown", False)
         self.info["pause_steps_shown"] = True
+        block_id = self.frame["current_block"] or "(none)"
+        reason = self.info["pause_reason"] or "paused"
+        command = runner_command(self.project)
+        run_id = self.info["run_id"]
+        card = SummaryCard(
+            run_id=run_id,
+            skill_id=self.info["skill_id"],
+            status="paused",
+            label="PAUSED",
+            result=f"Paused at block `{block_id}` ({reason}).",
+            mode=self.info["mode"],
+            duration_ms=run_duration_ms(self.info),
+            outputs={},
+            pending=f"Resume the run with `{command} resume {run_id}`, or stop it with `{command} cancel {run_id}`.",
+        )
         return render_pause_packet(
-            self.info["run_id"],
+            run_id,
             self.info["skill_id"],
-            self.frame["current_block"] or "(none)",
-            self.info["pause_reason"] or "paused",
+            block_id,
+            reason,
             self.info["pause_error"],
-            runner_command(self.project),
+            command,
             [] if shown_before else steps,
             steps_shown_before=shown_before,
             work_folder=self.project.root.as_posix() if self.info.get("worktree") else None,
+            card=card,
         )
 
     def pause_steps_not_shown(self) -> None:

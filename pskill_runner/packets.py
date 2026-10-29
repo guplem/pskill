@@ -263,15 +263,111 @@ def field_comment(spec: FieldSpec) -> str:
     return f"  # {presence}, {kind}{description}"
 
 
-def render_final_packet(
-    run_id: str, skill_id: str, status: str, report: str | None, outputs: dict[str, Any], worktree: str | None = None
-) -> str:
-    """The final packet. A worktree run names its worktree."""
-    lines = [f"## pskill · {skill_id} · finished", f"Run {run_id} finished with status {status}.", ""]
+STATUS_ICONS = {"succeeded": "✅", "failed": "❌", "cancelled": "⏹️", "paused": "⏸️"}
+NOT_DECLARED = "⚠️ Not declared by the skill"
+NOTHING_LEFT = "Nothing left to do"
+MAX_OUTPUT_CHARS = 200
+
+
+@dataclass(frozen=True)
+class SummaryCard:
+    """The card that closes a run, or a turn at a pause: what happened and what is left (SPEC.md section 8).
+
+    `label` is the id of the end block in capitals, `result` its description. `pending` is None when the skill
+    declares no `pending`, and empty when it declares that nothing is left.
+    """
+
+    run_id: str
+    skill_id: str
+    status: str
+    label: str
+    result: str
+    mode: str
+    duration_ms: int
+    outputs: dict[str, Any]
+    pending: str | None
+
+
+def render_summary_card(card: SummaryCard) -> str:
+    """The card: one Markdown table with the same rows for every skill, so the user always knows it at a glance."""
+    rows = [
+        f"| {STATUS_ICONS[card.status]} {card.label} | {card.skill_id} · {card.status} |",
+        "|---|---|",
+        f"| Result | {table_cell(card.result)} |",
+        f"| Run | `{card.run_id}` · {card.mode} · {duration_text(card.duration_ms)} |",
+        f"| Outputs | {outputs_cell(card.outputs)} |",
+        f"| Pending | {pending_cell(card.pending)} |",
+    ]
+    return (
+        "\n".join(
+            [
+                "### Summary card",
+                "Put this card at the top of your next message to the user, word for word. If you are a subagent, put "
+                "it at the top of your answer to the agent that started you, word for word.",
+                "",
+                *rows,
+            ]
+        )
+        + "\n"
+    )
+
+
+def duration_text(duration_ms: int) -> str:
+    minutes = duration_ms // 60_000
+    if minutes < 1:
+        return "under 1 min"
+    if minutes < 60:
+        return f"{minutes} min"
+    return f"{minutes // 60} h {minutes % 60} min"
+
+
+def outputs_cell(outputs: dict[str, Any]) -> str:
+    """Each output that has a value, as `name: value`. A long value is cut: `run.json` keeps it whole."""
+    parts = []
+    for name, value in outputs.items():
+        text = table_cell(plain_card_value(value))
+        if not text:
+            continue
+        if len(text) > MAX_OUTPUT_CHARS - len(name) - 2:
+            text = text[: MAX_OUTPUT_CHARS - len(name) - 3] + "…"
+        parts.append(f"{name}: {text}")
+    return " · ".join(parts) or "None"
+
+
+def pending_cell(pending: str | None) -> str:
+    if pending is None:
+        return NOT_DECLARED
+    return table_cell(pending) or NOTHING_LEFT
+
+
+def plain_card_value(value: Any) -> str:
+    """An output value in plain words: a list joined with `; `, a group as `name: value` pairs."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return "; ".join(plain_card_value(item) for item in value)
+    if isinstance(value, dict):
+        return ", ".join(f"{name}: {plain_card_value(item)}" for name, item in value.items())
+    return str(value)
+
+
+def table_cell(text: str) -> str:
+    """Text on one line, with each `|` escaped, so that it never breaks the table."""
+    return " ".join(text.split()).replace("|", "\\|")
+
+
+def render_final_packet(card: SummaryCard, report: str | None, worktree: str | None = None) -> str:
+    """The final packet: the summary card, then the skill's report. A worktree run names its worktree."""
+    lines = [
+        f"## pskill · {card.skill_id} · finished",
+        f"Run {card.run_id} finished with status {card.status}.",
+        "",
+        render_summary_card(card),
+    ]
     if report:
         lines += ["### Report to the user", report.strip(), ""]
-    if outputs:
-        lines += ["### Outputs", *(f"{name}: {value}" for name, value in outputs.items()), ""]
     if worktree:
         lines.append(worktree_removal_line(worktree))
     lines.append("The run is finished. No more pskill commands are needed.")
@@ -309,15 +405,18 @@ def render_pause_packet(
     pause_steps: Sequence[PauseSteps] = (),
     steps_shown_before: bool = False,
     work_folder: str | None = None,
+    card: SummaryCard | None = None,
 ) -> str:
     """The pause packet. The pause steps of each skill on the call stack sit between the error and the commands.
 
     With `steps_shown_before`, an earlier packet of this pause gave them: this one names them, so they run once.
-    A worktree run gives its `work_folder`.
+    A worktree run gives its `work_folder`. The summary `card` sits right after the header.
     """
     lines = [f"## pskill · {skill_id} · paused", f"Run {run_id} is paused at block {block_id} ({reason})."]
     if work_folder:
         lines.append(worktree_line(work_folder))
+    if card:
+        lines += ["", render_summary_card(card).rstrip("\n")]
     if error:
         lines += ["", "### Error", error.strip()]
     for steps in pause_steps:

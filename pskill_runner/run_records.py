@@ -50,6 +50,11 @@ class RunInfo(TypedDict):
     ended_at: str | None
     outputs: dict[str, Any] | None
     final_report: str | None
+    # The summary card (absent in runs before 0.43.0): the end block, its description, and its rendered `pending`
+    # (None: the skill declares none). A cancelled run has no end block.
+    end_block: str | None
+    end_description: str | None
+    final_pending: str | None
 
 
 class ParallelTask(TypedDict):

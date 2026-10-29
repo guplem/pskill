@@ -556,3 +556,17 @@ def test_a_missing_on_pause_file_is_named_with_no_text(tmp_path: Path) -> None:
     skill = detail_of(find_project(tmp_path), "plan-work")["skill"]
 
     assert (skill["on_pause"], skill["on_pause_file"]) == (None, "instructions/on_pause.md")
+
+
+def test_an_end_block_shows_its_pending_text_and_an_empty_one_as_nothing(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    skill_yaml = PLAN_SKILL.replace(
+        'report: "Tell the user the plan is approved."',
+        'report: "Tell the user the plan is approved."\n    pending: "Build {{ inputs.topic }}."',
+    ).replace("outputs: {result: stopped}", 'outputs: {result: stopped}\n    pending: ""')
+    write_skill(project.skills_folder, "plan-work", skill_yaml, PLAN_SKILL_FILES)
+
+    blocks = detail_of(project, "plan-work")["blocks"]
+
+    assert ["pending", "Build {{ inputs.topic }}."] in blocks["done"]["facts"]
+    assert ["pending", "nothing left to do"] in blocks["stopped"]["facts"]

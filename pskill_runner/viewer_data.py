@@ -13,10 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pskill_runner.engine import list_runs, read_run_info, read_run_state
+from pskill_runner.engine import list_runs, read_run_info, read_run_state, run_duration_ms
 from pskill_runner.project import Project
 from pskill_runner.run_records import RunInfo, RunState
-from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, utc_now
+from pskill_runner.run_store import folder_hash, read_events
 from pskill_runner.skill_loader import SkillLoadError, load_skill
 from pskill_runner.skill_model import AnyBlock, CallBlock, DecisionBlock, EndBlock, RetryableBlock, ScriptBlock, Skill
 
@@ -867,11 +867,6 @@ def canvas_edge_rows(edges: list[CanvasEdge]) -> list[dict[str, Any]]:
 
 
 # --- the runs overview ------------------------------------------------------------------------
-
-
-def run_duration_ms(info: RunInfo) -> int:
-    end = parse_timestamp(info["ended_at"]) if info["ended_at"] else utc_now()
-    return int((end - parse_timestamp(info["created_at"])).total_seconds() * 1000)
 
 
 def run_row(info: RunInfo) -> dict[str, Any]:

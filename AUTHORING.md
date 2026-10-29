@@ -89,14 +89,18 @@ blocks:
 
   done:                       # end: the run (or the child skill) ends with a status and outputs
     type: end
+    description: The checks ran  # the Result row of the summary card
     status: succeeded         # succeeded | failed | cancelled
     outputs: {result: done}
     report: "Tell the user what the checks found."
+    pending: "Fix the names that the checks flagged."  # the Pending row; "" says that nothing is left
 
   stopped:
     type: end
+    description: The user stopped the checks
     status: cancelled
     outputs: {result: stopped}
+    pending: ""
 ```
 
 - Every top-level field of `inputs`, `outputs`, and each block `output` needs a `description`.
@@ -159,6 +163,7 @@ blocks:
   ```
   While the block is open, `history.ask_finding` holds the earlier answers only. After the answer, it holds this one too, so the edges count every answer.
   `history` spans the whole run of the skill, not one pass through the loop. So when an earlier block can lead back into the loop (a second review round), the count starts at the first pass's answers and reads past the new list. Put such a loop in its own `internal` skill and run it with a `call` block: each call starts with an empty `history`.
+- Give every `end` a `description` and a `pending`. When the skill is the root of the run, the final packet starts with a summary card that the agent shows the user word for word: the end's id in capitals with an icon for the status, its `description`, the outputs, and `pending` (what is left to do, `{{ }}` allowed). Write `pending: ""` when nothing is left: with no `pending`, the card says that the skill declares none. A child skill gives no card, so `pending` counts only when the skill runs on its own. Keep in the `report` what the card does not say.
 - `max_visits: 3` with `on_max_visits: capped` caps a loop. `capped` is an end whose report names the limit and the work it skipped. Every cap needs `on_max_visits`.
   - Every loop needs a cap, also a small loop inside a capped one. The `on_max_visits` block must not lead back into the same loop, or the loop goes on after its caps. `pskill validate` reports both.
   - At the cap, the run asks "more rounds, or move on?". The user answers in interactive mode, the agent in autonomous mode. `move_on` goes to `on_max_visits`.

@@ -322,6 +322,9 @@ blocks:
     type: end
     description: The pull request is ready
     status: succeeded
+    pending: >-
+      {% if 'waiting-for-human-review' in steps.finish.labels %}A human looks at pull request {{ steps.open_draft_pr.json.pr_url }}
+      before it merges: {{ steps.finish.reasons }}{% else %}A human merges pull request {{ steps.open_draft_pr.json.pr_url }}.{% endif %}
     outputs: {result: implemented, pr_number: "{{ steps.open_draft_pr.json.pr_number }}", pr_url: "{{ steps.open_draft_pr.json.pr_url }}"}
     report: instructions/report.md
 
@@ -329,6 +332,9 @@ blocks:
     type: end
     description: The pull request exists, but a limit cut work short
     status: succeeded
+    pending: >-
+      Do the work that the limits skipped (the report names each one), then a human reviews pull request
+      {{ steps.open_draft_pr.json.pr_url }}.
     outputs:
       result: capped
       pr_number: "{{ steps.open_draft_pr.json.pr_number }}"
@@ -340,6 +346,7 @@ blocks:
     type: end
     description: The work must not start
     status: cancelled
+    pending: "Settle why the work must not start (the report says why), then run the skill again."
     outputs: {result: held}
     report: >-
       Tell the user why the work did not start: {% if steps.understand is defined %}{{ steps.understand.blocker }}{% else %}issue
@@ -349,6 +356,9 @@ blocks:
     type: end
     description: The work stopped before any pull request
     status: cancelled
+    pending: >-
+      {% if steps.write_plan is defined %}Keep or delete the plan file `{{ steps.checkout_base.json.plan_file }}`, which is not
+      committed.{% endif %}
     outputs: {result: stopped}
     report: >-
       Tell the user that the work stopped before any branch or pull request:

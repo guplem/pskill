@@ -414,3 +414,17 @@ def test_a_skill_without_on_pause_has_no_stop_section(tmp_path: Path) -> None:
     markdown = roles_export(tmp_path)["roles/SKILL.md"].decode("utf-8")
 
     assert "## If you stop before the end" not in markdown
+
+
+def test_an_end_step_names_what_is_left_to_do(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    skill_yaml = PLAN_SKILL.replace(
+        'report: "Tell the user the plan is approved."',
+        'report: "Tell the user the plan is approved."\n    pending: "Build {{ inputs.topic }}."',
+    ).replace("outputs: {result: stopped}", 'outputs: {result: stopped}\n    pending: ""')
+    write_skill(project.skills_folder, "plan-work", skill_yaml, PLAN_SKILL_FILES)
+
+    markdown = skill_markdown(project, "plan-work")
+
+    assert "Then tell the user what is left to do: Build `inputs.topic`." in markdown
+    assert "Then tell the user that nothing is left to do." in markdown

@@ -1273,3 +1273,16 @@ def test_codex_gets_no_wait_line_in_a_parallel_packet(tmp_path: Path) -> None:
     _, packet = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="codex")
 
     assert "--reason" not in packet
+
+
+def test_only_the_root_skill_gives_a_summary_card(tmp_path: Path) -> None:
+    child = CHILD_SKILL.replace("    status: succeeded\n", '    status: succeeded\n    pending: "Child work left."\n')
+    project = make_project(tmp_path, {"parent": PARENT_SKILL, "child": child})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello from the parent.\n")
+
+    final = submit_answer(project, run_id, "text: Hello, Ada!\n")
+
+    assert final.count("### Summary card") == 1
+    assert "| ✅ DONE | parent · succeeded |" in final
+    assert "Child work left." not in final
