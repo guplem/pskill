@@ -56,6 +56,7 @@ KEY_ORDER = (
     "status",
     "outputs",
     "report",
+    "pending",
     "next",
 )
 FLOW_MAPPING_LIMIT = 60  # a longer mapping of plain values gets one line per key

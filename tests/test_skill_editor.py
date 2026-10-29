@@ -402,3 +402,13 @@ def test_blocks_written_as_a_braced_mapping_are_refused_and_the_file_stays(tmp_p
         edit(project)
 
     assert skill_text(project) == BRACED_BLOCKS_SKILL
+
+
+def test_a_new_report_goes_before_the_pending_of_its_end(tmp_path: Path) -> None:
+    project = make_project(
+        tmp_path, PLAN_SKILL.replace("outputs: {result: stopped}\n", 'outputs: {result: stopped}\n    pending: ""\n')
+    )
+
+    update_block(project, "plan-work", "stopped", {"report": "Say why."})
+
+    assert skill_text(project).endswith('    outputs: {result: stopped}\n    report: Say why.\n    pending: ""\n')

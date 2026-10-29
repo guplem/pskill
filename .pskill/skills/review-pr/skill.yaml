@@ -227,6 +227,9 @@ blocks:
     type: end
     description: The review is on the pull request
     status: succeeded
+    pending: >-
+      {% if steps.final.json.findings or steps.triage.still_open %}The author of pull request #{{ inputs.pr }} answers the
+      open findings of the review{% if steps.triage.still_open %} and of earlier reviews{% endif %}.{% endif %}
     outputs: {result: "{{ steps.post.json.result }}", review_url: "{{ steps.post.json.review_url }}"}
     report: instructions/report_reviewed.md
 
@@ -234,6 +237,9 @@ blocks:
     type: end
     description: The review is drafted, but not posted
     status: succeeded
+    pending: >-
+      {% if run.mode == 'autonomous' %}Run review-pr again on pull request #{{ inputs.pr }} in an interactive run, to post a
+      review.{% endif %}
     outputs: {result: not_posted}
     report: instructions/report_not_posted.md
 
@@ -241,6 +247,7 @@ blocks:
     type: end
     description: The user stopped the review after the head moved
     status: succeeded
+    pending: ""
     outputs: {result: not_posted}
     report: instructions/report_stopped.md
 
@@ -248,5 +255,6 @@ blocks:
     type: end
     description: The user restarted the review after the head moved
     status: succeeded
+    pending: "The agent starts review-pr again on pull request #{{ inputs.pr }} right away, on its new head."
     outputs: {result: restarted}
     report: instructions/report_restarted.md

@@ -287,7 +287,7 @@ def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Pro
     """Every text of a block that may contain {{ }}. A missing instruction file is reported in problems."""
     texts = [edge.when for edge in block_edges(block) if edge.when is not None]
     if isinstance(block, EndBlock):
-        texts += string_values(list(block.outputs.values()))
+        texts += string_values([*block.outputs.values(), block.pending])
     if isinstance(block, ScriptBlock):
         texts += string_values(block.run) + nested_strings(block.input)
     if isinstance(block, CallBlock):

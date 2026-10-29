@@ -318,3 +318,35 @@ def test_a_skill_loads_its_on_pause_text(tmp_path: Path) -> None:
 
     assert with_steps.on_pause == "instructions/on_pause.md"
     assert without_steps.on_pause is None
+
+
+def test_an_end_reads_its_pending_text_and_keeps_an_empty_one_apart_from_none(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        'report: "Tell the user the plan is approved."',
+        'report: "Tell the user the plan is approved."\n    pending: ""',
+    ).replace("outputs: {result: stopped}", 'outputs: {result: stopped}\n    pending: "Plan it later."')
+
+    skill = load_skill(write_skill(tmp_path, "plan-work", skill_yaml, PLAN_SKILL_FILES))
+
+    done, stopped = skill.blocks["done"], skill.blocks["stopped"]
+    assert isinstance(done, EndBlock)
+    assert isinstance(stopped, EndBlock)
+    assert done.pending == ""
+    assert stopped.pending == "Plan it later."
+
+
+def test_an_end_without_pending_has_none(tmp_path: Path) -> None:
+    skill = load_skill(write_skill(tmp_path, "plan-work", PLAN_SKILL, PLAN_SKILL_FILES))
+
+    done = skill.blocks["done"]
+    assert isinstance(done, EndBlock)
+    assert done.pending is None
+
+
+def test_a_pending_with_no_text_is_refused(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace("outputs: {result: stopped}", "outputs: {result: stopped}\n    pending:")
+
+    with pytest.raises(SkillLoadError) as raised:
+        load_skill(write_skill(tmp_path, "plan-work", skill_yaml, PLAN_SKILL_FILES))
+
+    assert raised.value.problems == ["blocks.stopped.pending: None is not of type 'string'"]

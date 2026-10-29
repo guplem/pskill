@@ -7,3 +7,4 @@ expect:
   path: [read_issue, held]
   status: cancelled
   outputs: {result: held}
+  pending: "Nothing while this holds: issue #42 has the blocking labels waiting-for-design. When it changes, run the skill again."

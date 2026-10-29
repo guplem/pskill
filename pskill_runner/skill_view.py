@@ -333,6 +333,8 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
         facts.append(["skill", block.skill])
     if isinstance(block, EndBlock):
         facts.append(["status", block.status])
+        if block.pending is not None:
+            facts.append(["pending", block.pending or "nothing left to do"])
     if block.max_visits is not None:
         facts.append(["visits at most", str(block.max_visits)])
         if not block.asks_at_cap:

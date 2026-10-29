@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from pskill_runner.engine import (
+    CANCELLED_PENDING,
     RunError,
     cancel_run,
     current_packet,
@@ -767,8 +768,11 @@ def test_cancel_of_a_worktree_run_says_how_to_remove_the_worktree(tmp_path: Path
     worktree = (tmp_path / ".pskill" / "worktrees" / "small-r-1").as_posix()
     run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic", worktree=Path(worktree))
 
-    assert cancel_run(project, run_id) == (
-        f"Run {run_id} is cancelled. No more pskill commands are needed.\n"
+    text = cancel_run(project, run_id)
+
+    assert text.startswith(f"Run {run_id} is cancelled. No more pskill commands are needed.\n\n### Summary card\n")
+    assert text.endswith(
+        f"| Pending | {CANCELLED_PENDING} |\n\n"
         f"The run worked in the worktree `{worktree}`. Before you remove it, push every commit that you want to "
         "keep: a commit on no branch is lost with the worktree. Then, from the checkout and not from inside the "
         f'worktree, run: `git worktree remove "{worktree}"`.\n'
@@ -791,7 +795,10 @@ def test_cancel_of_a_run_in_the_checkout_names_no_worktree(tmp_path: Path) -> No
     project = make_project(tmp_path, "small", SMALL_SKILL)
     run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
 
-    assert cancel_run(project, run_id) == f"Run {run_id} is cancelled. No more pskill commands are needed.\n"
+    text = cancel_run(project, run_id)
+
+    assert text.endswith(f"| Pending | {CANCELLED_PENDING} |\n")
+    assert "worktree" not in text
 
 
 def test_a_worktree_run_names_its_answer_file_by_its_absolute_path(tmp_path: Path) -> None:
@@ -1106,3 +1113,93 @@ def test_a_pause_steps_file_that_is_not_utf8_shows_the_error(tmp_path: Path) -> 
 
     assert "### Pause steps of small\nThe pause steps could not be read: " in packet
     assert read_run_info(project, run_id)["status"] == "paused"
+
+
+CARD_SKILL = SMALL_SKILL.replace(
+    "  done:\n    type: end\n",
+    "  done:\n    type: end\n    description: The greeting is ready\n"
+    '    pending: "Send {{ steps.greet.text }} by mail."\n',
+)
+
+
+def test_the_final_packet_gives_the_summary_card_of_its_end_block(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", CARD_SKILL)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+
+    packet = submit_answer(project, run_id, "text: Hello, Ada!\n")
+
+    assert (
+        "| ✅ DONE | small · succeeded |\n|---|---|\n| Result | The greeting is ready |\n"
+        f"| Run | `{run_id}` · interactive · under 1 min |\n| Outputs | greeting: Hello, Ada! |\n"
+        "| Pending | Send Hello, Ada! by mail. |\n"
+    ) in packet
+    info = read_run_info(project, run_id)
+    assert (info["end_block"], info["end_description"], info["final_pending"]) == (
+        "done",
+        "The greeting is ready",
+        "Send Hello, Ada! by mail.",
+    )
+
+
+def test_an_end_with_no_description_or_pending_still_gives_every_row(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", SMALL_SKILL)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+
+    packet = submit_answer(project, run_id, "text: Hello, Ada!\n")
+
+    assert "| Result | The skill ended at its block `done`. |" in packet
+    assert "| Pending | ⚠️ Not declared by the skill |" in packet
+
+
+def test_current_on_a_finished_run_prints_the_same_card(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", CARD_SKILL)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+    final = submit_answer(project, run_id, "text: Hello, Ada!\n")
+
+    assert current_packet(project, run_id) == final
+
+
+def test_a_run_that_ended_before_the_card_existed_gets_a_card_from_its_status(tmp_path: Path) -> None:
+    project = make_project(tmp_path, "small", CARD_SKILL)
+    run_id, _ = start_run(project, "small", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: Hello, Ada!\n")
+    run_file = project.runs_folder / run_id / "run.json"
+    info = json.loads(run_file.read_text(encoding="utf-8"))
+    for key in ("end_block", "end_description", "final_pending"):
+        del info[key]
+    run_file.write_text(json.dumps(info), encoding="utf-8")
+
+    packet = current_packet(project, run_id)
+
+    assert "| ✅ SUCCEEDED | small · succeeded |" in packet
+    assert "| Result | The run succeeded. |" in packet
+    assert "| Pending | Not recorded: the run ended before pskill 0.43.0. |" in packet
+
+
+def test_a_cancelled_run_gives_a_card_that_asks_to_check_what_it_left(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    text = cancel_run(project, run_id)
+
+    assert text.startswith(f"Run {run_id} is cancelled. No more pskill commands are needed.\n\n### Summary card\n")
+    assert "| ⏹️ CANCELLED | plan-work · cancelled |" in text
+    assert "| Result | The run was cancelled with `pskill cancel`. |" in text
+    assert f"| Pending | {CANCELLED_PENDING} |" in text
+    assert "| ⏹️ CANCELLED | plan-work · cancelled |" in current_packet(project, run_id)
+
+
+def test_the_pause_packet_gives_a_card_that_says_how_to_go_on(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    packet = pause_run(project, run_id)
+
+    command = runner_command(project)
+    assert "| ⏸️ PAUSED | plan-work · paused |" in packet
+    assert "| Result | Paused at block `create_plan` (paused_by_user). |" in packet
+    assert "| Outputs | None |" in packet
+    assert (
+        f"| Pending | Resume the run with `{command} resume {run_id}`, or stop it with `{command} cancel {run_id}`. |"
+        in packet
+    )

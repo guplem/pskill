@@ -15,3 +15,4 @@ expect:
   path: [read_issue, checkout_default, understand, held]
   status: cancelled
   outputs: {result: held}
+  pending: "Nothing while this holds: Pull request #7 already fixes it. When it changes, run the skill again."

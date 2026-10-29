@@ -12,3 +12,4 @@ expect:
   path: [read_earlier, review, check_head_before_round, restarted]
   status: succeeded
   outputs: {result: restarted}
+  pending: "The agent starts review-pr again on pull request #700 right away, on its new head."

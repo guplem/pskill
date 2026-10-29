@@ -292,6 +292,12 @@ def end_body(skill: Skill, block: EndBlock) -> list[str]:
         lines.append("Its outputs:\n\n" + outputs)
     if block.report is not None:
         lines.append(f"Tell the user: {plain_text(prose(skill, block.report))}")
+    if block.pending is not None:
+        pending = plain_text(block.pending)
+        what_is_left = f"what is left to do: {pending}" if pending else "that nothing is left to do."
+        lines.append(
+            f"If this skill runs on its own, and not for a step of another skill, also tell the user {what_is_left}"
+        )
     return lines
 
 

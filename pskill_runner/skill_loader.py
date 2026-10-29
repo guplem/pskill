@@ -158,7 +158,13 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
     if block_type == "call":
         return CallBlock(**common, skill=raw["skill"], inputs=raw.get("inputs", {}), next=parse_edges(raw["next"]))
     if block_type == "end":
-        return EndBlock(**common, status=raw["status"], outputs=raw.get("outputs", {}), report=raw.get("report"))
+        return EndBlock(
+            **common,
+            status=raw["status"],
+            outputs=raw.get("outputs", {}),
+            report=raw.get("report"),
+            pending=raw.get("pending"),
+        )
     raise ValueError(f"Unknown block type: {block_type}")
 
 

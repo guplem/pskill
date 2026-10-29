@@ -29,3 +29,4 @@ expect:
          create, ensure_label, label_issue, created]
   status: succeeded
   outputs: {issue_number: 40}
+  pending: "A human checks issue https://github.com/guplem/pskill/issues/40 and removes its waiting-for-human-check label."

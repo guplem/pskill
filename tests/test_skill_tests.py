@@ -396,3 +396,20 @@ def test_a_wrong_output_fails_with_the_difference(tmp_path: Path) -> None:
     [result] = run_skill_tests(project, "plan-work")
 
     assert result.problem == "outputs.result: expected 'stopped', got 'approved'"
+
+
+def test_a_case_can_expect_the_pending_text_of_its_end(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        'report: "Tell the user the plan is approved."',
+        'report: "Tell the user the plan is approved."\n    pending: "Build {{ inputs.topic }}."',
+    )
+    passing = APPROVED_CASE + "  pending: Build the login page.\n"
+    failing = APPROVED_CASE.replace("two questions", "other text") + "  pending: Nothing.\n"
+    project = project_with(tmp_path, "plan-work", skill_yaml, {"a": passing, "b": failing})
+
+    results = run_skill_tests(project, "plan-work")
+
+    assert [(result.passed, result.problem) for result in results] == [
+        (True, None),
+        (False, "pending: expected 'Nothing.', got 'Build the login page.'"),
+    ]

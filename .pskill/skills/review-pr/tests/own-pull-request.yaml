@@ -23,3 +23,4 @@ expect:
   path: [read_earlier, review, triage, final, draft, confirm, check_head_before_post, post, reviewed]
   status: succeeded
   outputs: {result: commented, review_url: u5}
+  pending: ""

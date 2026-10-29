@@ -152,6 +152,9 @@ blocks:
     type: end
     description: The new issue exists
     status: succeeded
+    pending: >-
+      {% if steps.label_issue is defined %}A human checks issue {{ steps.create.stdout.strip() }} and removes its
+      waiting-for-human-check label.{% endif %}
     outputs: {issue_number: "{{ steps.create.stdout.strip().split('/')[-1] | int }}"}
     report: "Tell the user the URL of the new issue: {{ steps.create.stdout.strip() }}"
 
@@ -159,6 +162,7 @@ blocks:
     type: end
     description: An existing issue covers it
     status: succeeded
+    pending: ""
     outputs: {issue_number: "{{ steps.judge_duplicates.match_number }}"}
     report: "Tell the user that issue #{{ steps.judge_duplicates.match_number }} already covers this request."
 
@@ -166,3 +170,4 @@ blocks:
     type: end
     description: The user cancelled
     status: cancelled
+    pending: ""

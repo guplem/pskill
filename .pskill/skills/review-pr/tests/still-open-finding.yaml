@@ -1,0 +1,26 @@
+name: a required finding of an earlier review that is still open stays pending for the author
+inputs: {pr: 700}
+calls:
+  check_head_before_post:
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+  review:
+    - {status: succeeded, outputs: {reviewed_sha: e5, scope_sha: e5, findings: []}}
+scripts:
+  read_earlier:
+    - {exit_code: 0, stdout: '{"dismissed": [{"reviewer": "earlier review", "title": "Old", "severity": "suggestion", "reason": "Posted."}], "count": 1}'}
+  final:
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": true}'}
+  post:
+    - {exit_code: 0, stdout: '{"result": "changes_requested", "review_url": "u5", "inline": 0, "in_body": 1, "fallback": true}'}
+answers:
+  triage:
+    - {findings: [], dropped: [], still_open: [{title: Old bug, severity: required, location: "a.py:3"}], doubts: []}
+  draft:
+    - {body: "OK to merge."}
+  confirm:
+    - {choice: post, rationale: The user picked it., $answered_by: human}
+expect:
+  path: [read_earlier, review, triage, final, draft, confirm, check_head_before_post, post, reviewed]
+  status: succeeded
+  outputs: {result: changes_requested, review_url: u5}
+  pending: "The author of pull request #700 answers the open findings of the review and of earlier reviews."

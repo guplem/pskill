@@ -322,6 +322,9 @@ blocks:
     type: end
     description: The pull request is ready
     status: succeeded
+    pending: >-
+      {% if 'waiting-for-human-review' in steps.finish.labels %}A human looks at pull request {{ steps.open_draft_pr.json.pr_url }}
+      before it merges: {{ steps.finish.reasons }}{% else %}A human merges pull request {{ steps.open_draft_pr.json.pr_url }}.{% endif %}
     outputs: {result: implemented, pr_number: "{{ steps.open_draft_pr.json.pr_number }}", pr_url: "{{ steps.open_draft_pr.json.pr_url }}"}
     report: instructions/report.md
 
@@ -329,6 +332,9 @@ blocks:
     type: end
     description: The pull request exists, but a limit cut work short
     status: succeeded
+    pending: >-
+      A human decides whether to finish the work that the limits skipped (the Outputs row names them) before pull
+      request {{ steps.open_draft_pr.json.pr_url }} merges.
     outputs:
       result: capped
       pr_number: "{{ steps.open_draft_pr.json.pr_number }}"
@@ -340,6 +346,10 @@ blocks:
     type: end
     description: The work must not start
     status: cancelled
+    pending: >-
+      Nothing while this holds: {% if steps.understand is defined %}{{ steps.understand.blocker }}{% else %}issue
+      #{{ steps.read_issue.json.number }} {{ steps.read_issue.json.hold_reason }}.{% endif %} When it changes, run the
+      skill again.
     outputs: {result: held}
     report: >-
       Tell the user why the work did not start: {% if steps.understand is defined %}{{ steps.understand.blocker }}{% else %}issue
@@ -349,11 +359,17 @@ blocks:
     type: end
     description: The work stopped before any pull request
     status: cancelled
+    pending: >-
+      {% if steps.write_plan is defined %}Keep or delete the plan file `{{ steps.checkout_base.json.plan_file }}`, which is not
+      committed, and unassign issue #{{ steps.read_issue.json.number }} if nobody works on it now.
+      {% elif steps.checkout_base is defined %}Settle this, then run the skill again: {{ steps.checkout_base.json.reason }}
+      {% elif steps.checkout_default is defined %}Settle this, then run the skill again: {{ steps.checkout_default.json.reason }}
+      {% endif %}
     outputs: {result: stopped}
     report: >-
       Tell the user that the work stopped before any branch or pull request:
       {% if steps.write_plan is defined %}the plan was not approved. The plan file `{{ steps.checkout_base.json.plan_file }}`
-      stays in the checkout, not committed: keep it or delete it.
+      stays in the checkout, not committed.
       {% elif steps.checkout_base is defined %}{{ steps.checkout_base.json.reason }}
       {% elif steps.checkout_default is defined %}{{ steps.checkout_default.json.reason }}
       {% else %}no issue was filed for the request.{% endif %}

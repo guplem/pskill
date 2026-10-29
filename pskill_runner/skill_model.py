@@ -83,6 +83,7 @@ class EndBlock(Block):
     status: str
     outputs: dict[str, Any] = field(default_factory=dict)
     report: str | None = None
+    pending: str | None = None  # the summary card's Pending row; None: not declared, "" (or empty): nothing left
 
 
 @dataclass(frozen=True, kw_only=True)
