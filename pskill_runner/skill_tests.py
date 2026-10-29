@@ -186,7 +186,11 @@ def run_case(project: Project, skill_id: str, case: dict[str, Any]) -> str | Non
             submit_answer(project, run_id, answer_text, open_task(project, run_id, runs_folder), executor, runs_folder)
         info = read_run_info(project, run_id, runs_folder)
         path = run_path(runs_folder / run_id, skill_id)
-    return expectation_problem(case.get("expect", {}), path, info["status"], info["outputs"] or {})
+    expect = case.get("expect", {})
+    problem = expectation_problem(expect, path, info["status"], info["outputs"] or {})
+    if problem is None and "pending" in expect and expect["pending"] != info.get("final_pending"):
+        problem = f"pending: expected {expect['pending']!r}, got {info.get('final_pending')!r}"
+    return problem
 
 
 def open_task(project: Project, run_id: str, runs_folder: Path) -> int | None:

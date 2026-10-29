@@ -14,3 +14,4 @@ expect:
   path: [checkout, wait_ci, fix_ci, wait_ci, fix_ci, failed]
   status: failed
   outputs: {state: failed, failed_checks: ["docs (link check): https://x/3"], head_sha: f3, fixes: 2}
+  pending: "Fix the failing checks on the base branch: they fail there too, so this pull request cannot fix them."

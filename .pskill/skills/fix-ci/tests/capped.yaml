@@ -32,3 +32,4 @@ expect:
   path: [checkout, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, fix_ci, wait_ci, failed]
   status: failed
   outputs: {state: failed, failed_checks: ["e2e (slow): https://x/10"], head_sha: s10, fixes: 9}
+  pending: "A human finds out why the checks still fail after 9 fix rounds."

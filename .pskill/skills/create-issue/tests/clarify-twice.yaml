@@ -28,3 +28,4 @@ expect:
          search_duplicates, judge_duplicates, draft_issue, confirm_draft, create, created]
   status: succeeded
   outputs: {issue_number: 31}
+  pending: ""

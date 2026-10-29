@@ -74,7 +74,10 @@ blocks:
     type: end
     description: Checks still fail, from the base branch or after the last try
     status: failed
-    pending: "Fix the CI checks of pull request #{{ inputs.pr }} that still fail: {{ steps.wait_ci.failed_checks | join('; ') }}."
+    pending: >-
+      {% if steps.fix_ci.cause == 'unrelated' %}Fix the failing checks on the base branch: they fail there too, so this
+      pull request cannot fix them.{% else %}A human finds out why the checks still fail after
+      {{ history.fix_ci | length }} fix rounds.{% endif %}
     outputs:
       state: failed
       failed_checks: "{{ steps.wait_ci.failed_checks }}"

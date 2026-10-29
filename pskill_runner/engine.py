@@ -90,6 +90,10 @@ INLINE_BLOCK_LIMIT = 1000
 TASK_NAME_LIMIT = 60  # characters: a task name is a short label
 OUTPUT_LIMIT_CHARACTERS = 64 * 1024  # characters: the most of a text output or a stderr that a run keeps
 CANCELLED_DESCRIPTION = "The run was cancelled with `pskill cancel`."
+CANCELLED_PENDING = (
+    "The run stopped before its end: check what it left, such as branches, pull requests, comments, and files."
+)
+PENDING_NOT_RECORDED = "Not recorded: the run ended before pskill 0.43.0."
 
 
 class RunError(Exception):
@@ -288,7 +292,7 @@ def cancel_run(project: Project, run_id: str) -> str:
     with run_lock(run_folder(project, run_id)):
         run = Run.load(project, run_id)
         run.require_status(UNFINISHED_STATUSES, "cancel")
-        run.end_run("cancelled", outputs={}, report=None, description=CANCELLED_DESCRIPTION, pending="")
+        run.end_run("cancelled", outputs={}, report=None, description=CANCELLED_DESCRIPTION, pending=CANCELLED_PENDING)
         run.save()
     worktree = run.info.get("worktree")
     removal = f"\n{worktree_removal_line(worktree)}\n" if worktree else ""
@@ -834,7 +838,7 @@ class Run:
             self.return_to_caller(block.status, outputs)
             return None
         report = self.rendered(skill.instruction_text(block.report), "The report") if block.report else None
-        pending = None if block.pending is None else self.rendered(block.pending, "The pending text")
+        pending = None if block.pending is None else self.rendered(block.pending, "The pending text").strip()
         self.end_run(block.status, outputs, report, end_block=block.id, description=block.description, pending=pending)
         return render_final_packet(self.summary_card(), report, self.info.get("worktree"))
 
@@ -855,7 +859,7 @@ class Run:
         self.info["end_description"] = description
         self.info["final_pending"] = pending
         self.info["ended_at"] = timestamp(utc_now())
-        self.log("run_ended", status=status, outputs=outputs, duration_ms=elapsed_ms_since(self.info["created_at"]))
+        self.log("run_ended", status=status, outputs=outputs, duration_ms=run_duration_ms(self.info))
 
     # --- call blocks --------------------------------------------------------------------------
 
@@ -1152,6 +1156,7 @@ class Run:
 
         A run that ended before 0.43.0 has no end block in `run.json`: its card names its status.
         """
+        recorded = "final_pending" in self.info
         status = self.info["status"]
         end_block = self.info.get("end_block")
         description = self.info.get("end_description")
@@ -1166,7 +1171,22 @@ class Run:
             mode=self.info["mode"],
             duration_ms=run_duration_ms(self.info),
             outputs=self.info["outputs"] or {},
-            pending=self.info.get("final_pending"),
+            pending=self.info["final_pending"] if recorded else PENDING_NOT_RECORDED,
+        )
+
+    def paused_card(self, block_id: str, reason: str, command: str) -> SummaryCard:
+        """The card of a pause: it says how to go on."""
+        run_id = self.info["run_id"]
+        return SummaryCard(
+            run_id=run_id,
+            skill_id=self.info["skill_id"],
+            status="paused",
+            label="PAUSED",
+            result=f"Paused at block `{block_id}` ({reason}).",
+            mode=self.info["mode"],
+            duration_ms=run_duration_ms(self.info),
+            outputs={},
+            pending=f"Resume the run with `{command} resume {run_id}`, or stop it with `{command} cancel {run_id}`.",
         )
 
     # --- pause and resume ----------------------------------------------------------------------
@@ -1187,29 +1207,17 @@ class Run:
         block_id = self.frame["current_block"] or "(none)"
         reason = self.info["pause_reason"] or "paused"
         command = runner_command(self.project)
-        run_id = self.info["run_id"]
-        card = SummaryCard(
-            run_id=run_id,
-            skill_id=self.info["skill_id"],
-            status="paused",
-            label="PAUSED",
-            result=f"Paused at block `{block_id}` ({reason}).",
-            mode=self.info["mode"],
-            duration_ms=run_duration_ms(self.info),
-            outputs={},
-            pending=f"Resume the run with `{command} resume {run_id}`, or stop it with `{command} cancel {run_id}`.",
-        )
         return render_pause_packet(
-            run_id,
+            self.info["run_id"],
             self.info["skill_id"],
             block_id,
             reason,
             self.info["pause_error"],
             command,
+            self.paused_card(block_id, reason, command),
             [] if shown_before else steps,
             steps_shown_before=shown_before,
             work_folder=self.project.root.as_posix() if self.info.get("worktree") else None,
-            card=card,
         )
 
     def pause_steps_not_shown(self) -> None:

@@ -302,8 +302,9 @@ def render_summary_card(card: SummaryCard) -> str:
         "\n".join(
             [
                 "### Summary card",
-                "Put this card at the top of your next message to the user, word for word. If you are a subagent, put "
-                "it at the top of your answer to the agent that started you, word for word.",
+                "Start your last message to the user in this turn with the table below, unchanged, as a Markdown "
+                "table (not in a code block). If you are a subagent, start your answer to the agent that started you "
+                "with it, and ask that agent to show it to the user unchanged.",
                 "",
                 *rows,
             ]
@@ -322,16 +323,21 @@ def duration_text(duration_ms: int) -> str:
 
 
 def outputs_cell(outputs: dict[str, Any]) -> str:
-    """Each output that has a value, as `name: value`. A long value is cut: `run.json` keeps it whole."""
+    """Each output that has a value, as `name: value`. A long value is cut: the final packet gives it whole."""
     parts = []
     for name, value in outputs.items():
-        text = table_cell(plain_card_value(value))
+        text = one_line(plain_card_value(value))
         if not text:
             continue
-        if len(text) > MAX_OUTPUT_CHARS - len(name) - 2:
-            text = text[: MAX_OUTPUT_CHARS - len(name) - 3] + "…"
-        parts.append(f"{name}: {text}")
+        if len(text) > MAX_OUTPUT_CHARS:
+            text = text[: MAX_OUTPUT_CHARS - 1] + "…"
+        parts.append(f"{name}: {escape_pipes(text)}")
     return " · ".join(parts) or "None"
+
+
+def cut_outputs(outputs: dict[str, Any]) -> dict[str, Any]:
+    """The outputs whose value the card cuts."""
+    return {name: value for name, value in outputs.items() if len(one_line(plain_card_value(value))) > MAX_OUTPUT_CHARS}
 
 
 def pending_cell(pending: str | None) -> str:
@@ -354,8 +360,16 @@ def plain_card_value(value: Any) -> str:
 
 
 def table_cell(text: str) -> str:
-    """Text on one line, with each `|` escaped, so that it never breaks the table."""
-    return " ".join(text.split()).replace("|", "\\|")
+    return escape_pipes(one_line(text))
+
+
+def one_line(text: str) -> str:
+    return " ".join(text.split())
+
+
+def escape_pipes(text: str) -> str:
+    """Escape each `|`, and a backslash right before one, so that a cell never breaks the table."""
+    return text.replace("\\|", "\\\\|").replace("|", "\\|")
 
 
 def render_final_packet(card: SummaryCard, report: str | None, worktree: str | None = None) -> str:
@@ -368,6 +382,9 @@ def render_final_packet(card: SummaryCard, report: str | None, worktree: str | N
     ]
     if report:
         lines += ["### Report to the user", report.strip(), ""]
+    whole_outputs = cut_outputs(card.outputs)
+    if whole_outputs:
+        lines += ["### Outputs cut in the card", *(f"{name}: {value}" for name, value in whole_outputs.items()), ""]
     if worktree:
         lines.append(worktree_removal_line(worktree))
     lines.append("The run is finished. No more pskill commands are needed.")
@@ -402,10 +419,10 @@ def render_pause_packet(
     reason: str,
     error: str | None,
     runner_command: str,
+    card: SummaryCard,
     pause_steps: Sequence[PauseSteps] = (),
     steps_shown_before: bool = False,
     work_folder: str | None = None,
-    card: SummaryCard | None = None,
 ) -> str:
     """The pause packet. The pause steps of each skill on the call stack sit between the error and the commands.
 
@@ -415,8 +432,7 @@ def render_pause_packet(
     lines = [f"## pskill · {skill_id} · paused", f"Run {run_id} is paused at block {block_id} ({reason})."]
     if work_folder:
         lines.append(worktree_line(work_folder))
-    if card:
-        lines += ["", render_summary_card(card).rstrip("\n")]
+    lines += ["", render_summary_card(card).rstrip("\n")]
     if error:
         lines += ["", "### Error", error.strip()]
     for steps in pause_steps:

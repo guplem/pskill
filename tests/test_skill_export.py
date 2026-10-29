@@ -426,5 +426,11 @@ def test_an_end_step_names_what_is_left_to_do(tmp_path: Path) -> None:
 
     markdown = skill_markdown(project, "plan-work")
 
-    assert "Then tell the user what is left to do: Build `inputs.topic`." in markdown
-    assert "Then tell the user that nothing is left to do." in markdown
+    assert (
+        "If this skill runs on its own, and not for a step of another skill, also tell the user what is left to do: "
+        "Build `inputs.topic`." in markdown
+    )
+    assert (
+        "If this skill runs on its own, and not for a step of another skill, also tell the user that nothing is left "
+        "to do." in markdown
+    )

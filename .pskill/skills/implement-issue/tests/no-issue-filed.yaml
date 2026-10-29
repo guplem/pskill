@@ -7,3 +7,4 @@ expect:
   path: [create_new_issue, stopped]
   status: cancelled
   outputs: {result: stopped}
+  pending: ""

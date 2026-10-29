@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from pskill_runner.engine import (
+    CANCELLED_PENDING,
     RunError,
     cancel_run,
     current_packet,
@@ -771,7 +772,7 @@ def test_cancel_of_a_worktree_run_says_how_to_remove_the_worktree(tmp_path: Path
 
     assert text.startswith(f"Run {run_id} is cancelled. No more pskill commands are needed.\n\n### Summary card\n")
     assert text.endswith(
-        "| Pending | Nothing left to do |\n\n"
+        f"| Pending | {CANCELLED_PENDING} |\n\n"
         f"The run worked in the worktree `{worktree}`. Before you remove it, push every commit that you want to "
         "keep: a commit on no branch is lost with the worktree. Then, from the checkout and not from inside the "
         f'worktree, run: `git worktree remove "{worktree}"`.\n'
@@ -796,7 +797,7 @@ def test_cancel_of_a_run_in_the_checkout_names_no_worktree(tmp_path: Path) -> No
 
     text = cancel_run(project, run_id)
 
-    assert text.endswith("| Pending | Nothing left to do |\n")
+    assert text.endswith(f"| Pending | {CANCELLED_PENDING} |\n")
     assert "worktree" not in text
 
 
@@ -1172,10 +1173,10 @@ def test_a_run_that_ended_before_the_card_existed_gets_a_card_from_its_status(tm
 
     assert "| ✅ SUCCEEDED | small · succeeded |" in packet
     assert "| Result | The run succeeded. |" in packet
-    assert "| Pending | ⚠️ Not declared by the skill |" in packet
+    assert "| Pending | Not recorded: the run ended before pskill 0.43.0. |" in packet
 
 
-def test_a_cancelled_run_gives_a_card_with_nothing_left(tmp_path: Path) -> None:
+def test_a_cancelled_run_gives_a_card_that_asks_to_check_what_it_left(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id = start(project)
 
@@ -1184,7 +1185,7 @@ def test_a_cancelled_run_gives_a_card_with_nothing_left(tmp_path: Path) -> None:
     assert text.startswith(f"Run {run_id} is cancelled. No more pskill commands are needed.\n\n### Summary card\n")
     assert "| ⏹️ CANCELLED | plan-work · cancelled |" in text
     assert "| Result | The run was cancelled with `pskill cancel`. |" in text
-    assert "| Pending | Nothing left to do |" in text
+    assert f"| Pending | {CANCELLED_PENDING} |" in text
     assert "| ⏹️ CANCELLED | plan-work · cancelled |" in current_packet(project, run_id)
 
 

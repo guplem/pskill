@@ -25,3 +25,4 @@ expect:
   path: [read_earlier, review, check_head_before_round, review, triage, final, draft, not_posted]
   status: succeeded
   outputs: {result: not_posted}
+  pending: "Run review-pr again on pull request #700 in an interactive run, to post a review."

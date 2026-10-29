@@ -160,7 +160,9 @@ def test_the_final_packet_gives_the_card_then_the_report() -> None:
 
 
 def test_the_pause_packet_explains_the_reason_and_the_next_commands() -> None:
-    text = render_pause_packet("r-1", "plan-work", "create_plan", "block_failed", "plan: required", "uv run pskill.py")
+    text = render_pause_packet(
+        "r-1", "plan-work", "create_plan", "block_failed", "plan: required", "uv run pskill.py", card=PAUSE_CARD
+    )
 
     assert "Run r-1 is paused at block create_plan (block_failed)." in text
     assert "plan: required" in text
@@ -301,18 +303,27 @@ def test_the_final_packet_without_a_report_gives_only_the_card() -> None:
 
 
 def test_the_pause_packet_without_an_error_has_no_error_section() -> None:
-    text = render_pause_packet("r-1", "plan-work", "create_plan", "paused_by_user", None, "uv run pskill.py")
+    text = render_pause_packet(
+        "r-1", "plan-work", "create_plan", "paused_by_user", None, "uv run pskill.py", card=PAUSE_CARD
+    )
 
     assert "### Error" not in text
-    assert "Run r-1 is paused at block create_plan (paused_by_user).\n\n### Next\n" in text
+    assert (
+        "Run r-1 is paused at block create_plan (paused_by_user).\n\n"
+        + render_summary_card(PAUSE_CARD)
+        + "\n### Next\n"
+    ) in text
 
 
 def test_the_pause_packet_without_pause_steps_is_unchanged() -> None:
-    text = render_pause_packet("r-1", "plan-work", "create_plan", "block_failed", "plan: required", "uv run pskill.py")
+    text = render_pause_packet(
+        "r-1", "plan-work", "create_plan", "block_failed", "plan: required", "uv run pskill.py", card=PAUSE_CARD
+    )
 
     assert text == (
         "## pskill · plan-work · paused\nRun r-1 is paused at block create_plan (block_failed).\n\n"
-        "### Error\nplan: required\n\n"
+        + render_summary_card(PAUSE_CARD)
+        + "\n### Error\nplan: required\n\n"
         "### Next\nTell the user why the run paused. Then, when the user decides:\n"
         "- To try the block again: uv run pskill.py resume r-1\n"
         "- To stop the run: uv run pskill.py cancel r-1\n"
@@ -324,7 +335,7 @@ def test_the_pause_packet_shows_each_skills_pause_steps_under_the_error() -> Non
     steps = [PauseSteps("child", "Release the claim.\n"), PauseSteps("parent", "Comment on the issue.")]
 
     text = render_pause_packet(
-        "r-1", "parent", "write", "block_failed", "plan: required", "uv run pskill.py", pause_steps=steps
+        "r-1", "parent", "write", "block_failed", "plan: required", "uv run pskill.py", PAUSE_CARD, pause_steps=steps
     )
 
     assert (
@@ -337,7 +348,14 @@ def test_the_pause_packet_shows_each_skills_pause_steps_under_the_error() -> Non
 
 def test_the_pause_packet_can_name_pause_steps_that_an_earlier_packet_gave() -> None:
     text = render_pause_packet(
-        "r-1", "plan-work", "create_plan", "block_failed", "plan: required", "uv run pskill.py", steps_shown_before=True
+        "r-1",
+        "plan-work",
+        "create_plan",
+        "block_failed",
+        "plan: required",
+        "uv run pskill.py",
+        PAUSE_CARD,
+        steps_shown_before=True,
     )
 
     assert (
@@ -420,6 +438,7 @@ def test_the_pause_packet_of_a_worktree_run_names_its_folder_after_the_header() 
         "paused_by_user",
         None,
         "uv run pskill.py",
+        PAUSE_CARD,
         work_folder="/work/trees/plan-work-r-1",
     )
 
@@ -455,11 +474,15 @@ CARD = SummaryCard(
 )
 
 
+PAUSE_CARD = replace(CARD, status="paused", label="PAUSED", outputs={})
+
+
 def test_the_summary_card_is_one_table_with_fixed_rows() -> None:
     assert render_summary_card(CARD) == (
         "### Summary card\n"
-        "Put this card at the top of your next message to the user, word for word. If you are a subagent, put it "
-        "at the top of your answer to the agent that started you, word for word.\n\n"
+        "Start your last message to the user in this turn with the table below, unchanged, as a Markdown table "
+        "(not in a code block). If you are a subagent, start your answer to the agent that started you with it, "
+        "and ask that agent to show it to the user unchanged.\n\n"
         "| ✅ REVIEWED | review-pr · succeeded |\n"
         "|---|---|\n"
         "| Result | The review is on the pull request |\n"
@@ -502,10 +525,35 @@ def test_card_outputs_are_one_line_each_value_in_plain_words() -> None:
 
 
 def test_a_long_output_is_cut_and_the_pending_text_is_not() -> None:
-    card = render_summary_card(replace(CARD, outputs={"summary": "x" * 300}, pending="y" * 300))
+    card = render_summary_card(replace(CARD, outputs={"summary": "x" * 300, "n" * 250: "short"}, pending="y" * 300))
 
-    assert f"| Outputs | summary: {'x' * 190}… |" in card
+    assert f"| Outputs | summary: {'x' * 199}… · {'n' * 250}: short |" in card
     assert f"| Pending | {'y' * 300} |" in card
+
+
+def test_a_value_is_cut_before_it_is_escaped() -> None:
+    card = render_summary_card(replace(CARD, outputs={"text": "x" * 198 + "|tail"}))
+
+    assert f"| Outputs | text: {'x' * 198}\\|… |" in card
+
+
+def test_a_backslash_before_a_pipe_stays_text() -> None:
+    card = render_summary_card(replace(CARD, outputs={"pattern": "a\\|b", "path": "C:\\work"}))
+
+    assert "| Outputs | pattern: a\\\\\\|b · path: C:\\work |" in card
+
+
+def test_the_final_packet_gives_whole_the_outputs_that_the_card_cut() -> None:
+    card = replace(CARD, outputs={"summary": "x" * 300, "result": "ok"})
+
+    text = render_final_packet(card, None)
+
+    assert f"### Outputs cut in the card\nsummary: {'x' * 300}\n\n" in text
+    assert "result: ok\n" not in text
+
+
+def test_the_final_packet_with_short_outputs_lists_them_only_in_the_card() -> None:
+    assert "### Outputs cut in the card" not in render_final_packet(CARD, None)
 
 
 def test_card_cells_keep_the_table_whole() -> None:

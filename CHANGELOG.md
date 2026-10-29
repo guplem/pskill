@@ -4,12 +4,13 @@
 
 A run ends with a summary card: the same table for every skill, so the user sees at a glance that the run ended, how, and what is left.
 
-- **The card:** the final packet starts with one Markdown table: an icon for the status (✅ succeeded, ❌ failed, ⏹️ cancelled, ⏸️ paused) and the end block's id in capitals (`REVIEWED`, `CAPPED`), then the rows `Result` (the end's `description`), `Run` (id, mode, minutes), `Outputs`, and `Pending`. The packet asks the agent to show it word for word at the top of its message, and a subagent to put it at the top of its answer to the agent that started it. It replaces the `### Outputs` list; the `report` still follows.
+- **The card:** the final packet starts with one Markdown table: an icon for the status (✅ succeeded, ❌ failed, ⏹️ cancelled, ⏸️ paused) and the end block's id in capitals (`REVIEWED`, `CAPPED`), then the rows `Result` (the end's `description`), `Run` (id, mode, minutes), `Outputs`, and `Pending`. The packet asks the agent to start its last message of the turn with it, unchanged, and a subagent to start its answer with it and ask its parent to show it to the user. It replaces the `### Outputs` list: a value over 200 characters is cut in the card and given whole under `### Outputs cut in the card`. The `report` still follows.
 - **`pending` on `end` blocks:** inline text with `{{ }}`: what is left to do. `pending: ""` says that nothing is left. With no `pending`, the card says "⚠️ Not declared by the skill". `pskill validate` checks its `{{ }}`, the viewer shows it, and the Markdown export names it.
 - **Only the root skill:** a child skill's end returns to its caller and gives no card.
-- **Pause and cancel:** the pause packet gives a `PAUSED` card with the `resume` and `cancel` commands as `Pending`, and `cancel` gives a `CANCELLED` card. `current` of a finished run prints the same card again.
+- **Pause and cancel:** the pause packet gives a `PAUSED` card with the `resume` and `cancel` commands as `Pending`. `cancel` gives a `CANCELLED` card that asks to check what the run left. `current` of a finished run prints the same card again.
+- **`pskill test`:** a case can expect the rendered `pending` of its end (`expect.pending`).
 - **`run.json`:** `end_block`, `end_description`, and `final_pending`. A run that ended before 0.43.0 gets a card from its status.
-- **Example skills:** every end of `implement-issue`, `review-pr`, `resolve-pr-feedback`, `fix-ci`, and `create-issue` has a `pending`.
+- **Example skills:** every end of `implement-issue`, `review-pr`, `resolve-pr-feedback`, `fix-ci`, and `create-issue` has a `pending`, written for each path into the end and checked by the cases.
 
 ## 0.42.0 (2026-10-28)
 

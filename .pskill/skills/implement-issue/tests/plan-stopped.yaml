@@ -25,3 +25,4 @@ expect:
   path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, stopped]
   status: cancelled
   outputs: {result: stopped}
+  pending: "Keep or delete the plan file `implementation-plan-42.md`, which is not committed, and unassign issue #42 if nobody works on it now."
