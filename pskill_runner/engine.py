@@ -1083,7 +1083,8 @@ class Run:
         return [index for index in self.open_task_indexes() if jobs[index]["context"] == context]
 
     def jobs_of(self, block: TaskBlock) -> list[TaskJob]:
-        """The jobs of the current task. A run paused at a task before 1.0.0 has none yet: it gets its one job."""
+        """The jobs of the current task. A run paused at a task without `for_each` before 1.0.0 has none yet: it
+        gets its one job. A task with `for_each` always has its jobs here: `resume` starts them again."""
         jobs = self.frame["tasks"]
         if jobs is None:
             jobs = [self.new_job(block, None)]
@@ -1318,6 +1319,9 @@ class Run:
         if isinstance(block, TaskBlock) and self.frame["tasks"] is not None and not self.open_task_indexes():
             self.info["status"] = "active"
             return self.guarded(lambda: self.complete_jobs(block, duration_ms=0))
+        if has_jobs_per_item(block) and self.frame["tasks"] is None:
+            self.info["status"] = "active"
+            return self.guarded(self.advance)  # its start failed: start its jobs again
         if isinstance(block, TaskBlock | DecisionBlock):
             return self.guarded(lambda: self.issue_packet(new_block=False, reentry=True))
         self.info["status"] = "active"

@@ -1463,3 +1463,15 @@ def test_an_empty_computed_context_is_the_main_context(tmp_path: Path) -> None:
     _, packet = start_run(project, "mixed", {}, mode="interactive", harness="subagents-for-tests")
 
     assert "1 more task is yours" in packet
+
+
+def test_resume_of_a_for_each_task_whose_start_failed_starts_its_jobs_again(tmp_path: Path) -> None:
+    not_a_list = PARALLEL_SKILL.replace('for_each: "{{ inputs.files }}"', 'for_each: "{{ run.id }}"')
+    project = make_project(tmp_path, {"fanout": not_a_list}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
+
+    packet = resume_run(project, run_id)
+
+    assert read_run_info(project, run_id)["status"] == "paused"
+    assert "The for_each of 'check' must give a list, not str." in packet
+    assert read_run_state(project, run_id)["frames"][0]["tasks"] is None
