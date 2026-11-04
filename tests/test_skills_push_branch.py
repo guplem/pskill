@@ -12,7 +12,7 @@ SKILLS = Path(__file__).resolve().parent.parent / ".pskill" / "skills"
 PUSHING_STEPS = [
     ("implement-issue/instructions/implement_step.md", "{{ steps.checkout_base.json.branch }}"),
     ("fix-ci/instructions/fix_ci.md", "{{ steps.checkout.outputs.branch }}"),
-    ("resolve-pr-feedback/instructions/resolve_item.md", "{{ steps.checkout.outputs.branch }}"),
+    ("resolve-pr-feedback/instructions/resolve_items.md", "{{ steps.checkout.outputs.branch }}"),
 ]
 BRANCH_RULE = "Push to this branch, not to the session's `claude/` branch."
 

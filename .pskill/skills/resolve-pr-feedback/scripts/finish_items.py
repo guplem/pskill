@@ -2,11 +2,12 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Reply to a comment with its verdict, and record the decision of one item.
+"""Reply to each comment with its verdict, and record the decision of each item.
 
-Usage: uv run finish_item.py, with {"pr", "item", "decision"} on stdin: one item of collect_items.py, and
-{verdict, reason}.
-Prints {"replied": true|false, "decision": {kind, reviewer, title, verdict, reason}}.
+Usage: uv run finish_items.py, with {"pr", "items", "decisions"} on stdin: the queue of collect_items.py, and one
+{verdict, reason, commit} per item, in the same order. `commit` names the commit of a fix.
+Prints {"decisions": [{kind, reviewer, title, verdict, reason}], "left"}: `left` counts the items at the end of the
+queue that got no decision.
 
 A reply ends with the marker `<!-- resolve-pr-feedback-reply: <id> -->`, so collect_items.py never lists the comment
 or the reply again. An inline comment gets its reply in its thread, through the thread's first comment: GitHub
@@ -26,8 +27,12 @@ def run(command: list[str]) -> str:
     return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
 
 
-def reply_body(item: dict[str, Any], decision: dict[str, Any], head_sha: str) -> str:
-    verdict = f"**Fixed** in {head_sha}." if decision["verdict"] == "fixed" else "**Dismissed**."
+def reply_body(item: dict[str, Any], decision: dict[str, Any]) -> str:
+    verdict = (
+        f"**Fixed** in {decision.get('commit') or 'this pull request'}."
+        if decision["verdict"] == "fixed"
+        else "**Dismissed**."
+    )
     # Quote only the first line, to name the comment: the reply stays short.
     first_line = next((line.strip() for line in str(item["body"]).splitlines() if line.strip()), "")
     quote = "" if item["comment_kind"] == "inline" else f"> {first_line[:200]}\n\n"
@@ -40,8 +45,7 @@ def post_reply(pr_number: str, item: dict[str, Any], decision: dict[str, Any]) -
         if item["comment_kind"] == "inline"
         else f"repos/{{owner}}/{{repo}}/issues/{pr_number}/comments"
     )
-    head_sha = run(["git", "rev-parse", "--short", "HEAD"]) if decision["verdict"] == "fixed" else ""
-    run(["gh", "api", endpoint, "-f", f"body={reply_body(item, decision, head_sha)}"])
+    run(["gh", "api", endpoint, "-f", f"body={reply_body(item, decision)}"])
 
 
 def title_of(item: dict[str, Any]) -> str:
@@ -51,21 +55,29 @@ def title_of(item: dict[str, Any]) -> str:
     return first_line[:TITLE_LENGTH]
 
 
-def main() -> None:
-    script_input = json.load(sys.stdin)
-    item: dict[str, Any] = script_input["item"]
-    decision: dict[str, Any] = script_input["decision"]
-    is_comment = item["kind"] == "comment"
-    if is_comment:
-        post_reply(str(script_input["pr"]), item, decision)
-    record = {
+def finish(pr_number: str, item: dict[str, Any], decision: dict[str, Any]) -> dict[str, Any]:
+    """Reply to a comment, and return the record of the item's decision."""
+    if item["kind"] == "comment":
+        post_reply(pr_number, item, decision)
+    return {
         "kind": item["kind"],
         "reviewer": item.get("reviewer") or "",  # empty for a comment
         "title": title_of(item),
         "verdict": decision["verdict"],
         "reason": decision["reason"],
     }
-    print(json.dumps({"replied": is_comment, "decision": record}))
+
+
+def main() -> None:
+    script_input = json.load(sys.stdin)
+    items: list[dict[str, Any]] = script_input["items"]
+    decisions: list[dict[str, Any]] = script_input["decisions"][: len(items)]
+    # The items past the last decision get no reply: they are left for a later run.
+    answered = items[: len(decisions)]
+    records = [
+        finish(str(script_input["pr"]), item, decision) for item, decision in zip(answered, decisions, strict=True)
+    ]
+    print(json.dumps({"decisions": records, "left": len(items) - len(records)}))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-name: a feedback round that stops at its cap of 100 items lets the run go on, and the run ends capped
+name: a feedback round that stops before the end of its list lets the run go on, and the run ends capped
 inputs: {request: "#42"}
 scripts:
   limits:

@@ -1,4 +1,4 @@
-name: a required-only fix round that stops at its cap of 100 items ends the run capped
+name: a required-only fix round that stops before the end of its list ends the run capped
 inputs: {request: "#42"}
 scripts:
   limits:
