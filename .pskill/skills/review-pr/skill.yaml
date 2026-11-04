@@ -89,6 +89,9 @@ blocks:
   triage:
     type: task
     description: Check and merge the findings of every round, and mark the ones in real doubt
+    context: fresh  # the instruction holds every finding: a clean context on a cheaper model, reading code only
+    tier: standard
+    tools: read
     instruction: instructions/triage.md
     output:
       findings: {type: array, items: *finding, description: "The findings to post, each with its final severity."}
