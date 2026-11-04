@@ -1476,8 +1476,10 @@ class Run:
         self.log("submission_rejected", block=self.frame["current_block"], task=task, errors=errors, raw=answer_text)
         if attempts > self.retries_of(self.current_block()):
             return self.pause("block_failed", "\n".join(errors))
-        if task is not None and self.job_at_is_fresh(task):
-            return task_not_recorded(task, errors)  # the subagent gets its own errors, not the main agent's packet
+        if task is not None and (self.job_at_is_fresh(task) or self.open_job_indexes("fresh")):
+            # A subagent gets its own errors, not the main agent's packet; so does a main job while subagents
+            # still work, because that packet would list them to spawn again.
+            return task_not_recorded(task, errors)
         return self.guarded(lambda: self.agent_packet(errors=errors))
 
     def accept(self, block: DecisionBlock, answer: dict[str, Any], decided_by: str, duration_ms: int) -> str:
