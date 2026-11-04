@@ -1080,7 +1080,7 @@ def timeline_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             task = event.get("task")
             rejected = {"accepted": False, "errors": event["errors"], "raw": event["raw"], "task": task}
             row_for_event["submissions"].append(rejected)
-            if task is not None:
+            if task is not None and has_task_list(row_for_event):  # a one-job task's rejection has `task` 0 too
                 task_entry(row_for_event, task)["submissions"].append(rejected)
         elif event["type"] == "script_ran":
             script_run = {key: event.get(key) for key in SCRIPT_FIELDS}

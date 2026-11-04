@@ -29,6 +29,7 @@ from pskill_runner.viewer_data import (
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 from tests.test_engine_blocks import (
     CHILD_SKILL,
+    ONE_JOB_SKILL,
     NAMED_PARALLEL_SKILL,
     PARALLEL_SKILL,
     PARENT_SKILL,
@@ -981,6 +982,21 @@ def test_a_run_from_before_1_0_0_with_a_parallel_block_shows_its_tasks_without_a
     assert row["for_each"] is False
     assert [task["output"] for task in row["tasks"]] == [{"wrong": []}, {"wrong": ["x"]}]
     assert row["output_title"] == "Output: the results of every task, joined"
+
+
+def test_a_one_job_fresh_task_with_a_rejected_answer_keeps_it_on_its_row_with_no_tasks(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    write_skill(project.skills_folder, "one-job", ONE_JOB_SKILL)
+    run_id, _ = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")
+    submit_answer(project, run_id, "verdict: [not, text]\n", task=0)
+    submit_answer(project, run_id, "verdict: fine\n", task=0)
+
+    detail = detail_of(project, run_id)
+    [row] = [row for row in detail["timeline"] if row["block"] == "judge"]
+
+    assert row["tasks"] == []
+    assert [submission["accepted"] for submission in row["submissions"]] == [False, True]
+    assert row["output"] == {"verdict": "fine"}
 
 
 def test_a_one_by_one_parallel_block_lists_the_tasks_of_its_visit(tmp_path: Path) -> None:
