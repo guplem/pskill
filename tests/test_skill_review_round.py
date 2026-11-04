@@ -3,8 +3,9 @@
 from typing import Any
 
 import pytest
+import yaml
 
-from tests.skill_scripts import FakeShell, install_shell, load_skill_script, run_main
+from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
 
 SKILL = "review-round"
 
@@ -105,3 +106,29 @@ def test_collect_findings_sorts_the_findings_by_file_and_line_so_that_copies_com
 
     order = [(item["file"], item["line"], item["reviewer"]) for item in printed["findings"]]
     assert order == [("a.py", 1, "tests"), ("a.py", 9, "correctness"), ("b.py", 2, "correctness"), ("b.py", 2, "tests")]
+
+
+def reviewer_rows() -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    block = yaml.safe_load((SKILLS_FOLDER / "review-round" / "skill.yaml").read_text(encoding="utf-8"))["blocks"][
+        "review"
+    ]
+    return block, {row["name"]: row for row in block["for_each"]}
+
+
+def test_every_reviewer_only_reads() -> None:
+    block, _ = reviewer_rows()
+
+    assert block["tools"] == "read"
+
+
+def test_the_rule_reviewers_run_on_the_standard_tier_and_correctness_keeps_the_session_model() -> None:
+    block, rows = reviewer_rows()
+
+    assert block["tier"] == "{{ item.tier | default('') }}"
+    assert {name: row.get("tier") for name, row in rows.items()} == {
+        "correctness": None,
+        "tests": "standard",
+        "completeness": None,
+        "conventions": "standard",
+        "docs": "standard",
+    }

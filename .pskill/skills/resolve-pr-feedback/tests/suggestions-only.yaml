@@ -12,7 +12,7 @@ scripts:
         {"queue": [], "count": 0, "suggestions": [{"reviewer": "completeness", "file": "src/app.py", "line": 3,
         "severity": "suggestion", "title": "Shorter name", "summary": "S", "quote": "q"}]}
   post_suggestions:
-    - {exit_code: 0, stdout: '{"comment_url": "https://github.com/o/r/pull/9#issuecomment-1"}'}
+    - {exit_code: 0, stdout: '{"comment_url": "https://github.com/example-org/app/pull/9#issuecomment-1"}'}
 expect:
   path: [checkout, collect_items, post_suggestions, resolved]
   status: succeeded

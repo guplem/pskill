@@ -40,14 +40,15 @@ blocks:
     description: Check that the request is clear
     instruction: instructions/assess_clarity.md
     max_visits: 6
-    on_max_visits: extract_terms
+    on_max_visits: search_duplicates
     output:
       clear: {type: boolean, description: "true when you understand exactly what the issue is about."}
       question: {type: string, optional: true, description: "The single most important open question."}
+      terms: {type: array, items: {type: string}, description: "2 to 4 search words that a duplicate of this issue would contain."}
     next:
       - when: "{{ not steps.assess_clarity.clear }}"
         to: ask_clarify
-      - to: extract_terms
+      - to: search_duplicates
 
   ask_clarify:
     type: decision
@@ -58,19 +59,11 @@ blocks:
       question: {type: string, description: "The question, as asked."}
     next: assess_clarity
 
-  extract_terms:
-    type: task
-    description: Pick search words for duplicates
-    instruction: instructions/extract_terms.md
-    output:
-      terms: {type: array, items: {type: string}, description: "Search words for duplicates."}
-    next: search_duplicates
-
   search_duplicates:
     type: script
     description: Search the existing issues
     run: [uv, run, "{{ skill.dir }}/scripts/search_issues.py"]
-    input: {repo: "{{ steps.resolve_repo.json.full_name }}", terms: "{{ steps.extract_terms.terms }}"}
+    input: {repo: "{{ steps.resolve_repo.json.full_name }}", terms: "{{ steps.assess_clarity.terms }}"}
     parse: json
     next: judge_duplicates
 

@@ -941,7 +941,7 @@ Each skill's blocks are in its `skill.yaml`, and the viewer draws them; this tab
 |---|---|
 | `implement-issue` | An issue (or a described change) to a pull request that is ready to merge. It never merges. |
 | `review-pr` | A deep review that ends in one GitHub review that the user confirms: it requests changes while a required finding is open, approves otherwise, and only comments on the user's own pull request. It changes no file. An autonomous run ends with the draft. |
-| `review-round` (internal) | One review round: five reviewer subagents (correctness, tests, completeness, conventions, docs) in parallel. It finds problems only, and skips the findings that it is told were already raised or reported. |
+| `review-round` (internal) | One review round: five read-only reviewer subagents (correctness, tests, completeness, conventions, docs) in parallel; tests, conventions, and docs run on the standard tier. It finds problems only, and skips the findings that it is told were already raised or reported. |
 | `review-head-check` (internal) | Whether the review can go on after the head of the pull request moved: a clean merge of the base or a small change goes on, a significant change asks the user. |
 | `review-doubt` (internal) | The verdict on one finding in real doubt: required, suggestion, or drop. "I don't know" starts simple yes/no questions, at most 6. |
 | `resolve-pr-feedback` | Each given required finding and each unaddressed pull request comment, in one task: fix it or dismiss it, and reply to the comment. The given suggestions are never fixed: one comment lists them for a person. |

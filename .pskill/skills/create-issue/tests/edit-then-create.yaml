@@ -2,9 +2,7 @@ name: the user asks for one edit, then creates the issue
 inputs: {description: Show token counts in the viewer.}
 answers:
   assess_clarity:
-    - {clear: true}
-  extract_terms:
-    - {terms: [viewer, tokens]}
+    - {clear: true, terms: [viewer, tokens]}
   judge_duplicates:
     - {choice: none, rationale: Nothing similar.}
   draft_issue:
