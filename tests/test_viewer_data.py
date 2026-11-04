@@ -29,8 +29,8 @@ from pskill_runner.viewer_data import (
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 from tests.test_engine_blocks import (
     CHILD_SKILL,
-    ONE_JOB_SKILL,
     NAMED_PARALLEL_SKILL,
+    ONE_JOB_SKILL,
     PARALLEL_SKILL,
     PARENT_SKILL,
     PICKED_PARALLEL_SKILL,
