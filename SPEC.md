@@ -367,7 +367,7 @@ verify_quotes:
   next: report
 ```
 
-- **The runner executes the script, never the agent.** It costs no agent tool call and no tokens, and it gives the same result every time.
+- **The runner executes the script, not the agent.** A script costs no agent tool call and no tokens, and it gives the same result every time. Only a background script costs the agent one call, to start the runner command (see the `background: true` bullet).
 - `run` is an argument list. The runner computes each element, converts it to text, and runs the list with no shell. This prevents shell injection and removes shell differences between operating systems.
 - Put real logic in `scripts/` as Python or Node, and call it: `[uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]`.
 - **A script gets its data through `input`, on stdin.** The runner computes `input`, then writes it to the script's stdin: a text as it is, and any other value (usually a mapping) as one JSON object. Stdin has no length limit; a command line has one (about 32,000 characters on Windows). Without `input`, stdin is empty.

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, TypeGuard, cast
 
 import pskill_runner
-from pskill_runner.adapters import BACKGROUND_MARGIN_S, adapter_for, tier_wording
+from pskill_runner.adapters import adapter_for, tier_wording
 from pskill_runner.computed_values import ComputedValueError, compute, is_true, render_text
 from pskill_runner.field_types import FieldMap, FieldSpec, check_answer, check_typed_values
 from pskill_runner.inline_executor import InlineExecutor, RealExecutor, ScriptResult
@@ -87,7 +87,7 @@ from pskill_runner.skill_model import (
     tier_choices,
     tool_profile_choices,
 )
-from pskill_runner.validator import validate_skill
+from pskill_runner.validator import background_timeout, validate_skill
 from pskill_runner.yaml_loading import load_answer_yaml
 
 ENTRY_SCRIPT_NAME = "pskill.py"
@@ -992,8 +992,8 @@ class Run:
     def background_shell_timeout_s(self, block: ScriptBlock) -> int:
         """The timeout of the agent's background command: every attempt of the script, plus a minute to record
         it, within the harness's longest timeout."""
-        all_attempts_s = (self.retries_of(block) + 1) * self.script_timeout_of(block)
-        return min(all_attempts_s + BACKGROUND_MARGIN_S, self.adapter.background_command_max_s)
+        total_s = background_timeout(block, self.project.config).total_s
+        return min(total_s, self.adapter.background_command_max_s)
 
     def issue_background_script(self, block: ScriptBlock, reentry: bool = False) -> str:
         """Give the command that runs the script in the background. The wait fields keep the Stop hook quiet."""

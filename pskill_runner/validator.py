@@ -6,8 +6,9 @@ cannot express: the graph, the references inside `{{ }}`, the files, and the des
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import NamedTuple
 
-from pskill_runner.adapters import BACKGROUND_COMMAND_MAX_S, BACKGROUND_MARGIN_S
+from pskill_runner.adapters import ADAPTERS, BACKGROUND_MARGIN_S
 from pskill_runner.computed_values import (
     ComputedValueError,
     compute,
@@ -182,15 +183,29 @@ def visit_cap_problems(location: str, block: AnyBlock) -> list[Problem]:
     return problems
 
 
+class BackgroundTimeout(NamedTuple):
+    """The time a background script may take: every attempt, plus a minute to record the result."""
+
+    timeout_s: int
+    attempts: int
+    total_s: int
+
+
+def background_timeout(block: ScriptBlock, config: Config) -> BackgroundTimeout:
+    """The one rule of a background script's time. The engine caps its command with it; `validate` checks it."""
+    timeout_s = block.timeout_s if block.timeout_s is not None else config.script_timeout_s
+    retries = block.retries if block.retries is not None else config.retries
+    attempts = retries + 1
+    return BackgroundTimeout(timeout_s, attempts, attempts * timeout_s + BACKGROUND_MARGIN_S)
+
+
 def script_timeout_problems(location: str, block: ScriptBlock, config: Config) -> list[Problem]:
     """A background script, with every attempt, runs at most `max_wait_minutes` and the longest background
     command. A foreground one outlasts Claude Code's shell call after 10 minutes (SPEC.md section 6.3)."""
     if block.background:
-        timeout_s = block.timeout_s if block.timeout_s is not None else config.script_timeout_s
-        retries = block.retries if block.retries is not None else config.retries
-        attempts = retries + 1
+        timeout_s, attempts, total_s = background_timeout(block, config)
+        command_max_s = max(adapter.background_command_max_s for adapter in ADAPTERS.values())
         attempts_text = "1 attempt" if attempts == 1 else f"{attempts} attempts"
-        total_s = attempts * timeout_s + BACKGROUND_MARGIN_S
         description = (
             f"the timeout of a background script ({total_s} s: {attempts_text} of "
             f"{timeout_s} s, plus {BACKGROUND_MARGIN_S} s to record)"
@@ -202,10 +217,8 @@ def script_timeout_problems(location: str, block: ScriptBlock, config: Config) -
                     f"{description} is above max_wait_minutes ({config.max_wait_minutes} minutes, in config.yaml)",
                 )
             ]
-        if total_s > BACKGROUND_COMMAND_MAX_S:
-            return [
-                error(location, f"{description} is above {BACKGROUND_COMMAND_MAX_S} s, the longest background command")
-            ]
+        if total_s > command_max_s:
+            return [error(location, f"{description} is above {command_max_s} s, the longest background command")]
         return []
     if block.timeout_s is not None and block.timeout_s > FOREGROUND_SHELL_LIMIT_S:
         return [
