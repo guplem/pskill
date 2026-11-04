@@ -1,13 +1,13 @@
-name: a required finding of an earlier review that is still open stays pending for the author
+name: a follow-up review reviews only the code changed since the earlier review, and a required finding of that review that is still open stays pending for the author
 inputs: {pr: 700}
 calls:
   check_head_before_post:
     - {status: succeeded, outputs: {action: continue, head_sha: h1}}
   review:
-    - {status: succeeded, outputs: {reviewed_sha: e5, scope_sha: e5, findings: []}}
+    - {status: succeeded, inputs: {since_sha: e1}, outputs: {reviewed_sha: e5, scope_sha: e5, findings: []}}
 scripts:
   read_earlier:
-    - {exit_code: 0, stdout: '{"dismissed": [{"reviewer": "earlier review", "title": "Old", "severity": "suggestion", "reason": "Posted."}], "count": 1}'}
+    - {exit_code: 0, stdout: '{"dismissed": [{"reviewer": "earlier review", "title": "Old", "severity": "suggestion", "reason": "Posted."}], "count": 1, "since_sha": "e1", "full_review_reason": ""}'}
   final:
     - {exit_code: 0, stdout: '{"findings": [], "has_required": true}'}
   post:
