@@ -4,7 +4,8 @@
 # ///
 """Mark the pull request ready for review, then remove the implementation plan from the branch.
 
-Usage: uv run mark_ready.py, with {"pr", "plan_file"} on stdin.
+Usage: uv run mark_ready.py, with {"pr", "branch", "plan_file"} on stdin. The push names the branch, because the
+checkout can be detached (another worktree can hold the branch).
 Prints {"head_sha"}, the head commit after the push. A second run changes nothing: the pull request is ready, the
 plan is gone, and the push has nothing to send.
 
@@ -59,13 +60,14 @@ def mark_ready_for_review(pr_number: str) -> None:
 def main() -> None:
     script_input = json.load(sys.stdin)
     pr_number, plan_file = str(script_input["pr"]), str(script_input["plan_file"])
+    branch = str(script_input["branch"])
 
     mark_ready_for_review(pr_number)
     if succeeds(["git", "ls-files", "--error-unmatch", "--", plan_file]):
         run(["git", "rm", "--quiet", plan_file])
         run(["git", "commit", "--quiet", "-m", "Remove the implementation plan"])
     # Always push: a run that stopped after the commit has to send it now.
-    run(["git", "push", "--quiet"])
+    run(["git", "push", "--quiet", "origin", f"HEAD:{branch}"])
 
     print(json.dumps({"head_sha": run(["git", "rev-parse", "HEAD"])}))
 

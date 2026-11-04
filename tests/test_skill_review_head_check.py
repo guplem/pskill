@@ -91,3 +91,19 @@ def test_a_moved_head_is_fetched_before_its_commits_are_listed(
 
     assert printed == {"head_sha": "def4567890ab", "commits": ["def4567890"]}
     assert shell.ran("git fetch --quiet origin 42-fix-save")
+
+
+def test_the_head_is_the_branch_tip_on_origin_when_github_lags_behind_a_push(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], check_head: ModuleType
+) -> None:
+    stale = json.dumps({"head": {"ref": "42-fix-save", "sha": "abc"}})
+    outputs = {
+        "gh api GET repos/{owner}/{repo}/pulls/9": stale,
+        "git ls-remote origin refs/heads/42-fix-save": "def4567890ab\trefs/heads/42-fix-save",
+    }
+    install_shell(monkeypatch, check_head, FakeShell(outputs))
+    monkeypatch.setattr(check_head, "new_commits", lambda reviewed, head: [head[:10]])
+
+    printed = run_main(monkeypatch, capsys, check_head, {"pr": 9, "reviewed_sha": "abc"})
+
+    assert printed == {"head_sha": "def4567890ab", "commits": ["def4567890"]}

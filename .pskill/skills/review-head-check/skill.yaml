@@ -11,7 +11,7 @@ inputs:
   reviewed_sha: {type: string, description: "The commit that the review saw last."}
 outputs:
   action: {type: string, enum: [continue, restart, stop], description: "What the review does next."}
-  head_sha: {type: string, description: "The head commit of the pull request on GitHub."}
+  head_sha: {type: string, description: "The head commit of the pull request: the branch tip on origin."}
 entry: read_head
 
 blocks:
