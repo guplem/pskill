@@ -112,12 +112,15 @@ class ScriptBlock(RetryableBlock):
 
     `input` is what the script reads on stdin: a text as it is, any other value as JSON.
     `timeout_s` overrides the global `script_timeout_s` in `config.yaml`.
+    `background`: on a harness that wakes the agent after a background command, the agent starts the script
+    in the background and ends its turn (SPEC.md section 6.3). Elsewhere it runs in the foreground.
     """
 
     run: list[Any]
     input: Any = None
     parse: str = "text"
     timeout_s: int | None = None
+    background: bool = False
     next: list[Edge]
 
 

@@ -152,6 +152,7 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
             input=raw.get("input"),
             parse=raw.get("parse", "text"),
             timeout_s=raw.get("timeout_s"),
+            background=raw.get("background", False),
             next=parse_edges(raw["next"]),
         )
     if block_type == "call":

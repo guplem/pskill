@@ -164,6 +164,25 @@ def test_a_block_can_set_its_own_retries_and_a_script_its_own_timeout(tmp_path: 
     assert (script.retries, script.timeout_s) == (0, 30)
 
 
+def test_a_script_can_run_in_the_background_and_runs_in_the_foreground_by_default(tmp_path: Path) -> None:
+    background_yaml = ALL_BLOCKS_SKILL.replace("    parse: json\n", "    parse: json\n    background: true\n")
+
+    background = load_skill(write_skill(tmp_path / "a", "all-blocks", background_yaml)).blocks["list_docs"]
+    foreground = load_skill(write_skill(tmp_path / "b", "all-blocks", ALL_BLOCKS_SKILL)).blocks["list_docs"]
+
+    assert isinstance(background, ScriptBlock) and isinstance(foreground, ScriptBlock)
+    assert (background.background, foreground.background) == (True, False)
+
+
+def test_background_is_a_boolean_of_a_script_only(tmp_path: Path) -> None:
+    skill_yaml = ALL_BLOCKS_SKILL.replace("    parse: json\n", '    parse: json\n    background: "yes"\n')
+
+    with pytest.raises(SkillLoadError) as raised:
+        load_skill(write_skill(tmp_path, "all-blocks", skill_yaml))
+
+    assert any("blocks.list_docs" in problem and "background" in problem for problem in raised.value.problems)
+
+
 def test_retries_and_timeout_are_unset_by_default(tmp_path: Path) -> None:
     skill = load_skill(write_skill(tmp_path, "plan-work", PLAN_SKILL, PLAN_SKILL_FILES))
 
