@@ -935,17 +935,19 @@ The example skills are a base that almost any software project on GitHub can cop
 
 ### 13.1 The skills
 
-| Skill | What it does | Its blocks, in order |
-|---|---|---|
-| `implement-issue` | An issue (or a described change) to a pull request that is ready to merge. It never merges. | `create_new_issue` (call `create-issue`, for a described change only), `read_issue`, `checkout_default`, `understand`, `checkout_base`, `research_code` and `research_gaps` (fresh subagents, one per item), `ask_user`, `write_plan`, `approve_plan`, `open_draft_pr`, `implement_step` (one red-green cycle per visit), `write_description`, then the loop `review` (call `review-round`) and `resolve` (call `resolve-pr-feedback`), then `ready`, `get_ci_green` (call `fix-ci`), `answer_comments` (call `resolve-pr-feedback`), `check_unreviewed`, the required-only loop `final_review` and `final_resolve`, and `finish`. |
-| `review-pr` | A deep review that ends in one GitHub review that the user confirms: it requests changes while a required finding is open, approves otherwise, and only comments on the user's own pull request. It changes no file. An autonomous run ends with the draft. | `read_earlier` (the findings of earlier reviews and their replies), then the loop `review` (call `review-round`) and `check_head_before_round` (call `review-head-check`), `triage`, `settle_doubt` (call `review-doubt`, once per finding in doubt), `final`, `draft`, `confirm` and `ask_revision` in a loop, `check_head_before_post`, `post`. |
-| `review-round` (internal) | One review round: five reviewer subagents (correctness, tests, completeness, conventions, docs) in parallel. It finds problems only, and skips the findings that it is told were already raised or reported. | `checkout` (call `checkout-pr`), `read_pr`, `review` (fresh subagents over a fixed list, with a `when` per angle), `collect_findings`. |
-| `review-head-check` (internal) | Whether the review can go on after the head of the pull request moved: a clean merge of the base or a small change goes on, a significant change asks the user. | `read_head`, `judge`, `ask`. |
-| `review-doubt` (internal) | The verdict on one finding in real doubt: required, suggestion, or drop. "I don't know" starts simple yes/no questions, at most 6. | `ask`, then `next_question` and `ask_question` in a loop, `decide`. |
-| `resolve-pr-feedback` | Each given finding and each unaddressed pull request comment, one at a time: fix it or dismiss it, and reply to the comment. | `checkout`, `collect_items`, then per item `claim_item` (the 👀 reaction), `resolve_item`, `finish_item` (the reply). |
-| `fix-ci` | The CI checks of a pull request green, or a reason why the pull request cannot fix them. | `checkout`, `wait_ci`, `fix_ci`, in a loop. |
-| `create-issue` | One clear issue, after the user approves the draft, or the existing issue that covers it. | `resolve_repo` (the target repository: the `repo` input, or the current one), `assess_clarity` and `ask_clarify` in a loop, `extract_terms`, `search_duplicates`, `judge_duplicates`, `confirm_duplicate`, `draft_issue`, `confirm_draft`, `create`, and in autonomous mode `ensure_label` and `label_issue`. |
-| `checkout-pr` (internal) | The checkout on the pull request branch at its latest commit. It pauses the run instead of discarding a change. | `checkout_pr`. |
+Each skill's blocks are in its `skill.yaml`, and the viewer draws them; this table only says what each skill is for.
+
+| Skill | What it does |
+|---|---|
+| `implement-issue` | An issue (or a described change) to a pull request that is ready to merge. It never merges. |
+| `review-pr` | A deep review that ends in one GitHub review that the user confirms: it requests changes while a required finding is open, approves otherwise, and only comments on the user's own pull request. It changes no file. An autonomous run ends with the draft. |
+| `review-round` (internal) | One review round: five reviewer subagents (correctness, tests, completeness, conventions, docs) in parallel. It finds problems only, and skips the findings that it is told were already raised or reported. |
+| `review-head-check` (internal) | Whether the review can go on after the head of the pull request moved: a clean merge of the base or a small change goes on, a significant change asks the user. |
+| `review-doubt` (internal) | The verdict on one finding in real doubt: required, suggestion, or drop. "I don't know" starts simple yes/no questions, at most 6. |
+| `resolve-pr-feedback` | Each given finding and each unaddressed pull request comment, one at a time: fix it or dismiss it, and reply to the comment. |
+| `fix-ci` | The CI checks of a pull request green, or a reason why the pull request cannot fix them. |
+| `create-issue` | One clear issue, after the user approves the draft, or the existing issue that covers it. |
+| `checkout-pr` (internal) | The checkout on the pull request branch at its latest commit. It pauses the run instead of discarding a change. |
 
 The pskill agents: `reviewer` (one review angle, no quote no finding), `explorer` (one research question), `pattern-scout` (the closest existing code), and `adr-checker` (the recorded decisions that limit a change).
 
@@ -957,10 +959,10 @@ The pskill agents: `reviewer` (one review angle, no quote no finding), `explorer
 - **The plan lives in the draft.** `implement-issue` writes a plan file, the user approves it, and a script pushes it as the only change of a draft pull request. Every later step reads it. `ready` removes it before CI runs on the ready pull request.
 - **One set of acceptance rules.** `references/finding-acceptance.md` decides which finding is real, belongs to the pull request, and has which severity. The reviewers, the triage of `review-pr`, `review-doubt`, and `resolve-pr-feedback` each keep an identical copy, and a test fails when the copies differ.
 - **Ask the user little.** The triage of `review-pr` asks about a finding only when one of the four tests of `references/decision-gate.md` fails and the answer changes what the review posts. An autonomous run takes the triage's recommendation.
-- **Find and fix are separate.** `review-round` only reports; `resolve-pr-feedback` only resolves. The loop between them ends when a round fixes nothing, after the 4th round with no required finding, or at a cap of 7 rounds. Every reviewer sees every dismissed finding.
+- **Find and fix are separate.** `review-round` only reports; `resolve-pr-feedback` only resolves. The loop between them ends when a round fixes nothing, or at a round cap (the edges of `implement-issue` and the `max_rounds` input of `review-pr` hold the numbers). Every reviewer sees every dismissed finding.
 - **A fixed review scope.** The first review round's commit ends the scope. A changed line brings in its innermost function (or, outside any function, its section or block). An older problem is fixed only when the new code runs the broken part, it blocks the goal, or its fix stays inside the changed function.
 - **Severity.** `required`: wrong code, a broken written rule, or a broken clear project pattern. `suggestion`: a better way that no rule or pattern asks for.
-- **Every late fix gets a review.** After CI and the late comments, `check_unreviewed` (a script) lists the commits that no review saw, without the plan removal and clean merges. Each such commit gets a required-only round, up to 5 rounds; then `finish` labels the pull request.
+- **Every late fix gets a review.** After CI and the late comments, `check_unreviewed` (a script) lists the commits that no review saw, without the plan removal and clean merges. Each such commit gets a required-only round, up to a cap; then `finish` labels the pull request.
 - **No quote, no finding.** `collect_findings` drops a finding whose quote is not in its file. `post` of `review-pr` finds each finding again by its quote at the reviewed commit, because an earlier round can report a line of an older head.
 - **One item at a time.** `resolve-pr-feedback` claims each comment with the 👀 reaction before its work starts, and its reply carries the marker `<!-- resolve-pr-feedback-reply: <id> -->`, so a later round never answers it twice.
 - **Change the code, not the rule.** A finding that the code breaks a written rule is fixed in the code. The rule changes only when the rule itself is wrong.
@@ -968,7 +970,7 @@ The pskill agents: `reviewer` (one review angle, no quote no finding), `explorer
 - **A human label, not a merge.** `finish` adds `waiting-for-human-review` when a human must look (a risky area, a visible change, a cap reached, a dismissed finding, CI not green), with a short note at the top of the description that says what to check. The run never merges.
 - **Every end says what is left.** Each end of a skill that a user starts has a `pending` (6.5), empty when nothing is left, so the summary card never says "not declared" (`tests/test_skills_pending.py` checks it). Write it for every path into the end: the cases check the texts with `expect.pending`.
 - **A limit says so.** In `implement-issue` and `resolve-pr-feedback`, a visit limit that cuts work short ends the run on `capped`, not on the plain end. The run still succeeds, because the pull request exists. `implement-issue` runs to `finish`, which adds an Incomplete warning at the top of the description for each limit whose skipped work matters (its own judgment). The `limits` output and the report name each limit and the work it skipped. `resolve-pr-feedback` ends on its own `capped` at its item cap, with the items `left`. A failed `fix-ci` is not such a limit: the run ends on `done`, and `finish` labels the pull request because CI is not green.
-- **No unchecked last fix.** Two caps push no fix that nothing would check. The 5th required-only round leaves its required findings open, and `finish` names them. `fix-ci` caps its fixes, not its waits, so it asks before a fix that no CI run would check.
+- **No unchecked last fix.** Two caps push no fix that nothing would check. The last required-only round leaves its required findings open, and `finish` names them. `fix-ci` caps its fixes, not its waits, so it asks before a fix that no CI run would check.
 
 ### 13.3 Feature coverage
 
