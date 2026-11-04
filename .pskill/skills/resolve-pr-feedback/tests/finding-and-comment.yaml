@@ -11,7 +11,7 @@ scripts:
       stdout: >-
         {"queue": [{"kind": "finding", "reviewer": "completeness", "file": "src/app.py", "line": 3, "severity": "required",
         "title": "Missing guard", "summary": "S", "quote": "q"}, {"kind": "comment", "id": 91, "comment_kind": "inline",
-        "author": "ivan", "path": "src/app.py", "line": 4, "thread_id": 91, "body": "Looks good."}], "count": 2}
+        "author": "ivan", "path": "src/app.py", "line": 4, "thread_id": 91, "body": "Looks good."}], "count": 2, "suggestions": []}
   claim_item:
     - {exit_code: 0, stdout: '{"claimed": false}'}
     - {exit_code: 0, stdout: '{"claimed": true}'}
