@@ -38,11 +38,15 @@ Then update the pull request description. Read it with `gh api repos/{owner}/{re
   > **Why:** <one or two sentences: the risk or the open decision>
   >
   > **What to check:**
-  > - <a decision or a risk to verify, with its file or commit>
+  > - <what a human must decide or verify, with its file or commit>
+  >
+  > **Decisions taken:**
+  > - <a decision that needs no question, in one line>
   <!-- /human-review-note -->
   ```
 
-  - Keep the note under 80 words, with at most 4 checks, the most important first.
+  - **What to check** holds only what can change what the pull request does, and scope only when the issue leaves it open. Keep the note under 80 words, with at most 4 checks, the most important first.
+  - **Decisions taken** lists, one line each, what needs no question, because humans take the recommendation nearly every time: a name, a UI text, or the wording of a rule or doc; a choice that copies a precedent (name it) or keeps today's behavior. Each risk point that adds the label goes here too, with what the change does about it. Leave the section out when it is empty. It does not count toward the 80 words.
   - Name what a human must decide or verify, not what the code does. Example: "Decide if the new retry limit in `config/defaults.toml` stays."
 - **When you do not add `waiting-for-human-review`,** remove the note if there is one. Remove an Incomplete warning that no longer applies.
 
