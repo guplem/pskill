@@ -384,7 +384,7 @@ verify_quotes:
   - `run-script` takes the run lock to mark the script as running, runs it with no lock held (other commands go on, and none breaks a lock that is minutes old), then takes the lock again to record each attempt as a foreground script does (`script_ran`, retries, then `block_failed`), clears the wait fields, and prints the next packet. The agent wakes once, with that packet as the command's output.
   - While the script is open: `current` gives the command again until it starts, then says that it runs; `submit` refuses an answer; a second `run-script` is refused; `pskill wait` is refused (its shorter alarm would replace the script's). `resume` gives the command again, which recovers a command that died with its session.
   - When the run changed while the script ran (a pause, a cancel, or a `resume` that gave the command again), `run-script` drops the result and says how to continue.
-  - Elsewhere (Codex, generic) and in `pskill test`, the block runs in the foreground, like any script.
+  - Elsewhere (Codex, generic) and in `pskill test`, the block runs in the foreground, like any script. A run that moves to such a harness (D13) while a background script is open runs the script in the foreground at its next `current` or `resume`. A script that ends, in either way, clears its marker and the wait fields.
 
 ### 6.4 `call`
 

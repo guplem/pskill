@@ -1814,6 +1814,37 @@ def test_current_gives_the_background_command_again_until_it_starts(tmp_path: Pa
     assert "### Goal\nRead data with a script." in packet and "### Rules" in packet
 
 
+def test_current_on_a_harness_that_wakes_nobody_runs_the_background_script_in_the_foreground(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+
+    packet = current_packet(project, run_id, harness="codex")
+
+    assert "finished with status succeeded" in packet, packet
+    info = read_run_info(project, run_id)
+    assert info["outputs"] == {"count": 2}
+    assert (info["wait_reason"], info["wait_until"], info["waits_since"]) == (None, None, None)
+    assert read_run_state(project, run_id)["frames"][-1]["background_script"] is None
+
+
+def test_a_foreground_run_clears_the_marker_of_a_background_script_it_replaces(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    pause_run(project, run_id)
+
+    packet = resume_run(project, run_id, harness="codex")
+
+    assert "finished with status succeeded" in packet, packet
+    assert read_run_state(project, run_id)["frames"][-1]["background_script"] is None
+
+
+def test_current_at_a_paused_background_script_gives_the_pause_text(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    pause_run(project, run_id)
+
+    packet = current_packet(project, run_id)
+
+    assert "paused" in packet and "run-script" not in packet
+
+
 def test_current_says_that_the_script_runs_while_it_runs(tmp_path: Path) -> None:
     project, run_id = start_background(tmp_path)
     seen: list[str] = []

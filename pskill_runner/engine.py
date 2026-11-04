@@ -1014,6 +1014,13 @@ class Run:
         self.info["waits_since"] = timestamp(now)
         self.info["stop_blocks"] = 0
 
+    def script_text(self, block: ScriptBlock) -> str:
+        """What `current` does at an open script: on a harness that does not wake the agent after a background
+        command (the run moved to one), the script runs in the foreground now."""
+        if self.runs_in_background(block):
+            return self.background_script_text(block)
+        return self.guarded(self.advance)
+
     def background_script_text(self, block: ScriptBlock) -> str:
         """What `current` says at a background script: its command until it starts, then that it runs."""
         marker = self.frame.get("background_script")
@@ -1074,6 +1081,8 @@ class Run:
 
     def record_script(self, block: ScriptBlock, script: "PreparedScript", results: list[ScriptResult]) -> str | None:
         """Log each attempt, then complete the block with the last result, or pause when every attempt failed."""
+        self.frame["background_script"] = None  # a script that ends, in the background or not, is no longer open
+        self.clear_wait()
         problem = None
         for whole_result in results:
             problem = script_problem(whole_result, block.parse)
@@ -1137,8 +1146,6 @@ class Run:
                 f"`{runner_command(self.project)} current {self.info['run_id']}`.\n"
             )
         assert isinstance(block, ScriptBlock)
-        self.frame["background_script"] = None
-        self.clear_wait()
         self.info["stop_blocks"] = 0
         pause_text = self.record_script(block, script, results)
         return pause_text if pause_text is not None else self.advance()
@@ -1403,9 +1410,10 @@ class Run:
 
     def current_text(self) -> str:
         status = self.info["status"]
-        block = self.current_block()
-        if status == "active" and isinstance(block, ScriptBlock):
-            return self.background_script_text(block)
+        if status == "active":  # only an active run needs its block here: a paused or finished one may have none
+            block = self.current_block()
+            if isinstance(block, ScriptBlock):
+                return self.script_text(block)
         if status in ACTIVE_STATUSES:  # a re-entry: a new session may not have read the stub
             return self.guarded(lambda: self.agent_packet(errors=[], show_goal=True, show_rules=True))
         if status == "paused":
