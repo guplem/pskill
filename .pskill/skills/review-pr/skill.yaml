@@ -70,6 +70,8 @@ blocks:
       scope_sha: "{{ (history.review | map(attribute='outputs') | map(attribute='scope_sha') | first) | default('', true) }}"
       reported: "{{ history.review | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) }}"
       dismissed: "{{ steps.read_earlier.json.dismissed }}"
+      # A follow-up review reviews only the code changed since the last earlier review, for required findings only.
+      since_sha: "{{ steps.read_earlier.json.since_sha | default('') }}"
     # The arrow below already stops at max_rounds. This cap is only a safety net, so it never asks.
     max_visits: 20
     on_max_visits: triage

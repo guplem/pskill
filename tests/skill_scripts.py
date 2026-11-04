@@ -75,6 +75,15 @@ class FakeShell:
         output = next((output for prefix, output in self.outputs.items() if text.startswith(prefix)), "")
         return json.loads(output) if output.strip() else None
 
+    def api_call(self, path: str, method: str = "GET", body: Any = None) -> subprocess.CompletedProcess[str]:
+        """Fake `gh_api_call`: record the call like `api`, and return its result instead of exiting on a failure."""
+        text = f"gh api {method} {path}" + ("" if body is None else f" {json.dumps(body, sort_keys=True)}")
+        self.commands.append(text)
+        if self.fails(text):
+            return subprocess.CompletedProcess(text, 1, "", self.failure_stderr)
+        output = next((output for prefix, output in self.outputs.items() if text.startswith(prefix)), "")
+        return subprocess.CompletedProcess(text, 0, output, "")
+
     def api_pages(self, path: str, key: str | None = None, stop: Callable[[list[Any]], bool] | None = None) -> Any:
         """Fake `gh_api_pages`: one GET of the path, whose output is one page: a list, or an object with `key`."""
         reply = self.api(path)
@@ -87,11 +96,13 @@ class FakeShell:
 
 
 def install_shell(monkeypatch: pytest.MonkeyPatch, script: ModuleType, shell: FakeShell) -> FakeShell:
-    """Route the script's `run`, `succeeds`, `gh_api`, and `gh_api_pages` helpers (the ones that it has) to the fake."""
+    """Route the script's `run`, `succeeds`, `gh_api`, `gh_api_call`, and `gh_api_pages` helpers (the ones that it has)
+    to the fake."""
     for name, fake in (
         ("run", shell.run),
         ("succeeds", shell.succeeds),
         ("gh_api", shell.api),
+        ("gh_api_call", shell.api_call),
         ("gh_api_pages", shell.api_pages),
     ):
         if hasattr(script, name):
