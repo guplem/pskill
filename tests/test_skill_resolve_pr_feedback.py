@@ -152,113 +152,98 @@ def test_collect_items_leaves_out_a_copilot_notice_but_keeps_a_copilot_review(
     assert [item.get("id") for item in printed["queue"]] == [None, 8]
 
 
-def test_claim_item_adds_the_eyes_reaction_to_a_comment_that_can_take_one(
+def test_claim_items_adds_the_eyes_reaction_to_each_comment_that_can_take_one(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    script = load_skill_script(SKILL, "claim_item")
+    script = load_skill_script(SKILL, "claim_items")
     shell = install_shell(monkeypatch, script, FakeShell())
+    items = [
+        {"kind": "finding"},
+        {"kind": "comment", "id": 5, "comment_kind": "conversation"},
+        {"kind": "comment", "id": 2, "comment_kind": "review"},
+        {"kind": "comment", "id": 6, "comment_kind": "inline"},
+    ]
 
-    printed = run_main(
-        monkeypatch, capsys, script, {"item": {"kind": "comment", "id": 5, "comment_kind": "conversation"}}
-    )
+    printed = run_main(monkeypatch, capsys, script, {"items": items})
 
-    assert printed == {"claimed": True}
-    assert shell.commands == ["gh api repos/{owner}/{repo}/issues/comments/5/reactions -f content=eyes"]
+    assert printed == {"claimed": 2}
+    assert shell.commands == [
+        "gh api repos/{owner}/{repo}/issues/comments/5/reactions -f content=eyes",
+        "gh api repos/{owner}/{repo}/pulls/comments/6/reactions -f content=eyes",
+    ]
 
 
-@pytest.mark.parametrize("item", [{"kind": "finding"}, {"kind": "comment", "id": 2, "comment_kind": "review"}])
-def test_claim_item_leaves_a_finding_and_a_review_body_alone(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], item: dict[str, Any]
-) -> None:
-    script = load_skill_script(SKILL, "claim_item")
+INLINE = {"kind": "comment", "id": 7, "comment_kind": "inline", "author": "ana", "thread_id": 1, "body": "Rename it."}
+
+
+def finish(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    items: list[dict[str, Any]],
+    decisions: list[dict[str, Any]],
+) -> tuple[dict[str, Any], FakeShell]:
+    script = load_skill_script(SKILL, "finish_items")
     shell = install_shell(monkeypatch, script, FakeShell())
+    printed = run_main(monkeypatch, capsys, script, {"pr": 9, "items": items, "decisions": decisions})
+    return printed, shell
 
-    assert run_main(monkeypatch, capsys, script, {"item": item}) == {"claimed": False}
-    assert shell.commands == []
 
-
-def test_finish_item_replies_in_the_thread_of_an_inline_comment(
+def test_finish_items_replies_in_the_thread_of_an_inline_comment_with_the_commit_of_its_fix(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    script = load_skill_script(SKILL, "finish_item")
-    shell = install_shell(monkeypatch, script, FakeShell({"git rev-parse --short HEAD": "abc"}))
-    item = {"kind": "comment", "id": 7, "comment_kind": "inline", "author": "ana", "thread_id": 1, "body": "Rename it."}
-
-    printed = run_main(
-        monkeypatch, capsys, script, {"pr": 9, "item": item, "decision": {"verdict": "fixed", "reason": "Renamed."}}
+    printed, shell = finish(
+        monkeypatch, capsys, [INLINE], [{"verdict": "fixed", "reason": "Renamed.", "commit": "abc"}]
     )
 
     assert printed == {
-        "replied": True,
-        "decision": {
-            "kind": "comment",
-            "reviewer": "",
-            "title": "Rename it.",
-            "verdict": "fixed",
-            "reason": "Renamed.",
-        },
+        "decisions": [
+            {"kind": "comment", "reviewer": "", "title": "Rename it.", "verdict": "fixed", "reason": "Renamed."}
+        ],
+        "left": 0,
     }
-    assert shell.commands[-1] == (
+    assert shell.commands == [
         "gh api repos/{owner}/{repo}/pulls/9/comments/1/replies "
         "-f body=**Fixed** in abc. Renamed.\n\n<!-- resolve-pr-feedback-reply: 7 -->"
-    )
+    ]
 
 
-def test_finish_item_quotes_a_review_comment_in_a_new_conversation_comment(
+def test_finish_items_quotes_a_review_comment_in_a_new_conversation_comment(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    script = load_skill_script(SKILL, "finish_item")
-    shell = install_shell(monkeypatch, script, FakeShell())
     item = {"kind": "comment", "id": 2, "comment_kind": "review", "author": "ana", "body": "\nNice.\nThanks."}
 
-    printed = run_main(
-        monkeypatch, capsys, script, {"pr": 9, "item": item, "decision": {"verdict": "dismissed", "reason": "Thanks!"}}
-    )
+    printed, shell = finish(monkeypatch, capsys, [item], [{"verdict": "dismissed", "reason": "Thanks!"}])
 
-    assert printed["decision"]["title"] == "Nice."
-    assert shell.commands[-1] == (
+    assert printed["decisions"][0]["title"] == "Nice."
+    assert shell.commands == [
         "gh api repos/{owner}/{repo}/issues/9/comments "
         "-f body=> Nice.\n\n**Dismissed**. Thanks!\n\n<!-- resolve-pr-feedback-reply: 2 -->"
-    )
+    ]
 
 
-def test_finish_item_cuts_a_long_first_line_of_the_quoted_comment(
+def test_finish_items_cuts_a_long_first_line_of_the_quoted_comment(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    script = load_skill_script(SKILL, "finish_item")
-    shell = install_shell(monkeypatch, script, FakeShell())
     item = {"kind": "comment", "id": 3, "comment_kind": "conversation", "author": "ana", "body": "x" * 250}
 
-    run_main(
-        monkeypatch, capsys, script, {"pr": 9, "item": item, "decision": {"verdict": "dismissed", "reason": "No."}}
-    )
+    _, shell = finish(monkeypatch, capsys, [item], [{"verdict": "dismissed", "reason": "No."}])
 
     assert shell.commands[-1].startswith(
         "gh api repos/{owner}/{repo}/issues/9/comments -f body=> " + "x" * 200 + "\n\n"
     )
 
 
-def test_finish_item_only_records_a_finding(
+def test_finish_items_only_records_a_finding_and_counts_the_items_with_no_decision(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    script = load_skill_script(SKILL, "finish_item")
-    shell = install_shell(monkeypatch, script, FakeShell())
+    items = [{"kind": "finding", **FINDING}, INLINE]
 
-    printed = run_main(
-        monkeypatch,
-        capsys,
-        script,
-        {"pr": 9, "item": {"kind": "finding", **FINDING}, "decision": {"verdict": "fixed", "reason": "Added."}},
-    )
+    printed, shell = finish(monkeypatch, capsys, items, [{"verdict": "fixed", "reason": "Added.", "commit": "abc"}])
 
     assert printed == {
-        "replied": False,
-        "decision": {
-            "kind": "finding",
-            "reviewer": "tests",
-            "title": "No test",
-            "verdict": "fixed",
-            "reason": "Added.",
-        },
+        "decisions": [
+            {"kind": "finding", "reviewer": "tests", "title": "No test", "verdict": "fixed", "reason": "Added."}
+        ],
+        "left": 1,
     }
     assert shell.commands == []
