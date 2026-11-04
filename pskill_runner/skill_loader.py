@@ -14,7 +14,6 @@ from pskill_runner.skill_model import (
     DecisionBlock,
     Edge,
     EndBlock,
-    ParallelBlock,
     ScriptBlock,
     Skill,
     SkillCatalog,
@@ -24,6 +23,9 @@ from pskill_runner.skill_schema import BLOCK_SCHEMAS, TOP_LEVEL_SCHEMA
 from pskill_runner.yaml_loading import load_skill_yaml
 
 SKILL_FILE_NAME = "skill.yaml"
+
+# The one line for a block type that 1.0.0 removed (SPEC.md section 18).
+PARALLEL_REMOVED = "`parallel` is now `task` with `for_each`: change the type"
 
 
 class SkillLoadError(Exception):
@@ -64,6 +66,9 @@ def structure_problems(raw: dict[str, Any], folder_name: str) -> list[str]:
     for block_id, raw_block in raw["blocks"].items():
         location = f"blocks.{block_id}"
         block_type = raw_block["type"]
+        if block_type == "parallel":
+            problems.append(f"{location}: {PARALLEL_REMOVED}")
+            continue
         if block_type not in BLOCK_SCHEMAS:
             known_types = ", ".join(sorted(BLOCK_SCHEMAS))
             problems.append(f"{location}: unknown block type {block_type!r} (known types: {known_types})")
@@ -118,6 +123,12 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
             instruction=raw["instruction"],
             output=parse_field_map(raw["output"]),
             next=parse_edges(raw["next"]),
+            for_each=raw.get("for_each"),
+            agent=raw.get("agent"),
+            task_name=raw.get("task_name"),
+            tier=raw.get("tier"),
+            tools=raw.get("tools"),
+            context=raw.get("context"),
         )
     if block_type == "decision":
         raw_next = raw["next"]
@@ -133,18 +144,6 @@ def build_block(block_id: str, raw: dict[str, Any]) -> AnyBlock:
             choices=raw.get("choices"),
             output=parse_field_map(raw.get("output", {})),
             next=next_blocks,
-        )
-    if block_type == "parallel":
-        return ParallelBlock(
-            **retryable,
-            for_each=raw["for_each"],
-            agent=raw.get("agent"),
-            task_name=raw.get("task_name"),
-            tier=raw.get("tier"),
-            tools=raw.get("tools"),
-            instruction=raw["instruction"],
-            output=parse_field_map(raw["output"]),
-            next=parse_edges(raw["next"]),
         )
     if block_type == "script":
         return ScriptBlock(

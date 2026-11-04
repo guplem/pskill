@@ -220,7 +220,7 @@ def test_a_file_with_crlf_line_ends_keeps_them(tmp_path: Path) -> None:
 # --- add and delete --------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("block_type", ["task", "decision", "parallel", "script", "call", "end"])
+@pytest.mark.parametrize("block_type", ["task", "decision", "script", "call", "end"])
 def test_a_new_block_of_each_type_loads(tmp_path: Path, block_type: str) -> None:
     project = make_project(tmp_path)
 
@@ -268,8 +268,8 @@ def test_an_id_that_is_not_a_skill_id_cannot_be_edited(tmp_path: Path) -> None:
 
 def test_a_task_name_goes_after_the_agent(tmp_path: Path) -> None:
     project = make_project(tmp_path)
-    add_block(project, "plan-work", "fan", "parallel")
-    update_block(project, "plan-work", "fan", {"agent": "checker"})
+    add_block(project, "plan-work", "fan", "task")
+    update_block(project, "plan-work", "fan", {"for_each": [], "context": "fresh", "agent": "checker"})
 
     update_block(project, "plan-work", "fan", {"task_name": "{{ item }}"})
 

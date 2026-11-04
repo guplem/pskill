@@ -38,7 +38,8 @@ outputs:
 entry: spell
 blocks:
   spell:
-    type: parallel
+    type: task
+    context: fresh
     for_each: [first, last]
     instruction: "Give the {{ item }} letter of tide."
     output:

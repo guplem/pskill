@@ -114,7 +114,8 @@ outputs:
 entry: check
 blocks:
   check:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     agent: checker
     instruction: "Check every claim in {{ item }}."
@@ -547,7 +548,8 @@ outputs:
 entry: review
 blocks:
   review:
-    type: parallel
+    type: task
+    context: fresh
     for_each:
       - {name: always}
       - {name: api, when: "{{ inputs.paths | select('matches', '^api/') | list }}"}
@@ -812,7 +814,8 @@ inputs:
 entry: first
 blocks:
   first:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     instruction: "Check {{ item }}."
     max_visits: 50
@@ -821,7 +824,8 @@ blocks:
       ok: {type: boolean, description: "True when done."}
     next: second
   second:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     instruction: "Check {{ item }} again."
     output:

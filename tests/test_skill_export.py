@@ -317,7 +317,8 @@ blocks:
     output: {}
     next: review
   review:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     agent: "{{ item }}"
     instruction: "Review {{ item }}."
@@ -325,7 +326,8 @@ blocks:
       ok: {type: boolean, description: "True when the file is fine."}
     next: check
   check:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     instruction: "Check {{ item }}."
     output:

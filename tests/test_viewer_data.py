@@ -102,6 +102,11 @@ blocks:
     status: succeeded
 """
 
+TASK_MEANING = (
+    "The agent does a piece of work and returns a typed answer: one job, or one job per list item whose "
+    "results join into one list. A job runs in the main conversation or in a subagent."
+)
+
 
 LONG_CONDITION_SKILL = """\
 schema: pskill/v1
@@ -136,7 +141,8 @@ inputs:
 entry: check
 blocks:
   check:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files if (history.check | default([]) | length) == 0 else inputs.files[:2] }}"
     instruction: "Check {{ item }}."
     max_visits: 5
@@ -203,7 +209,8 @@ inputs:
 entry: check
 blocks:
   check:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     instruction: |
       Check {{ item }}.
@@ -437,10 +444,7 @@ def test_each_node_has_a_hint_that_explains_its_block(tmp_path: Path) -> None:
     plan_hints = {node["block"]: node["hint"] for node in detail_of(project, plan_run)["canvas"]["nodes"]}
     long_hints = {node["block"]: node["hint"] for node in detail_of(project, long_run)["canvas"]["nodes"]}
 
-    assert plan_hints["create_plan"] == (
-        "The agent does a piece of work and returns a typed answer.\n"
-        "It runs at most 3 times, then asks whether to run more."
-    )
+    assert plan_hints["create_plan"] == (TASK_MEANING + "\nIt runs at most 3 times, then asks whether to run more.")
     assert plan_hints["ask_user"] == (
         "One choice is picked from a list, or a question gets an answer.\n"
         "The user decides in an interactive run. The agent decides in an autonomous run."
@@ -1292,7 +1296,7 @@ def test_each_node_sends_its_description_type_meaning_and_notes_apart(tmp_path: 
     )
 
     assert work["description"] == "Does the one piece of work."
-    assert work["type_meaning"] == "The agent does a piece of work and returns a typed answer."
+    assert work["type_meaning"] == TASK_MEANING
     assert create_plan["description"] is None
     assert create_plan["notes"] == "It runs at most 3 times, then asks whether to run more."
 

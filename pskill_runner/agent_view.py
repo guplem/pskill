@@ -10,7 +10,7 @@ from typing import Any
 from pskill_runner.project import Project
 from pskill_runner.skill_editor import write_text_atomic
 from pskill_runner.skill_loader import load_catalog
-from pskill_runner.skill_model import ParallelBlock, SkillCatalog
+from pskill_runner.skill_model import SkillCatalog, TaskBlock
 from pskill_runner.validator import agent_names_used
 
 AGENT_FILE_SUFFIX = ".md"
@@ -76,7 +76,7 @@ def agent_users(catalog: SkillCatalog, name: str) -> list[dict[str, Any]]:
         blocks = [
             block.id
             for block in skill.blocks.values()
-            if isinstance(block, ParallelBlock) and name in agent_names_used(block)
+            if isinstance(block, TaskBlock) and name in agent_names_used(block)
         ]
         if blocks:
             users.append({"skill": skill_id, "blocks": blocks})

@@ -13,7 +13,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeGuard, cast
 
 import pskill_runner
 from pskill_runner.adapters import adapter_for, tier_wording
@@ -73,7 +73,6 @@ from pskill_runner.skill_model import (
     DecisionBlock,
     Edge,
     EndBlock,
-    ParallelBlock,
     RetryableBlock,
     ScriptBlock,
     Skill,
@@ -773,7 +772,7 @@ class Run:
                     return pause_text
             elif isinstance(block, CallBlock):
                 self.start_call(block)
-            elif isinstance(block, ParallelBlock) and not self.start_parallel(block):
+            elif has_jobs_per_item(block) and not self.start_parallel(block):
                 continue  # an empty list: the block completed at once
             else:
                 return self.issue_packet(new_block=True)
@@ -802,21 +801,23 @@ class Run:
             "reason": self.frame["arrival_reason"],
             "packet": packet,
         }
+        if has_jobs_per_item(block) and not self.frame.get("visit_cap_question"):
+            fields["for_each"] = True  # the viewer draws the block's tasks from this
         if task is not None:
             fields["task"] = task
         if inputs is not None:
             fields["inputs"] = inputs
         task_names = [task.get("name") for task in self.frame["tasks"] or []]
-        if isinstance(block, ParallelBlock) and any(task_names):
+        if has_jobs_per_item(block) and any(task_names):
             fields["task_names"] = task_names  # the viewer names the tasks of finished runs from this
         skipped_tasks = self.frame.get("skipped_tasks")
-        if isinstance(block, ParallelBlock) and skipped_tasks:
+        if has_jobs_per_item(block) and skipped_tasks:
             fields["skipped_tasks"] = skipped_tasks
-        if isinstance(block, ParallelBlock) and task is None and self.frame["tasks"]:
+        if isinstance(block, TaskBlock) and has_jobs_per_item(block) and task is None and self.frame["tasks"]:
             fields["task_prompts"] = self.task_prompts(block)
         self.log("block_started", **fields)
 
-    def task_prompts(self, block: ParallelBlock) -> list[str]:
+    def task_prompts(self, block: TaskBlock) -> list[str]:
         """The full prompt of every task. The packet gives only one line per task, so the viewer reads these."""
         base = self.base_packet(block, [])
         return [
@@ -934,7 +935,7 @@ class Run:
 
     # --- parallel blocks ----------------------------------------------------------------------
 
-    def start_parallel(self, block: ParallelBlock) -> bool:
+    def start_parallel(self, block: TaskBlock) -> bool:
         """Create the tasks. Return False when no item runs (the block then completes at once)."""
         items = self.computed(block.for_each, f"The for_each of {block.id!r}")
         if not isinstance(items, list):
@@ -959,7 +960,7 @@ class Run:
         ]
         return True
 
-    def items_that_run(self, block: ParallelBlock, items: list[Any]) -> list[Any]:
+    def items_that_run(self, block: TaskBlock, items: list[Any]) -> list[Any]:
         """The items of a fixed `for_each` list whose `when` is true, without their `when` key.
 
         `items` is the computed list, so each `when` already holds its result. The skipped items go to the
@@ -981,7 +982,7 @@ class Run:
         self.frame["skipped_tasks"] = skipped
         return kept
 
-    def task_name(self, block: ParallelBlock, item: Any) -> str | None:
+    def task_name(self, block: TaskBlock, item: Any) -> str | None:
         """The task's name from `task_name`, on one short line. A name that fails or is empty is no name:
         the task then shows as "task <n>", and the run goes on."""
         if block.task_name is None:
@@ -994,7 +995,7 @@ class Run:
             name = name[: TASK_NAME_LIMIT - 1].rstrip() + "…"
         return name or None
 
-    def task_tier(self, block: ParallelBlock, item: Any) -> str | None:
+    def task_tier(self, block: TaskBlock, item: Any) -> str | None:
         """The task's model tier. An empty value inherits the model; any other value must be a known tier."""
         if block.tier is None:
             return None
@@ -1005,7 +1006,7 @@ class Run:
             raise RunnerStop(f"The tier of {block.id!r} must be {tier_choices()}, not {tier!r}.")
         return str(tier)
 
-    def task_tools(self, block: ParallelBlock, item: Any) -> str | None:
+    def task_tools(self, block: TaskBlock, item: Any) -> str | None:
         """The task's tool profile. An empty value gives every tool; any other value must be a known profile."""
         if block.tools is None:
             return None
@@ -1028,7 +1029,7 @@ class Run:
             raise RunnerStop(f"There is no agent file '{agent_name}.md' in .pskill/agents/.")
         return path.read_text(encoding="utf-8")
 
-    def task_prompt(self, block: ParallelBlock, index: int) -> TaskPrompt:
+    def task_prompt(self, block: TaskBlock, index: int) -> TaskPrompt:
         task = (self.frame["tasks"] or [])[index]
         skill = self.skill_of(self.frame)
         instruction = self.rendered(skill.instruction_text(block.instruction), f"Task {index}", task["item"])
@@ -1049,7 +1050,7 @@ class Run:
         ]
         return " ".join(wording for wording in wordings if wording)
 
-    def parallel_packet(self, block: ParallelBlock, errors: list[str], show_goal: bool, show_rules: bool) -> str:
+    def parallel_packet(self, block: TaskBlock, errors: list[str], show_goal: bool, show_rules: bool) -> str:
         """All open tasks for subagents (each task prompt has the goal), or the next open task for the main agent."""
         open_indexes = self.open_task_indexes()
         if self.adapter.can_spawn_subagents:
@@ -1083,13 +1084,13 @@ class Run:
 
     def sequential_task_index(self, block: AnyBlock) -> int | None:
         """The task that a one-by-one parallel packet shows, or None."""
-        if isinstance(block, ParallelBlock) and not self.adapter.can_spawn_subagents:
+        if has_jobs_per_item(block) and not self.adapter.can_spawn_subagents:
             return self.open_task_indexes()[0]
         return None
 
     def agent_packet(self, errors: list[str], show_goal: bool = False, show_rules: bool = False) -> str:
         block = self.current_block()
-        if isinstance(block, ParallelBlock):
+        if isinstance(block, TaskBlock) and has_jobs_per_item(block):
             return self.parallel_packet(block, errors, show_goal, show_rules)
         if not isinstance(
             block, TaskBlock | DecisionBlock
@@ -1274,10 +1275,10 @@ class Run:
             task["attempts"] = 0
         self.log("run_resumed", reason="resumed_by_user")
         block = self.current_block()
-        if isinstance(block, ParallelBlock) and self.frame["tasks"] is not None and not self.open_task_indexes():
+        if isinstance(block, TaskBlock) and self.frame["tasks"] is not None and not self.open_task_indexes():
             self.info["status"] = "active"
             return self.guarded(lambda: self.complete_parallel(block, duration_ms=0))
-        if isinstance(block, TaskBlock | DecisionBlock | ParallelBlock):
+        if isinstance(block, TaskBlock | DecisionBlock):
             return self.guarded(lambda: self.issue_packet(new_block=False, reentry=True))
         self.info["status"] = "active"
         return self.guarded(self.advance)  # a script or a call: run it again
@@ -1289,12 +1290,12 @@ class Run:
         if not self.paused_by_stop_attempts():
             self.require_status(ACTIVE_STATUSES, "give a task (run `pskill resume` first)")
         block = self.current_block()
-        if not isinstance(block, ParallelBlock) or self.frame["tasks"] is None:
+        if not isinstance(block, TaskBlock) or self.frame["tasks"] is None:
             raise RunError(f"The block {block.id!r} has no tasks.")
         self.check_open_task(block, index)
         return task_prompt_text(self.base_packet(block, []), self.task_prompt(block, index))
 
-    def check_open_task(self, block: ParallelBlock, index: int) -> None:
+    def check_open_task(self, block: TaskBlock, index: int) -> None:
         tasks = self.frame["tasks"] or []
         if not 0 <= index < len(tasks):
             raise RunError(f"The block {block.id!r} has no task {index} (tasks 0 to {len(tasks) - 1}).")
@@ -1306,13 +1307,13 @@ class Run:
             return self.record_task_while_paused(answer_text, task)
         self.require_status(ACTIVE_STATUSES, "take an answer (run `pskill resume` first)")
         block = self.current_block()
-        if not isinstance(block, TaskBlock | DecisionBlock | ParallelBlock):  # pragma: no cover - same: an agent block
+        if not isinstance(block, TaskBlock | DecisionBlock):  # pragma: no cover - same: an agent block
             raise RunError(f"The block {block.id!r} does not take an answer.")
-        if task is not None and not isinstance(block, ParallelBlock):
+        if task is not None and not has_jobs_per_item(block):
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
         self.info["stop_blocks"] = 0
         self.clear_wait()
-        if isinstance(block, ParallelBlock):
+        if isinstance(block, TaskBlock) and has_jobs_per_item(block):
             return self.submit_task(block, answer_text, task)
         answer, answered_by, errors = self.read_answer(answer_text, block)
         if errors:
@@ -1322,7 +1323,7 @@ class Run:
         self.answer_recorded = True
         return self.guarded(lambda: self.accept(block, answer, decided_by, duration_ms))
 
-    def submit_task(self, block: ParallelBlock, answer_text: str, task: int | None) -> str:
+    def submit_task(self, block: TaskBlock, answer_text: str, task: int | None) -> str:
         """The answer of one task of a parallel block."""
         if task is None:
             return self.reject(["This block has several tasks. Add `--task <n>` to the submit command."], answer_text)
@@ -1347,7 +1348,7 @@ class Run:
     def record_task_while_paused(self, answer_text: str, task: int) -> str:
         """Keep a subagent's answer when the main agent's stop attempts paused the run. Only `resume` advances."""
         block = self.current_block()
-        if not isinstance(block, ParallelBlock):
+        if not isinstance(block, TaskBlock) or not has_jobs_per_item(block):
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
         answer, _, errors = self.read_answer(answer_text, block)
         if errors:
@@ -1424,7 +1425,7 @@ class Run:
             self.move_on_from_cap(block)
         return self.advance()
 
-    def record_task(self, block: ParallelBlock, index: int, answer: dict[str, Any]) -> int:
+    def record_task(self, block: TaskBlock, index: int, answer: dict[str, Any]) -> int:
         """Store one task's answer and log it. Return how long the task took."""
         self.check_open_task(block, index)
         (self.frame["tasks"] or [])[index]["output"] = answer
@@ -1434,7 +1435,7 @@ class Run:
         )
         return duration_ms
 
-    def complete_parallel(self, block: ParallelBlock, duration_ms: int) -> str:
+    def complete_parallel(self, block: TaskBlock, duration_ms: int) -> str:
         """Join the answers of every task into the block's results, then go on."""
         results = [task["output"] for task in self.frame["tasks"] or []]
         self.frame["tasks"] = None
@@ -1442,7 +1443,7 @@ class Run:
         self.complete_block(block, {"results": results}, decided_by="agent", duration_ms=duration_ms)
         return self.advance()
 
-    def accept_task(self, block: ParallelBlock, index: int, answer: dict[str, Any]) -> str:
+    def accept_task(self, block: TaskBlock, index: int, answer: dict[str, Any]) -> str:
         duration_ms = self.record_task(block, index, answer)
         tasks = self.frame["tasks"] or []
         open_indexes = self.open_task_indexes()
@@ -1457,7 +1458,7 @@ class Run:
             return f"Task {index} is recorded. All {len(tasks)} tasks are done.\n"
         return next_text
 
-    def issue_packet_for_next_task(self, block: ParallelBlock) -> str:
+    def issue_packet_for_next_task(self, block: TaskBlock) -> str:
         self.info["packet_issued_at"] = timestamp(utc_now())
         text = self.agent_packet(errors=[])
         self.log_block_started(block, packet=text, task=self.open_task_indexes()[0])
@@ -1469,6 +1470,11 @@ class Run:
         if self.info["mode"] == "autonomous":
             return "agent_autonomous"
         return answered_by or "agent"
+
+
+def has_jobs_per_item(block: AnyBlock) -> TypeGuard[TaskBlock]:
+    """A task with `for_each`: one job per item, joined into `results`."""
+    return isinstance(block, TaskBlock) and block.for_each is not None
 
 
 def is_true_or_stop(condition: str, context: dict[str, Any]) -> bool:

@@ -25,9 +25,8 @@ from pskill_runner.yaml_loading import load_skill_yaml
 
 COMMON_KEYS = ("description", "max_visits", "on_max_visits", "ask_on_max_visits", "autonomous_max_visits")
 EDITABLE_KEYS: dict[str, tuple[str, ...]] = {
-    "task": ("instruction", "next", "retries"),
+    "task": ("for_each", "agent", "task_name", "context", "instruction", "next", "retries"),
     "decision": ("decider", "instruction", "choices", "next", "retries"),
-    "parallel": ("for_each", "agent", "task_name", "instruction", "next", "retries"),
     "script": ("run", "parse", "timeout_s", "next", "retries"),
     "call": ("skill", "next"),
     "end": ("status", "report"),
@@ -36,11 +35,14 @@ EDITABLE_KEYS: dict[str, tuple[str, ...]] = {
 KEY_ORDER = (
     "type",
     "description",
+    "context",
     "decider",
     "skill",
     "for_each",
     "agent",
     "task_name",
+    "tier",
+    "tools",
     "instruction",
     "run",
     "parse",
@@ -288,13 +290,6 @@ def new_block(block_type: str, document: CommentedMap, skill_id: str) -> dict[st
     templates: dict[str, dict[str, Any]] = {
         "task": {"type": "task", "instruction": "Describe the work.", "output": work_output, "next": target},
         "decision": {"type": "decision", "decider": "human", "instruction": "Ask the user.", "next": target},
-        "parallel": {
-            "type": "parallel",
-            "for_each": [],
-            "instruction": "Describe the work for {{ item }}.",
-            "output": work_output,
-            "next": target,
-        },
         "script": {"type": "script", "run": ["git", "status"], "next": target},
         "call": {"type": "call", "skill": skill_id, "next": target},
         "end": {"type": "end", "status": "succeeded"},

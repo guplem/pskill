@@ -89,8 +89,9 @@ blocks:
     next: review
 
   review:
-    type: parallel
+    type: task
     description: Review with fresh subagents, one per angle
+    context: fresh
     # One row per reviewer. A row with a `when` runs only when its condition is true. Add a row for an angle that
     # your project needs, for example a database reviewer with a condition on the changed paths.
     for_each:

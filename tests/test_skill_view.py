@@ -16,6 +16,11 @@ from tests.test_engine_blocks import (
     STDIN_SKILL,
 )
 
+TASK_MEANING = (
+    "The agent does a piece of work and returns a typed answer: one job, or one job per list item whose "
+    "results join into one list. A job runs in the main conversation or in a subagent."
+)
+
 
 def make_project(tmp_path: Path) -> Project:
     skills_folder = tmp_path / ".pskill" / "skills"
@@ -109,7 +114,7 @@ def test_a_block_shows_its_instruction_fields_and_exits(tmp_path: Path) -> None:
         "children": [],
     }
     assert ["visits at most", "3"] in create_plan["facts"]
-    assert create_plan["type_meaning"] == "The agent does a piece of work and returns a typed answer."
+    assert create_plan["type_meaning"] == TASK_MEANING
     assert create_plan["notes"] == "It runs at most 3 times, then asks whether to run more."
     assert [exit["to"] for exit in create_plan["exits"]] == ["ask_user", "approve_plan", "stopped"]
     approve_plan = blocks["approve_plan"]
@@ -226,6 +231,10 @@ def test_each_block_has_its_editable_keys_and_their_values_as_written(tmp_path: 
         "on_max_visits",
         "ask_on_max_visits",
         "autonomous_max_visits",
+        "for_each",
+        "agent",
+        "task_name",
+        "context",
         "instruction",
         "next",
         "retries",
@@ -473,7 +482,8 @@ blocks:
     retries: 2
     next: check
   check:
-    type: parallel
+    type: task
+    context: fresh
     for_each: [a.md, b.md]
     instruction: "Check {{ item }}."
     output:

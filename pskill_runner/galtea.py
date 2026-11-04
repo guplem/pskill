@@ -496,7 +496,7 @@ class RunUpload:
             "llm": self.info.get("llm") or "unknown",
         }
         blocks = raw.get("blocks") or {}
-        if any(isinstance(block, dict) and block.get("type") == "parallel" for block in blocks.values()):
+        if any(isinstance(block, dict) and "tier" in block for block in blocks.values()):
             adapter = adapter_for(self.info["harness"])
             rows = {tier: self.tier_model(tier) for tier in sorted(adapter.tier_rows)}
             facts["tiers"] = json.dumps(rows, sort_keys=True)

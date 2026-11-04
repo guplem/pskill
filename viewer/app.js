@@ -1803,6 +1803,7 @@ const EDIT_LABELS = {
   agent: "Agent (a file in .pskill/agents/)",
   task_name: "Task name (a {{ }} value per item)",
   for_each: "For each (a {{ }} list, or a JSON list)",
+  context: "Context (main or fresh)",
   run: "Command (one argument per line)",
   choices: "Choices",
   next: "Next (the first edge whose condition is true)",
@@ -1917,7 +1918,7 @@ function editControl(key, value) {
   if (key === "for_each") {
     const area = element("textarea", typeof value === "string" ? value : JSON.stringify(value ?? []), "edit-text mono");
     area.rows = 2;
-    return { node: area, read: () => (area.value.trim().startsWith("[") ? JSON.parse(area.value) : area.value.trim()) };
+    return { node: area, read: () => (area.value.trim().startsWith("[") ? JSON.parse(area.value) : area.value.trim() || null) };
   }
   if (key === "choices") return choicesControl(value || {});
   const input = element("input", null, "edit-input");

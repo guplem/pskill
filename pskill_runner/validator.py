@@ -23,10 +23,10 @@ from pskill_runner.skill_model import (
     DecisionBlock,
     Edge,
     EndBlock,
-    ParallelBlock,
     ScriptBlock,
     Skill,
     SkillCatalog,
+    TaskBlock,
     block_edges,
     next_targets,
     tier_choices,
@@ -133,7 +133,7 @@ def block_problems(skill: Skill, block: AnyBlock) -> list[Problem]:
         problems += end_problems(skill, location, block)
     else:
         problems += edge_problems(skill, location, block)
-    if isinstance(block, ParallelBlock):
+    if isinstance(block, TaskBlock):
         problems += item_when_problems(location, block)
         problems += tier_problems(location, block)
         problems += tool_profile_problems(location, block)
@@ -217,21 +217,21 @@ def edge_problems(skill: Skill, location: str, block: AnyBlock) -> list[Problem]
     return problems
 
 
-def tier_problems(location: str, block: ParallelBlock) -> list[Problem]:
+def tier_problems(location: str, block: TaskBlock) -> list[Problem]:
     """A written tier must be a known tier. A computed tier is checked at run time."""
     if block.tier is None or "{{" in block.tier or block.tier in MODEL_TIERS:
         return []
     return [error(location, f"the tier {block.tier!r} is not {tier_choices()}")]
 
 
-def tool_profile_problems(location: str, block: ParallelBlock) -> list[Problem]:
+def tool_profile_problems(location: str, block: TaskBlock) -> list[Problem]:
     """A written tool profile must be a known profile. A computed one is checked at run time."""
     if block.tools is None or "{{" in block.tools or block.tools in TOOL_PROFILES:
         return []
     return [error(location, f"the tool profile {block.tools!r} is not {tool_profile_choices()}")]
 
 
-def item_when_problems(location: str, block: ParallelBlock) -> list[Problem]:
+def item_when_problems(location: str, block: TaskBlock) -> list[Problem]:
     """Each `when` of a fixed `for_each` list follows the same rule as an edge's `when`."""
     if not isinstance(block.for_each, list):
         return []
@@ -292,7 +292,7 @@ def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Pro
         texts += string_values(block.run) + nested_strings(block.input)
     if isinstance(block, CallBlock):
         texts += string_values(list(block.inputs.values()))
-    if isinstance(block, ParallelBlock):
+    if isinstance(block, TaskBlock):
         texts += nested_strings(block.for_each) + string_values([block.agent, block.task_name, block.tier, block.tools])
     prose = prose_value(block)
     if prose is not None:
@@ -407,7 +407,7 @@ def catalog_problems(skill: Skill, block: AnyBlock, catalog: SkillCatalog) -> li
     location = f"blocks.{block.id}"
     if isinstance(block, CallBlock):
         return call_problems(skill, block, catalog, location)
-    if isinstance(block, ParallelBlock):
+    if isinstance(block, TaskBlock):
         return [
             error(location, f"there is no agent file '{name}.md' in .pskill/agents/")
             for name in agent_names_used(block)
@@ -452,7 +452,7 @@ def call_path(catalog: SkillCatalog, start: str, goal: str, visited: set[str]) -
     return None
 
 
-def agent_names_used(block: ParallelBlock) -> list[str]:
+def agent_names_used(block: TaskBlock) -> list[str]:
     """The agent names that the validator can know: a plain name, or one per item of a fixed list."""
     if block.agent is None:
         return []

@@ -6,7 +6,7 @@ import pytest
 
 from pskill_runner.field_types import FieldSpec
 from pskill_runner.skill_loader import SkillLoadError, build_block, load_catalog, load_skill
-from pskill_runner.skill_model import CallBlock, DecisionBlock, Edge, EndBlock, ParallelBlock, ScriptBlock, TaskBlock
+from pskill_runner.skill_model import CallBlock, DecisionBlock, Edge, EndBlock, ScriptBlock, TaskBlock
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 
@@ -57,7 +57,7 @@ def test_an_unknown_block_type_is_rejected(tmp_path: Path) -> None:
         load_skill(write_skill(tmp_path, "plan-work", skill_yaml, PLAN_SKILL_FILES))
 
     assert raised.value.problems == [
-        "blocks.done: unknown block type 'finish' (known types: call, decision, end, parallel, script, task)"
+        "blocks.done: unknown block type 'finish' (known types: call, decision, end, script, task)"
     ]
 
 
@@ -108,8 +108,9 @@ blocks:
     parse: json
     next: check_docs
   check_docs:
-    type: parallel
+    type: task
     for_each: "{{ steps.list_docs.json.files }}"
+    context: fresh
     agent: fact-checker
     instruction: "Check {{ item }}."
     output:
@@ -126,19 +127,20 @@ blocks:
 """
 
 
-def test_script_parallel_and_call_blocks_are_loaded(tmp_path: Path) -> None:
+def test_script_task_with_for_each_and_call_blocks_are_loaded(tmp_path: Path) -> None:
     skill = load_skill(write_skill(tmp_path, "all-blocks", ALL_BLOCKS_SKILL))
 
     script = skill.blocks["list_docs"]
     assert isinstance(script, ScriptBlock)
     assert script.run == ["uv", "run", "{{ skill.dir }}/scripts/list_docs.py"]
     assert script.parse == "json"
-    parallel = skill.blocks["check_docs"]
-    assert isinstance(parallel, ParallelBlock)
-    assert parallel.for_each == "{{ steps.list_docs.json.files }}"
-    assert parallel.agent == "fact-checker"
-    assert parallel.task_name is None
-    assert parallel.next == [Edge(to="review")]
+    jobs = skill.blocks["check_docs"]
+    assert isinstance(jobs, TaskBlock)
+    assert jobs.for_each == "{{ steps.list_docs.json.files }}"
+    assert jobs.context == "fresh"
+    assert jobs.agent == "fact-checker"
+    assert jobs.task_name is None
+    assert jobs.next == [Edge(to="review")]
     call = skill.blocks["review"]
     assert isinstance(call, CallBlock)
     assert call.skill == "review-pr"
@@ -211,15 +213,32 @@ def test_a_choice_can_take_an_edge_list(tmp_path: Path) -> None:
     }
 
 
-def test_a_parallel_block_can_name_its_tasks(tmp_path: Path) -> None:
+def test_a_task_with_for_each_can_name_its_jobs(tmp_path: Path) -> None:
     skill_yaml = ALL_BLOCKS_SKILL.replace(
         "    agent: fact-checker\n", '    agent: fact-checker\n    task_name: "{{ item }}"\n'
     )
 
-    parallel = load_skill(write_skill(tmp_path, "all-blocks", skill_yaml)).blocks["check_docs"]
+    jobs = load_skill(write_skill(tmp_path, "all-blocks", skill_yaml)).blocks["check_docs"]
 
-    assert isinstance(parallel, ParallelBlock)
-    assert parallel.task_name == "{{ item }}"
+    assert isinstance(jobs, TaskBlock)
+    assert jobs.task_name == "{{ item }}"
+
+
+def test_a_parallel_block_is_refused_with_one_line_that_says_how_to_change_it(tmp_path: Path) -> None:
+    skill_yaml = ALL_BLOCKS_SKILL.replace("    type: task\n    for_each", "    type: parallel\n    for_each")
+
+    with pytest.raises(SkillLoadError) as raised:
+        load_skill(write_skill(tmp_path, "all-blocks", skill_yaml))
+
+    assert raised.value.problems == ["blocks.check_docs: `parallel` is now `task` with `for_each`: change the type"]
+
+
+def test_a_task_without_for_each_has_one_job_in_the_main_context_by_default(tmp_path: Path) -> None:
+    skill = load_skill(write_skill(tmp_path, "plan-work", PLAN_SKILL, PLAN_SKILL_FILES))
+
+    task = skill.blocks["create_plan"]
+    assert isinstance(task, TaskBlock)
+    assert (task.for_each, task.context, task.agent, task.tier, task.tools) == (None, None, None, None, None)
 
 
 def test_a_missing_skill_file_is_reported(tmp_path: Path) -> None:
@@ -285,24 +304,24 @@ def test_a_script_input_is_loaded_and_has_none_by_default(tmp_path: Path) -> Non
     assert without_input.input is None
 
 
-def test_a_parallel_block_loads_its_tier(tmp_path: Path) -> None:
+def test_a_task_loads_its_tier(tmp_path: Path) -> None:
     skill_yaml = ALL_BLOCKS_SKILL.replace("    agent: fact-checker\n", "    agent: fact-checker\n    tier: fast\n")
 
     with_tier = load_skill(write_skill(tmp_path / "a", "all-blocks", skill_yaml)).blocks["check_docs"]
     without_tier = load_skill(write_skill(tmp_path / "b", "all-blocks", ALL_BLOCKS_SKILL)).blocks["check_docs"]
 
-    assert isinstance(with_tier, ParallelBlock) and isinstance(without_tier, ParallelBlock)
+    assert isinstance(with_tier, TaskBlock) and isinstance(without_tier, TaskBlock)
     assert with_tier.tier == "fast"
     assert without_tier.tier is None
 
 
-def test_a_parallel_block_loads_its_tool_profile(tmp_path: Path) -> None:
+def test_a_task_loads_its_tool_profile(tmp_path: Path) -> None:
     skill_yaml = ALL_BLOCKS_SKILL.replace("    agent: fact-checker\n", "    agent: fact-checker\n    tools: read\n")
 
     with_tools = load_skill(write_skill(tmp_path / "a", "all-blocks", skill_yaml)).blocks["check_docs"]
     without_tools = load_skill(write_skill(tmp_path / "b", "all-blocks", ALL_BLOCKS_SKILL)).blocks["check_docs"]
 
-    assert isinstance(with_tools, ParallelBlock) and isinstance(without_tools, ParallelBlock)
+    assert isinstance(with_tools, TaskBlock) and isinstance(without_tools, TaskBlock)
     assert with_tools.tools == "read"
     assert without_tools.tools is None
 

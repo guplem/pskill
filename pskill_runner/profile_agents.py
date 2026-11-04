@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pskill_runner import claude_code
 from pskill_runner.project import Project
-from pskill_runner.skill_model import TOOL_PROFILES, ParallelBlock, SkillCatalog
+from pskill_runner.skill_model import TOOL_PROFILES, SkillCatalog, TaskBlock
 from pskill_runner.stubs import StubChange, StubError, is_generated
 
 
@@ -19,7 +19,7 @@ def used_profiles(catalog: SkillCatalog) -> list[str]:
         block.tools
         for skill in catalog.skills.values()
         for block in skill.blocks.values()
-        if isinstance(block, ParallelBlock) and block.tools is not None
+        if isinstance(block, TaskBlock) and block.tools is not None
     }
     if any("{{" in value for value in values):
         return list(TOOL_PROFILES)

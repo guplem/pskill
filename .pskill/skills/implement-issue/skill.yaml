@@ -94,8 +94,9 @@ blocks:
       - to: research_code
 
   research_code:
-    type: parallel
+    type: task
     description: Find the closest code and the recorded decisions, each with a fresh subagent
+    context: fresh
     for_each:
       - {agent: pattern-scout, question: "Which existing code is closest to this change, and which conventions does it follow?"}
       - {agent: adr-checker, question: "Which recorded decisions (ADRs, AGENTS.md rules, design docs) limit this change?"}
@@ -109,8 +110,9 @@ blocks:
     next: research_gaps
 
   research_gaps:
-    type: parallel
+    type: task
     description: Research each gap with a fresh subagent
+    context: fresh
     for_each: "{{ steps.understand.gaps }}"
     agent: explorer
     task_name: "{{ item.name }}"

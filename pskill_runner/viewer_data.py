@@ -27,9 +27,11 @@ SCRIPT_FIELDS = ("argv", "input", "exit_code", "stdout", "stderr", "duration_ms"
 START_NODE = "start"
 DOTTED_EDGE_KINDS = ("visit_cap", "call")
 BLOCK_TYPE_MEANINGS = {
-    "task": "The agent does a piece of work and returns a typed answer.",
+    "task": (
+        "The agent does a piece of work and returns a typed answer: one job, or one job per list item whose "
+        "results join into one list. A job runs in the main conversation or in a subagent."
+    ),
     "decision": "One choice is picked from a list, or a question gets an answer.",
-    "parallel": "Subagents do one task per list item at the same time, and the results join into one list.",
     "script": "The runner runs a command. No AI model takes part.",
     "call": "The runner runs another skill and gets its outputs.",
     "end": "The skill finishes here with a status and outputs.",
@@ -40,7 +42,7 @@ ICON_LINE = "<span class='block-icon'>\u00a0</span><br/>"
 INPUT_TITLES = {
     "task": "Input: the instruction the agent got",
     "decision": "Input: the question to decide",
-    "parallel": "Input: the tasks that the subagents got",
+    "for_each": "Input: the tasks of every list item",
     "script": "Input: the command the runner ran",
     "call": "Input: what the child skill got",
     "end": "Input: the report the agent got",
@@ -49,7 +51,7 @@ INPUT_TITLES = {
 OUTPUT_TITLES = {
     "task": "Output: the agent's answer",
     "decision": "Output: the decision",
-    "parallel": "Output: the results of every task, joined",
+    "for_each": "Output: the results of every task, joined",
     "script": "Output: the command's result",
     "call": "Output: the child skill's outputs",
     "end": "Output: the skill's outputs",
@@ -61,8 +63,8 @@ TASK_HEADING = re.compile(
 )
 TASK_TOTAL = re.compile(r"^\d+ of (\d+) tasks are still open\.$", re.MULTILINE)
 TASKS_PER_ROW = 4
-TASK_NODE_HINT = "One task of this parallel block. One subagent (or the agent) does it and answers on its own."
-TASKS_EDGE_HINT = "The tasks of this parallel block, one node per task."
+TASK_NODE_HINT = "One task of this task block. One subagent (or the agent) does it and answers on its own."
+TASKS_EDGE_HINT = "The tasks of this block, one node per list item."
 
 
 # --- the canvas: frames, nodes, and edges --------------------------------------------------------
@@ -117,6 +119,16 @@ def task_frame_id(parent: str) -> str:
 def label_token(node: str) -> str:
     """The placeholder that the page swaps for the node label of the replay step."""
     return f"@@{node}@@"
+
+
+def has_task_list(row: dict[str, Any]) -> bool:
+    """A row of a task with `for_each`. A run from before 1.0.0 logged such a block as `parallel`."""
+    return row["block_type"] == "parallel" or bool(row.get("for_each"))
+
+
+def row_kind(row: dict[str, Any]) -> str:
+    """The key of a row's input and output titles."""
+    return "for_each" if has_task_list(row) else str(row["block_type"])
 
 
 def block_type_name(block: AnyBlock) -> str:
@@ -539,7 +551,7 @@ def row_outcome(row: dict[str, Any]) -> str | None:
         return str(output["status"])
     if row["block_type"] == "script" and row["script_runs"]:
         return f"exit {row['script_runs'][-1]['exit_code']}"
-    if row["block_type"] == "parallel" and isinstance(output.get("results"), list):
+    if has_task_list(row) and isinstance(output.get("results"), list):
         return f"{len(output['results'])} tasks"
     return None
 
@@ -656,8 +668,8 @@ def annotate_rows(
                 "tasks": [
                     {**task, "node": task_node_id(node, task["task"]) if node else None} for task in row["tasks"]
                 ],
-                "input_title": INPUT_TITLES[str(row["block_type"])],
-                "output_title": OUTPUT_TITLES[str(row["block_type"])],
+                "input_title": INPUT_TITLES[row_kind(row)],
+                "output_title": OUTPUT_TITLES[row_kind(row)],
                 "edge": edge.id if edge is not None else None,
                 "label": node_label(row["block"], details, badges),
                 "summary": " · ".join(details + badges),
@@ -801,7 +813,7 @@ def run_canvas(
                     "frame": index,
                     "skill_id": frames[index].skill.id,
                     "block": block_id,
-                    "type": "parallel",
+                    "type": "task",
                     "hint": TASK_NODE_HINT,
                     "kind": "task",
                     "parent": parent,
@@ -983,7 +995,7 @@ def parallel_visits(rows: list[dict[str, Any]]) -> dict[tuple[str, int, str, int
         if row["from"] is None and chain != previous_chain:
             calls[chain] = calls.get(chain, 0) + 1  # the run enters this frame: a new call
         previous_chain = chain
-        if row["block_type"] == "parallel":
+        if has_task_list(row):
             key = (chain, calls.get(chain, 1), str(row["block"]), int(row["visit"]))
             groups.setdefault(key, []).append(row)
     return groups
@@ -1120,6 +1132,7 @@ def new_timeline_row(event: dict[str, Any]) -> dict[str, Any]:
         "block_type": event["block_type"],
         "visit": event["visit"],
         "task": event.get("task"),
+        "for_each": event.get("for_each", False),
         "task_names": event.get("task_names"),
         "task_prompts": event.get("task_prompts"),
         "skipped_tasks": event.get("skipped_tasks") or [],
@@ -1162,7 +1175,7 @@ def record_completion(row: dict[str, Any], event: dict[str, Any]) -> None:
         entry["duration_ms"] = event["duration_ms"]
         if row["task"] is None:
             return  # With subagents, every task shares the block's row: only the join sets the row's output.
-    elif event["decided_by"] != "runner" and row["block_type"] != "parallel":
+    elif event["decided_by"] != "runner" and not has_task_list(row):
         row["submissions"].append({"accepted": True, "errors": [], "raw": None, "task": None})
     row["output"] = event["output"]
     row["decided_by"] = event["decided_by"]

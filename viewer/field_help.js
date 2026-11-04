@@ -227,11 +227,11 @@ export const FIELD_HELP = {
     examples: [
       {
         caption: "The same agent for every task",
-        code: 'fact_check:\n  type: parallel\n  for_each: "{{ steps.list_docs.json.files }}"\n  agent: fact-checker\n  instruction: Check every claim in {{ item }}.\n  output:\n    wrong_claims: {type: array, items: {type: string}, description: "Each wrong claim."}\n  next: report',
+        code: 'fact_check:\n  type: task\n  context: fresh\n  for_each: "{{ steps.list_docs.json.files }}"\n  agent: fact-checker\n  instruction: Check every claim in {{ item }}.\n  output:\n    wrong_claims: {type: array, items: {type: string}, description: "Each wrong claim."}\n  next: report',
       },
       {
         caption: "An agent per item",
-        code: 'research:\n  type: parallel\n  for_each:\n    - {agent: pattern-scout, focus: "Find the closest code."}\n    - {agent: adr-checker, focus: "Find the ADRs."}\n  agent: "{{ item.agent }}"\n  instruction: "{{ item.focus }}"\n  output:\n    report: {type: string, description: "What you found."}\n  next: plan',
+        code: 'research:\n  type: task\n  context: fresh\n  for_each:\n    - {agent: pattern-scout, focus: "Find the closest code."}\n    - {agent: adr-checker, focus: "Find the ADRs."}\n  agent: "{{ item.agent }}"\n  instruction: "{{ item.focus }}"\n  output:\n    report: {type: string, description: "What you found."}\n  next: plan',
       },
     ],
   },
@@ -247,11 +247,11 @@ export const FIELD_HELP = {
     examples: [
       {
         caption: "A name from a fixed list",
-        code: 'research:\n  type: parallel\n  for_each:\n    - {agent: pattern-scout, focus: "Find the closest code."}\n    - {agent: adr-checker, focus: "Find the ADRs."}\n  agent: "{{ item.agent }}"\n  task_name: "{{ item.agent }}"\n  instruction: "{{ item.focus }}"\n  output:\n    report: {type: string, description: "What you found."}\n  next: plan',
+        code: 'research:\n  type: task\n  context: fresh\n  for_each:\n    - {agent: pattern-scout, focus: "Find the closest code."}\n    - {agent: adr-checker, focus: "Find the ADRs."}\n  agent: "{{ item.agent }}"\n  task_name: "{{ item.agent }}"\n  instruction: "{{ item.focus }}"\n  output:\n    report: {type: string, description: "What you found."}\n  next: plan',
       },
       {
         caption: "The main agent names each task",
-        code: 'plan_review:\n  type: task\n  instruction: Pick the review angles.\n  output:\n    angles:\n      type: array\n      description: "One entry per review subagent."\n      items:\n        type: object\n        properties:\n          name: {type: string, optional: true, description: \"A name of 2 to 4 words.\"}\n          brief: {type: string}\n  next: analyze\n\nanalyze:\n  type: parallel\n  for_each: "{{ steps.plan_review.angles }}"\n  task_name: "{{ item.name }}"\n  instruction: "{{ item.brief }}"\n  output:\n    findings: {type: array, items: {type: string}, description: "What you found."}\n  next: report',
+        code: 'plan_review:\n  type: task\n  instruction: Pick the review angles.\n  output:\n    angles:\n      type: array\n      description: "One entry per review subagent."\n      items:\n        type: object\n        properties:\n          name: {type: string, optional: true, description: \"A name of 2 to 4 words.\"}\n          brief: {type: string}\n  next: analyze\n\nanalyze:\n  type: task\n  context: fresh\n  for_each: "{{ steps.plan_review.angles }}"\n  task_name: "{{ item.name }}"\n  instruction: "{{ item.brief }}"\n  output:\n    findings: {type: array, items: {type: string}, description: "What you found."}\n  next: report',
       },
       { caption: "A file name as the name", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntask_name: "{{ item }}"' },
     ],
@@ -269,7 +269,7 @@ export const FIELD_HELP = {
       { caption: "One tier for every task", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntier: standard' },
       {
         caption: "A tier per item",
-        code: 'review:\n  type: parallel\n  for_each:\n    - {name: docs, tier: standard}\n    - {name: correctness, tier: deep}\n  task_name: "{{ item.name }}"\n  tier: "{{ item.tier }}"\n  instruction: "Review as {{ item.name }}."\n  output:\n    findings: {type: array, items: {type: string}, description: "What you found."}\n  next: fix',
+        code: 'review:\n  type: task\n  context: fresh\n  for_each:\n    - {name: docs, tier: standard}\n    - {name: correctness, tier: deep}\n  task_name: "{{ item.name }}"\n  tier: "{{ item.tier }}"\n  instruction: "Review as {{ item.name }}."\n  output:\n    findings: {type: array, items: {type: string}, description: "What you found."}\n  next: fix',
       },
     ],
   },
@@ -286,6 +286,19 @@ export const FIELD_HELP = {
       { caption: "Reviewers that only read code", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntools: read' },
     ],
   },
+  context: {
+    title: "context (where a job runs)",
+    short: "Where each job of a task runs: `main` (the default), in the main agent's own conversation, or `fresh`, in a subagent that sees only its own job.",
+    details: [
+      "Optional, on `task` blocks. It is `main` or `fresh`, or a `{{ }}` value computed once per item, so one block can mix both.",
+      "A `fresh` job gets only the goal, its instruction, and its return format. The main agent spawns the fresh jobs first, then does the `main` jobs one by one.",
+      "`tier`, `tools`, and `agent` need `context: fresh`: the main agent cannot change its own model or tools. `pskill validate` gives an error for them on a `main` job.",
+      "A harness without subagents runs every job in the main context.",
+    ],
+    examples: [
+      { caption: "One job in a clean context, on a cheaper model", code: 'finish:\n  type: task\n  context: fresh\n  tier: standard\n  tools: read\n  instruction: instructions/finish.md\n  output:\n    risk: {type: string, description: "The risk of the change."}\n  next: done' },
+    ],
+  },
   for_each: {
     title: "for_each (for each)",
     short: "The list to split into tasks: one task, and one subagent, per item.",
@@ -298,7 +311,7 @@ export const FIELD_HELP = {
     examples: [
       {
         caption: "A list from a script",
-        code: 'check_names:\n  type: parallel\n  for_each: "{{ steps.list_files.json.files }}"\n  instruction: Check the names in {{ item }}.\n  output:\n    problems: {type: array, items: {type: string}, description: "Bad names."}\n  next: report',
+        code: 'check_names:\n  type: task\n  context: fresh\n  for_each: "{{ steps.list_files.json.files }}"\n  instruction: Check the names in {{ item }}.\n  output:\n    problems: {type: array, items: {type: string}, description: "Bad names."}\n  next: report',
       },
       { caption: "A fixed list", code: "for_each:\n  - security\n  - speed\n  - style" },
     ],

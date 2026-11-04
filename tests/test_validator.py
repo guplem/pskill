@@ -272,7 +272,8 @@ goal: Use the child.
 entry: research
 blocks:
   research:
-    type: parallel
+    type: task
+    context: fresh
     for_each:
       - {agent: scout, focus: code}
       - {agent: ghost, focus: docs}

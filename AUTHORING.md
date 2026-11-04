@@ -71,7 +71,8 @@ blocks:
     next: check_names
 
   check_names:                # parallel: one subagent task per item, joined into steps.check_names.results
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     task_name: "{{ item }}"   # optional: the name of each task in the viewer
     tier: standard            # optional: the model tier of each subagent: fast | standard | deep
