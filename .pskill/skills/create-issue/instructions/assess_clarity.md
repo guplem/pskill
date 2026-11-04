@@ -10,3 +10,5 @@ The answers so far:
 3. Look for gaps: could the description mean two things? Is the scope clear? For a bug, do you know how to reproduce it?
 
 Return `clear: true` when nothing important is open. Otherwise return `clear: false` and the single most important question. Do not ask more than you need: if the description is genuinely clear, it is clear.
+
+Also return `terms`: 2 to 4 search words that a duplicate of this issue would contain, above all in its title: the feature or component name, the symptom, and the specific entity or code path. A script searches the existing issues with them.

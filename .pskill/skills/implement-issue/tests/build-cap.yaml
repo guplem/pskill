@@ -13,7 +13,7 @@ scripts:
   checkout_base:
     - {exit_code: 0, stdout: '{"ok": true, "base": "main", "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}'}
   open_draft_pr:
-    - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/octo/app/pull/9"}'}
+    - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/example-org/app/pull/9"}'}
   ready:
     - {exit_code: 0, stdout: '{"head_sha": "h1"}'}
   check_unreviewed:
@@ -86,5 +86,5 @@ caps:
 expect:
   path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, implement_step, write_description, review, ready, get_ci_green, answer_comments, check_unreviewed, limits, finish, capped]
   status: succeeded
-  outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9", limits: [implement_step]}
-  pending: "A human decides whether to finish the work that the limits skipped (the Outputs row names them) before pull request https://github.com/octo/app/pull/9 merges."
+  outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9", limits: [implement_step]}
+  pending: "A human decides whether to finish the work that the limits skipped (the Outputs row names them) before pull request https://github.com/example-org/app/pull/9 merges."

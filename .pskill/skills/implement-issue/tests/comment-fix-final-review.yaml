@@ -13,7 +13,7 @@ scripts:
   checkout_base:
     - {exit_code: 0, stdout: '{"ok": true, "base": "main", "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}'}
   open_draft_pr:
-    - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/octo/app/pull/9"}'}
+    - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/example-org/app/pull/9"}'}
   ready:
     - {exit_code: 0, stdout: '{"head_sha": "h1"}'}
     - {exit_code: 0, stdout: '{"head_sha": "h2"}'}
@@ -51,4 +51,4 @@ answers:
 expect:
   path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, ready, get_ci_green, answer_comments, check_unreviewed, final_review, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, limits, finish, done]
   status: succeeded
-  outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9"}
+  outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9"}
