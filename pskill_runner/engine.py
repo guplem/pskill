@@ -995,14 +995,14 @@ class Run:
         harness's longest timeout."""
         return min(self.script_timeout_of(block) + BACKGROUND_MARGIN_S, self.adapter.background_command_max_s)
 
-    def issue_background_script(self, block: ScriptBlock) -> str:
+    def issue_background_script(self, block: ScriptBlock, reentry: bool = False) -> str:
         """Give the command that runs the script in the background. The wait fields keep the Stop hook quiet."""
         now = utc_now()
         self.frame["background_script"] = {"state": "issued", "since": timestamp(now)}
         self.hold_stops_for(block, now)
         self.info["status"] = "active"
         self.info["attempts"] = 0
-        text = self.background_script_packet(block, reentry=False)
+        text = self.background_script_packet(block, reentry)
         self.log_block_started(block, packet=text)
         return text
 
@@ -1013,6 +1013,19 @@ class Run:
         self.info["wait_until"] = timestamp(now + timedelta(seconds=self.background_shell_timeout_s(block)))
         self.info["waits_since"] = timestamp(now)
         self.info["stop_blocks"] = 0
+
+    def background_script_text(self, block: ScriptBlock) -> str:
+        """What `current` says at a background script: its command until it starts, then that it runs."""
+        marker = self.frame.get("background_script")
+        if marker is None or marker["state"] == "issued":
+            return self.background_script_packet(block, reentry=True)
+        command = runner_command(self.project)
+        run_id = self.info["run_id"]
+        return (
+            f"The script {block.id!r} runs in the background, since {marker['since']}. End your turn: its end "
+            "wakes you with the next step. If its command no longer runs (for example, the session ended), run "
+            f"`{command} pause {run_id}`, then `{command} resume {run_id}`: that gives the command again.\n"
+        )
 
     def background_script_packet(self, block: ScriptBlock, reentry: bool) -> str:
         timeout_s = self.background_shell_timeout_s(block)
@@ -1390,6 +1403,9 @@ class Run:
 
     def current_text(self) -> str:
         status = self.info["status"]
+        block = self.current_block()
+        if status == "active" and isinstance(block, ScriptBlock):
+            return self.background_script_text(block)
         if status in ACTIVE_STATUSES:  # a re-entry: a new session may not have read the stub
             return self.guarded(lambda: self.agent_packet(errors=[], show_goal=True, show_rules=True))
         if status == "paused":
@@ -1528,6 +1544,8 @@ class Run:
         if isinstance(block, TaskBlock | DecisionBlock):
             return self.guarded(lambda: self.issue_packet(new_block=False, reentry=True))
         self.info["status"] = "active"
+        if isinstance(block, ScriptBlock) and self.runs_in_background(block):  # a new session: goal and rules
+            return self.guarded(lambda: self.issue_background_script(block, reentry=True))
         return self.guarded(self.advance)  # a script or a call: run it again
 
     def restart_jobs(self, block: TaskBlock) -> str:
@@ -1566,8 +1584,11 @@ class Run:
             return self.record_task_while_paused(answer_text, task)
         self.require_status(ACTIVE_STATUSES, "take an answer (run `pskill resume` first)")
         block = self.current_block()
-        if not isinstance(block, TaskBlock | DecisionBlock):  # pragma: no cover - same: an agent block
-            raise RunError(f"The block {block.id!r} does not take an answer.")
+        if not isinstance(block, TaskBlock | DecisionBlock):  # an active run waits elsewhere only on its script
+            raise RunError(
+                f"The block {block.id!r} runs a script in the background, so it takes no answer. End your turn: "
+                "the script's end wakes you with the next step."
+            )
         if task is not None and not isinstance(block, TaskBlock):
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
         self.info["stop_blocks"] = 0

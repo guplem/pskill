@@ -1789,3 +1789,49 @@ def test_a_background_command_that_cannot_compute_its_command_pauses_the_run(tmp
 
     assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
     assert "The command of 'list_files'" in text
+
+
+def test_current_gives_the_background_command_again_until_it_starts(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+
+    packet = current_packet(project, run_id)
+
+    assert f"run-script {run_id}" in packet
+    assert "### Goal\nRead data with a script." in packet and "### Rules" in packet
+
+
+def test_current_says_that_the_script_runs_while_it_runs(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    seen: list[str] = []
+
+    run_background_script(project, run_id, ScriptWithSideEffect(lambda: seen.append(current_packet(project, run_id))))
+
+    assert "The script 'list_files' runs in the background" in seen[0]
+    assert "End your turn" in seen[0]
+    assert f"pause {run_id}" in seen[0] and f"resume {run_id}" in seen[0]
+
+
+def test_a_background_script_takes_no_answer(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+
+    with pytest.raises(RunError) as raised:
+        submit_answer(project, run_id, "status: done\n")
+
+    assert "runs a script in the background, so it takes no answer" in str(raised.value)
+
+
+def test_resume_gives_the_background_command_again_and_drops_the_old_run(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    resumed: list[str] = []
+
+    def pause_and_resume() -> None:
+        pause_run(project, run_id)
+        resumed.append(resume_run(project, run_id))
+
+    dropped = run_background_script(project, run_id, ScriptWithSideEffect(pause_and_resume))
+
+    assert f"run-script {run_id}" in resumed[0] and "### Goal" in resumed[0]
+    assert "its result is dropped" in dropped
+    marker = read_run_state(project, run_id)["frames"][-1]["background_script"]
+    assert marker is not None and marker["state"] == "issued"
+    assert "finished with status succeeded" in run_background_script(project, run_id)

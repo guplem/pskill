@@ -13,6 +13,8 @@ from pskill_runner.skill_loader import load_catalog
 from pskill_runner.stubs import sync_stubs
 from pskill_runner.worktrees import run_worktree
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.test_engine_blocks import BACKGROUND_SKILL, NoScripts
+from tests.test_engine_blocks import make_project as make_parallel_project
 from tests.test_worktrees import make_checkout
 
 
@@ -393,3 +395,11 @@ def test_a_worktree_with_a_broken_config_does_not_break_the_stop_hook(tmp_path: 
     (tree_project.pskill_folder / "config.yaml").write_text("permissions: [nope]\n", encoding="utf-8")
 
     assert stop_hook_reason(checkout, "claude-code", session_id="session-a") is None
+
+
+def test_the_stop_is_allowed_while_a_background_script_is_open(tmp_path: Path) -> None:
+    project = make_parallel_project(tmp_path, {"scripted": BACKGROUND_SKILL})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())
+
+    assert stop_hook_reason(project, "claude-code") is None
+    assert read_run_info(project, run_id)["stop_blocks"] == 0

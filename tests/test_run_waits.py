@@ -27,7 +27,7 @@ from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import RunLockTimeout, read_json, run_lock, timestamp
 from pskill_runner.run_waits import start_wait, wait_for_run_change
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_engine_blocks import PARALLEL_SKILL
+from tests.test_engine_blocks import BACKGROUND_SKILL, PARALLEL_SKILL, NoScripts
 from tests.test_engine_blocks import make_project as make_parallel_project
 
 START = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
@@ -369,3 +369,13 @@ def test_a_newer_wait_ends_the_running_one_and_tells_the_agent_to_end_its_turn(t
 
     assert text == "A newer wait replaced this one. End your turn: the newer wait wakes you.\n"
     assert len(clock.sleeps) == 1
+
+
+def test_a_wait_is_refused_while_a_background_script_is_open(tmp_path: Path) -> None:
+    project = make_parallel_project(tmp_path, {"scripted": BACKGROUND_SKILL})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())
+
+    with pytest.raises(RunError) as raised:
+        start_wait(project, run_id, "the CI checks", datetime.now(UTC))
+
+    assert "runs the script 'list_files' in the background" in str(raised.value)
