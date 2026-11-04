@@ -1241,7 +1241,7 @@ Each of these was in an earlier draft. Each one added complexity for little user
 | A separate `question` block | `decision` with no `choices` |
 | Named reusable types | YAML anchors under `x-` keys |
 | A static task list in a task block | `for_each` over a YAML list |
-| A `parallel` block (removed in 1.0.0, #170) | A `task` with `for_each` and `context: fresh`. A task in a clean context and a parallel task were the same job, so two types doubled every code path. `pskill validate` and `run` refuse `type: parallel` with one line: "`parallel` is now `task` with `for_each`: change the type". |
+| A `parallel` block (removed in 1.0.0, #170) | A `task` with `for_each` and `context: fresh`. A task in a clean context and a parallel task were the same job, so two types doubled every code path. `pskill validate` and `start` refuse `type: parallel` with one line: "`parallel` is now `task` with `for_each`: change the type". |
 | `for_each` on `call` | A loop through edges, with `history` |
 | `on_error` per block | Retries (global, or the block's own `retries`), then pause, then `resume` |
 | `ok_exit_codes` | Exit 0 plus JSON output |
