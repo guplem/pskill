@@ -29,6 +29,9 @@ blocks:
   judge:
     type: task
     description: Judge if the new commits change the pull request in a significant way
+    context: fresh  # it needs only the commits and the review, not the conversation
+    tier: standard
+    tools: read
     instruction: instructions/judge.md
     output:
       significant: {type: boolean, description: "true when the new commits change what the review says, or what it must check."}

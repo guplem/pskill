@@ -311,6 +311,9 @@ blocks:
   finish:
     type: task
     description: Add the label when a human must look
+    context: fresh  # rule-based work: a clean context on a cheaper model
+    tier: standard
+    tools: read
     instruction: instructions/finish.md
     output:
       labels: {type: array, items: {type: string}, description: "The labels that you added."}
