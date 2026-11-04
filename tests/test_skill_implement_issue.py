@@ -638,6 +638,14 @@ def test_list_limits_names_each_limit_that_cut_work_short(
     assert printed == {"limits": limits}
 
 
+def test_the_finish_note_lists_the_decisions_and_asks_only_what_can_change_the_pull_request() -> None:
+    text = (SKILLS_FOLDER / SKILL / "instructions" / "finish.md").read_text(encoding="utf-8")
+
+    assert "> **Decisions taken:**" in text
+    assert "a name, a UI text" in text and "copies a precedent" in text and "Each risk point" in text
+    assert "only what can change what the pull request does" in text
+
+
 def instruction(name: str) -> str:
     return (SKILLS_FOLDER / SKILL / "instructions" / name).read_text(encoding="utf-8")
 

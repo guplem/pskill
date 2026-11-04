@@ -35,3 +35,17 @@ stand in for a test that failed, and "I want to be careful" cannot manufacture a
 failure that did not happen. Both directions are the same error: reading your own
 comfort instead of the evidence. Work the four tests item by item and take the
 answer they give.
+
+## What is a decision, never a question
+
+Humans take the recommendation of these nearly every time, so state them as decisions taken, each in one line, and
+never ask:
+
+- a name, a UI text, a placement, or the wording of a rule, a doc, or a comment;
+- a choice that copies a precedent of the codebase (name the `path:line`) or keeps today's behavior;
+- a risk point (a migration, auth, payments, a public contract, a CI workflow): say what the change does about it.
+  It still gets the human label or note that asks for a check, but no question.
+
+Ask only when the answer can change what the pull request does. Ask about
+scope only when the issue leaves it open: a case that the issue neither names
+nor excludes.
