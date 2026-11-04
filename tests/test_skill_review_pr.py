@@ -7,6 +7,8 @@ from typing import Any
 
 import pytest
 
+from pskill_runner.skill_loader import load_skill
+from pskill_runner.skill_model import TaskBlock
 from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
 
 SKILL = "review-pr"
@@ -344,3 +346,17 @@ class TestEarlierReviews:
         printed = run_main(monkeypatch, capsys, read_earlier_reviews, {"pr": 7})
 
         assert printed["count"] == 1 and printed["dismissed"][0]["title"] == "In body"
+
+
+def test_the_triage_runs_in_a_clean_context_on_the_standard_tier_and_only_reads() -> None:
+    triage = load_skill(SKILLS_FOLDER / SKILL).blocks["triage"]
+    assert isinstance(triage, TaskBlock)
+
+    assert (triage.context, triage.tier, triage.tools) == ("fresh", "standard", "read")
+
+
+def test_authoring_points_to_the_examples_of_a_fresh_context() -> None:
+    text = (SKILLS_FOLDER.parent.parent / "AUTHORING.md").read_text(encoding="utf-8")
+
+    assert "The example skills show `context: fresh`" in text
+    assert "`review-pr` `triage`" in text
