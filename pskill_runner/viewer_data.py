@@ -707,7 +707,7 @@ def load_run_skills(folder: Path) -> dict[str, Skill]:
     return skills
 
 
-def parallel_task_counts(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[int, str], int]:
+def for_each_task_counts(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[int, str], int]:
     """The most tasks that each block with `for_each` had in one visit, per canvas frame and block."""
     counts: dict[tuple[int, str], int] = {}
     for row, frame in zip(rows, row_frames, strict=True):
@@ -717,7 +717,7 @@ def parallel_task_counts(rows: list[dict[str, Any]], row_frames: list[int | None
     return counts
 
 
-def parallel_task_names(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[str, int], str]:
+def for_each_task_names(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[str, int], str]:
     """The latest name of each named task, by task node and task number."""
     names: dict[tuple[str, int], str] = {}
     for row, frame in zip(rows, row_frames, strict=True):
@@ -794,8 +794,8 @@ def run_canvas(
     if root is None:
         return None, None, annotate_rows(rows, [None] * len(rows), [], [], info["mode"])
     frames, row_frames = assign_frames(rows, skills, root)
-    task_counts = parallel_task_counts(rows, row_frames)
-    task_names = parallel_task_names(rows, row_frames)
+    task_counts = for_each_task_counts(rows, row_frames)
+    task_names = for_each_task_names(rows, row_frames)
     edges = [edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame)]
     edges = number_edges(edges + task_frame_edges(task_counts))
     annotated = annotate_rows(rows, row_frames, frames, edges, info["mode"])
@@ -982,7 +982,7 @@ def task_view(entry: dict[str, Any] | None, task: int, packet: str | None, name:
     }
 
 
-def parallel_visits(rows: list[dict[str, Any]]) -> dict[tuple[str, int, str, int], list[dict[str, Any]]]:
+def for_each_visits(rows: list[dict[str, Any]]) -> dict[tuple[str, int, str, int], list[dict[str, Any]]]:
     """The rows of each visit of a block with `for_each`, by frame chain, call of that frame, block, and visit.
 
     A child skill counts its visits from 1 again on each call, so the call number keeps two calls apart.
@@ -1006,7 +1006,7 @@ def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
 
     With subagents, one row holds every task. One by one (the generic adapter), each task has its own row.
     """
-    groups = parallel_visits(rows)
+    groups = for_each_visits(rows)
     live = live_tasks(state)
     last_key = list(groups)[-1] if groups else None
     for key, group in groups.items():

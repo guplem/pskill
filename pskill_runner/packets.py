@@ -160,7 +160,7 @@ class TaskPrompt:
     spawn_wording: str = ""  # how to spawn this task's subagent with its tool profile and model tier, in this harness
 
 
-def render_parallel_packet(
+def render_subagent_packet(
     packet: AgentPacket, open_tasks: list[TaskPrompt], total_tasks: int, main_tasks: int = 0
 ) -> str:
     """The packet of the open fresh jobs of a task block: a one-line prompt per open job, for its subagent.

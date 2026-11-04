@@ -29,8 +29,8 @@ from pskill_runner.packets import (
     TaskPrompt,
     render_agent_packet,
     render_final_packet,
-    render_parallel_packet,
     render_pause_packet,
+    render_subagent_packet,
     render_summary_card,
     task_prompt_text,
     visit_cap_instruction,
@@ -1105,7 +1105,7 @@ class Run:
         main_indexes = self.open_job_indexes("main")
         if fresh_indexes:
             tasks = [self.task_prompt(block, index) for index in fresh_indexes]
-            return render_parallel_packet(self.base_packet(block, errors), tasks, len(jobs), len(main_indexes))
+            return render_subagent_packet(self.base_packet(block, errors), tasks, len(jobs), len(main_indexes))
         job = self.task_prompt(block, main_indexes[0])
         instruction = "\n\n".join(part for part in (job.agent_text, job.instruction) if part)
         task_index = job.index if block.for_each is not None else None
