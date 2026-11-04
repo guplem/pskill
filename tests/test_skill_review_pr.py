@@ -8,6 +8,8 @@ from typing import Any
 import pytest
 
 from pskill_runner.computed_values import render_text
+from pskill_runner.skill_loader import load_skill
+from pskill_runner.skill_model import TaskBlock
 from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
 
 SKILL = "review-pr"
@@ -434,3 +436,17 @@ def test_the_draft_says_why_a_force_pushed_follow_up_reviews_everything() -> Non
 
 def test_the_draft_of_a_delta_follow_up_mentions_no_whole_review() -> None:
     assert "whole pull request" not in draft_text({"since_sha": "c1", "full_review_reason": ""})
+
+
+def test_the_triage_runs_in_a_clean_context_on_the_standard_tier_and_only_reads() -> None:
+    triage = load_skill(SKILLS_FOLDER / SKILL).blocks["triage"]
+    assert isinstance(triage, TaskBlock)
+
+    assert (triage.context, triage.tier, triage.tools) == ("fresh", "standard", "read")
+
+
+def test_authoring_points_to_the_examples_of_a_fresh_context() -> None:
+    text = (SKILLS_FOLDER.parent.parent / "AUTHORING.md").read_text(encoding="utf-8")
+
+    assert "The example skills show `context: fresh`" in text
+    assert "`review-pr` `triage`" in text

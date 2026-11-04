@@ -11,9 +11,7 @@ Goal: One review on the pull request that the user confirmed: it holds every new
 
 1. Map the request to the inputs:
    - `pr` (integer): Number of the pull request.
-   - `max_rounds` (integer, optional, default: 7): The most review rounds to run. The runner stops at 20 rounds in any case.
-   - `rounds_without_required` (integer, optional, default: 4): Stop when this many rounds in total found no new required finding.
-   - `rounds_without_findings` (integer, optional, default: 1): Stop when this many rounds in total found no new finding.
+   - `max_rounds` (integer, optional, default: 4): The most review rounds to run. The loop also stops at the first round with no new required finding.
    Ask the user for each required input that the request does not give, before you run `start`.
 2. Run: `uv run .pskill/pskill.py start review-pr --harness auto --model <your model id> --input pr=<value>`
    Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.

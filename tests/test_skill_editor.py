@@ -134,7 +134,7 @@ def test_an_update_keeps_an_alias_as_an_alias(tmp_path: Path) -> None:
         ("implement-issue", "understand"),
         ("review-pr", "triage"),
         ("review-round", "read_pr"),
-        ("resolve-pr-feedback", "claim_item"),
+        ("resolve-pr-feedback", "claim_items"),
         ("fix-ci", "fix_ci"),
         ("create-issue", "judge_duplicates"),
     ],

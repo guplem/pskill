@@ -1,6 +1,8 @@
-name: a required-only fix round that stops at its cap of 100 items ends the run capped
+name: a required-only fix round that stops before the end of its list ends the run capped
 inputs: {request: "#42"}
 scripts:
+  limits:
+    - {exit_code: 0, stdout: '{"limits": ["resolve_items"]}'}
   read_issue:
     - exit_code: 0
       stdout: >-
@@ -20,8 +22,6 @@ scripts:
 calls:
   review:
     - {status: succeeded, outputs: {findings: [], reviewed_sha: r1, scope_sha: r1}}
-  resolve:
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
   final_review:
     - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: h2, scope_sha: r1}}
   final_resolve:
@@ -47,6 +47,6 @@ answers:
   finish:
     - {labels: [waiting-for-human-review], reasons: Some review findings have no verdict.}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, finish, capped]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, limits, finish, capped]
   status: succeeded
   outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/octo/app/pull/9", limits: [resolve_items]}
