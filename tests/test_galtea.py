@@ -14,7 +14,7 @@ from pskill_runner.galtea_client import GalteaClient
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import read_events, read_json
 from tests.skill_files import write_skill
-from tests.test_engine_blocks import CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
+from tests.test_engine_blocks import CHILD_SKILL, ONE_JOB_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
 
 KEY = {"GALTEA_API_KEY": "gsk_test"}
 
@@ -334,6 +334,24 @@ def test_an_unreadable_run_is_ignored(tmp_path: Path) -> None:
 
 
 # --- parallel tasks ---------------------------------------------------------------------------------
+
+
+def test_only_a_skill_with_a_tier_names_the_tier_models_in_its_version(tmp_path: Path) -> None:
+    untiered = make_project(tmp_path / "a", {"fanout": with_product(PARALLEL_SKILL, "f")})
+    tiered = make_project(tmp_path / "b", {"one-job": with_product(ONE_JOB_SKILL, "j")})
+    untiered_run, _ = start_run(untiered, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+    tiered_run, _ = start_run(tiered, "one-job", {}, mode="interactive", harness="claude-code")
+    submit_answer(untiered, untiered_run, "wrong: []\n", task=0)
+    submit_answer(tiered, tiered_run, "verdict: fine\n", task=0)
+    untiered_galtea, tiered_galtea = FakeGaltea(), FakeGaltea()
+
+    upload(untiered, untiered_run, untiered_galtea)
+    upload(tiered, tiered_run, tiered_galtea)
+
+    [untiered_version] = untiered_galtea.bodies("POST", "/versions/get-or-create")
+    [tiered_version] = tiered_galtea.bodies("POST", "/versions/get-or-create")
+    assert "tiers" not in untiered_version["facts"]
+    assert '"fast": "haiku"' in tiered_version["facts"]["tiers"]
 
 
 def test_parallel_task_turns_name_their_tier_model(tmp_path: Path) -> None:
