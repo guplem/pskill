@@ -959,6 +959,30 @@ def test_a_parallel_row_with_subagents_keeps_each_task_answer_and_output(tmp_pat
     assert row["output"] == {"results": [{"wrong": []}, {"wrong": ["x"]}]}
 
 
+def test_a_run_from_before_1_0_0_with_a_parallel_block_shows_its_tasks_without_a_canvas(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+    submit_answer(project, run_id, "wrong: [x]\n", task=1)
+    folder = project.runs_folder / run_id
+    copy = folder / "skills" / "fanout" / "skill.yaml"
+    copy.write_text(copy.read_text(encoding="utf-8").replace("type: task", "type: parallel"), encoding="utf-8")
+    events_file = folder / "events.jsonl"
+    old_events = events_file.read_text(encoding="utf-8").replace('"block_type": "task", ', '"block_type": "parallel", ')
+    events_file.write_text(old_events.replace('"for_each": true, ', ""), encoding="utf-8")
+
+    detail = detail_of(project, run_id)
+    row = check_row_of(project, run_id)
+
+    assert detail["canvas"] is None
+    assert row["block_type"] == "parallel"
+    assert row["for_each"] is False
+    assert [task["output"] for task in row["tasks"]] == [{"wrong": []}, {"wrong": ["x"]}]
+    assert row["output_title"] == "Output: the results of every task, joined"
+
+
 def test_a_one_by_one_parallel_block_lists_the_tasks_of_its_visit(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic")

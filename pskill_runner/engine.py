@@ -628,7 +628,13 @@ class Run:
     def skill_by_id(self, skill_id: str) -> Skill:
         """A skill from the run's own copy, never from the project (D22)."""
         if skill_id not in self.skills:
-            self.skills[skill_id] = load_skill(self.folder / "skills" / skill_id)
+            try:
+                self.skills[skill_id] = load_skill(self.folder / "skills" / skill_id)
+            except SkillLoadError as error:  # a copy from an older runner, such as one with a `parallel` block
+                raise RunError(
+                    f"This run's copy of the skill {skill_id!r} cannot be loaded: {error}. "
+                    "Cancel this run and start a new one."
+                ) from error
         return self.skills[skill_id]
 
     def skill_of(self, frame: Frame) -> Skill:

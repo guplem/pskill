@@ -318,6 +318,38 @@ def test_a_run_saved_at_a_task_before_task_jobs_existed_still_takes_its_answer(t
     assert "approve_plan" in packet
 
 
+def make_run_copy_parallel(project: Project, run_id: str) -> None:
+    """A run started before 1.0.0: its own copy of the skill has a `parallel` block."""
+    copy = project.runs_folder / run_id / "skills" / "plan-work" / "skill.yaml"
+    text = copy.read_text(encoding="utf-8")
+    copy.write_text(text.replace("    type: task\n", "    type: parallel\n    for_each: [a]\n", 1), encoding="utf-8")
+
+
+def test_a_run_whose_copy_has_a_parallel_block_cannot_go_on_and_says_to_cancel_it(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    make_run_copy_parallel(project, run_id)
+
+    with pytest.raises(RunError) as raised:
+        current_packet(project, run_id)
+
+    assert str(raised.value) == (
+        "This run's copy of the skill 'plan-work' cannot be loaded: blocks.create_plan: `parallel` is now `task` "
+        "with `for_each`: change the type. Cancel this run and start a new one."
+    )
+
+
+def test_a_run_whose_copy_has_a_parallel_block_can_be_cancelled(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    make_run_copy_parallel(project, run_id)
+
+    text = cancel_run(project, run_id)
+
+    assert f"Run {run_id} is cancelled." in text
+    assert read_run_info(project, run_id)["status"] == "cancelled"
+
+
 def test_more_rounds_run_the_block_again_then_ask_again(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id = start(project)
