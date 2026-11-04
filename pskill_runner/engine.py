@@ -1398,7 +1398,10 @@ class Run:
         fresh = self.is_fresh_job(index)  # known before the answer: the join clears the jobs
         answer, _, errors = self.read_answer(answer_text, block)
         if errors:
-            return self.task_reply(index, fresh, recorded=False, text=self.reject(errors, answer_text, task))
+            counted_task = (
+                None if one_main_job else index
+            )  # a one-job main task counts on the run, with or without --task
+            return self.task_reply(index, fresh, recorded=False, text=self.reject(errors, answer_text, counted_task))
         self.answer_recorded = True
         text = self.guarded(lambda: self.accept_job(block, index, answer))
         return self.task_reply(index, fresh, recorded=True, text=text)

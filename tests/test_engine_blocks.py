@@ -1540,3 +1540,14 @@ def test_resume_of_a_one_job_task_whose_start_failed_logs_its_start(tmp_path: Pa
     started = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_started"]
     assert [event["block"] for event in started] == ["judge"]
     assert started[0]["task_prompts"]
+
+
+def test_a_one_job_main_task_counts_its_rejections_once_with_or_without_the_task_number(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"one-job": ONE_JOB_SKILL.replace("    context: fresh\n    tier: fast\n", "")})
+    run_id, _ = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")
+
+    submit_answer(project, run_id, "verdict: [not, text]\n", task=0)
+    submit_answer(project, run_id, "verdict: [not, text]\n")
+    submit_answer(project, run_id, "verdict: [not, text]\n", task=0)
+
+    assert read_run_info(project, run_id)["status"] == "paused"  # 2 retries, then the pause
