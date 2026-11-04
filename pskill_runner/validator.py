@@ -29,6 +29,7 @@ from pskill_runner.skill_model import (
     SkillCatalog,
     TaskBlock,
     block_edges,
+    context_choices,
     next_targets,
     tier_choices,
     tool_profile_choices,
@@ -238,7 +239,7 @@ def context_problems(location: str, block: TaskBlock) -> list[Problem]:
     """A written context must be `main` or `fresh`. A computed one is checked at run time."""
     if block.context is None or "{{" in block.context or block.context in CONTEXTS:
         return []
-    return [error(location, f"the context {block.context!r} is not {' or '.join(CONTEXTS)}")]
+    return [error(location, f"the context {block.context!r} is not {context_choices()}")]
 
 
 def main_context_problems(location: str, block: TaskBlock) -> list[Problem]:

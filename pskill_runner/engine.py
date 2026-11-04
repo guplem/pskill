@@ -79,6 +79,7 @@ from pskill_runner.skill_model import (
     Skill,
     SkillCatalog,
     TaskBlock,
+    context_choices,
     tier_choices,
     tool_profile_choices,
 )
@@ -988,7 +989,7 @@ class Run:
         if context is None or context == "":
             return "main"
         if context not in CONTEXTS:
-            raise RunnerStop(f"The context of {block.id!r} must be {' or '.join(CONTEXTS)}, not {context!r}.")
+            raise RunnerStop(f"The context of {block.id!r} must be {context_choices()}, not {context!r}.")
         return str(context) if self.adapter.can_spawn_subagents else "main"
 
     def items_that_run(self, block: TaskBlock, items: list[Any]) -> list[Any]:

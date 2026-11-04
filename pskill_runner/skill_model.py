@@ -66,6 +66,11 @@ class RetryableBlock(Block):
 CONTEXTS = ("main", "fresh")
 
 
+def context_choices() -> str:
+    """The known contexts for an error message: "main or fresh"."""
+    return " or ".join(CONTEXTS)
+
+
 @dataclass(frozen=True, kw_only=True)
 class TaskBlock(RetryableBlock):
     """Agent work: one job, or one job per item of `for_each`, joined into one list of results.
