@@ -239,7 +239,7 @@ blocks:
     type: script
     description: Mark the pull request ready, then remove the plan and push
     run: [uv, run, "{{ skill.dir }}/scripts/mark_ready.py"]
-    input: {pr: "{{ steps.open_draft_pr.json.pr_number }}", plan_file: "{{ steps.checkout_base.json.plan_file }}"}
+    input: {pr: "{{ steps.open_draft_pr.json.pr_number }}", branch: "{{ steps.checkout_base.json.branch }}", plan_file: "{{ steps.checkout_base.json.plan_file }}"}
     parse: json
     next: get_ci_green
 

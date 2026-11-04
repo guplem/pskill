@@ -6,7 +6,7 @@ First, find the next step: compare the steps of the plan with `git log --oneline
 2. **Red:** run it. See it fail for the expected reason.
 3. **Green:** write the least code that makes it pass.
 4. **Check:** run the fast local checks that the `AGENTS.md`, `CLAUDE.md`, or README files name for the touched code. Run formatters only on the files that you changed. Do not run slow suites: CI runs them. Still write their tests when the step or the plan asks for them.
-5. **Push:** commit the test and the code together, with a message in the style of the repository, and push. Add a new commit each time. Never amend a pushed commit.
+5. **Push:** commit the test and the code together, with a message in the style of the repository, and push with `git push origin HEAD:{{ steps.checkout_base.json.branch }}`. Push to this branch, not to the session's `claude/` branch. Then check that the commit reached the remote: after `git fetch origin {{ steps.checkout_base.json.branch }}`, `git branch -r --contains <hash>` lists `origin/{{ steps.checkout_base.json.branch }}`. Add a new commit each time. Never amend a pushed commit.
 
 - For a step that no test can check (docs, config, a purely visual change), skip Test and Red.
 - When the plan is wrong or incomplete, update the plan file first. Commit and push that update alone.

@@ -17,7 +17,7 @@
    - When the code breaks a written rule (a recorded decision, an `AGENTS.md` rule), change the code. Change the rule only when the rule itself is wrong.
    - Write a failing test first when the fix changes behavior.
    - Run the fast local checks that the `AGENTS.md`, `CLAUDE.md`, or README files name for the touched code. Run formatters only on the files that you changed.
-   - Commit and push the fix as a new commit. Never amend a pushed commit.
+   - Commit the fix as a new commit, and push with `git push origin HEAD:{{ steps.checkout.outputs.branch }}`. Push to this branch, not to the session's `claude/` branch. Then check that the commit reached the remote: after `git fetch origin {{ steps.checkout.outputs.branch }}`, `git branch -r --contains <hash>` lists `origin/{{ steps.checkout.outputs.branch }}`. Never amend a pushed commit.
 3. **Dismiss it** when the finding acceptance rules reject it. Give the reason in one sentence.
    - Dismiss a partial fix too: say what you fixed, and why you left the rest. The next reviewers see it.
 {% if item.kind == 'comment' %}

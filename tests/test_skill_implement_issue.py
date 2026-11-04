@@ -255,7 +255,7 @@ def test_mark_ready_marks_the_draft_ready_then_removes_the_plan(
 ) -> None:
     script, shell = install_mark_ready(monkeypatch, True, ready_result(0))
 
-    printed = run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
+    printed = run_main(monkeypatch, capsys, script, {"pr": 9, "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"})
 
     assert printed == {"head_sha": "def456"}
     changes = [
@@ -267,7 +267,7 @@ def test_mark_ready_marks_the_draft_ready_then_removes_the_plan(
         "gh pr ready 9",
         "git rm --quiet implementation-plan-42.md",
         "git commit --quiet -m Remove the implementation plan",
-        "git push --quiet",
+        "git push --quiet origin HEAD:42-fix-save",
     ]
 
 
@@ -277,7 +277,7 @@ def test_mark_ready_uses_the_proxy_route_when_graphql_is_refused(
     refused = ready_result(1, "GitHub GraphQL is not available through this proxy (HTTP 403)")
     script, shell = install_mark_ready(monkeypatch, True, refused)
 
-    run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
+    run_main(monkeypatch, capsys, script, {"pr": 9, "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"})
 
     assert shell.ran("gh api POST repos/{owner}/{repo}/pulls/9/ccr/ready_for_review")
 
@@ -288,7 +288,7 @@ def test_mark_ready_stops_on_another_failure(
     script, shell = install_mark_ready(monkeypatch, True, ready_result(1, "HTTP 401: Bad credentials\n"))
 
     with pytest.raises(SystemExit, match="`gh pr ready 9` failed: HTTP 401: Bad credentials"):
-        run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
+        run_main(monkeypatch, capsys, script, {"pr": 9, "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"})
     assert not shell.ran("gh api POST")
     assert not shell.ran("git push")
 
@@ -298,11 +298,11 @@ def test_mark_ready_a_second_time_only_pushes(
 ) -> None:
     script, shell = install_mark_ready(monkeypatch, False, ready_result(0), failing=["git ls-files"])
 
-    run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
+    run_main(monkeypatch, capsys, script, {"pr": 9, "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"})
 
     assert not shell.ran("gh pr ready")
     assert not shell.ran("git rm")
-    assert shell.ran("git push --quiet")
+    assert shell.ran("git push --quiet origin HEAD:42-fix-save")
 
 
 def unreviewed_shell(commits: str, merged_tree: str = "t3") -> FakeShell:
