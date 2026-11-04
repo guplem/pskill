@@ -302,6 +302,8 @@ def script_body(block: ScriptBlock, default_retries: int) -> list[str]:
         lines.append(f"Send it this text on its standard input: {plain_value(block.input)}")
     if block.parse == "json":
         lines.append(f"The command prints JSON: write it down as `{block.id}.json`.")
+    if block.background:
+        lines.append("This command can take long: run it in the background if you can, and wait for its end.")
     retries = block.retries if block.retries is not None else default_retries
     if retries == 0:
         lines.append("If the command fails, stop and tell the user why.")

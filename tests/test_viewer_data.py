@@ -1260,6 +1260,14 @@ def test_a_node_hint_names_the_blocks_own_retries_and_timeout() -> None:
     assert node_hint(replace(script, retries=4, timeout_s=None)).endswith("It tries again up to 4 times when it fails.")
 
 
+def test_a_node_hint_says_that_a_script_runs_in_the_background() -> None:
+    script = ScriptBlock(id="wait_ci", run=["uv", "run", "wait.py"], background=True, next=[])
+
+    assert node_hint(script).endswith(
+        "It runs in the background: the agent starts it, ends its turn, and wakes when it ends."
+    )
+
+
 def test_a_choice_with_an_edge_list_draws_one_edge_per_condition(tmp_path: Path) -> None:
     write_skill(tmp_path / ".pskill" / "skills", "per-item", PER_ITEM_SKILL)
     project = find_project(tmp_path)

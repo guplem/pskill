@@ -190,6 +190,8 @@ def node_notes(block: AnyBlock) -> str:
         )
     if isinstance(block, ScriptBlock) and block.timeout_s is not None:
         lines.append(f"The command stops after {block.timeout_s} s.")
+    if isinstance(block, ScriptBlock) and block.background:
+        lines.append("It runs in the background: the agent starts it, ends its turn, and wakes when it ends.")
     return "\n".join(lines)
 
 

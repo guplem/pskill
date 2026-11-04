@@ -519,6 +519,7 @@ export const FACT_FIELDS = {
   context: "context",
   parse: "parse",
   timeout: "timeout_s",
+  background: "background",
   skill: "skill",
   status: "status",
   pending: "pending",

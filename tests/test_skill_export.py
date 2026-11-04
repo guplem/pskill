@@ -501,3 +501,16 @@ def test_an_end_step_names_what_is_left_to_do(tmp_path: Path) -> None:
         "If this skill runs on its own, and not for a step of another skill, also tell the user that nothing is left "
         "to do." in markdown
     )
+
+
+def test_a_background_script_step_says_that_it_can_take_long(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    write_skill(
+        project.skills_folder,
+        "checker",
+        STATE_SKILL.replace("    parse: json\n", "    parse: json\n    background: true\n"),
+    )
+
+    markdown = export_skill(project, "checker")["checker/SKILL.md"].decode("utf-8")
+
+    assert "This command can take long: run it in the background if you can, and wait for its end." in markdown

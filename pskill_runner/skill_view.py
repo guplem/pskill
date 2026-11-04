@@ -331,6 +331,8 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
         facts.append(["parse", block.parse])
         if block.timeout_s is not None:
             facts.append(["timeout", f"{block.timeout_s} s"])
+        if block.background:
+            facts.append(["background", "yes"])
     if isinstance(block, CallBlock):
         facts.append(["skill", block.skill])
     if isinstance(block, EndBlock):

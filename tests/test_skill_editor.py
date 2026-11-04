@@ -427,3 +427,15 @@ def test_a_new_report_goes_before_the_pending_of_its_end(tmp_path: Path) -> None
     update_block(project, "plan-work", "stopped", {"report": "Say why."})
 
     assert skill_text(project).endswith('    outputs: {result: stopped}\n    report: Say why.\n    pending: ""\n')
+
+
+def test_a_script_can_be_set_to_run_in_the_background_after_its_timeout(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    add_block(project, "plan-work", "wait_ci", "script")
+    update_block(project, "plan-work", "wait_ci", {"timeout_s": 900})
+
+    update_block(project, "plan-work", "wait_ci", {"background": True})
+
+    block_lines = skill_text(project).split("\n  wait_ci:\n", 1)[1].splitlines()
+    assert block_lines.index("    background: true") == block_lines.index("    timeout_s: 900") + 1
+    assert getattr(load_skill(project.skills_folder / "plan-work").blocks["wait_ci"], "background", None) is True
