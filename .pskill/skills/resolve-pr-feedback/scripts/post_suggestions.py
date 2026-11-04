@@ -20,7 +20,9 @@ SUGGESTIONS_MARKER = "<!-- resolve-pr-feedback-suggestions -->"
 
 def suggestion_line(suggestion: dict[str, Any]) -> str:
     reviewer = f" ({suggestion['reviewer']})" if suggestion.get("reviewer") else ""
-    return f"- **{suggestion['title']}** at `{suggestion['file']}:{suggestion['line']}`{reviewer}: {suggestion['summary']}"
+    return (
+        f"- **{suggestion['title']}** at `{suggestion['file']}:{suggestion['line']}`{reviewer}: {suggestion['summary']}"
+    )
 
 
 def main() -> None:
