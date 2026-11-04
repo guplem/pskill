@@ -3,6 +3,7 @@
 import json
 import threading
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -1638,7 +1639,7 @@ def test_a_background_script_on_claude_code_gives_one_command_to_start_in_the_ba
     run_id, packet = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())
 
     assert f"uv run .pskill/pskill.py run-script {run_id}" in packet
-    assert "`run_in_background: true` and `timeout: 960000` (16 minutes)" in packet
+    assert "`run_in_background: true` and `timeout: 2760000` (46 minutes)" in packet  # 3 attempts of 900 s, plus 60 s
     assert "then end your turn" in packet
     info = read_run_info(project, run_id)
     assert info["status"] == "active"
@@ -1651,8 +1652,21 @@ def test_a_background_script_on_claude_code_gives_one_command_to_start_in_the_ba
     assert started[-1]["block"] == "list_files" and started[-1]["packet"] == packet
 
 
+def test_the_shell_timeout_of_a_background_script_covers_every_attempt(tmp_path: Path) -> None:
+    skill_yaml = BACKGROUND_SKILL.replace("timeout_s: 900", "timeout_s: 1800\n    retries: 1")
+    project = make_project(tmp_path, {"scripted": skill_yaml})
+
+    run_id, packet = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())
+
+    assert "`timeout: 3660000` (61 minutes)" in packet  # 2 attempts of 1800 s, plus 60 s
+    info = read_run_info(project, run_id)
+    assert info["wait_until"] is not None and info["wait_started_at"] is not None
+    waited_s = (datetime.fromisoformat(info["wait_until"]) - datetime.fromisoformat(info["wait_started_at"])).seconds
+    assert waited_s == 3660
+
+
 def test_the_shell_timeout_of_a_background_script_stays_within_two_hours(tmp_path: Path) -> None:
-    skill_yaml = BACKGROUND_SKILL.replace("timeout_s: 900", "timeout_s: 7200")
+    skill_yaml = BACKGROUND_SKILL.replace("timeout_s: 900", "timeout_s: 7140\n    retries: 0")
     project = make_project(tmp_path, {"scripted": skill_yaml})
 
     _, packet = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())

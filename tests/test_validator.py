@@ -695,19 +695,51 @@ def script_problems(tmp_path: Path, keys: str, config: Config | None = None) -> 
 
 
 def test_a_background_script_may_run_up_to_max_wait_minutes(tmp_path: Path) -> None:
-    assert script_problems(tmp_path / "a", "    background: true\n    timeout_s: 7200\n") == []
-    assert messages(script_problems(tmp_path / "b", "    background: true\n    timeout_s: 7201\n"), "error") == [
-        "blocks.wait_ci: the timeout of a background script (7201 s) is above max_wait_minutes (120 minutes, "
-        "in config.yaml)"
+    assert script_problems(tmp_path / "a", "    background: true\n    retries: 0\n    timeout_s: 7140\n") == []
+    assert messages(
+        script_problems(tmp_path / "b", "    background: true\n    retries: 0\n    timeout_s: 7141\n"), "error"
+    ) == [
+        "blocks.wait_ci: the timeout of a background script (7201 s: 1 attempt of 7141 s, plus 60 s to record) is "
+        "above max_wait_minutes (120 minutes, in config.yaml)"
+    ]
+
+
+def test_the_retries_of_a_background_script_count_in_its_timeout(tmp_path: Path) -> None:
+    keys = "    background: true\n    retries: 2\n    timeout_s: 1800\n"
+
+    assert script_problems(tmp_path / "a", keys, Config(max_wait_minutes=120)) == []
+    assert messages(script_problems(tmp_path / "b", keys, Config(max_wait_minutes=60)), "error") == [
+        "blocks.wait_ci: the timeout of a background script (5460 s: 3 attempts of 1800 s, plus 60 s to record) is "
+        "above max_wait_minutes (60 minutes, in config.yaml)"
+    ]
+
+
+def test_a_background_script_without_its_own_retries_uses_the_config_retries(tmp_path: Path) -> None:
+    keys = "    background: true\n    timeout_s: 3000\n"
+
+    assert script_problems(tmp_path / "a", keys, Config(retries=1)) == []
+    assert messages(script_problems(tmp_path / "b", keys, Config(retries=2)), "error") == [
+        "blocks.wait_ci: the timeout of a background script (9060 s: 3 attempts of 3000 s, plus 60 s to record) is "
+        "above max_wait_minutes (120 minutes, in config.yaml)"
+    ]
+
+
+def test_a_background_script_may_not_outlast_the_longest_background_command(tmp_path: Path) -> None:
+    config = Config(max_wait_minutes=300)
+    keys = "    background: true\n    retries: 0\n    timeout_s: 7141\n"
+
+    assert messages(script_problems(tmp_path, keys, config), "error") == [
+        "blocks.wait_ci: the timeout of a background script (7201 s: 1 attempt of 7141 s, plus 60 s to record) is "
+        "above 7200 s, the longest background command"
     ]
 
 
 def test_a_background_script_without_its_own_timeout_uses_the_config_timeout(tmp_path: Path) -> None:
-    config = Config(script_timeout_s=3600, max_wait_minutes=30)
+    config = Config(script_timeout_s=3600, max_wait_minutes=30, retries=0)
 
     assert messages(script_problems(tmp_path, "    background: true\n", config), "error") == [
-        "blocks.wait_ci: the timeout of a background script (3600 s) is above max_wait_minutes (30 minutes, "
-        "in config.yaml)"
+        "blocks.wait_ci: the timeout of a background script (3660 s: 1 attempt of 3600 s, plus 60 s to record) is "
+        "above max_wait_minutes (30 minutes, in config.yaml)"
     ]
 
 

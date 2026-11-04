@@ -13,6 +13,10 @@ class AdapterError(Exception):
     """An unknown harness was named."""
 
 
+BACKGROUND_MARGIN_S = 60  # the background command's time to record the result and print the next packet
+BACKGROUND_COMMAND_MAX_S = 7200  # the longest timeout of a background command (2 hours in Claude Code)
+
+
 @dataclass(frozen=True)
 class TierRow:
     """What a model tier means in one harness. None keeps the session's model, or the model's default effort."""
@@ -84,7 +88,7 @@ CLAUDE_CODE = HarnessAdapter(
     background_command_wording=(
         "Run it with the Bash tool, with `run_in_background: true` and `timeout: {timeout_ms}` ({minutes} minutes)."
     ),
-    background_command_max_s=7200,
+    background_command_max_s=BACKGROUND_COMMAND_MAX_S,
 )
 
 CODEX = HarnessAdapter(

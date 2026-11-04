@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, TypeGuard, cast
 
 import pskill_runner
-from pskill_runner.adapters import adapter_for, tier_wording
+from pskill_runner.adapters import BACKGROUND_MARGIN_S, adapter_for, tier_wording
 from pskill_runner.computed_values import ComputedValueError, compute, is_true, render_text
 from pskill_runner.field_types import FieldMap, FieldSpec, check_answer, check_typed_values
 from pskill_runner.inline_executor import InlineExecutor, RealExecutor, ScriptResult
@@ -92,7 +92,6 @@ from pskill_runner.yaml_loading import load_answer_yaml
 
 ENTRY_SCRIPT_NAME = "pskill.py"
 INLINE_BLOCK_LIMIT = 1000
-BACKGROUND_MARGIN_S = 60  # the background command's time to record the result and print the next packet
 TASK_NAME_LIMIT = 60  # characters: a task name is a short label
 OUTPUT_LIMIT_CHARACTERS = 64 * 1024  # characters: the most of a text output or a stderr that a run keeps
 CANCELLED_DESCRIPTION = "The run was cancelled with `pskill cancel`."
@@ -991,9 +990,10 @@ class Run:
         return block.timeout_s if block.timeout_s is not None else self.project.config.script_timeout_s
 
     def background_shell_timeout_s(self, block: ScriptBlock) -> int:
-        """The timeout of the agent's background command: the script's, plus a minute to record it, within the
-        harness's longest timeout."""
-        return min(self.script_timeout_of(block) + BACKGROUND_MARGIN_S, self.adapter.background_command_max_s)
+        """The timeout of the agent's background command: every attempt of the script, plus a minute to record
+        it, within the harness's longest timeout."""
+        all_attempts_s = (self.retries_of(block) + 1) * self.script_timeout_of(block)
+        return min(all_attempts_s + BACKGROUND_MARGIN_S, self.adapter.background_command_max_s)
 
     def issue_background_script(self, block: ScriptBlock, reentry: bool = False) -> str:
         """Give the command that runs the script in the background. The wait fields keep the Stop hook quiet."""

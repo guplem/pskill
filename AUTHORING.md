@@ -131,7 +131,7 @@ blocks:
     next: report
   ```
 - A failed block tries again `retries` times (2 by default, set in `.pskill/config.yaml`), then the run pauses. A `task`, `decision`, or `script` block can set its own `retries: 0` (no second try) or more. A `script` can set its own `timeout_s: 60` (300 by default).
-- A script runs inside the agent's shell call, and Claude Code stops that call at 10 minutes. For a longer script, such as a wait for CI, set `background: true`, with a `timeout_s` up to `max_wait_minutes` of `.pskill/config.yaml` (120 minutes by default). In Claude Code, the agent starts the script's command in the background and ends its turn, so the wait costs no agent turn; it wakes once, with the next step. Elsewhere (Codex, generic) the script runs in the foreground:
+- A script runs inside the agent's shell call, and Claude Code stops that call at 10 minutes. For a longer script, such as a wait for CI, set `background: true`, with a `timeout_s` that, times its attempts (`retries + 1`), stays within `max_wait_minutes` of `.pskill/config.yaml` (120 minutes by default). In Claude Code, the agent starts the script's command in the background and ends its turn, so the wait costs no agent turn; it wakes once, with the next step. Elsewhere (Codex, generic) the script runs in the foreground:
   ```yaml
   wait_ci:
     type: script

@@ -7,6 +7,7 @@ cannot express: the graph, the references inside `{{ }}`, the files, and the des
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from pskill_runner.adapters import BACKGROUND_COMMAND_MAX_S, BACKGROUND_MARGIN_S
 from pskill_runner.computed_values import (
     ComputedValueError,
     compute,
@@ -182,17 +183,28 @@ def visit_cap_problems(location: str, block: AnyBlock) -> list[Problem]:
 
 
 def script_timeout_problems(location: str, block: ScriptBlock, config: Config) -> list[Problem]:
-    """A background script runs at most `max_wait_minutes`. A foreground one outlasts Claude Code's shell call
-    after 10 minutes (SPEC.md section 6.3)."""
+    """A background script, with every attempt, runs at most `max_wait_minutes` and the longest background
+    command. A foreground one outlasts Claude Code's shell call after 10 minutes (SPEC.md section 6.3)."""
     if block.background:
         timeout_s = block.timeout_s if block.timeout_s is not None else config.script_timeout_s
-        if timeout_s > config.max_wait_minutes * 60:
+        retries = block.retries if block.retries is not None else config.retries
+        attempts = retries + 1
+        attempts_text = "1 attempt" if attempts == 1 else f"{attempts} attempts"
+        total_s = attempts * timeout_s + BACKGROUND_MARGIN_S
+        description = (
+            f"the timeout of a background script ({total_s} s: {attempts_text} of "
+            f"{timeout_s} s, plus {BACKGROUND_MARGIN_S} s to record)"
+        )
+        if total_s > config.max_wait_minutes * 60:
             return [
                 error(
                     location,
-                    f"the timeout of a background script ({timeout_s} s) is above max_wait_minutes "
-                    f"({config.max_wait_minutes} minutes, in config.yaml)",
+                    f"{description} is above max_wait_minutes ({config.max_wait_minutes} minutes, in config.yaml)",
                 )
+            ]
+        if total_s > BACKGROUND_COMMAND_MAX_S:
+            return [
+                error(location, f"{description} is above {BACKGROUND_COMMAND_MAX_S} s, the longest background command")
             ]
         return []
     if block.timeout_s is not None and block.timeout_s > FOREGROUND_SHELL_LIMIT_S:

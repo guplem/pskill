@@ -445,7 +445,10 @@ blocks:
 def test_validate_and_start_check_a_background_timeout_against_the_project_config(tmp_path: Path) -> None:
     write_skill(tmp_path / ".pskill" / "skills", "long-script", BACKGROUND_SKILL)
     (tmp_path / ".pskill" / "config.yaml").write_text("max_wait_minutes: 10\n", encoding="utf-8")
-    problem = "the timeout of a background script (900 s) is above max_wait_minutes (10 minutes, in config.yaml)"
+    problem = (
+        "the timeout of a background script (2760 s: 3 attempts of 900 s, plus 60 s to record) is above "
+        "max_wait_minutes (10 minutes, in config.yaml)"
+    )
 
     validated = run_pskill(tmp_path, "validate", "long-script")
     started = run_pskill(tmp_path, "start", "long-script")
