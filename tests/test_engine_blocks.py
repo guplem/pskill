@@ -1773,6 +1773,23 @@ def test_a_second_background_command_is_refused_while_the_script_runs(tmp_path: 
     assert read_run_info(project, run_id)["status"] == "succeeded"
 
 
+def test_current_on_another_harness_does_not_run_a_script_that_already_runs_in_the_background(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    seen: list[str] = []
+
+    def current_on_codex() -> None:
+        seen.append(current_packet(project, run_id, harness="codex"))
+
+    executor = ScriptWithSideEffect(current_on_codex)
+    run_background_script(project, run_id, executor)
+
+    assert executor.calls == 1
+    assert "runs in the background" in seen[0]
+    assert read_run_info(project, run_id)["status"] == "succeeded"
+    ran = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
+    assert len(ran) == 1
+
+
 def test_the_result_is_dropped_when_the_run_changed_while_the_script_ran(tmp_path: Path) -> None:
     project, run_id = start_background(tmp_path)
 

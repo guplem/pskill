@@ -1016,8 +1016,11 @@ class Run:
 
     def script_text(self, block: ScriptBlock) -> str:
         """What `current` does at an open script: on a harness that does not wake the agent after a background
-        command (the run moved to one), the script runs in the foreground now."""
-        if self.runs_in_background(block):
+        command (the run moved to one), the script runs in the foreground now, unless its background command
+        already runs it (it would run twice)."""
+        marker = self.frame.get("background_script")
+        already_running = marker is not None and marker["state"] == "running"
+        if self.runs_in_background(block) or already_running:
             return self.background_script_text(block)
         return self.guarded(self.advance)
 

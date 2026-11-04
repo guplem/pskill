@@ -453,7 +453,7 @@ done:
 
 | Status | Meaning | Stop hook |
 |---|---|---|
-| `active` | The runner waits for the agent's submission. | Blocks the stop, except while a `pskill wait` runs (9.2). |
+| `active` | The runner waits for the agent's submission. | Blocks the stop, except while a `pskill wait` or a background script runs (9.2). |
 | `waiting_for_human` | A human decision, or a visit cap question (5.5), is open in interactive mode. | Allows the stop. |
 | `paused` | A block failed, `pskill pause` ran, or the Stop hook gave up. `pause_reason` says why. | Allows the stop. |
 | `succeeded`, `failed`, `cancelled` | Final. | Allows the stop. |
@@ -811,7 +811,7 @@ runs/<run-id>/
 - `schema_version`, `run_id`, `skill_id`, `skill_hash` (sha256 of the copied skill files)
 - `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `llm` (the model id from `start --model`, or null; absent in runs before 0.39.0), `worktree` (the absolute path of the worktree that `start --worktree` made, or null; absent in runs before 0.42.0), `session_id` (the owner session, or null), `mode`, `inputs`
 - `status`, `pause_reason`, `current` (`{frame, block, visit}`), `attempts`, `stop_blocks`
-- `wait_reason`, `wait_started_at`, `wait_until`, `waits_since`: the `pskill wait` alarm (section 9.2). Absent in runs before 0.37.0.
+- `wait_reason`, `wait_started_at`, `wait_until`, `waits_since`: the `pskill wait` alarm or a background script (sections 6.3 and 9.2). Absent in runs before 0.37.0.
 - `created_at`, `updated_at`, `ended_at`, `outputs`, `final_report`
 - `end_block`, `end_description`, `final_pending`: the summary card (section 8). The end block of a finished run and its `description`, and its rendered `pending` (null: not declared). A run that `cancel` ended has no end block, and the cancel texts of section 8. Absent in runs before 0.43.0.
 
