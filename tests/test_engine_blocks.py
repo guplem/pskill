@@ -1525,3 +1525,18 @@ def test_a_fresh_job_continued_in_a_harness_without_subagents_is_done_by_the_mai
     events = read_events(project.runs_folder / run_id)
     [completed] = [event for event in events if event["type"] == "block_completed" and event["block"] == "judge"]
     assert "tier" not in completed
+
+
+def test_resume_of_a_one_job_task_whose_start_failed_logs_its_start(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"one-job": ONE_JOB_SKILL.replace("tier: fast", "tier: \"{{ 'huge' }}\"")})
+    run_id, paused = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")
+    copy = project.runs_folder / run_id / "skills" / "one-job" / "skill.yaml"
+    copy.write_text(copy.read_text(encoding="utf-8").replace("tier: \"{{ 'huge' }}\"", "tier: fast"), encoding="utf-8")
+
+    packet = resume_run(project, run_id)
+
+    assert "must be fast, standard, or deep, not 'huge'" in paused
+    assert "### Subagent tasks" in packet
+    started = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_started"]
+    assert [event["block"] for event in started] == ["judge"]
+    assert started[0]["task_prompts"]

@@ -1335,9 +1335,9 @@ class Run:
         if isinstance(block, TaskBlock) and self.frame["tasks"] is not None and not self.open_task_indexes():
             self.info["status"] = "active"
             return self.guarded(lambda: self.complete_jobs(block, duration_ms=0))
-        if has_jobs_per_item(block) and self.frame["tasks"] is None:
+        if isinstance(block, TaskBlock) and self.frame["tasks"] is None:
             self.info["status"] = "active"
-            return self.guarded(self.advance)  # its start failed: start its jobs again
+            return self.guarded(self.advance)  # its start failed: start its jobs again, and log its start
         if isinstance(block, TaskBlock | DecisionBlock):
             return self.guarded(lambda: self.issue_packet(new_block=False, reentry=True))
         self.info["status"] = "active"
