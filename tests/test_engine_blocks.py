@@ -1563,3 +1563,19 @@ def test_a_one_job_main_task_counts_its_rejections_once_with_or_without_the_task
     submit_answer(project, run_id, "verdict: [not, text]\n", task=0)
 
     assert read_run_info(project, run_id)["status"] == "paused"  # 2 retries, then the pause
+
+
+def test_for_each_jobs_continued_in_a_harness_without_subagents_log_no_tier(tmp_path: Path) -> None:
+    tiered = PARALLEL_SKILL.replace("    agent: checker\n", "    agent: checker\n    tier: deep\n")
+    project = make_project(tmp_path, {"fanout": tiered}, {"checker": "You check facts."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+
+    submit_answer(project, run_id, "wrong: []\n", task=0, harness="generic")
+    submit_answer(project, run_id, "wrong: []\n", task=1, harness="generic")
+
+    events = read_events(project.runs_folder / run_id)
+    completed = [event for event in events if event["type"] == "block_completed" and event["block"] == "check"]
+    assert [event.get("task") for event in completed] == [0, 1, None]
+    assert all("tier" not in event for event in completed)
