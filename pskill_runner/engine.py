@@ -792,12 +792,26 @@ class Run:
         """Store a block's output, log it, and go to the next block. `tier`: the tier of a one-job task's job."""
         self.frame["steps"][block.id] = value
         self.frame["history"].setdefault(block.id, []).append(value)
+        self.log_completed(block, value, decided_by, duration_ms, tier)
+        self.info["attempts"] = 0
+        self.follow_edges(block, value)
+
+    def log_completed(
+        self,
+        block: AnyBlock,
+        value: dict[str, Any],
+        decided_by: str,
+        duration_ms: int,
+        tier: str | None,
+        task: int | None = None,
+    ) -> None:
+        """Log `block_completed`: of the block, or of one job of a task with `for_each` (`task`)."""
         fields: dict[str, Any] = {"output": value, "decided_by": decided_by, "duration_ms": duration_ms}
+        if task is not None:
+            fields["task"] = task
         if tier is not None:
             fields["tier"] = tier  # the Galtea upload names the tier's model from this
         self.log("block_completed", block=block.id, **fields)
-        self.info["attempts"] = 0
-        self.follow_edges(block, value)
 
     def log_block_started(
         self, block: AnyBlock, packet: str | None, task: int | None = None, inputs: dict[str, Any] | None = None
@@ -1088,6 +1102,10 @@ class Run:
         """A fresh job runs in a subagent only while the harness can spawn one: a run continued in a harness
         without subagents (D13) does its open fresh jobs in the main context."""
         return job["context"] == "fresh" and self.adapter.can_spawn_subagents
+
+    def logged_tier(self, job: TaskJob) -> str | None:
+        """The tier that a job ran on: its tier when it ran in a subagent; the main agent keeps its own model."""
+        return job["tier"] if self.job_is_fresh(job) else None
 
     def open_job_indexes(self, context: str) -> list[int]:
         """The open jobs of one context, in item order."""
@@ -1510,10 +1528,7 @@ class Run:
         job["output"] = answer
         duration_ms = elapsed_ms_since(self.info["packet_issued_at"])
         if block.for_each is not None:
-            fields: dict[str, Any] = {"output": answer, "decided_by": "agent", "duration_ms": duration_ms}
-            if job["tier"] is not None and self.job_is_fresh(job):
-                fields["tier"] = job["tier"]  # the Galtea upload names the tier's model from this
-            self.log("block_completed", block=block.id, task=index, **fields)
+            self.log_completed(block, answer, "agent", duration_ms, self.logged_tier(job), task=index)
         return duration_ms
 
     def complete_jobs(self, block: TaskBlock, duration_ms: int) -> str:
@@ -1522,7 +1537,7 @@ class Run:
         tier = None
         if block.for_each is None:
             value = cast(dict[str, Any], jobs[0]["output"])
-            tier = jobs[0]["tier"] if self.job_is_fresh(jobs[0]) else None
+            tier = self.logged_tier(jobs[0])
         else:
             value = {"results": [job["output"] for job in jobs]}
         self.frame["tasks"] = None
