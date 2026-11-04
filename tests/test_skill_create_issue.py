@@ -1,6 +1,7 @@
 """Tests for the create-issue skill: its scripts, and that every GitHub call targets the repository of the run."""
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,7 @@ import pytest
 
 from pskill_runner.skill_loader import load_skill
 from pskill_runner.skill_model import ScriptBlock
-from tests.skill_scripts import FakeShell, install_shell, load_skill_script, run_main
+from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
 
 SKILL = "create-issue"
 SKILL_FOLDER = Path(__file__).resolve().parent.parent / ".pskill" / "skills" / SKILL
@@ -177,3 +178,16 @@ def test_search_issues_matches_whole_words_with_symbols_and_hyphens(
     printed = run_main(monkeypatch, capsys, script, {"repo": "o/r", "terms": [term]})
 
     assert bool(printed) is matches
+
+
+def test_no_case_of_an_example_skill_names_a_real_repository_other_than_this_one() -> None:
+
+    allowed = {"guplem/pskill"}
+    found = {
+        match
+        for case in SKILLS_FOLDER.glob("*/tests/*.yaml")
+        for match in re.findall(r"github\.com/([\w.-]+/[\w.-]+)", case.read_text(encoding="utf-8"))
+        + re.findall(r"repo: ([\w.-]+/[\w.-]+)", case.read_text(encoding="utf-8"))
+    }
+
+    assert {repository for repository in found if not repository.startswith("example-org/")} <= allowed

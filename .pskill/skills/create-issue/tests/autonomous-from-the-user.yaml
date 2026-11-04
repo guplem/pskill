@@ -3,9 +3,7 @@ inputs: {description: Show token counts in the viewer., mark_unchecked: false}
 mode: autonomous
 answers:
   assess_clarity:
-    - {clear: true}
-  extract_terms:
-    - {terms: [viewer, tokens]}
+    - {clear: true, terms: [viewer, tokens]}
   judge_duplicates:
     - {choice: none, rationale: Nothing similar.}
   draft_issue:
@@ -21,7 +19,7 @@ scripts:
     - {exit_code: 0, stdout: "https://github.com/guplem/pskill/issues/40
 "}
 expect:
-  path: [resolve_repo, assess_clarity, extract_terms, search_duplicates, judge_duplicates, draft_issue, confirm_draft,
+  path: [resolve_repo, assess_clarity, search_duplicates, judge_duplicates, draft_issue, confirm_draft,
          create, created]
   status: succeeded
   outputs: {issue_number: 40}

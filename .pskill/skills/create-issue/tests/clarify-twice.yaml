@@ -2,14 +2,12 @@ name: two clarification rounds, then a new issue with no label, because the user
 inputs: {description: The runner is slow.}
 answers:
   assess_clarity:
-    - {clear: false, question: "Which command is slow?"}
-    - {clear: false, question: "How slow, in seconds?"}
-    - {clear: true}
+    - {clear: false, question: "Which command is slow?", terms: [start, slow]}
+    - {clear: false, question: "How slow, in seconds?", terms: [start, slow]}
+    - {clear: true, terms: [start, slow]}
   ask_clarify:
     - {answer: pskill start., question: "Which command is slow?", $answered_by: human}
     - {answer: About 4 seconds., question: "How slow, in seconds?", $answered_by: human}
-  extract_terms:
-    - {terms: [start, slow]}
   judge_duplicates:
     - {choice: none, rationale: No issue talks about start time.}
   draft_issue:
@@ -24,8 +22,7 @@ scripts:
   create:
     - {exit_code: 0, stdout: "https://github.com/guplem/pskill/issues/31\n"}
 expect:
-  path: [resolve_repo, assess_clarity, ask_clarify, assess_clarity, ask_clarify, assess_clarity, extract_terms,
-         search_duplicates, judge_duplicates, draft_issue, confirm_draft, create, created]
+  path: [resolve_repo, assess_clarity, ask_clarify, assess_clarity, ask_clarify, assess_clarity, search_duplicates, judge_duplicates, draft_issue, confirm_draft, create, created]
   status: succeeded
   outputs: {issue_number: 31}
   pending: ""
