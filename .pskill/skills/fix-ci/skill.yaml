@@ -11,7 +11,7 @@ goal: >-
 inputs:
   pr: {type: integer, description: "Number of the pull request."}
 outputs:
-  state: {type: string, enum: [passed, failed], description: "passed when every check on the head commit passed or was skipped."}
+  state: {type: string, enum: [passed, failed, closed], description: "passed when every check on the head commit passed or was skipped. closed when the pull request merged or closed during the wait."}
   failed_checks: {type: array, items: {type: string}, description: "Each check that still fails, as '<name>: <link>'."}
   head_sha: {type: string, description: "The full sha of the head commit that the last checks ran on."}
   fixes: {type: integer, description: "How many fix rounds ran."}
@@ -30,12 +30,14 @@ blocks:
     description: Wait for the CI checks
     instruction: instructions/wait_ci.md
     output:
-      state: {type: string, enum: [passed, failed], description: "passed when every check passed or was skipped."}
+      state: {type: string, enum: [passed, failed, closed], description: "passed when every check passed or was skipped. closed when the pull request is merged or closed."}
       failed_checks: {type: array, items: {type: string}, description: "Each failed check as '<name>: <link>'."}
       head_sha: {type: string, description: "The full sha of the head commit that the checks ran on."}
     next:
       - when: "{{ steps.wait_ci.state == 'failed' }}"
         to: fix_ci
+      - when: "{{ steps.wait_ci.state == 'closed' }}"
+        to: closed
       - to: passed
 
   fix_ci:
@@ -69,6 +71,20 @@ blocks:
     report: >-
       Tell the user that every CI check of pull request #{{ inputs.pr }} passed{% if history.fix_ci | default([]) %},
       after {{ history.fix_ci | length }} fix rounds: {{ history.fix_ci | map(attribute='summary') | join('; ') }}{% endif %}.
+
+  closed:
+    type: end
+    description: The pull request merged or closed during the wait
+    status: succeeded
+    pending: ""
+    outputs:
+      state: closed
+      failed_checks: []
+      head_sha: "{{ steps.wait_ci.head_sha }}"
+      fixes: "{{ history.fix_ci | default([]) | length }}"
+    report: >-
+      Tell the user that pull request #{{ inputs.pr }} merged or closed during the CI wait, so no check was waited
+      for or fixed{% if history.fix_ci | default([]) %} after {{ history.fix_ci | length }} fix rounds{% endif %}.
 
   failed:
     type: end

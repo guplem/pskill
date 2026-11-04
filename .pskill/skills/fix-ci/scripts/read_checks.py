@@ -6,7 +6,8 @@
 
 Usage: uv run read_checks.py, with {"pr", "wait_s"} on stdin. `wait_s` is the most seconds to wait (at most 540).
 Prints {"head_sha", "state", "mergeable", "draft", "checks", "failed_checks"}.
-- `state` is `none` (no check exists), `pending` (a check has not finished), `failed`, or `passed`.
+- `state` is `none` (no check exists), `pending` (a check has not finished), `failed`, `passed`, or `closed` (the
+  pull request is merged or closed, so no wait or fix is needed).
 - `checks` is [{"name", "state", "link"}], with the state `pending`, `failed`, or `passed`. A skipped check passed.
 - `failed_checks` is ["<name>: <link>"]. The link of a check run holds the `/actions/runs/<run id>/` of its workflow.
 - `mergeable` is GitHub's answer: false means a merge conflict, null means GitHub did not compute it yet.
@@ -14,7 +15,8 @@ Prints {"head_sha", "state", "mergeable", "draft", "checks", "failed_checks"}.
 
 It polls every 30 seconds and returns when no check is pending. While no check exists, it waits at most 300 seconds
 for one to start. The head commit is the one on origin, because GitHub can serve an old head for minutes after a
-push. Both the check runs and the commit statuses count, and the newest status of each context wins. It replaces
+push. Both the check runs and the commit statuses count. The newest run of each check wins, so a run that a rerun
+cancelled or replaced does not count, and the newest status of each context wins. It replaces
 `gh pr checks --watch`, which uses GraphQL: the Claude Code cloud GitHub proxy refuses that.
 """
 
@@ -47,7 +49,11 @@ def remote_head(branch: str) -> str:
 def check_rows(check_runs: list[dict[str, Any]], statuses: list[dict[str, Any]]) -> list[dict[str, str]]:
     """One row per check run, and one per status context, from the raw replies of GitHub."""
     rows: list[dict[str, str]] = []
+    newest_run: dict[str, dict[str, Any]] = {}
     for check_run in check_runs:
+        if check_run["name"] not in newest_run or check_run.get("id", 0) > newest_run[check_run["name"]].get("id", 0):
+            newest_run[check_run["name"]] = check_run
+    for check_run in newest_run.values():
         if check_run["status"] != "completed":
             state = "pending"
         else:
@@ -83,7 +89,7 @@ def read_once(pr_number: int) -> dict[str, Any]:
     rows = check_rows(check_runs, statuses)
     return {
         "head_sha": head_sha,
-        "state": overall_state(rows),
+        "state": "closed" if pull_request.get("state") == "closed" else overall_state(rows),
         "mergeable": pull_request["mergeable"],
         "draft": pull_request["draft"],
         "checks": rows,
@@ -103,7 +109,7 @@ def read_checks(
     while True:
         result = read_once(pr_number)
         elapsed = clock() - started
-        if result["state"] in ("passed", "failed"):
+        if result["state"] in ("passed", "failed", "closed"):
             return result
         if result["state"] == "none" and elapsed >= NO_CHECK_WAIT_SECONDS:
             return result
