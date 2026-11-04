@@ -9,7 +9,7 @@ from pskill_runner import skill_tests
 from pskill_runner.project import Project, find_project
 from pskill_runner.skill_tests import run_skill_tests
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
-from tests.test_engine_blocks import CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
+from tests.test_engine_blocks import BACKGROUND_SKILL, CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
 
 APPROVED_CASE = """\
 name: two questions, then approval
@@ -413,3 +413,20 @@ def test_a_case_can_expect_the_pending_text_of_its_end(tmp_path: Path) -> None:
         (True, None),
         (False, "pending: expected 'Nothing.', got 'Build the login page.'"),
     ]
+
+
+def test_a_background_script_replays_its_recorded_result_like_any_script(tmp_path: Path) -> None:
+    case = """\
+    name: recorded background script
+    scripts:
+      list_files:
+        - {exit_code: 0, stdout: '{"files": ["a", "b", "c"]}'}
+    expect:
+      path: [list_files, done]
+      outputs: {count: 3}
+    """
+    project = project_with(tmp_path, "scripted", BACKGROUND_SKILL, {"recorded": textwrap.dedent(case)})
+
+    [result] = run_skill_tests(project, "scripted")
+
+    assert (result.passed, result.problem) == (True, None)
