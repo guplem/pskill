@@ -1253,7 +1253,7 @@ Each of these was in an earlier draft. Each one added complexity for little user
 | Static-flow warnings ("a step can run before its source") | The runtime error for missing values, plus skill tests |
 | Bare expressions without braces (`when: "a == b"`, `result: "'text'"`) | One syntax: `{{ }}` means computed, everything else is plain text |
 | Submissions through an `outbox/` folder, JSON-only answers, `--inputs-file` | One `submit` call with a literal YAML block on stdin. `submit --file` is back since 0.31.0, only for a long answer (D16). |
-| Harness agent files (`.claude/agents/`, `.codex/agents/`) as subagents | pskill agents in `.pskill/agents/`, versioned with the skills. The one exception since 0.35.0: the generated Claude Code profile agents of `tools`, which hold tools only, no prompt (6.3). |
+| Harness agent files (`.claude/agents/`, `.codex/agents/`) as subagents | pskill agents in `.pskill/agents/`, versioned with the skills. The one exception since 0.35.0: the generated Claude Code profile agents of `tools`, which hold tools only, no prompt (6.1). |
 | Token counts per block | Durations only. Harness session files are private formats that change without notice. |
 | Mermaid copied into every project (about 3 MB) | A pinned CDN copy; the viewer works without the graph when offline |
 | A hook that runs `sync` after each file edit, and git hooks | The session-start hook refreshes stubs; `AUTHORING.md` tells the agent to run `sync` after an edit; CI fails on a stale stub |

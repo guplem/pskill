@@ -1,6 +1,6 @@
 """The agent screens of the viewer: the agents list, one agent's text and users, and saving its text.
 
-A pskill agent is one Markdown file `.pskill/agents/<name>.md` (SPEC.md section 6.3). The viewer only
+A pskill agent is one Markdown file `.pskill/agents/<name>.md` (SPEC.md section 6.1). The viewer only
 changes an agent file that exists, so a name can never point outside the agents folder.
 """
 
