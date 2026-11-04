@@ -842,7 +842,7 @@ x-galtea:
 - **Product:** found by its exact name, or created. pskill sets its description to the skill's description, its auto-close to 7 days (a run can pause for days), and the policy for a turn that reaches a closed session to "reopen".
 - **Version:** Galtea's get-or-create by facts: `skill` (the hash of the skill copy), `runner`, `harness`, `llm` (from `start --model`, else `unknown`), and `tiers` (the model of each tier, only for a skill with a task that sets a `tier`).
 - **Session:** one per execution of a skill with a product: the root skill, or one call of a child skill. Its custom id is `<skill id>@<run id>`, plus `/<call id>` for a child. Its metadata holds the run facts (`run_id`, `repo_commit`, `harness`, `llm`, ...), the parent session of a child, the `x-galtea.metadata` values once they render, and the final status.
-- **Turn:** one per completed block, in order: its packet (or a script's command and stdin, or a call's inputs), its answer or outputs, and its duration. A block that pauses the run with `block_failed` or `runner_error` gives a FAILED turn with the error.
+- **Turn:** one per completed block, in order: its packet (for a one-job task in a fresh context, its subagent's full prompt; or a script's command and stdin, or a call's inputs), its answer or outputs, and its duration. A block that pauses the run with `block_failed` or `runner_error` gives a FAILED turn with the error.
 - **Spans** inside each turn: the block (frame, call id, visit, edge, `decided_by`, and the tier model of a task job), each rejected submission, each script attempt, and each pause and resume.
 - **Token use:** read from the Claude Code session transcript of the run (`~/.claude/projects/*/<session id>.jsonl`) and its `subagents/` transcripts, at each upload.
   - A model call counts once, by its message id. It belongs to the block that started last before it, in any frame of the run. Calls before the first block, and calls after the end of their block, count nowhere.
@@ -1066,7 +1066,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
    - A side panel for the clicked node. Drag its left edge to change its width; the page keeps the width in `localStorage`.
      - the status and the type, and a visit picker when the block ran more than once,
      - where it came from and why, the duration, who decided, and the edge that it left by,
-     - the input: the packet as rendered Markdown, or the command of a script,
+     - the input: the packet as rendered Markdown (for a one-job task in a fresh context, its subagent's full prompt), or the command of a script,
      - for a task with `for_each`, one chip per task, with the task's name (or `task <n>`); a click on a chip or on a task node shows that task's prompt, answers, and output,
      - every submission (rejected ones with their errors), and the output: a JSON tree, or the exit code and parsed result of a script,
      - the run state as a JSON tree.
