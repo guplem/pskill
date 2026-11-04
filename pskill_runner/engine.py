@@ -1353,7 +1353,7 @@ class Run:
         if not isinstance(block, TaskBlock) or self.frame["tasks"] is None:
             raise RunError(f"The block {block.id!r} has no tasks.")
         self.check_open_task(block, index)
-        if not self.is_fresh_job(index):
+        if not self.job_at_is_fresh(index):
             raise RunError(
                 f"Task {index} of {block.id!r} runs in the main context: do it yourself, from the packet of "
                 f"`{runner_command(self.project)} current {self.info['run_id']}`."
@@ -1395,7 +1395,7 @@ class Run:
         if task is None and not one_main_job:
             return self.reject(["This block has tasks. Add `--task <n>` to the submit command."], answer_text)
         index = 0 if task is None else task
-        fresh = self.is_fresh_job(index)  # known before the answer: the join clears the jobs
+        fresh = self.job_at_is_fresh(index)  # known before the answer: the join clears the jobs
         answer, _, errors = self.read_answer(answer_text, block)
         if errors:
             counted_task = (
@@ -1406,7 +1406,7 @@ class Run:
         text = self.guarded(lambda: self.accept_job(block, index, answer))
         return self.task_reply(index, fresh, recorded=True, text=text)
 
-    def is_fresh_job(self, index: int) -> bool:
+    def job_at_is_fresh(self, index: int) -> bool:
         """Whether the job with this number runs in a subagent, so its replies never show the next block."""
         jobs = self.frame["tasks"] or []
         return 0 <= index < len(jobs) and self.job_is_fresh(jobs[index])
@@ -1476,7 +1476,7 @@ class Run:
         self.log("submission_rejected", block=self.frame["current_block"], task=task, errors=errors, raw=answer_text)
         if attempts > self.retries_of(self.current_block()):
             return self.pause("block_failed", "\n".join(errors))
-        if task is not None and self.is_fresh_job(task):
+        if task is not None and self.job_at_is_fresh(task):
             return task_not_recorded(task, errors)  # the subagent gets its own errors, not the main agent's packet
         return self.guarded(lambda: self.agent_packet(errors=errors))
 
