@@ -1508,3 +1508,20 @@ def test_a_rejected_main_job_gets_the_packet_with_its_errors_and_then_the_pause_
     assert read_run_info(project, run_id)["status"] == "paused"
     assert "Stop here, and tell the main agent" not in last
     assert "is paused at block check" in last
+
+
+def test_a_fresh_job_continued_in_a_harness_without_subagents_is_done_by_the_main_agent(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"one-job": ONE_JOB_SKILL})
+    run_id, _ = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")
+
+    packet = current_packet(project, run_id, harness="generic")
+    rejected = submit_answer(project, run_id, "verdict: [not, text]\n", harness="generic")
+    final = submit_answer(project, run_id, "verdict: fine\n", harness="generic")
+
+    assert "Subagent tasks" not in packet
+    assert "Judge the change." in packet
+    assert "### Errors" in rejected
+    assert "finished with status succeeded" in final
+    events = read_events(project.runs_folder / run_id)
+    [completed] = [event for event in events if event["type"] == "block_completed" and event["block"] == "judge"]
+    assert "tier" not in completed

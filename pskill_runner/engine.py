@@ -1084,10 +1084,19 @@ class Run:
         ]
         return " ".join(wording for wording in wordings if wording)
 
+    def job_is_fresh(self, job: TaskJob) -> bool:
+        """A fresh job runs in a subagent only while the harness can spawn one: a run continued in a harness
+        without subagents (D13) does its open fresh jobs in the main context."""
+        return job["context"] == "fresh" and self.adapter.can_spawn_subagents
+
     def open_job_indexes(self, context: str) -> list[int]:
         """The open jobs of one context, in item order."""
         jobs = self.frame["tasks"] or []
-        return [index for index in self.open_task_indexes() if jobs[index]["context"] == context]
+        return [
+            index
+            for index in self.open_task_indexes()
+            if ("fresh" if self.job_is_fresh(jobs[index]) else "main") == context
+        ]
 
     def jobs_of(self, block: TaskBlock) -> list[TaskJob]:
         """The jobs of the current task. A run paused at a task without `for_each` before 1.0.0 has none yet: it
@@ -1382,7 +1391,7 @@ class Run:
     def submit_job(self, block: TaskBlock, answer_text: str, task: int | None) -> str:
         """The answer of one job. Only a one-job task in the main context takes no `--task`."""
         jobs = self.jobs_of(block)
-        one_main_job = block.for_each is None and jobs[0]["context"] == "main"
+        one_main_job = block.for_each is None and not self.job_is_fresh(jobs[0])
         if task is None and not one_main_job:
             return self.reject(["This block has tasks. Add `--task <n>` to the submit command."], answer_text)
         index = 0 if task is None else task
@@ -1397,7 +1406,7 @@ class Run:
     def is_fresh_job(self, index: int) -> bool:
         """Whether the job with this number runs in a subagent, so its replies never show the next block."""
         jobs = self.frame["tasks"] or []
-        return 0 <= index < len(jobs) and jobs[index]["context"] == "fresh"
+        return 0 <= index < len(jobs) and self.job_is_fresh(jobs[index])
 
     def task_reply(self, task: int, fresh: bool, recorded: bool, text: str) -> str:
         """The reply to a subagent. A pause and its pause steps are the main agent's work, read with `current`."""
@@ -1497,7 +1506,7 @@ class Run:
         duration_ms = elapsed_ms_since(self.info["packet_issued_at"])
         if block.for_each is not None:
             fields: dict[str, Any] = {"output": answer, "decided_by": "agent", "duration_ms": duration_ms}
-            if job["tier"] is not None:
+            if job["tier"] is not None and self.job_is_fresh(job):
                 fields["tier"] = job["tier"]  # the Galtea upload names the tier's model from this
             self.log("block_completed", block=block.id, task=index, **fields)
         return duration_ms
@@ -1508,7 +1517,7 @@ class Run:
         tier = None
         if block.for_each is None:
             value = cast(dict[str, Any], jobs[0]["output"])
-            tier = jobs[0]["tier"]
+            tier = jobs[0]["tier"] if self.job_is_fresh(jobs[0]) else None
         else:
             value = {"results": [job["output"] for job in jobs]}
         self.frame["tasks"] = None
@@ -1520,7 +1529,7 @@ class Run:
         """Record a job. A subagent's reply never shows the next block: the main agent reads it with `current`."""
         duration_ms = self.record_job(block, index, answer)
         jobs = self.frame["tasks"] or []
-        fresh = jobs[index]["context"] == "fresh"
+        fresh = self.job_is_fresh(jobs[index])
         open_indexes = self.open_task_indexes()
         recorded = f"Task {index} is recorded. {len(jobs) - len(open_indexes)} of {len(jobs)} tasks are done.\n"
         if not open_indexes:
