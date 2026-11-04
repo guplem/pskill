@@ -1,4 +1,5 @@
-"""The typed shape of `run.json` and `state.json` (SPEC.md section 10.2), and the shared frame helpers."""
+"""The typed shape of `run.json` and `state.json` (SPEC.md section 10.2), the shared frame helpers, and the one
+event helper that the viewer and the Galtea upload share."""
 
 from collections.abc import Iterable
 from pathlib import Path
