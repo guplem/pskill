@@ -98,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     submit = commands.add_parser("submit", help="Send the answer (YAML on stdin or in a file), print the next block.")
     submit.add_argument("run_id")
-    submit.add_argument("--task", type=int, help="The task number, for a block with several tasks.")
+    submit.add_argument("--task", type=int, help="The task number: for a task with for_each, or with context: fresh.")
     submit.add_argument("--file", type=Path, help="Read the answer from this file instead of stdin (a long answer).")
 
     for name, help_text in (
