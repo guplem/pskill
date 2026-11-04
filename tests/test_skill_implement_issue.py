@@ -407,21 +407,20 @@ def test_check_unreviewed_lists_a_conflict_merge_that_takes_the_base_side(
     assert script.unreviewed_commits(reviewed, head, "implementation-plan-42.md") == [head[:10]]
 
 
-def test_the_report_and_the_label_reasons_read_the_same_limits_as_the_capped_end() -> None:
+def test_the_report_and_the_label_reasons_read_the_limits_of_the_script() -> None:
     skill = load_skill(SKILLS_FOLDER / SKILL)
     capped = skill.blocks["capped"]
     finish = skill.blocks["finish"]
     assert isinstance(capped, EndBlock) and isinstance(finish, TaskBlock)
-    limits_value: str = capped.outputs["limits"]
-    expression = limits_value.removeprefix("{{ ").removesuffix(" }}")
 
-    assert finish.next[0].when == limits_value
-    for name in LIMITS:
-        assert f"['{name}']" in expression
+    assert capped.outputs["limits"] == "{{ steps.limits.json.limits }}"
+    assert finish.next[0].when == "{{ steps.limits.json.limits }}"
+    script = (SKILLS_FOLDER / SKILL / "scripts" / "list_limits.py").read_text(encoding="utf-8")
     for instruction in ["report.md", "finish.md"]:
         text = (SKILLS_FOLDER / SKILL / "instructions" / instruction).read_text(encoding="utf-8")
-        assert text.startswith(f"{{% set limits = {expression} %}}"), f"{instruction} lists other limits."
+        assert text.startswith("{% set limits = steps.limits.json.limits %}"), f"{instruction} lists other limits."
         for name in LIMITS:
+            assert f'"{name}"' in script, f"list_limits.py never names the limit {name}."
             assert f"{{% if '{name}' in limits %}}" in text, f"{instruction} has no line for the limit {name}."
 
 
@@ -599,6 +598,44 @@ def test_post_comment_run_twice_for_the_same_pause_posts_once(
 
     assert printed == {"comment_url": "https://x/57#c8", "posted": False}
     assert not shell.ran("gh api POST")
+
+
+NO_LIMIT_INPUT: dict[str, Any] = {
+    "build_done": True,
+    "resolve_rounds": 1,
+    "last_fixed": 1,
+    "ready_runs": 1,
+    "ci_runs": 1,
+    "unreviewed": False,
+    "final_rounds": 0,
+    "final_required": 0,
+    "items_left": 0,
+}
+
+
+@pytest.mark.parametrize(
+    ("changes", "limits"),
+    [
+        ({}, []),
+        ({"build_done": False}, ["implement_step"]),
+        ({"resolve_rounds": 3, "last_fixed": 2}, ["review"]),
+        ({"resolve_rounds": 3, "last_fixed": 0}, []),
+        ({"ready_runs": 2}, ["get_ci_green"]),
+        ({"unreviewed": True}, ["final_review"]),
+        ({"final_rounds": 2, "final_required": 1}, ["final_review"]),
+        ({"final_rounds": 1, "final_required": 1}, []),
+        ({"items_left": 1}, ["resolve_items"]),
+        ({"build_done": False, "items_left": 2}, ["implement_step", "resolve_items"]),
+    ],
+)
+def test_list_limits_names_each_limit_that_cut_work_short(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], changes: dict[str, Any], limits: list[str]
+) -> None:
+    script = load_skill_script(SKILL, "list_limits")
+
+    printed = run_main(monkeypatch, capsys, script, {**NO_LIMIT_INPUT, **changes})
+
+    assert printed == {"limits": limits}
 
 
 def instruction(name: str) -> str:

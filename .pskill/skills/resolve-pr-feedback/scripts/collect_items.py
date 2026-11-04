@@ -2,15 +2,18 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""List the items to resolve on a pull request: the given findings, then every comment that nobody addressed yet.
+"""List the items to resolve on a pull request: the given required findings, then every comment that nobody addressed
+yet.
 
-Usage: uv run collect_items.py, with {"pr", "findings"} on stdin. Prints {"queue": [item, ...], "count"}. Each item
-has a `kind`:
+Usage: uv run collect_items.py, with {"pr", "findings"} on stdin. Prints {"queue": [item, ...], "count",
+"suggestions"}. A suggestion finding is never fixed: it goes to `suggestions`, which post_suggestions.py lists in one
+comment. Each item has a `kind`:
 - finding: reviewer, file, line, severity, title, summary, quote.
 - comment: id, comment_kind (inline, review, or conversation), author, path, line, thread_id, body.
 
 A comment is addressed, and so left out, when a reply names its id with the marker
-`<!-- resolve-pr-feedback-reply: <id> -->`, when it carries the eyes reaction of the current `gh` user (a run of
+`<!-- resolve-pr-feedback-reply: <id> -->`, when it is the suggestions comment of a run (it carries
+`<!-- resolve-pr-feedback-suggestions -->`), when it carries the eyes reaction of the current `gh` user (a run of
 theirs works on it), or when it is such a reply itself. Another person's eyes say nothing about this run. The
 comments of `github-actions[bot]` are CI output, and a Copilot review that says it was unable to review is a quota
 notice: neither is review, so they never count.
@@ -24,6 +27,7 @@ from typing import Any
 from github_rest import gh_api, gh_api_pages
 
 REPLY_MARKER = re.compile(r"<!-- resolve-pr-feedback-reply: (\d+) -->")
+SUGGESTIONS_MARKER = "<!-- resolve-pr-feedback-suggestions -->"
 CI_NOTICE_AUTHOR = "github-actions[bot]"
 COPILOT_REVIEWER = "copilot-pull-request-reviewer[bot]"
 
@@ -65,6 +69,7 @@ def is_unaddressed(comment: dict[str, Any], comment_kind: str, answered: set[int
         bool(body.strip())
         and comment["id"] not in answered
         and not REPLY_MARKER.search(body)
+        and SUGGESTIONS_MARKER not in body
         and not claimed_by(login, comment, comment_kind)
     )
 
@@ -94,8 +99,10 @@ def unaddressed_comments(pr_number: str) -> list[dict[str, Any]]:
 def main() -> None:
     script_input = json.load(sys.stdin)
     findings: list[dict[str, Any]] = script_input["findings"]
-    queue = [{"kind": "finding", **finding} for finding in findings] + unaddressed_comments(str(script_input["pr"]))
-    print(json.dumps({"queue": queue, "count": len(queue)}))
+    required = [finding for finding in findings if finding["severity"] == "required"]
+    suggestions = [finding for finding in findings if finding["severity"] != "required"]
+    queue = [{"kind": "finding", **finding} for finding in required] + unaddressed_comments(str(script_input["pr"]))
+    print(json.dumps({"queue": queue, "count": len(queue), "suggestions": suggestions}))
 
 
 if __name__ == "__main__":
