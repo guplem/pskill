@@ -21,7 +21,6 @@ from pskill_runner.skill_model import (
     CallBlock,
     DecisionBlock,
     EndBlock,
-    ParallelBlock,
     RetryableBlock,
     ScriptBlock,
     Skill,
@@ -260,7 +259,7 @@ def block_details(skill: Skill, block: AnyBlock, agent_names: set[str], frame: i
         "facts": block_facts(block),
         "instruction": prose_text(skill, instruction_value),
         "instruction_file": prose_file(instruction_value),
-        "fields": field_rows(block.output) if isinstance(block, TaskBlock | DecisionBlock | ParallelBlock) else [],
+        "fields": field_rows(block.output) if isinstance(block, TaskBlock | DecisionBlock) else [],
         "choices": [],
         "command": None,
         "script_files": [],
@@ -273,7 +272,7 @@ def block_details(skill: Skill, block: AnyBlock, agent_names: set[str], frame: i
     }
     if isinstance(block, DecisionBlock) and block.choices:
         details["choices"] = [{"choice": choice, "meaning": meaning} for choice, meaning in block.choices.items()]
-    if isinstance(block, ParallelBlock):
+    if isinstance(block, TaskBlock):
         details["agents"] = [name for name in dict.fromkeys(agent_names_used(block)) if name in agent_names]
         details["for_each_items"] = for_each_items(block.for_each)
     if isinstance(block, ScriptBlock):
@@ -315,8 +314,9 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
     facts: list[list[str]] = []
     if isinstance(block, DecisionBlock):
         facts.append(["decider", block.decider])
-    if isinstance(block, ParallelBlock):
+    if isinstance(block, TaskBlock) and block.for_each is not None:
         facts.append(["for each", for_each_summary(block.for_each)])
+    if isinstance(block, TaskBlock):
         if block.agent is not None:
             facts.append(["agent", block.agent])
         if block.task_name is not None:
@@ -325,6 +325,8 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
             facts.append(["tier", block.tier])
         if block.tools is not None:
             facts.append(["tools", block.tools])
+        if block.context is not None:
+            facts.append(["context", block.context])
     if isinstance(block, ScriptBlock):
         facts.append(["parse", block.parse])
         if block.timeout_s is not None:

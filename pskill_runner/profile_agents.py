@@ -1,6 +1,6 @@
 """Profile agents: the harness agents that `pskill sync` writes for the tool profiles that skills use.
 
-A profile agent holds tools only: no prompt and no model (SPEC.md 6.3). Only Claude Code gets them; a Codex
+A profile agent holds tools only: no prompt and no model (SPEC.md 6.1). Only Claude Code gets them; a Codex
 agent file cannot limit the sandbox or the MCP servers. `sync` never touches a file without the generated
 marker, the same rule as for stubs.
 """
@@ -9,17 +9,17 @@ from pathlib import Path
 
 from pskill_runner import claude_code
 from pskill_runner.project import Project
-from pskill_runner.skill_model import TOOL_PROFILES, ParallelBlock, SkillCatalog
+from pskill_runner.skill_model import TOOL_PROFILES, SkillCatalog, TaskBlock
 from pskill_runner.stubs import StubChange, StubError, is_generated
 
 
 def used_profiles(catalog: SkillCatalog) -> list[str]:
-    """The profiles that some parallel block asks for. A computed value can be any profile."""
+    """The profiles that some task block asks for. A computed value can be any profile."""
     values = {
         block.tools
         for skill in catalog.skills.values()
         for block in skill.blocks.values()
-        if isinstance(block, ParallelBlock) and block.tools is not None
+        if isinstance(block, TaskBlock) and block.tools is not None
     }
     if any("{{" in value for value in values):
         return list(TOOL_PROFILES)

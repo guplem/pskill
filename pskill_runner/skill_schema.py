@@ -107,6 +107,12 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
     "task": block_schema(
         ["instruction", "output", "next"],
         {
+            "for_each": {"oneOf": [{"type": "array"}, {"type": "string"}]},
+            "agent": {"type": "string"},
+            "task_name": {"type": "string"},
+            "tier": {"type": "string"},
+            "tools": {"type": "string"},
+            "context": {"type": "string"},
             "instruction": {"type": "string"},
             "output": {"$ref": "#/$defs/field_map"},
             "next": {"$ref": "#/$defs/edges"},
@@ -121,20 +127,6 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
             "choices": {"type": "object", "minProperties": 2, "additionalProperties": {"type": "string"}},
             "output": {"$ref": "#/$defs/field_map"},
             "next": {"oneOf": [{"$ref": "#/$defs/edges"}, {"$ref": "#/$defs/choice_map"}]},
-            **RETRIES_PROPERTY,
-        },
-    ),
-    "parallel": block_schema(
-        ["for_each", "instruction", "output", "next"],
-        {
-            "for_each": {"oneOf": [{"type": "array"}, {"type": "string"}]},
-            "agent": {"type": "string"},
-            "task_name": {"type": "string"},
-            "tier": {"type": "string"},
-            "tools": {"type": "string"},
-            "instruction": {"type": "string"},
-            "output": {"$ref": "#/$defs/field_map"},
-            "next": {"$ref": "#/$defs/edges"},
             **RETRIES_PROPERTY,
         },
     ),

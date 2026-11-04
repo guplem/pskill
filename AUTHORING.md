@@ -19,7 +19,7 @@ A programmatic skill is a graph of typed blocks in `.pskill/skills/<skill-id>/sk
 
 ## A complete example
 
-This skill uses all six block types. `tests/test_authoring_example.py` checks that it stays valid.
+This skill uses all five block types. `tests/test_authoring_example.py` checks that it stays valid.
 
 ```yaml
 schema: pskill/v1
@@ -70,8 +70,9 @@ blocks:
     run: [git, ls-files]
     next: check_names
 
-  check_names:                # parallel: one subagent task per item, joined into steps.check_names.results
-    type: parallel
+  check_names:                # task with for_each: one job per item, joined into steps.check_names.results
+    type: task
+    context: fresh            # optional: main (default, in this conversation) | fresh (a subagent per job)
     for_each: "{{ inputs.files }}"
     task_name: "{{ item }}"   # optional: the name of each task in the viewer
     tier: standard            # optional: the model tier of each subagent: fast | standard | deep
@@ -106,10 +107,12 @@ blocks:
 - Every top-level field of `inputs`, `outputs`, and each block `output` needs a `description`.
 - Field types: `string`, `integer`, `number`, `boolean`, `array` (with `items`), `object` (with `properties`). A field is required unless `optional: true`.
 - Make an input required only when the skill cannot start without it: the stub tells the agent to ask the user for each missing one. Give an optional input a `default` for the common case. A calling skill passes another value where it needs one.
-- A `parallel` block may name `agent: <name>`: the text of `.pskill/agents/<name>.md` then heads each task's prompt.
-- A `parallel` block may set `tier` (`fast`, `standard`, or `deep`, or a `{{ }}` value per item) for its subagents' model. Use `fast` or `standard` for work that checks text against written rules, and `deep` for work that needs judgment. Without a tier, the subagents use the main agent's model. Never name a model in a skill: a project maps each tier to a model and an effort per harness under `tiers` in `.pskill/config.yaml`.
-- A `parallel` block may set `tools` (`read` or `web`, or a `{{ }}` value per item) for its subagents' tools. `read` runs shell commands, reads and searches files, and writes the answer file; `web` adds fetching a page and searching the web. Use `read` for reviewers and code research, and `web` when a task needs online docs. Without it, the subagents get every tool of the session. Run `pskill sync` after you add it: it writes the Claude Code agent `.claude/agents/pskill-<profile>.md`. Commit that file; a session sees a new `.claude/agents/` folder only after a restart.
-- A `parallel` block may set `task_name`, a `{{ }}` value per item, to name each task in the packet and the viewer. Without a name, a task shows as "task 0". When a block of the main agent builds the list, add an optional `name` field to its items and set `task_name: "{{ item.name }}"`.
+- A `task` is one job, or one job per item of `for_each`. Without `for_each`, its output is `steps.<id>.<field>`; with it, `steps.<id>.results` lists the job outputs in item order.
+- `context` says where each job runs: `main` (the default), in the main agent's own conversation, or `fresh`, in a subagent that gets only the goal, its instruction, and its return format. Use `fresh` for a job that needs none of the conversation (a review, research, a rule-based check), so it starts small and can run on a cheaper tier. Keep `main` for a job that builds on the conversation or talks with the user. A computed `context` (one `{{ }}` per item) mixes both in one block: the subagents run first, then the main agent does its jobs one by one. `agent`, `tier`, and `tools` need `context: fresh`: `pskill validate` rejects them on a `main` job, because the main agent cannot change its own model or tools.
+- A task may name `agent: <name>`: the text of `.pskill/agents/<name>.md` then heads each job's prompt.
+- A task may set `tier` (`fast`, `standard`, or `deep`, or a `{{ }}` value per item) for its subagents' model. Use `fast` or `standard` for work that checks text against written rules, and `deep` for work that needs judgment. Without a tier, the subagents use the main agent's model. Never name a model in a skill: a project maps each tier to a model and an effort per harness under `tiers` in `.pskill/config.yaml`.
+- A task may set `tools` (`read` or `web`, or a `{{ }}` value per item) for its subagents' tools. `read` runs shell commands, reads and searches files, and writes the answer file; `web` adds fetching a page and searching the web. Use `read` for reviewers and code research, and `web` when a task needs online docs. Without it, the subagents get every tool of the session. Run `pskill sync` after you add it: it writes the Claude Code agent `.claude/agents/pskill-<profile>.md`. Commit that file; a session sees a new `.claude/agents/` folder only after a restart.
+- A task with `for_each` may set `task_name`, a `{{ }}` value per item, to name each task in the packet and the viewer. Without a name, a task shows as "task 0". When a block of the main agent builds the list, add an optional `name` field to its items and set `task_name: "{{ item.name }}"`.
 - In a `for_each` written as a YAML list, an item may have a `when`: the item starts a task only when its `when` is true. The task's `item` has no `when` key. The viewer lists the skipped items with their condition. Use it for a fixed set of subagents where each one runs only when it is needed:
   ```yaml
   for_each:
@@ -127,7 +130,7 @@ blocks:
     parse: json
     next: report
   ```
-- A failed block tries again `retries` times (2 by default, set in `.pskill/config.yaml`), then the run pauses. A `task`, `decision`, `parallel`, or `script` block can set its own `retries: 0` (no second try) or more. A `script` can set its own `timeout_s: 60` (300 by default).
+- A failed block tries again `retries` times (2 by default, set in `.pskill/config.yaml`), then the run pauses. A `task`, `decision`, or `script` block can set its own `retries: 0` (no second try) or more. A `script` can set its own `timeout_s: 60` (300 by default).
 
 ## Edges and loops
 
@@ -174,7 +177,7 @@ blocks:
 
 - Anything inside `{{ }}` is computed. Everything else is plain text, so `result: done` needs no quotes.
 - A value that is exactly one `{{ ... }}` keeps its type (a number, a list, true or false).
-- Names you can read: `inputs`, `steps.<block>` (the latest output), `history.<block>` (every output in this run of the skill, oldest first), `run` (`id`, `mode`, `harness`, `dir`), `skill` (`id`, `dir`), and `item` inside a parallel block.
+- Names you can read: `inputs`, `steps.<block>` (the latest output), `history.<block>` (every output in this run of the skill, oldest first), `run` (`id`, `mode`, `harness`, `dir`), `skill` (`id`, `dir`), and `item` inside a task with `for_each`.
 - A value from a block that has not run is missing. You can compare it (the result is false) or replace it: `{{ steps.x.value | default('none') }}`. Printing a missing value fails the run on purpose.
 - Put parentheses around a filter inside a comparison: `{{ (steps.review.outputs.findings | length) > 0 }}`.
 - `matches` tests text against a regular expression, anywhere in the text: `{{ path is matches('^api/') }}`, or `{{ paths | select('matches', '[.]ts$') | list }}`. Anchor the pattern with `^` and `$`.

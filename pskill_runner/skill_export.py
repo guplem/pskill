@@ -21,7 +21,6 @@ from pskill_runner.skill_model import (
     DecisionBlock,
     Edge,
     EndBlock,
-    ParallelBlock,
     ScriptBlock,
     Skill,
     TaskBlock,
@@ -116,10 +115,10 @@ def prose(skill: Skill, value: str) -> str:
 
 
 def agent_names(skill: Skill) -> set[str]:
-    """The pskill agents that the parallel blocks name, also through `{{ item.agent }}` over a YAML list."""
+    """The pskill agents that the task blocks name, also through `{{ item.agent }}` over a YAML list."""
     names: set[str] = set()
     for block in skill.blocks.values():
-        if not isinstance(block, ParallelBlock) or block.agent is None:
+        if not isinstance(block, TaskBlock) or block.agent is None:
             continue
         if "{{" not in block.agent:
             names.add(block.agent)
@@ -185,12 +184,20 @@ def step_markdown(skill: Skill, block: AnyBlock, numbers: dict[str, int], defaul
 
 
 def block_body(skill: Skill, block: AnyBlock, default_retries: int) -> list[str]:
+    if isinstance(block, TaskBlock) and block.for_each is not None:
+        return for_each_body(skill, block, block.for_each)
+    if isinstance(block, TaskBlock) and block.context not in (None, "main"):
+        return [
+            one_job_context_text(block.context),
+            *agent_role_lines(block, "the subagent"),
+            "Do this:",
+            plain_text(prose(skill, block.instruction)),
+            write_down(block.id, block.output),
+        ]
     if isinstance(block, TaskBlock):
         return ["Do this:", plain_text(prose(skill, block.instruction)), write_down(block.id, block.output)]
     if isinstance(block, DecisionBlock):
         return decision_body(skill, block)
-    if isinstance(block, ParallelBlock):
-        return parallel_body(skill, block)
     if isinstance(block, ScriptBlock):
         return script_body(block, default_retries)
     if isinstance(block, CallBlock):
@@ -219,22 +226,12 @@ def decision_body(skill: Skill, block: DecisionBlock) -> list[str]:
     return lines
 
 
-def parallel_body(skill: Skill, block: ParallelBlock) -> list[str]:
-    items = f"`{condition_text(block.for_each)}`" if isinstance(block.for_each, str) else "this list"
-    lines = [
-        f"For each item of {items}, do the task below. Use one subagent per item when you can: give each "
-        "subagent only its own item and the task, so no subagent sees the others. When you cannot start "
-        "subagents, do the items one by one yourself. In the task, `item` is the current item."
-    ]
-    if isinstance(block.for_each, list):
-        lines.append("\n".join(list_item_line(item) for item in block.for_each))
-    if block.agent is not None and "{{" not in block.agent:
-        lines.append(f"Give each subagent the role in `{SUBAGENTS_FOLDER}/{block.agent}.md` first.")
-    elif block.agent is not None:
-        lines.append(
-            f"Give each subagent a role first: the file `{SUBAGENTS_FOLDER}/<name>.md`, where the name is "
-            f"`{condition_text(block.agent)}`."
-        )
+def for_each_body(skill: Skill, block: TaskBlock, for_each: list[Any] | str) -> list[str]:
+    items = f"`{condition_text(for_each)}`" if isinstance(for_each, str) else "this list"
+    lines = [f"For each item of {items}, do the task below. {item_context_text(block.context)}"]
+    if isinstance(for_each, list):
+        lines.append("\n".join(list_item_line(item) for item in for_each))
+    lines += agent_role_lines(block, "each subagent")
     if block.task_name is not None:
         lines.append(f"Name each task: {plain_text(block.task_name)}.")
     lines += ["The task:", plain_text(prose(skill, block.instruction))]
@@ -243,6 +240,48 @@ def parallel_body(skill: Skill, block: ParallelBlock) -> list[str]:
         "Each answer holds:\n\n" + field_lines(block.output)
     )
     return lines
+
+
+def one_job_context_text(context: str | None) -> str:
+    """Where a one-job step runs: in one subagent, or in one only when its computed context is `fresh`."""
+    if context == "fresh":
+        return (
+            "Use one subagent for this step when you can: give it only the task below, so it starts with a clean "
+            "context. When you cannot start subagents, do it yourself."
+        )
+    return (
+        f"Use one subagent for this step when `{condition_text(str(context))}` is `fresh` and you can: give it only "
+        "the task below, so it starts with a clean context. Else do it yourself."
+    )
+
+
+def item_context_text(context: str | None) -> str:
+    """Where the items of a `for_each` step run: each in its own subagent, all in this conversation, or per item."""
+    if context == "fresh":
+        return (
+            "Use one subagent per item when you can: give each subagent only its own item and the task, so no "
+            "subagent sees the others. When you cannot start subagents, do the items one by one yourself. In the "
+            "task, `item` is the current item."
+        )
+    if context is None or context == "main":
+        return "Do the items one by one yourself, in this conversation. In the task, `item` is the current item."
+    return (
+        f"Use a subagent for an item when `{condition_text(context)}` is `fresh` and you can: give it only its own "
+        "item and the task. Do the other items one by one yourself, in this conversation. In the task, `item` is "
+        "the current item."
+    )
+
+
+def agent_role_lines(block: TaskBlock, who: str) -> list[str]:
+    """The role file that a subagent reads first, when the step names a pskill agent."""
+    if block.agent is None:
+        return []
+    if "{{" not in block.agent:
+        return [f"Give {who} the role in `{SUBAGENTS_FOLDER}/{block.agent}.md` first."]
+    return [
+        f"Give {who} a role first: the file `{SUBAGENTS_FOLDER}/<name>.md`, where the name is "
+        f"`{condition_text(block.agent)}`."
+    ]
 
 
 def list_item_line(item: Any) -> str:

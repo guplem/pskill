@@ -27,7 +27,7 @@ from pskill_runner.adapters import adapter_for, tier_row
 from pskill_runner.computed_values import ComputedValueError, render_text
 from pskill_runner.galtea_client import GalteaClient, urllib_sender
 from pskill_runner.project import Project
-from pskill_runner.run_records import RunInfo, RunState, child_call_id, frame_context
+from pskill_runner.run_records import RunInfo, RunState, child_call_id, frame_context, one_job_prompt
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, read_json, timestamp, write_json_atomic
 from pskill_runner.token_usage import (
     MAIN_AGENT,
@@ -249,7 +249,11 @@ class RunUpload:
         self.client.create_spans(redacted(self.spans(created["id"], started, ended, decided_by, calls)))
 
     def turn_input(self, started: dict[str, Any]) -> Any:
-        """What went into the block: the packet, a script's command and stdin, or a call's inputs."""
+        """What went into the block: the packet (for a one-job task in a subagent, its full prompt), a script's
+        command and stdin, or a call's inputs."""
+        prompt = one_job_prompt(started)
+        if prompt is not None:
+            return prompt
         if started.get("packet"):
             return started["packet"]
         if started.get("block_type") == "call":
@@ -282,7 +286,8 @@ class RunUpload:
         }
         if "task" in ended:
             metadata["task"] = ended["task"]
-            metadata.update(self.task_model(started, ended["task"]))
+        if ended.get("tier"):
+            metadata.update({"tier": ended["tier"], "tier_model": self.tier_model(ended["tier"])})
         if calls is not None:
             metadata["tokens"] = sum_usage(calls)
         root = {
@@ -337,16 +342,6 @@ class RunUpload:
                 "endTime": event["ts"],
             }
         return None
-
-    def task_model(self, started: dict[str, Any], task: int) -> dict[str, Any]:
-        """The tier of a parallel task and the model that the tier means, while the run still holds the task."""
-        state = cast(RunState, read_json(self.folder / "state.json"))
-        for frame in state["frames"]:
-            tasks = frame.get("tasks") or []
-            tier = tasks[task].get("tier") if task < len(tasks) else None
-            if frame.get("call_id", "") == started.get("call_id", "") and tier is not None:
-                return {"tier": tier, "tier_model": self.tier_model(tier)}
-        return {}  # no tier, or the block is over and the run no longer holds its tasks
 
     def tier_model(self, tier: str) -> str:
         row = tier_row(adapter_for(self.info["harness"]), self.project.config.tiers, tier)
@@ -496,7 +491,7 @@ class RunUpload:
             "llm": self.info.get("llm") or "unknown",
         }
         blocks = raw.get("blocks") or {}
-        if any(isinstance(block, dict) and block.get("type") == "parallel" for block in blocks.values()):
+        if any(isinstance(block, dict) and "tier" in block for block in blocks.values()):
             adapter = adapter_for(self.info["harness"])
             rows = {tier: self.tier_model(tier) for tier in sorted(adapter.tier_rows)}
             facts["tiers"] = json.dumps(rows, sort_keys=True)

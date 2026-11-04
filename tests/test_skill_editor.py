@@ -220,7 +220,7 @@ def test_a_file_with_crlf_line_ends_keeps_them(tmp_path: Path) -> None:
 # --- add and delete --------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("block_type", ["task", "decision", "parallel", "script", "call", "end"])
+@pytest.mark.parametrize("block_type", ["task", "decision", "script", "call", "end"])
 def test_a_new_block_of_each_type_loads(tmp_path: Path, block_type: str) -> None:
     project = make_project(tmp_path)
 
@@ -268,13 +268,28 @@ def test_an_id_that_is_not_a_skill_id_cannot_be_edited(tmp_path: Path) -> None:
 
 def test_a_task_name_goes_after_the_agent(tmp_path: Path) -> None:
     project = make_project(tmp_path)
-    add_block(project, "plan-work", "fan", "parallel")
-    update_block(project, "plan-work", "fan", {"agent": "checker"})
+    add_block(project, "plan-work", "fan", "task")
+    update_block(project, "plan-work", "fan", {"for_each": [], "context": "fresh", "agent": "checker"})
 
     update_block(project, "plan-work", "fan", {"task_name": "{{ item }}"})
 
     block_lines = skill_text(project).split("\n  fan:\n", 1)[1].splitlines()
     assert block_lines.index('    task_name: "{{ item }}"') == block_lines.index("    agent: checker") + 1
+
+
+def test_an_agent_goes_before_a_written_tier_and_tools(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    add_block(project, "plan-work", "fan", "task")
+    update_block(project, "plan-work", "fan", {"context": "fresh"})
+    path = project.skills_folder / "plan-work" / "skill.yaml"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("    context: fresh\n", "    context: fresh\n    tier: fast\n    tools: read\n", 1))
+
+    update_block(project, "plan-work", "fan", {"agent": "checker"})
+
+    block_lines = skill_text(project).split("\n  fan:\n", 1)[1].splitlines()
+    assert block_lines.index("    agent: checker") < block_lines.index("    tier: fast")
+    assert block_lines.index("    tier: fast") < block_lines.index("    tools: read")
 
 
 def test_the_cap_keys_go_after_on_max_visits(tmp_path: Path) -> None:

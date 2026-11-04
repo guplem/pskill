@@ -317,7 +317,8 @@ blocks:
     output: {}
     next: review
   review:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     agent: "{{ item }}"
     instruction: "Review {{ item }}."
@@ -325,7 +326,8 @@ blocks:
       ok: {type: boolean, description: "True when the file is fine."}
     next: check
   check:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     instruction: "Check {{ item }}."
     output:
@@ -369,6 +371,71 @@ def test_a_parallel_step_without_an_agent_gives_no_role(tmp_path: Path) -> None:
 
     assert "Check `item`." in check_step
     assert "role" not in check_step
+
+
+def test_a_step_with_fresh_jobs_uses_one_subagent_per_item(tmp_path: Path) -> None:
+    markdown = roles_export(tmp_path)["roles/SKILL.md"].decode("utf-8")
+    check_step = markdown.split("## Step 3: `check`", 1)[1].split("## Step", 1)[0]
+
+    assert "Use one subagent per item when you can" in check_step
+
+
+def test_a_step_with_main_jobs_does_the_items_one_by_one(tmp_path: Path) -> None:
+    write_skill(
+        tmp_path / ".pskill" / "skills",
+        "roles",
+        ROLES_SKILL.replace("    context: fresh\n    for_each", "    for_each"),
+    )
+    markdown = export_skill(find_project(tmp_path), "roles")["roles/SKILL.md"].decode("utf-8")
+    review_step = markdown.split("## Step 2: `review`", 1)[1].split("## Step", 1)[0]
+
+    assert "Do the items one by one yourself, in this conversation." in review_step
+    assert "subagent per item" not in review_step
+
+
+def test_a_step_with_a_computed_context_says_when_an_item_gets_a_subagent(tmp_path: Path) -> None:
+    computed = ROLES_SKILL.replace(
+        "    context: fresh\n    for_each", '    context: "{{ item.context }}"\n    for_each'
+    )
+    write_skill(tmp_path / ".pskill" / "skills", "roles", computed)
+    markdown = export_skill(find_project(tmp_path), "roles")["roles/SKILL.md"].decode("utf-8")
+
+    assert (
+        "Use a subagent for an item when `item.context` is `fresh` and you can: give it only its own item and "
+        "the task. Do the other items one by one yourself, in this conversation."
+    ) in markdown
+
+
+def test_a_one_job_step_in_a_fresh_context_uses_one_subagent(tmp_path: Path) -> None:
+    write_skill(
+        tmp_path / ".pskill" / "skills",
+        "roles",
+        ROLES_SKILL.replace(
+            '    type: task\n    instruction: "Note', '    type: task\n    context: fresh\n    instruction: "Note'
+        ),
+    )
+    markdown = export_skill(find_project(tmp_path), "roles")["roles/SKILL.md"].decode("utf-8")
+    note_step = markdown.split("## Step 1: `note`", 1)[1].split("## Step", 1)[0]
+
+    assert (
+        "Use one subagent for this step when you can: give it only the task below, so it starts with a clean context."
+    ) in note_step
+
+
+def test_a_one_job_step_with_a_computed_context_says_when_it_gets_a_subagent_and_its_role(tmp_path: Path) -> None:
+    computed = ROLES_SKILL.replace(
+        '    type: task\n    instruction: "Note',
+        '    type: task\n    context: "{{ inputs.where }}"\n    agent: noter\n    instruction: "Note',
+    )
+    write_skill(tmp_path / ".pskill" / "skills", "roles", computed)
+    markdown = export_skill(find_project(tmp_path), "roles")["roles/SKILL.md"].decode("utf-8")
+    note_step = markdown.split("## Step 1: `note`", 1)[1].split("## Step", 1)[0]
+
+    assert (
+        "Use one subagent for this step when `inputs.where` is `fresh` and you can: give it only the task below, "
+        "so it starts with a clean context. Else do it yourself."
+    ) in note_step
+    assert "Give the subagent the role in `subagents/noter.md` first." in note_step
 
 
 def test_a_missing_agent_file_is_left_out_of_the_export(tmp_path: Path) -> None:

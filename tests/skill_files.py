@@ -99,7 +99,7 @@ blocks:
     outputs: {fixed: "{{ history.ask_finding | selectattr('choice', 'equalto', 'fix') | list | length }}"}
 """
 
-# A parallel block whose subagents ask for the `read` tool profile.
+# A task with for_each whose subagents ask for the `read` tool profile.
 PROFILED_SKILL = """\
 schema: pskill/v1
 id: fanout
@@ -111,7 +111,8 @@ outputs: {}
 entry: check
 blocks:
   check:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     tools: read
     instruction: "Check every claim in {{ item }}."

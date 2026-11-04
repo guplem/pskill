@@ -14,7 +14,7 @@ from pskill_runner.galtea_client import GalteaClient
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import read_events, read_json
 from tests.skill_files import write_skill
-from tests.test_engine_blocks import CHILD_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
+from tests.test_engine_blocks import CHILD_SKILL, ONE_JOB_SKILL, PARALLEL_SKILL, PARENT_SKILL, SCRIPT_SKILL
 
 KEY = {"GALTEA_API_KEY": "gsk_test"}
 
@@ -336,6 +336,24 @@ def test_an_unreadable_run_is_ignored(tmp_path: Path) -> None:
 # --- parallel tasks ---------------------------------------------------------------------------------
 
 
+def test_only_a_skill_with_a_tier_names_the_tier_models_in_its_version(tmp_path: Path) -> None:
+    untiered = make_project(tmp_path / "a", {"fanout": with_product(PARALLEL_SKILL, "f")})
+    tiered = make_project(tmp_path / "b", {"one-job": with_product(ONE_JOB_SKILL, "j")})
+    untiered_run, _ = start_run(untiered, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+    tiered_run, _ = start_run(tiered, "one-job", {}, mode="interactive", harness="claude-code")
+    submit_answer(untiered, untiered_run, "wrong: []\n", task=0)
+    submit_answer(tiered, tiered_run, "verdict: fine\n", task=0)
+    untiered_galtea, tiered_galtea = FakeGaltea(), FakeGaltea()
+
+    upload(untiered, untiered_run, untiered_galtea)
+    upload(tiered, tiered_run, tiered_galtea)
+
+    [untiered_version] = untiered_galtea.bodies("POST", "/versions/get-or-create")
+    [tiered_version] = tiered_galtea.bodies("POST", "/versions/get-or-create")
+    assert "tiers" not in untiered_version["facts"]
+    assert '"fast": "haiku"' in tiered_version["facts"]["tiers"]
+
+
 def test_parallel_task_turns_name_their_tier_model(tmp_path: Path) -> None:
     tiered = PARALLEL_SKILL.replace("    agent: checker\n", "    agent: checker\n    tier: deep\n")
     project = make_project(tmp_path, {"fanout": with_product(tiered, "f")})
@@ -445,7 +463,34 @@ def test_a_failed_metadata_update_is_swallowed(tmp_path: Path) -> None:
     assert read_json(project.runs_folder / run_id / "galtea.json")["last_seq"] == last_event["seq"]
 
 
-def test_a_task_with_no_tier_or_a_finished_block_names_no_model(tmp_path: Path) -> None:
+def test_every_job_with_a_tier_names_its_model_after_its_block_is_done(tmp_path: Path) -> None:
+    tiered_fanout = PARALLEL_SKILL.replace("    agent: checker\n", "    agent: checker\n    tier: deep\n")
+    fanout = make_project(tmp_path / "a", {"fanout": with_product(tiered_fanout, "f")})
+    one_job = make_project(tmp_path / "b", {"one-job": with_product(ONE_JOB_SKILL, "j")})
+    fanout_run, _ = start_run(fanout, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code")
+    one_job_run, _ = start_run(one_job, "one-job", {}, mode="interactive", harness="claude-code")
+    submit_answer(fanout, fanout_run, "wrong: []\n", task=0)
+    submit_answer(fanout, fanout_run, "wrong: []\n", task=1)
+    submit_answer(one_job, one_job_run, "verdict: fine\n", task=0)
+    fanout_galtea, one_job_galtea = FakeGaltea(), FakeGaltea()
+
+    upload(fanout, fanout_run, fanout_galtea)
+    upload(one_job, one_job_run, one_job_galtea)
+
+    fanout_roots = [batch["traces"][0] for batch in fanout_galtea.bodies("POST", "/traces/batch?includeRejected=true")]
+    one_job_roots = [
+        batch["traces"][0] for batch in one_job_galtea.bodies("POST", "/traces/batch?includeRejected=true")
+    ]
+    assert [root["metadata"]["tier_model"] for root in fanout_roots if "task" in root["metadata"]] == ["opus", "opus"]
+    [judge] = [root for root in one_job_roots if root["name"] == "judge"]
+    assert (judge["metadata"]["tier"], judge["metadata"]["tier_model"]) == ("fast", "haiku")
+    [judge_turn] = [
+        turn for turn in one_job_galtea.bodies("POST", "/inferenceResults") if "Judge the change." in turn["input"]
+    ]
+    assert judge_turn["input"].startswith("You are a subagent of a pskill run.")
+
+
+def test_a_task_with_no_tier_names_no_model(tmp_path: Path) -> None:
     project = make_project(tmp_path, {"fanout": with_product(PARALLEL_SKILL, "f")})
     run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code")
     submit_answer(project, run_id, "wrong: []\n", task=0)

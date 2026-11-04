@@ -39,9 +39,9 @@ class AgentPacket:
     shell: str
     question_wording: str
     answers_folder: str  # for example ".pskill/runs/<run>/answers", where a long answer goes
-    task_index: int | None = None  # set for one task of a parallel block
-    subagent_wording: str = ""  # how this harness spawns subagents, for parallel packets
-    work_folder: str = ""  # the project root, where every subagent of a parallel block works
+    task_index: int | None = None  # set for one job of a task with `for_each`
+    subagent_wording: str = ""  # how this harness spawns subagents, for subagent packets
+    work_folder: str = ""  # the project root, where every subagent works
     can_wait: bool = False  # the harness wakes the agent after a background command, so `pskill wait` works
     in_worktree: bool = False  # the run works in its own git worktree, so the header names the work folder
     # The stub gives the goal and the rules once. A packet repeats them only where the agent never saw them.
@@ -59,14 +59,18 @@ def render_agent_packet(packet: AgentPacket) -> str:
         sections.append(f"### Goal\n{packet.goal.strip()}")
     sections.append(f"### Instruction\n{packet.instruction.strip()}")
     if packet.errors:
-        listed = "\n".join(f"- {error}" for error in packet.errors)
-        sections.append(f"### Errors\nYour last answer was rejected. Fix these problems and submit again:\n{listed}")
+        sections.append(errors_section(packet.errors))
     if packet.decider is not None:
         sections.append(decision_section(packet))
     sections.append(return_section(packet))
     if packet.show_rules:
         sections.append(rules_section(packet))
     return "\n\n".join(sections) + "\n"
+
+
+def errors_section(errors: list[str]) -> str:
+    listed = "\n".join(f"- {error}" for error in errors)
+    return f"### Errors\nYour last answer was rejected. Fix these problems and submit again:\n{listed}"
 
 
 def header(packet: AgentPacket) -> str:
@@ -121,7 +125,7 @@ def submit_command(packet: AgentPacket, fields: FieldMap, task_index: int | None
 
 
 def plain_submit_command(packet: AgentPacket, task_index: int | None) -> str:
-    """`<runner> submit <run>`, with `--task <n>` for one task of a parallel block."""
+    """`<runner> submit <run>`, with `--task <n>` for one job of a task block."""
     task_option = f" --task {task_index}" if task_index is not None else ""
     return f"{packet.runner_command} submit {packet.run_id}{task_option}"
 
@@ -129,7 +133,7 @@ def plain_submit_command(packet: AgentPacket, task_index: int | None) -> str:
 def answer_file_line(packet: AgentPacket, task_index: int | None) -> str:
     """The `--file` form of the submit command, for a long answer (SPEC.md section 7.3).
 
-    A long heredoc fails in Claude Code's Bash tool on Windows. Each task gets its own file, so parallel
+    A long heredoc fails in Claude Code's Bash tool on Windows. Each task gets its own file, so concurrent
     subagents never write the same one. A worktree run's path is absolute, and may hold a space: it is quoted.
     """
     task_suffix = f"-task-{task_index}" if task_index is not None else ""
@@ -146,7 +150,7 @@ def return_section(packet: AgentPacket) -> str:
 
 @dataclass(frozen=True)
 class TaskPrompt:
-    """One task of a parallel block, as a full prompt for one subagent."""
+    """One job of a task block, as a full prompt for one subagent."""
 
     index: int
     agent_text: str | None  # the pskill agent's role, or None
@@ -156,21 +160,27 @@ class TaskPrompt:
     spawn_wording: str = ""  # how to spawn this task's subagent with its tool profile and model tier, in this harness
 
 
-def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], total_tasks: int) -> str:
-    """The packet of a parallel block when the harness can spawn subagents: a one-line prompt per open task.
+def render_subagent_packet(
+    packet: AgentPacket, open_tasks: list[TaskPrompt], total_tasks: int, main_tasks: int = 0
+) -> str:
+    """The packet of the open fresh jobs of a task block: a one-line prompt per open job, for its subagent.
+
+    `main_tasks` counts the open jobs that the main agent does itself, after the subagents.
 
     The subagent reads its full prompt with `pskill task`, so the main agent copies one short line per task.
     The same line restarts a task whose subagent stalled.
     """
     lines = [
         header(packet),
+        *(["", errors_section(packet.errors)] if packet.errors else []),
         "",
-        "### Parallel tasks",
+        "### Subagent tasks",
         "Spawn one subagent per task below, all at once, each with a fresh context (none of this conversation).",
         "Give each subagent exactly the one-line prompt of its task.",
         *([packet.subagent_wording] if packet.subagent_wording else []),
         f"{len(open_tasks)} of {total_tasks} tasks are still open.",
         f"When every subagent has finished, run: {packet.runner_command} current {packet.run_id}",
+        *([main_tasks_line(main_tasks)] if main_tasks else []),
         *([background_subagent_line(packet)] if packet.can_wait else []),
     ]
     for task in open_tasks:
@@ -178,6 +188,15 @@ def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], to
         lines += ["", f"#### Task {task.index}{name}", *([task.spawn_wording] if task.spawn_wording else [])]
         lines.append(task_line(packet, task.index))
     return "\n".join(lines) + "\n"
+
+
+def main_tasks_line(count: int) -> str:
+    """The jobs of the same block that the main agent does itself, once the subagents are done."""
+    if count == 1:
+        return "1 more task is yours, in this conversation: run `current` for it when every subagent has finished."
+    return (
+        f"{count} more tasks are yours, in this conversation: run `current` for them when every subagent has finished."
+    )
 
 
 def background_subagent_line(packet: AgentPacket) -> str:

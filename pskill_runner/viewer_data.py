@@ -15,7 +15,7 @@ from typing import Any
 
 from pskill_runner.engine import list_runs, read_run_info, read_run_state, run_duration_ms
 from pskill_runner.project import Project
-from pskill_runner.run_records import RunInfo, RunState
+from pskill_runner.run_records import RunInfo, RunState, one_job_prompt
 from pskill_runner.run_store import folder_hash, read_events
 from pskill_runner.skill_loader import SkillLoadError, load_skill
 from pskill_runner.skill_model import AnyBlock, CallBlock, DecisionBlock, EndBlock, RetryableBlock, ScriptBlock, Skill
@@ -27,9 +27,11 @@ SCRIPT_FIELDS = ("argv", "input", "exit_code", "stdout", "stderr", "duration_ms"
 START_NODE = "start"
 DOTTED_EDGE_KINDS = ("visit_cap", "call")
 BLOCK_TYPE_MEANINGS = {
-    "task": "The agent does a piece of work and returns a typed answer.",
+    "task": (
+        "The agent does a piece of work and returns a typed answer: one job, or one job per list item whose "
+        "results join into one list. A job runs in the main conversation or in a subagent."
+    ),
     "decision": "One choice is picked from a list, or a question gets an answer.",
-    "parallel": "Subagents do one task per list item at the same time, and the results join into one list.",
     "script": "The runner runs a command. No AI model takes part.",
     "call": "The runner runs another skill and gets its outputs.",
     "end": "The skill finishes here with a status and outputs.",
@@ -40,7 +42,7 @@ ICON_LINE = "<span class='block-icon'>\u00a0</span><br/>"
 INPUT_TITLES = {
     "task": "Input: the instruction the agent got",
     "decision": "Input: the question to decide",
-    "parallel": "Input: the tasks that the subagents got",
+    "for_each": "Input: the tasks of every list item",
     "script": "Input: the command the runner ran",
     "call": "Input: what the child skill got",
     "end": "Input: the report the agent got",
@@ -49,7 +51,7 @@ INPUT_TITLES = {
 OUTPUT_TITLES = {
     "task": "Output: the agent's answer",
     "decision": "Output: the decision",
-    "parallel": "Output: the results of every task, joined",
+    "for_each": "Output: the results of every task, joined",
     "script": "Output: the command's result",
     "call": "Output: the child skill's outputs",
     "end": "Output: the skill's outputs",
@@ -61,8 +63,8 @@ TASK_HEADING = re.compile(
 )
 TASK_TOTAL = re.compile(r"^\d+ of (\d+) tasks are still open\.$", re.MULTILINE)
 TASKS_PER_ROW = 4
-TASK_NODE_HINT = "One task of this parallel block. One subagent (or the agent) does it and answers on its own."
-TASKS_EDGE_HINT = "The tasks of this parallel block, one node per task."
+TASK_NODE_HINT = "One task of this task block. One subagent (or the agent) does it and answers on its own."
+TASKS_EDGE_HINT = "The tasks of this block, one node per list item."
 
 
 # --- the canvas: frames, nodes, and edges --------------------------------------------------------
@@ -117,6 +119,16 @@ def task_frame_id(parent: str) -> str:
 def label_token(node: str) -> str:
     """The placeholder that the page swaps for the node label of the replay step."""
     return f"@@{node}@@"
+
+
+def has_task_list(row: dict[str, Any]) -> bool:
+    """A row of a task with `for_each`. A run from before 1.0.0 logged such a block as `parallel`."""
+    return row["block_type"] == "parallel" or bool(row.get("for_each"))
+
+
+def row_kind(row: dict[str, Any]) -> str:
+    """The key of a row's input and output titles."""
+    return "for_each" if has_task_list(row) else str(row["block_type"])
 
 
 def block_type_name(block: AnyBlock) -> str:
@@ -445,7 +457,7 @@ def number_edges(edges: list[CanvasEdge], drawn_as: dict[str, str] | None = None
 
 
 def task_frame_lines(parent: str, block_id: str, count: int, indent: str) -> list[str]:
-    """The frame of a parallel block's tasks: one small node per task, in rows of TASKS_PER_ROW.
+    """The frame of the tasks of a task with `for_each`: one small node per task, in rows of TASKS_PER_ROW.
 
     Mermaid ignores `direction LR` in a frame that an edge links, so invisible links (`~~~`) make the rows.
     """
@@ -539,7 +551,7 @@ def row_outcome(row: dict[str, Any]) -> str | None:
         return str(output["status"])
     if row["block_type"] == "script" and row["script_runs"]:
         return f"exit {row['script_runs'][-1]['exit_code']}"
-    if row["block_type"] == "parallel" and isinstance(output.get("results"), list):
+    if has_task_list(row) and isinstance(output.get("results"), list):
         return f"{len(output['results'])} tasks"
     return None
 
@@ -598,7 +610,7 @@ def asks_human(block: AnyBlock | None, mode: str) -> bool:
 
 
 def next_step_in_frame(rows: list[dict[str, Any]], index: int, row_frames: list[int | None]) -> dict[str, Any] | None:
-    """The next row of the same frame, skipping the other tasks of the same parallel block."""
+    """The next row of the same frame, skipping the other tasks of the same block."""
     row = rows[index]
     if row["block_type"] == "end":
         return None
@@ -656,8 +668,8 @@ def annotate_rows(
                 "tasks": [
                     {**task, "node": task_node_id(node, task["task"]) if node else None} for task in row["tasks"]
                 ],
-                "input_title": INPUT_TITLES[str(row["block_type"])],
-                "output_title": OUTPUT_TITLES[str(row["block_type"])],
+                "input_title": INPUT_TITLES[row_kind(row)],
+                "output_title": OUTPUT_TITLES[row_kind(row)],
                 "edge": edge.id if edge is not None else None,
                 "label": node_label(row["block"], details, badges),
                 "summary": " · ".join(details + badges),
@@ -695,8 +707,8 @@ def load_run_skills(folder: Path) -> dict[str, Skill]:
     return skills
 
 
-def parallel_task_counts(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[int, str], int]:
-    """The most tasks that each parallel block had in one visit, per canvas frame and block."""
+def for_each_task_counts(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[int, str], int]:
+    """The most tasks that each block with `for_each` had in one visit, per canvas frame and block."""
     counts: dict[tuple[int, str], int] = {}
     for row, frame in zip(rows, row_frames, strict=True):
         if frame is not None and row["tasks"]:
@@ -705,7 +717,7 @@ def parallel_task_counts(rows: list[dict[str, Any]], row_frames: list[int | None
     return counts
 
 
-def parallel_task_names(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[str, int], str]:
+def for_each_task_names(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[str, int], str]:
     """The latest name of each named task, by task node and task number."""
     names: dict[tuple[str, int], str] = {}
     for row, frame in zip(rows, row_frames, strict=True):
@@ -719,7 +731,7 @@ def parallel_task_names(rows: list[dict[str, Any]], row_frames: list[int | None]
 
 
 def task_frame_edges(task_counts: dict[tuple[int, str], int]) -> list[CanvasEdge]:
-    """One dotted edge from each parallel block to the frame of its tasks."""
+    """One dotted edge from each block with `for_each` to the frame of its tasks."""
     edges = []
     for index, block_id in task_counts:
         parent = node_id(index, block_id)
@@ -782,8 +794,8 @@ def run_canvas(
     if root is None:
         return None, None, annotate_rows(rows, [None] * len(rows), [], [], info["mode"])
     frames, row_frames = assign_frames(rows, skills, root)
-    task_counts = parallel_task_counts(rows, row_frames)
-    task_names = parallel_task_names(rows, row_frames)
+    task_counts = for_each_task_counts(rows, row_frames)
+    task_names = for_each_task_names(rows, row_frames)
     edges = [edge for index, frame in enumerate(frames) for edge in frame_edges(index, frame)]
     edges = number_edges(edges + task_frame_edges(task_counts))
     annotated = annotate_rows(rows, row_frames, frames, edges, info["mode"])
@@ -801,7 +813,7 @@ def run_canvas(
                     "frame": index,
                     "skill_id": frames[index].skill.id,
                     "block": block_id,
-                    "type": "parallel",
+                    "type": "task",
                     "hint": TASK_NODE_HINT,
                     "kind": "task",
                     "parent": parent,
@@ -920,7 +932,7 @@ def skill_summaries(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return summaries
 
 
-# --- the tasks of parallel blocks ---------------------------------------------------------------
+# --- the tasks of blocks with for_each ----------------------------------------------------------
 
 
 def task_packets(packet: str | None) -> dict[int, str]:
@@ -941,7 +953,7 @@ def task_packets(packet: str | None) -> dict[int, str]:
 
 
 def live_tasks(state: RunState) -> tuple[str, str, int] | None:
-    """The frame chain, the block, and the task count of the parallel block that the run is in, if any."""
+    """The frame chain, the block, and the task count of the block with `for_each` that the run is in, if any."""
     frames = state["frames"]
     top = frames[-1] if frames else None
     if top is None or top["tasks"] is None or top["current_block"] is None:
@@ -970,8 +982,8 @@ def task_view(entry: dict[str, Any] | None, task: int, packet: str | None, name:
     }
 
 
-def parallel_visits(rows: list[dict[str, Any]]) -> dict[tuple[str, int, str, int], list[dict[str, Any]]]:
-    """The rows of each visit of a parallel block, by frame chain, call of that frame, block, and visit.
+def for_each_visits(rows: list[dict[str, Any]]) -> dict[tuple[str, int, str, int], list[dict[str, Any]]]:
+    """The rows of each visit of a block with `for_each`, by frame chain, call of that frame, block, and visit.
 
     A child skill counts its visits from 1 again on each call, so the call number keeps two calls apart.
     """
@@ -983,18 +995,18 @@ def parallel_visits(rows: list[dict[str, Any]]) -> dict[tuple[str, int, str, int
         if row["from"] is None and chain != previous_chain:
             calls[chain] = calls.get(chain, 0) + 1  # the run enters this frame: a new call
         previous_chain = chain
-        if row["block_type"] == "parallel":
+        if has_task_list(row):
             key = (chain, calls.get(chain, 1), str(row["block"]), int(row["visit"]))
             groups.setdefault(key, []).append(row)
     return groups
 
 
 def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
-    """Give each row of a parallel block every task of its visit, as known up to that row.
+    """Give each row of a block with `for_each` every task of its visit, as known up to that row.
 
     With subagents, one row holds every task. One by one (the generic adapter), each task has its own row.
     """
-    groups = parallel_visits(rows)
+    groups = for_each_visits(rows)
     live = live_tasks(state)
     last_key = list(groups)[-1] if groups else None
     for key, group in groups.items():
@@ -1068,7 +1080,7 @@ def timeline_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             task = event.get("task")
             rejected = {"accepted": False, "errors": event["errors"], "raw": event["raw"], "task": task}
             row_for_event["submissions"].append(rejected)
-            if task is not None:
+            if task is not None and has_task_list(row_for_event):  # a one-job task's rejection has `task` 0 too
                 task_entry(row_for_event, task)["submissions"].append(rejected)
         elif event["type"] == "script_ran":
             script_run = {key: event.get(key) for key in SCRIPT_FIELDS}
@@ -1101,7 +1113,7 @@ def parsed_json(text: str | None) -> Any:
 
 
 def task_entry(row: dict[str, Any], task: int) -> dict[str, Any]:
-    """The entry of one task of a parallel row, created on first use."""
+    """The entry of one task of a row with tasks, created on first use."""
     entries: list[dict[str, Any]] = row["tasks"]
     for entry in entries:
         if entry["task"] == task:
@@ -1120,12 +1132,13 @@ def new_timeline_row(event: dict[str, Any]) -> dict[str, Any]:
         "block_type": event["block_type"],
         "visit": event["visit"],
         "task": event.get("task"),
+        "for_each": event.get("for_each", False),
         "task_names": event.get("task_names"),
         "task_prompts": event.get("task_prompts"),
         "skipped_tasks": event.get("skipped_tasks") or [],
         "from": event.get("from"),
         "reason": event.get("reason"),
-        "packet": event.get("packet"),
+        "packet": one_job_prompt(event) or event.get("packet"),
         "submissions": [],
         "script_runs": [],
         "output": None,
@@ -1145,13 +1158,13 @@ def find_open_row(
         return open_rows[(frame, block, task)]
     if task is not None and (frame, block, None) in open_rows:
         return open_rows[(frame, block, None)]
-    # Else the newest row of the block: for a one-by-one parallel block, the task that the packet shows.
+    # Else the newest row of the block: when the main agent does the tasks one by one, the task that the packet shows.
     same_block = [row for key, row in open_rows.items() if key[:2] == (frame, block)]
     return max(same_block, key=lambda row: int(row["seq"])) if same_block else None
 
 
 def record_completion(row: dict[str, Any], event: dict[str, Any]) -> None:
-    """A task's answer, or the end of the block. The join of a parallel block's tasks is not an answer."""
+    """A task's answer, or the end of the block. The join of a block's tasks is not an answer."""
     task: int | None = event.get("task")
     if task is not None:
         accepted = {"accepted": True, "errors": [], "raw": None, "task": task}
@@ -1162,7 +1175,7 @@ def record_completion(row: dict[str, Any], event: dict[str, Any]) -> None:
         entry["duration_ms"] = event["duration_ms"]
         if row["task"] is None:
             return  # With subagents, every task shares the block's row: only the join sets the row's output.
-    elif event["decided_by"] != "runner" and row["block_type"] != "parallel":
+    elif event["decided_by"] != "runner" and not has_task_list(row):
         row["submissions"].append({"accepted": True, "errors": [], "raw": None, "task": None})
     row["output"] = event["output"]
     row["decided_by"] = event["decided_by"]

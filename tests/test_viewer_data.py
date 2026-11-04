@@ -30,6 +30,7 @@ from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, writ
 from tests.test_engine_blocks import (
     CHILD_SKILL,
     NAMED_PARALLEL_SKILL,
+    ONE_JOB_SKILL,
     PARALLEL_SKILL,
     PARENT_SKILL,
     PICKED_PARALLEL_SKILL,
@@ -102,6 +103,11 @@ blocks:
     status: succeeded
 """
 
+TASK_MEANING = (
+    "The agent does a piece of work and returns a typed answer: one job, or one job per list item whose "
+    "results join into one list. A job runs in the main conversation or in a subagent."
+)
+
 
 LONG_CONDITION_SKILL = """\
 schema: pskill/v1
@@ -136,7 +142,8 @@ inputs:
 entry: check
 blocks:
   check:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files if (history.check | default([]) | length) == 0 else inputs.files[:2] }}"
     instruction: "Check {{ item }}."
     max_visits: 5
@@ -203,7 +210,8 @@ inputs:
 entry: check
 blocks:
   check:
-    type: parallel
+    type: task
+    context: fresh
     for_each: "{{ inputs.files }}"
     instruction: |
       Check {{ item }}.
@@ -437,10 +445,7 @@ def test_each_node_has_a_hint_that_explains_its_block(tmp_path: Path) -> None:
     plan_hints = {node["block"]: node["hint"] for node in detail_of(project, plan_run)["canvas"]["nodes"]}
     long_hints = {node["block"]: node["hint"] for node in detail_of(project, long_run)["canvas"]["nodes"]}
 
-    assert plan_hints["create_plan"] == (
-        "The agent does a piece of work and returns a typed answer.\n"
-        "It runs at most 3 times, then asks whether to run more."
-    )
+    assert plan_hints["create_plan"] == (TASK_MEANING + "\nIt runs at most 3 times, then asks whether to run more.")
     assert plan_hints["ask_user"] == (
         "One choice is picked from a list, or a question gets an answer.\n"
         "The user decides in an interactive run. The agent decides in an autonomous run."
@@ -955,6 +960,47 @@ def test_a_parallel_row_with_subagents_keeps_each_task_answer_and_output(tmp_pat
     assert row["output"] == {"results": [{"wrong": []}, {"wrong": ["x"]}]}
 
 
+def test_a_run_from_before_1_0_0_with_a_parallel_block_shows_its_tasks_without_a_canvas(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+    submit_answer(project, run_id, "wrong: [x]\n", task=1)
+    folder = project.runs_folder / run_id
+    copy = folder / "skills" / "fanout" / "skill.yaml"
+    copy.write_text(copy.read_text(encoding="utf-8").replace("type: task", "type: parallel"), encoding="utf-8")
+    events_file = folder / "events.jsonl"
+    old_events = events_file.read_text(encoding="utf-8").replace('"block_type": "task", ', '"block_type": "parallel", ')
+    events_file.write_text(old_events.replace('"for_each": true, ', ""), encoding="utf-8")
+
+    detail = detail_of(project, run_id)
+    row = check_row_of(project, run_id)
+
+    assert detail["canvas"] is None
+    assert row["block_type"] == "parallel"
+    assert row["for_each"] is False
+    assert [task["output"] for task in row["tasks"]] == [{"wrong": []}, {"wrong": ["x"]}]
+    assert row["output_title"] == "Output: the results of every task, joined"
+
+
+def test_a_one_job_fresh_task_with_a_rejected_answer_keeps_it_on_its_row_with_no_tasks(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    write_skill(project.skills_folder, "one-job", ONE_JOB_SKILL)
+    run_id, _ = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")
+    submit_answer(project, run_id, "verdict: [not, text]\n", task=0)
+    submit_answer(project, run_id, "verdict: fine\n", task=0)
+
+    detail = detail_of(project, run_id)
+    [row] = [row for row in detail["timeline"] if row["block"] == "judge"]
+
+    assert row["tasks"] == []
+    assert row["packet"].startswith("You are a subagent of a pskill run.")
+    assert "Judge the change." in row["packet"]
+    assert [submission["accepted"] for submission in row["submissions"]] == [False, True]
+    assert row["output"] == {"verdict": "fine"}
+
+
 def test_a_one_by_one_parallel_block_lists_the_tasks_of_its_visit(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="generic")
@@ -1292,7 +1338,7 @@ def test_each_node_sends_its_description_type_meaning_and_notes_apart(tmp_path: 
     )
 
     assert work["description"] == "Does the one piece of work."
-    assert work["type_meaning"] == "The agent does a piece of work and returns a typed answer."
+    assert work["type_meaning"] == TASK_MEANING
     assert create_plan["description"] is None
     assert create_plan["notes"] == "It runs at most 3 times, then asks whether to run more."
 
@@ -1308,7 +1354,7 @@ def test_a_parallel_row_lists_the_items_that_its_when_skipped(tmp_path: Path) ->
 
 def test_a_packet_from_before_schema_version_4_still_gives_each_task_its_full_prompt() -> None:
     packet = (
-        "## pskill · fanout · check (visit 1)\n\n### Parallel tasks\n2 of 2 tasks are still open.\n\n"
+        "## pskill · fanout · check (visit 1)\n\n### Subagent tasks\n2 of 2 tasks are still open.\n\n"
         "#### Task 0\nYou are a subagent of a pskill run. Do only this task.\n\nCheck a.md.\n\n"
         "#### Task 1\nYou are a subagent of a pskill run. Do only this task.\n\nCheck b.md.\n"
     )

@@ -12,8 +12,8 @@ from pskill_runner.packets import (
     TaskPrompt,
     render_agent_packet,
     render_final_packet,
-    render_parallel_packet,
     render_pause_packet,
+    render_subagent_packet,
     render_summary_card,
     task_prompt_text,
 )
@@ -211,7 +211,7 @@ def test_the_parallel_packet_gives_each_open_task_a_one_line_prompt() -> None:
     ]
     packet = replace(PLAN_PACKET, work_folder="/work/project")
 
-    text = render_parallel_packet(packet, tasks, total_tasks=3)
+    text = render_subagent_packet(packet, tasks, total_tasks=3)
 
     assert text.startswith("## pskill · plan-work · create_plan (visit 2)")
     assert "2 of 3 tasks are still open." in text
@@ -243,14 +243,14 @@ def test_the_parallel_packet_names_the_harness_spawn_tool() -> None:
     task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
     packet = replace(PLAN_PACKET, subagent_wording="Use the Agent tool, one call per task.")
 
-    assert "Use the Agent tool, one call per task." in render_parallel_packet(packet, [task], total_tasks=1)
+    assert "Use the Agent tool, one call per task." in render_subagent_packet(packet, [task], total_tasks=1)
 
 
 def test_a_named_task_shows_its_name_in_its_heading() -> None:
     fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
     tasks = [TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields, name="security")]
 
-    text = render_parallel_packet(PLAN_PACKET, tasks, total_tasks=1)
+    text = render_subagent_packet(PLAN_PACKET, tasks, total_tasks=1)
 
     assert "#### Task 0 · security\nYou are a subagent of pskill run" in text
 
@@ -368,7 +368,7 @@ def test_a_parallel_packet_that_can_wait_says_to_wait_for_a_background_subagent(
     fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
     task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
 
-    text = render_parallel_packet(replace(PLAN_PACKET, can_wait=True), [task], total_tasks=1)
+    text = render_subagent_packet(replace(PLAN_PACKET, can_wait=True), [task], total_tasks=1)
 
     assert (
         "If a subagent call returns before its subagent submitted its task (it went on in the background), do "
@@ -382,7 +382,7 @@ def test_a_parallel_packet_that_cannot_wait_says_nothing_about_waiting() -> None
     fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
     task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
 
-    assert " wait " not in render_parallel_packet(PLAN_PACKET, [task], total_tasks=1)
+    assert " wait " not in render_subagent_packet(PLAN_PACKET, [task], total_tasks=1)
 
 
 WORKTREE_LINE = (
@@ -419,9 +419,24 @@ def test_a_parallel_packet_of_a_worktree_run_names_its_folder_after_the_header()
     task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
     packet = replace(PLAN_PACKET, work_folder="/work/trees/plan-work-r-1", in_worktree=True)
 
-    text = render_parallel_packet(packet, [task], total_tasks=1)
+    text = render_subagent_packet(packet, [task], total_tasks=1)
 
-    assert f"Run r-20260927-1432-ab12 · interactive\n{WORKTREE_LINE}\n\n### Parallel tasks" in text
+    assert f"Run r-20260927-1432-ab12 · interactive\n{WORKTREE_LINE}\n\n### Subagent tasks" in text
+
+
+def test_a_subagent_packet_counts_the_tasks_that_the_main_agent_does_after_it() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
+
+    one = render_subagent_packet(PLAN_PACKET, [task], total_tasks=2, main_tasks=1)
+    two = render_subagent_packet(PLAN_PACKET, [task], total_tasks=3, main_tasks=2)
+    none = render_subagent_packet(PLAN_PACKET, [task], total_tasks=1)
+
+    assert "1 more task is yours, in this conversation: run `current` for it when every subagent has finished." in one
+    assert (
+        "2 more tasks are yours, in this conversation: run `current` for them when every subagent has finished." in two
+    )
+    assert "more task" not in none
 
 
 def test_a_packet_of_a_run_in_the_checkout_names_no_folder_in_its_header() -> None:

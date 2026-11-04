@@ -20,7 +20,7 @@ class Edge:
 # uses edges.
 ChoiceMap = dict[str, list[Edge]]
 
-# The model tiers that a parallel block can ask for. Each adapter says what a tier means in its harness.
+# The model tiers that a task job can ask for. Each adapter says what a tier means in its harness.
 MODEL_TIERS = ("fast", "standard", "deep")
 
 
@@ -29,7 +29,7 @@ def tier_choices() -> str:
     return ", ".join(MODEL_TIERS[:-1]) + f", or {MODEL_TIERS[-1]}"
 
 
-# The tool profiles that a parallel block can ask for. Each adapter says what a profile means in its harness.
+# The tool profiles that a task job can ask for. Each adapter says what a profile means in its harness.
 TOOL_PROFILES = ("read", "web")
 
 
@@ -62,11 +62,31 @@ class RetryableBlock(Block):
     retries: int | None = None
 
 
+# Where a task job runs: in the main agent's own conversation, or in a subagent with a fresh context.
+CONTEXTS = ("main", "fresh")
+
+
+def context_choices() -> str:
+    """The known contexts for an error message: "main or fresh"."""
+    return " or ".join(CONTEXTS)
+
+
 @dataclass(frozen=True, kw_only=True)
 class TaskBlock(RetryableBlock):
+    """Agent work: one job, or one job per item of `for_each`, joined into one list of results.
+
+    `tier`, `tools`, `agent`, and `context` are fixed values or {{ }} values per item.
+    """
+
     instruction: str
     output: FieldMap
     next: list[Edge]
+    for_each: list[Any] | str | None = None  # None: one job, whose output is the block's output
+    agent: str | None = None
+    task_name: str | None = None  # a {{ }} value per item: the job's name in the packet and the viewer
+    tier: str | None = None  # one of MODEL_TIERS; None: the subagent inherits the model
+    tools: str | None = None  # one of TOOL_PROFILES; None: the subagent gets every tool
+    context: str | None = None  # one of CONTEXTS; None: main
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -84,20 +104,6 @@ class EndBlock(Block):
     outputs: dict[str, Any] = field(default_factory=dict)
     report: str | None = None
     pending: str | None = None  # the summary card's Pending row; None: not declared, "" (or empty): nothing left
-
-
-@dataclass(frozen=True, kw_only=True)
-class ParallelBlock(RetryableBlock):
-    """One subagent task per item of `for_each`, joined into one list of results."""
-
-    for_each: list[Any] | str
-    agent: str | None = None
-    task_name: str | None = None  # a {{ }} value per item: the task's name in the packet and the viewer
-    tier: str | None = None  # one of MODEL_TIERS, or a {{ }} value per item; None: the subagent inherits the model
-    tools: str | None = None  # one of TOOL_PROFILES, or a {{ }} value per item; None: the subagent gets every tool
-    instruction: str
-    output: FieldMap
-    next: list[Edge]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -124,8 +130,8 @@ class CallBlock(Block):
     next: list[Edge]
 
 
-AnyBlock = TaskBlock | DecisionBlock | ParallelBlock | ScriptBlock | CallBlock | EndBlock
-AgentBlock = TaskBlock | DecisionBlock | ParallelBlock
+AnyBlock = TaskBlock | DecisionBlock | ScriptBlock | CallBlock | EndBlock
+AgentBlock = TaskBlock | DecisionBlock
 
 
 def block_edges(block: AnyBlock) -> list[Edge]:

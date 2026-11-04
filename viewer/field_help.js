@@ -6,12 +6,11 @@
 export const FIELD_HELP = {
   type: {
     title: "type",
-    short: "What the block does, and who acts: the agent, a person, the runner, or subagents.",
+    short: "What the block does, and who acts: the agent (or its subagents), a person, or the runner.",
     details: [
-      "Every block has exactly one of six types. The type decides which other fields the block can have.",
-      "`task`: the agent does work and returns typed output.",
+      "Every block has exactly one of five types. The type decides which other fields the block can have.",
+      "`task`: the agent does work and returns typed output. One job, or one job per item of `for_each`; each job runs in the main conversation or in a subagent (`context`).",
       "`decision`: the agent or the user picks one choice, or the user answers one question.",
-      "`parallel`: one task per list item. Each task has its own subagent, and the tasks run at the same time.",
       "`script`: the runner runs a command. No LLM.",
       "`call`: the runner runs another skill and gets its outputs.",
       "`end`: the skill finishes with a status and outputs.",
@@ -95,7 +94,7 @@ export const FIELD_HELP = {
     title: "retries",
     short: "How many more tries the block gets after a failure. The default comes from .pskill/config.yaml (2).",
     details: [
-      "Optional, on `task`, `decision`, `parallel`, and `script` blocks. It overrides the global `retries` of `.pskill/config.yaml` for this block only.",
+      "Optional, on `task`, `decision`, and `script` blocks. It overrides the global `retries` of `.pskill/config.yaml` for this block only.",
       "A retried failure is an answer that does not match the output fields, an agent that says that it cannot complete the block, or a script that fails or times out. The runner shows the packet again with the errors, or runs the script again.",
       "After the last retry, the run pauses. `0` means no second try.",
     ],
@@ -220,18 +219,18 @@ export const FIELD_HELP = {
     title: "agent",
     short: "A file in .pskill/agents/ whose text heads the prompt of each subagent.",
     details: [
-      "Optional, on `parallel` blocks. `agent: fact-checker` reads `.pskill/agents/fact-checker.md`. The file is the subagent's role and rules, in Markdown.",
+      "Optional, on `task` blocks with `context: fresh`. `agent: fact-checker` reads `.pskill/agents/fact-checker.md`. The file is the subagent's role and rules, in Markdown.",
       "The runner puts the text of the file at the top of each task prompt. With no agent, each task gets only its instruction.",
       "It can be a computed value, so each item can have its own agent.",
     ],
     examples: [
       {
         caption: "The same agent for every task",
-        code: 'fact_check:\n  type: parallel\n  for_each: "{{ steps.list_docs.json.files }}"\n  agent: fact-checker\n  instruction: Check every claim in {{ item }}.\n  output:\n    wrong_claims: {type: array, items: {type: string}, description: "Each wrong claim."}\n  next: report',
+        code: 'fact_check:\n  type: task\n  context: fresh\n  for_each: "{{ steps.list_docs.json.files }}"\n  agent: fact-checker\n  instruction: Check every claim in {{ item }}.\n  output:\n    wrong_claims: {type: array, items: {type: string}, description: "Each wrong claim."}\n  next: report',
       },
       {
         caption: "An agent per item",
-        code: 'research:\n  type: parallel\n  for_each:\n    - {agent: pattern-scout, focus: "Find the closest code."}\n    - {agent: adr-checker, focus: "Find the ADRs."}\n  agent: "{{ item.agent }}"\n  instruction: "{{ item.focus }}"\n  output:\n    report: {type: string, description: "What you found."}\n  next: plan',
+        code: 'research:\n  type: task\n  context: fresh\n  for_each:\n    - {agent: pattern-scout, focus: "Find the closest code."}\n    - {agent: adr-checker, focus: "Find the ADRs."}\n  agent: "{{ item.agent }}"\n  instruction: "{{ item.focus }}"\n  output:\n    report: {type: string, description: "What you found."}\n  next: plan',
       },
     ],
   },
@@ -239,19 +238,19 @@ export const FIELD_HELP = {
     title: "task_name (task name)",
     short: "A short name for each task, computed from its item. The viewer and the packet show it instead of \"task 0\".",
     details: [
-      "Optional, on `parallel` blocks. It is a `{{ }}` value, computed once per item, like `agent`. `item` is the current list element.",
+      "Optional, on `task` blocks with `for_each`. It is a `{{ }}` value, computed once per item, like `agent`. `item` is the current list element.",
       "The name heads the task in the packet (`#### Task 0 · security`), and it labels the task's node and chip in the viewer. Keep it to a few words.",
       "A name that is missing, empty, or fails to compute is no name: the task shows as \"task 0\", \"task 1\", and the run goes on.",
-      "When the main agent builds the list (for example in a `task` block before the parallel block), give each item a `name` field in that block's `output`, and set `task_name: \"{{ item.name }}\"`. The main agent then names each task.",
+      "When the main agent builds the list (for example in a `task` block before the block with `for_each`), give each item a `name` field in that block's `output`, and set `task_name: \"{{ item.name }}\"`. The main agent then names each task.",
     ],
     examples: [
       {
         caption: "A name from a fixed list",
-        code: 'research:\n  type: parallel\n  for_each:\n    - {agent: pattern-scout, focus: "Find the closest code."}\n    - {agent: adr-checker, focus: "Find the ADRs."}\n  agent: "{{ item.agent }}"\n  task_name: "{{ item.agent }}"\n  instruction: "{{ item.focus }}"\n  output:\n    report: {type: string, description: "What you found."}\n  next: plan',
+        code: 'research:\n  type: task\n  context: fresh\n  for_each:\n    - {agent: pattern-scout, focus: "Find the closest code."}\n    - {agent: adr-checker, focus: "Find the ADRs."}\n  agent: "{{ item.agent }}"\n  task_name: "{{ item.agent }}"\n  instruction: "{{ item.focus }}"\n  output:\n    report: {type: string, description: "What you found."}\n  next: plan',
       },
       {
         caption: "The main agent names each task",
-        code: 'plan_review:\n  type: task\n  instruction: Pick the review angles.\n  output:\n    angles:\n      type: array\n      description: "One entry per review subagent."\n      items:\n        type: object\n        properties:\n          name: {type: string, optional: true, description: \"A name of 2 to 4 words.\"}\n          brief: {type: string}\n  next: analyze\n\nanalyze:\n  type: parallel\n  for_each: "{{ steps.plan_review.angles }}"\n  task_name: "{{ item.name }}"\n  instruction: "{{ item.brief }}"\n  output:\n    findings: {type: array, items: {type: string}, description: "What you found."}\n  next: report',
+        code: 'plan_review:\n  type: task\n  instruction: Pick the review angles.\n  output:\n    angles:\n      type: array\n      description: "One entry per review subagent."\n      items:\n        type: object\n        properties:\n          name: {type: string, optional: true, description: \"A name of 2 to 4 words.\"}\n          brief: {type: string}\n  next: analyze\n\nanalyze:\n  type: task\n  context: fresh\n  for_each: "{{ steps.plan_review.angles }}"\n  task_name: "{{ item.name }}"\n  instruction: "{{ item.brief }}"\n  output:\n    findings: {type: array, items: {type: string}, description: "What you found."}\n  next: report',
       },
       { caption: "A file name as the name", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntask_name: "{{ item }}"' },
     ],
@@ -260,16 +259,16 @@ export const FIELD_HELP = {
     title: "tier (model tier)",
     short: "The model tier of each subagent: `fast`, `standard`, or `deep`. With no tier, the subagent uses the main agent's model.",
     details: [
-      "Optional, on `parallel` blocks. It is a tier name, or a `{{ }}` value computed once per item, like `agent`. So each reviewer of one block can get its own tier.",
+      "Optional, on `task` blocks with `context: fresh`. It is a tier name, or a `{{ }}` value computed once per item, like `agent`. So each reviewer of one block can get its own tier.",
       "Each harness turns the tier into a model and an effort, so no skill names a model. By default, Claude Code passes `model: haiku`, `sonnet`, or `opus` to each Agent call, and Codex passes `reasoning_effort: low`, `medium`, or `high` to each spawn_agent call. A project changes any row under `tiers` in `.pskill/config.yaml`. A harness without subagents ignores it.",
       "Use `fast` or `standard` for work that checks text against written rules, and `deep` for work that needs judgment, such as finding bugs.",
       "An empty computed value means no tier. `pskill validate` rejects a written value that is not a tier; a computed one fails the block at run time.",
     ],
     examples: [
-      { caption: "One tier for every task", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntier: standard' },
+      { caption: "One tier for every task", code: 'context: fresh\nfor_each: "{{ steps.list_docs.json.files }}"\ntier: standard' },
       {
         caption: "A tier per item",
-        code: 'review:\n  type: parallel\n  for_each:\n    - {name: docs, tier: standard}\n    - {name: correctness, tier: deep}\n  task_name: "{{ item.name }}"\n  tier: "{{ item.tier }}"\n  instruction: "Review as {{ item.name }}."\n  output:\n    findings: {type: array, items: {type: string}, description: "What you found."}\n  next: fix',
+        code: 'review:\n  type: task\n  context: fresh\n  for_each:\n    - {name: docs, tier: standard}\n    - {name: correctness, tier: deep}\n  task_name: "{{ item.name }}"\n  tier: "{{ item.tier }}"\n  instruction: "Review as {{ item.name }}."\n  output:\n    findings: {type: array, items: {type: string}, description: "What you found."}\n  next: fix',
       },
     ],
   },
@@ -277,28 +276,41 @@ export const FIELD_HELP = {
     title: "tools (tool profile)",
     short: "The tool profile of each subagent: `read` or `web`. With no profile, the subagent gets every tool of the session.",
     details: [
-      "Optional, on `parallel` blocks. It is a profile name, or a `{{ }}` value computed once per item, like `tier`.",
+      "Optional, on `task` blocks with `context: fresh`. It is a profile name, or a `{{ }}` value computed once per item, like `tier`.",
       "`read` runs shell commands, reads and searches files, and writes its answer file. `web` adds fetching a page and searching the web. Fewer tools means a smaller starting context for each subagent. It is not a security boundary: the shell can still write files.",
       "Claude Code spawns the task's subagent as `pskill-read` or `pskill-web`, agents that `pskill sync` writes into `.claude/agents/`. Codex and harnesses without subagents ignore it.",
       "An empty computed value means no profile. `pskill validate` rejects a written value that is not a profile; a computed one fails the block at run time.",
     ],
     examples: [
-      { caption: "Reviewers that only read code", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntools: read' },
+      { caption: "Reviewers that only read code", code: 'context: fresh\nfor_each: "{{ steps.list_docs.json.files }}"\ntools: read' },
+    ],
+  },
+  context: {
+    title: "context (where a job runs)",
+    short: "Where each job of a task runs: `main` (the default), in the main agent's own conversation, or `fresh`, in a subagent that sees only its own job.",
+    details: [
+      "Optional, on `task` blocks. It is `main` or `fresh`, or a `{{ }}` value computed once per item, so one block can mix both.",
+      "A `fresh` job gets only the goal, its instruction, and its return format. The main agent spawns the fresh jobs first, then does the `main` jobs one by one.",
+      "`tier`, `tools`, and `agent` need `context: fresh`: the main agent cannot change its own model or tools. `pskill validate` gives an error for them on a `main` job.",
+      "A harness without subagents runs every job in the main context.",
+    ],
+    examples: [
+      { caption: "One job in a clean context, on a cheaper model", code: 'finish:\n  type: task\n  context: fresh\n  tier: standard\n  tools: read\n  instruction: instructions/finish.md\n  output:\n    risk: {type: string, description: "The risk of the change."}\n  next: done' },
     ],
   },
   for_each: {
     title: "for_each (for each)",
-    short: "The list to split into tasks: one task, and one subagent, per item.",
+    short: "The list to split into tasks: one task per item.",
     details: [
-      "Required on `parallel` blocks. It is a YAML list, or one `{{ }}` value that gives a list. So an earlier block can decide how many tasks there are.",
-      "In the instruction, in `agent`, in `task_name`, in `tier`, and in `tools`, `item` is the current list element.",
+      "Optional, on `task` blocks. It is a YAML list, or one `{{ }}` value that gives a list. So an earlier block can decide how many tasks there are. With no `for_each`, the task is one job.",
+      "In the instruction, in `agent`, in `task_name`, in `tier`, in `tools`, and in `context`, `item` is the current list element.",
       "The block completes when every task has a valid answer. `steps.<block>.results` is the list of the task outputs, in item order. An empty list completes at once.",
-      "Each subagent sees only its own task, never the other tasks.",
+      "With `context: fresh`, each subagent sees only its own task, never the other tasks. With `context: main`, the main agent does the tasks one by one.",
     ],
     examples: [
       {
         caption: "A list from a script",
-        code: 'check_names:\n  type: parallel\n  for_each: "{{ steps.list_files.json.files }}"\n  instruction: Check the names in {{ item }}.\n  output:\n    problems: {type: array, items: {type: string}, description: "Bad names."}\n  next: report',
+        code: 'check_names:\n  type: task\n  context: fresh\n  for_each: "{{ steps.list_files.json.files }}"\n  instruction: Check the names in {{ item }}.\n  output:\n    problems: {type: array, items: {type: string}, description: "Bad names."}\n  next: report',
       },
       { caption: "A fixed list", code: "for_each:\n  - security\n  - speed\n  - style" },
     ],
@@ -345,10 +357,10 @@ export const FIELD_HELP = {
     title: "instruction",
     short: "What the agent must do in this block. Markdown, with {{ }} values filled in during the run.",
     details: [
-      "Required on `task`, `decision`, and `parallel` blocks. A value that ends in `.md` is a file in the skill folder, usually `instructions/<block>.md`. Any other value is the text itself.",
+      "Required on `task` and `decision` blocks. A value that ends in `.md` is a file in the skill folder, usually `instructions/<block>.md`. Any other value is the text itself.",
       "Describe only this block's job. Do not describe the answer format: the packet adds it from the output fields. Do not write rules about order: the edges decide the order.",
       "Keep one or two lines inline. Put anything longer in a file.",
-      "Values in `{{ }}` are computed: `inputs`, `steps.<block>` (the latest output of a block), `history.<block>` (every output, oldest first), `run`, `skill`, and `item` in a parallel block.",
+      "Values in `{{ }}` are computed: `inputs`, `steps.<block>` (the latest output of a block), `history.<block>` (every output, oldest first), `run`, `skill`, and `item` in a task with `for_each`.",
     ],
     examples: [
       { caption: "Inline", code: 'instruction: "Ask the user: {{ steps.write_plan.question }}"' },
@@ -390,7 +402,7 @@ export const FIELD_HELP = {
     title: "output",
     short: "The fields that the answer must hold. The runner refuses an answer that does not match.",
     details: [
-      "Required on `task` and `parallel` blocks (on a parallel block, it is the output of each task). Optional on a `decision`: extra fields next to the ones that the runner adds (`choice` and `rationale`, or `answer`).",
+      "Required on `task` blocks (with `for_each`, it is the output of each task). Optional on a `decision`: extra fields next to the ones that the runner adds (`choice` and `rationale`, or `answer`).",
       "Each key is a field name. The runner checks the type, the `enum`, the required fields, and unknown fields.",
       "Types: `string`, `integer`, `number`, `boolean`, `array` (with `items`), and `object` (with `properties`). A field is required unless it has `optional: true`.",
       "Every top-level field needs a `description`: the agent reads it next to the field.",
@@ -493,6 +505,7 @@ export const FACT_FIELDS = {
   "task name": "task_name",
   tier: "tier",
   tools: "tools",
+  context: "context",
   parse: "parse",
   timeout: "timeout_s",
   skill: "skill",

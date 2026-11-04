@@ -272,7 +272,8 @@ goal: Use the child.
 entry: research
 blocks:
   research:
-    type: parallel
+    type: task
+    context: fresh
     for_each:
       - {agent: scout, focus: code}
       - {agent: ghost, focus: docs}
@@ -550,6 +551,51 @@ def test_a_valid_or_computed_tool_profile_has_no_profile_error(tmp_path: Path) -
 def test_references_in_a_tool_profile_are_checked(tmp_path: Path) -> None:
     assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(
         tmp_path, with_tools('"{{ steps.nowhere.x }}"')
+    )
+
+
+def with_context(context: str | None) -> str:
+    """The caller's research block with a tier, a tool profile, and an agent, and the given context line."""
+    research = with_tools("read").replace("    tools: read\n", "    tools: read\n    tier: fast\n")
+    if context is None:
+        return research.replace("    context: fresh\n", "")
+    return research.replace("    context: fresh\n", f"    context: {context}\n")
+
+
+MAIN_CONTEXT_ERROR = (
+    "blocks.research: tier, tools, and agent need `context: fresh`: the main agent cannot change its own model or tools"
+)
+
+
+def test_tier_tools_and_agent_on_a_job_in_the_main_context_are_one_error_that_names_the_block(tmp_path: Path) -> None:
+    for index, context in enumerate([None, "main"]):
+        assert MAIN_CONTEXT_ERROR in catalog_problems(tmp_path / str(index), with_context(context))
+
+
+def test_the_main_context_error_names_only_the_fields_that_the_block_sets(tmp_path: Path) -> None:
+    only_agent = CALLER_SKILL.replace("    context: fresh\n", "")
+
+    assert (
+        "blocks.research: agent needs `context: fresh`: the main agent cannot change its own model or tools"
+        in catalog_problems(tmp_path, only_agent)
+    )
+
+
+def test_a_fresh_or_computed_context_allows_tier_tools_and_agent(tmp_path: Path) -> None:
+    for index, context in enumerate(["fresh", '"{{ item.context }}"']):
+        errors = catalog_problems(tmp_path / str(index), with_context(context))
+        assert not [message for message in errors if "context" in message]
+
+
+def test_a_context_that_is_not_main_or_fresh_is_an_error(tmp_path: Path) -> None:
+    assert "blocks.research: the context 'subagent' is not main or fresh" in catalog_problems(
+        tmp_path, with_context("subagent")
+    )
+
+
+def test_references_in_a_context_are_checked(tmp_path: Path) -> None:
+    assert "blocks.research: 'steps.nowhere' is not a block" in catalog_problems(
+        tmp_path, with_context('"{{ steps.nowhere.x }}"')
     )
 
 

@@ -10,6 +10,7 @@ from pskill_runner.project import Project, find_project
 from pskill_runner.skill_loader import load_catalog
 from pskill_runner.stubs import GENERATED_MARKER, StubError
 from tests.skill_files import PROFILED_SKILL, write_skill
+from tests.test_engine_blocks import ONE_JOB_SKILL
 
 READ_AGENT = Path(".claude") / "agents" / "pskill-read.md"
 WEB_AGENT = Path(".claude") / "agents" / "pskill-web.md"
@@ -35,6 +36,14 @@ def test_a_written_profile_is_used_and_a_computed_one_uses_every_profile(tmp_pat
     assert used_profiles(load_catalog(written.skills_folder, written.agents_folder)) == ["read"]
     assert used_profiles(load_catalog(computed.skills_folder, computed.agents_folder)) == ["read", "web"]
     assert used_profiles(load_catalog(none.skills_folder, none.agents_folder)) == []
+
+
+def test_a_one_job_task_in_a_fresh_context_uses_its_profile(tmp_path: Path) -> None:
+    one_job = ONE_JOB_SKILL.replace("    tier: fast\n", "    tools: web\n")
+    write_skill(tmp_path / ".pskill" / "skills", "one-job", one_job)
+    project = find_project(tmp_path)
+
+    assert used_profiles(load_catalog(project.skills_folder, project.agents_folder)) == ["web"]
 
 
 def test_sync_writes_the_agent_of_each_used_profile_only(tmp_path: Path) -> None:

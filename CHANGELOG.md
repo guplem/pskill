@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.0 (2026-11-04)
+
+One agent-work block, `task`, runs one job or one job per list item, and each job sets its own model tier, tools, agent, and context (#170). The `parallel` block is gone: a task in a clean context and a parallel task were the same job.
+
+- **`task` takes `for_each`,** with the per-item `when` and `task_name` of the old `parallel`. Without `for_each`, the output is `steps.<id>.<field>`, as before. With it, the job outputs join into `steps.<id>.results`, in item order.
+- **`context: main | fresh`** on a task, a fixed value or one `{{ }}` per item. `main` (the default) runs the job in the main agent's own conversation. `fresh` spawns a subagent that gets only the goal, its instruction, and its return format. A block can mix both: the packet spawns the fresh jobs (heading `### Subagent tasks`) and counts the main jobs, which `current` gives one by one when the subagents are done.
+- **`tier`, `tools`, and `agent` on any task,** with `context: fresh`. So a frequent step can run in a clean context on a cheaper model. `pskill validate` gives an error, naming the block, for any of them on a task whose `context` is missing or `main`: the main agent cannot change its own model or tools. A harness without subagents (`generic`) runs every job in the main context and ignores `tier` and `tools`.
+- **`type: parallel` is refused** by `validate` and `start` with one line: "`parallel` is now `task` with `for_each`: change the type". Change the type and add `context: fresh`; the other fields stay valid unchanged.
+- **Runs started before 1.0.0:** finish or cancel them before you update. A run whose own skill copy has a `parallel` block stops every command with one line that says to cancel it; `cancel` and `delete` still work, and the viewer shows its steps without the graph.
+- **One code path:** the engine, the packets, the viewer, the skill editor (no more `parallel` in the add menu; `context` is editable), the Markdown export (it says where each job runs), `sync` (profile agents for the tools of any task), `pskill test`, and the Galtea upload (tier facts for a skill with a task that sets a `tier`). Events schema 8: a task with `for_each` logs `block_type: task` and `for_each: true`; the `block_completed` of a fresh job with a tier logs its `tier`, so Galtea names the tier's model for every such job; and a one-job fresh task logs its subagent's full prompt, which the viewer and Galtea show as its input. `pskill task` refuses a job that the main agent does itself.
+- **Example skills:** `implement-issue` `research_code` and `research_gaps`, and `review-round` `review`, are tasks with `context: fresh`. `implement-issue` `finish` and `review-head-check` `judge` now run in a fresh context on the `standard` tier with the `read` tools.
+
 ## 0.43.0 (2026-10-29)
 
 A run ends with a summary card: the same table for every skill, so the user sees at a glance that the run ended, how, and what is left.
