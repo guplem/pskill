@@ -978,6 +978,14 @@ def test_the_task_command_refuses_a_block_without_tasks(tmp_path: Path) -> None:
         task_packet(project, run_id, 0)
 
 
+def test_the_task_command_refuses_a_job_that_the_main_agent_does_itself(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    with pytest.raises(RunError, match="Task 0 of 'create_plan' runs in the main context: do it yourself"):
+        task_packet(project, run_id, 0)
+
+
 def test_a_task_number_on_a_block_without_tasks_is_refused(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     run_id = start(project)

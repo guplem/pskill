@@ -395,7 +395,7 @@ def test_the_task_command_uploads_its_run_to_galtea(
 ) -> None:
     write_skill(tmp_path / ".pskill" / "skills", "spell", SPELL_SKILL)
     monkeypatch.chdir(tmp_path)
-    run_cli(monkeypatch, "start", "spell")
+    run_cli(monkeypatch, "start", "spell", "--harness", "claude-code")
     run_id = run_id_of(capsys.readouterr().out)
     uploads: list[str] = []
     monkeypatch.setattr(galtea, "upload_run", lambda project, run_id: uploads.append(run_id))
@@ -410,7 +410,7 @@ def test_task_and_submit_with_a_task_number_drive_a_parallel_block(
 ) -> None:
     write_skill(tmp_path / ".pskill" / "skills", "spell", SPELL_SKILL)
     monkeypatch.chdir(tmp_path)
-    run_cli(monkeypatch, "start", "spell")
+    run_cli(monkeypatch, "start", "spell", "--harness", "claude-code")
     run_id = run_id_of(capsys.readouterr().out)
 
     assert run_cli(monkeypatch, "task", run_id, "1") == cli.EXIT_OK
@@ -418,6 +418,8 @@ def test_task_and_submit_with_a_task_number_drive_a_parallel_block(
 
     run_cli(monkeypatch, "submit", run_id, "--task", "0", stdin="letter: t\n")
     run_cli(monkeypatch, "submit", run_id, "--task", "1", stdin="letter: e\n")
+    assert "All 2 tasks are done." in capsys.readouterr().out
+    run_cli(monkeypatch, "current", run_id)
     assert "finished with status succeeded" in capsys.readouterr().out
 
 

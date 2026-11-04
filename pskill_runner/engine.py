@@ -1344,6 +1344,11 @@ class Run:
         if not isinstance(block, TaskBlock) or self.frame["tasks"] is None:
             raise RunError(f"The block {block.id!r} has no tasks.")
         self.check_open_task(block, index)
+        if not self.is_fresh_job(index):
+            raise RunError(
+                f"Task {index} of {block.id!r} runs in the main context: do it yourself, from the packet of "
+                f"`{runner_command(self.project)} current {self.info['run_id']}`."
+            )
         return task_prompt_text(self.base_packet(block, []), self.task_prompt(block, index))
 
     def check_open_task(self, block: TaskBlock, index: int) -> None:

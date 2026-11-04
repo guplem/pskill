@@ -1152,7 +1152,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `list` | Skills: id, invocation, description. |
 | `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h] [--model id] [--worktree]` | Validate the skill (every error except 17: a stale stub or profile agent never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. `--model` records the model id that the agent names (`llm` in `run.json`); the stub asks the agent to pass it. `--worktree` (or `PSKILL_RUN_IN_WORKTREE=true`) starts the run in a new git worktree (7.8). Added in 0.42.0. |
 | `current [<run>]` | Print the current packet. No state change. |
-| `task <run> <n>` | Print the full prompt of job `<n>` of the current task block. A subagent runs it first. No state change. |
+| `task <run> <n>` | Print the full prompt of job `<n>` of the current task block, for its subagent: it refuses a `main` job, which the main agent does from `current`. A subagent runs it first. No state change. |
 | `submit <run> [--task <n>] [--file <path>]` | Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. |
 | `pause <run>` / `resume <run>` / `cancel <run>` | Lifecycle control. |
 | `delete <run>` | Delete the folder of a finished run, for cleanup. An unfinished run must be cancelled first. The id must name a folder right inside `runs/`. |
