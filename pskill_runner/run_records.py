@@ -10,9 +10,9 @@ SCHEMA_VERSION = 8  # 2: parallel tasks have a name. 3: a parallel item can be s
 # 5: a `script_ran` event holds the `input` that the script read on stdin.
 # 6: `block_type` is `visit_cap` for the question at a visit cap.
 # 7: every event has the `call_id` of its call instance; a call's `block_started` has its `inputs`.
-# 8: `parallel` is a task with `for_each`: its `block_type` is `task`, its `block_started` has `for_each`, and
-# the `block_completed` of a job with a tier has `tier`, and the `block_started` of a one-job task that spawns a
-# `fresh` job has `task_prompts`.
+# 8: `parallel` is a task with `for_each`: its `block_type` is `task`, its `block_started` has `for_each`; the
+# `block_completed` of a job that ran in a subagent with a tier has `tier`; and the `block_started` of a one-job
+# task that spawns a `fresh` job has `task_prompts`.
 
 ACTIVE_STATUSES = ("active", "waiting_for_human")
 UNFINISHED_STATUSES = ("active", "waiting_for_human", "paused")
