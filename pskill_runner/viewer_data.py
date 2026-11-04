@@ -15,7 +15,7 @@ from typing import Any
 
 from pskill_runner.engine import list_runs, read_run_info, read_run_state, run_duration_ms
 from pskill_runner.project import Project
-from pskill_runner.run_records import RunInfo, RunState
+from pskill_runner.run_records import RunInfo, RunState, one_job_prompt
 from pskill_runner.run_store import folder_hash, read_events
 from pskill_runner.skill_loader import SkillLoadError, load_skill
 from pskill_runner.skill_model import AnyBlock, CallBlock, DecisionBlock, EndBlock, RetryableBlock, ScriptBlock, Skill
@@ -1138,7 +1138,7 @@ def new_timeline_row(event: dict[str, Any]) -> dict[str, Any]:
         "skipped_tasks": event.get("skipped_tasks") or [],
         "from": event.get("from"),
         "reason": event.get("reason"),
-        "packet": event.get("packet"),
+        "packet": one_job_prompt(event) or event.get("packet"),
         "submissions": [],
         "script_runs": [],
         "output": None,

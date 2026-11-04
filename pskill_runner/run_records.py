@@ -142,3 +142,11 @@ def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str, call_id: s
         extra_visits={},
         call_id=call_id,
     )
+
+
+def one_job_prompt(event: dict[str, Any]) -> str | None:
+    """The full prompt of a one-job task's subagent: the input of its row, more than the line that spawned it."""
+    prompts = event.get("task_prompts")
+    if event.get("block_type") == "task" and not event.get("for_each") and prompts:
+        return str(prompts[0])
+    return None

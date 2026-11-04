@@ -27,7 +27,7 @@ from pskill_runner.adapters import adapter_for, tier_row
 from pskill_runner.computed_values import ComputedValueError, render_text
 from pskill_runner.galtea_client import GalteaClient, urllib_sender
 from pskill_runner.project import Project
-from pskill_runner.run_records import RunInfo, RunState, child_call_id, frame_context
+from pskill_runner.run_records import RunInfo, RunState, child_call_id, frame_context, one_job_prompt
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, read_json, timestamp, write_json_atomic
 from pskill_runner.token_usage import (
     MAIN_AGENT,
@@ -249,7 +249,11 @@ class RunUpload:
         self.client.create_spans(redacted(self.spans(created["id"], started, ended, decided_by, calls)))
 
     def turn_input(self, started: dict[str, Any]) -> Any:
-        """What went into the block: the packet, a script's command and stdin, or a call's inputs."""
+        """What went into the block: the packet (for a one-job task in a subagent, its full prompt), a script's
+        command and stdin, or a call's inputs."""
+        prompt = one_job_prompt(started)
+        if prompt is not None:
+            return prompt
         if started.get("packet"):
             return started["packet"]
         if started.get("block_type") == "call":

@@ -995,6 +995,8 @@ def test_a_one_job_fresh_task_with_a_rejected_answer_keeps_it_on_its_row_with_no
     [row] = [row for row in detail["timeline"] if row["block"] == "judge"]
 
     assert row["tasks"] == []
+    assert row["packet"].startswith("You are a subagent of a pskill run.")
+    assert "Judge the change." in row["packet"]
     assert [submission["accepted"] for submission in row["submissions"]] == [False, True]
     assert row["output"] == {"verdict": "fine"}
 

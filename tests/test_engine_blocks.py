@@ -1355,6 +1355,18 @@ def test_a_one_job_fresh_task_spawns_one_subagent_and_stores_its_output_flat(tmp
     assert read_run_info(project, run_id)["outputs"] == {"verdict": "fine"}
 
 
+def test_a_one_job_fresh_task_logs_the_full_prompt_of_its_subagent(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"one-job": ONE_JOB_SKILL})
+
+    run_id, _ = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")
+
+    [started] = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_started"]
+    [prompt] = started["task_prompts"]
+    assert prompt.startswith("You are a subagent of a pskill run.")
+    assert "Judge the change." in prompt
+    assert "for_each" not in started
+
+
 def test_a_one_job_fresh_task_needs_the_task_number(tmp_path: Path) -> None:
     project = make_project(tmp_path, {"one-job": ONE_JOB_SKILL})
     run_id, _ = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")

@@ -826,7 +826,8 @@ class Run:
         skipped_tasks = self.frame.get("skipped_tasks")
         if has_jobs_per_item(block) and skipped_tasks:
             fields["skipped_tasks"] = skipped_tasks
-        if has_jobs_per_item(block) and task is None and self.frame["tasks"]:
+        spawns_subagents = has_jobs_per_item(block) or bool(self.open_job_indexes("fresh"))
+        if isinstance(block, TaskBlock) and spawns_subagents and task is None and self.frame["tasks"]:
             fields["task_prompts"] = self.task_prompts(block)
         self.log("block_started", **fields)
 

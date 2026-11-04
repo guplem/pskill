@@ -484,6 +484,10 @@ def test_every_job_with_a_tier_names_its_model_after_its_block_is_done(tmp_path:
     assert [root["metadata"]["tier_model"] for root in fanout_roots if "task" in root["metadata"]] == ["opus", "opus"]
     [judge] = [root for root in one_job_roots if root["name"] == "judge"]
     assert (judge["metadata"]["tier"], judge["metadata"]["tier_model"]) == ("fast", "haiku")
+    [judge_turn] = [
+        turn for turn in one_job_galtea.bodies("POST", "/inferenceResults") if "Judge the change." in turn["input"]
+    ]
+    assert judge_turn["input"].startswith("You are a subagent of a pskill run.")
 
 
 def test_a_task_with_no_tier_or_a_finished_block_names_no_model(tmp_path: Path) -> None:
