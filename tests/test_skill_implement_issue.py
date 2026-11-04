@@ -579,3 +579,25 @@ def test_post_comment_run_twice_updates_the_comment_of_its_run(
         f"gh api PATCH repos/{{owner}}/{{repo}}/issues/comments/8 {json.dumps({'body': POSTED_PAUSE_BODY})}"
     )
     assert not shell.ran("gh api POST")
+
+
+def instruction(name: str) -> str:
+    return (SKILLS_FOLDER / SKILL / "instructions" / name).read_text(encoding="utf-8")
+
+
+def test_the_plan_lists_the_tests_the_stale_texts_and_the_reused_code() -> None:
+    text = instruction("write_plan.md")
+
+    assert "5. **Lists**" in text
+    assert "**New cases:** each new case of the change, with the name of the test that covers it." in text
+    assert "**Stale texts:** each text that `git grep` finds for a name or a value that the change renames" in text
+    assert '**Reused code:** for each new piece, the existing code that it reuses, or "none found".' in text
+    assert "6. **Checks:**" in text and "7. **Out of scope.**" in text
+
+
+def test_the_build_proves_each_test_can_fail_and_ticks_the_lists_before_the_review() -> None:
+    text = instruction("implement_step.md")
+
+    assert "break the guarded code on purpose" in text
+    assert "never with `git checkout -- <file>`" in text
+    assert "tick each line of the three **Lists** of the plan against the diff" in text
