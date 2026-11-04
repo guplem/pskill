@@ -1388,6 +1388,9 @@ def test_a_harness_without_subagents_does_a_fresh_job_itself_and_ignores_its_tie
     assert "haiku" not in packet
     assert "finished with status succeeded" in final
     assert read_run_state(project, run_id)["frames"][0]["steps"]["judge"] == {"verdict": "fine"}
+    events = read_events(project.runs_folder / run_id)
+    [completed] = [event for event in events if event["type"] == "block_completed" and event["block"] == "judge"]
+    assert "tier" not in completed  # the main agent ran it on its own model, not on the tier's
 
 
 def test_a_one_job_main_task_takes_task_zero_too(tmp_path: Path) -> None:
