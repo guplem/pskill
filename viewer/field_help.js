@@ -113,7 +113,18 @@ export const FIELD_HELP = {
       "Optional, on `script` blocks only. It overrides `script_timeout_s` of `.pskill/config.yaml` for this block.",
       "When the command runs longer, the runner stops it, and the block fails. A timeout is a retried failure, so `retries` applies.",
     ],
-    examples: [{ caption: "Give a slow test suite 20 minutes", code: "run_tests:\n  type: script\n  run: [uv, run, pytest]\n  timeout_s: 1200\n  next: report" }],
+    examples: [{ caption: "Give a slow test suite 20 minutes", code: "run_tests:\n  type: script\n  run: [uv, run, pytest]\n  background: true\n  timeout_s: 1200\n  next: report" }],
+  },
+  background: {
+    title: "background",
+    short: "Run the script in the background: the agent starts it, ends its turn, and wakes once when it ends.",
+    details: [
+      "Optional, on `script` blocks only. The default is false.",
+      "In Claude Code, the agent starts one runner command in the background and ends its turn. The runner runs the script, records its result, and the agent wakes with the next step. A long wait, such as for CI, then costs no agent turn per poll.",
+      "Its timeout may go up to `max_wait_minutes` of `.pskill/config.yaml` (120 minutes by default). A script in the foreground stops after 10 minutes in Claude Code.",
+      "In a harness that does not wake the agent after a background command (Codex, generic), the script runs in the foreground, as any script does.",
+    ],
+    examples: [{ caption: "Wait for CI for up to an hour", code: 'wait_ci:\n  type: script\n  run: [uv, run, "{{ skill.dir }}/scripts/wait_ci.py"]\n  background: true\n  timeout_s: 3600\n  next: report' }],
   },
   decider: {
     title: "decider",

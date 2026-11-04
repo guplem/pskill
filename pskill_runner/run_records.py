@@ -81,6 +81,13 @@ class SkippedTask(TypedDict):
     when: str  # the condition, as written in skill.yaml
 
 
+class BackgroundScript(TypedDict):
+    """A background script of the current block (SPEC.md section 6.3): its packet was given, or it runs."""
+
+    state: str  # "issued" (the packet was given) or "running" (`run-script` runs it)
+    since: str  # when it entered that state; `run-script` records only the run that it started
+
+
 class Frame(TypedDict):
     """One skill on the call stack. A `call` block pushes a frame; the child's end block pops it."""
 
@@ -99,6 +106,7 @@ class Frame(TypedDict):
     visit_cap_question: bool  # the current block's visit cap question is open; absent in runs before 0.33.0
     extra_visits: dict[str, int]  # the rounds that "more" added to each capped block; absent before 0.33.0
     call_id: str  # the call instance, like `review#2>doubt#1`; "" for the root; absent before 0.39.0
+    background_script: BackgroundScript | None  # the current block's background script; absent before 1.1.0
 
 
 class RunState(TypedDict):
@@ -143,6 +151,7 @@ def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str, call_id: s
         visit_cap_question=False,
         extra_visits={},
         call_id=call_id,
+        background_script=None,
     )
 
 

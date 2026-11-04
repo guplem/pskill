@@ -7,11 +7,13 @@ change a run hold the run's lock, because the subagents of a task block submit a
 
 import contextlib
 import json
+import math
 import os
 import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, TypeGuard, cast
 
@@ -24,10 +26,12 @@ from pskill_runner.packets import (
     VISIT_CAP_CHOICES,
     VISIT_CAP_ROUNDS,
     AgentPacket,
+    BackgroundScriptPacket,
     PauseSteps,
     SummaryCard,
     TaskPrompt,
     render_agent_packet,
+    render_background_script_packet,
     render_final_packet,
     render_pause_packet,
     render_subagent_packet,
@@ -88,6 +92,7 @@ from pskill_runner.yaml_loading import load_answer_yaml
 
 ENTRY_SCRIPT_NAME = "pskill.py"
 INLINE_BLOCK_LIMIT = 1000
+BACKGROUND_MARGIN_S = 60  # the background command's time to record the result and print the next packet
 TASK_NAME_LIMIT = 60  # characters: a task name is a short label
 OUTPUT_LIMIT_CHARACTERS = 64 * 1024  # characters: the most of a text output or a stderr that a run keeps
 CANCELLED_DESCRIPTION = "The run was cancelled with `pskill cancel`."
@@ -774,6 +779,8 @@ class Run:
                 final_text = self.finish(block)
                 if final_text is not None:
                     return final_text
+            elif isinstance(block, ScriptBlock) and self.runs_in_background(block):
+                return self.issue_background_script(block)
             elif isinstance(block, ScriptBlock):
                 pause_text = self.run_script(block)
                 if pause_text is not None:
@@ -923,6 +930,59 @@ class Run:
         self.complete_block(call_block, value, decided_by="runner", duration_ms=elapsed_ms_since(child["started_at"]))
 
     # --- script blocks ------------------------------------------------------------------------
+
+    def runs_in_background(self, block: ScriptBlock) -> bool:
+        """A background script waits for its own command only where the harness wakes the agent after it."""
+        return block.background and self.adapter.wakes_after_background_command
+
+    def script_timeout_of(self, block: ScriptBlock) -> int:
+        return block.timeout_s if block.timeout_s is not None else self.project.config.script_timeout_s
+
+    def background_shell_timeout_s(self, block: ScriptBlock) -> int:
+        """The timeout of the agent's background command: the script's, plus a minute to record it, within the
+        harness's longest timeout."""
+        return min(self.script_timeout_of(block) + BACKGROUND_MARGIN_S, self.adapter.background_command_max_s)
+
+    def issue_background_script(self, block: ScriptBlock) -> str:
+        """Give the command that runs the script in the background. The wait fields keep the Stop hook quiet."""
+        now = utc_now()
+        self.frame["background_script"] = {"state": "issued", "since": timestamp(now)}
+        self.hold_stops_for(block, now)
+        self.info["status"] = "active"
+        self.info["attempts"] = 0
+        text = self.background_script_packet(block, reentry=False)
+        self.log_block_started(block, packet=text)
+        return text
+
+    def hold_stops_for(self, block: ScriptBlock, now: datetime) -> None:
+        """While the background command can run, the Stop hook lets the agent stop (SPEC.md section 9.2)."""
+        self.info["wait_reason"] = f"the background script {block.id}"
+        self.info["wait_started_at"] = timestamp(now)
+        self.info["wait_until"] = timestamp(now + timedelta(seconds=self.background_shell_timeout_s(block)))
+        self.info["waits_since"] = timestamp(now)
+        self.info["stop_blocks"] = 0
+
+    def background_script_packet(self, block: ScriptBlock, reentry: bool) -> str:
+        timeout_s = self.background_shell_timeout_s(block)
+        wording = self.adapter.background_command_wording.format(
+            timeout_ms=timeout_s * 1000, minutes=math.ceil(timeout_s / 60)
+        )
+        return render_background_script_packet(
+            BackgroundScriptPacket(
+                run_id=self.info["run_id"],
+                chain=self.chain(),
+                block_id=block.id,
+                visit=self.frame["visits"].get(block.id, 0),
+                mode=self.info["mode"],
+                goal=self.skill_of(self.frame).goal,
+                runner_command=runner_command(self.project),
+                start_wording=wording,
+                work_folder=self.project.root.as_posix(),
+                in_worktree=bool(self.info.get("worktree")),
+                show_goal=reentry,
+                show_rules=reentry,
+            )
+        )
 
     def run_script(self, block: ScriptBlock) -> str | None:
         """Run a script, with retries. Return the pause text on failure, or None on success."""

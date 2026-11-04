@@ -1606,3 +1606,64 @@ def test_resume_of_a_for_each_task_whose_start_failed_and_now_gives_no_item_comp
 
     assert "finished with status succeeded" in packet
     assert read_run_state(project, run_id)["frames"][0]["steps"]["check"] == {"results": []}
+
+
+BACKGROUND_SKILL = SCRIPT_SKILL.replace(
+    "    parse: json\n", "    parse: json\n    background: true\n    timeout_s: 900\n"
+)
+
+
+class NoScripts:
+    """An executor for a run that must not run any script now."""
+
+    def run_script(
+        self,
+        block_id: str,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        timeout_s: int,
+        stdin_text: str | None = None,
+    ) -> ScriptResult:
+        raise AssertionError("The script must run in the background command, not here.")
+
+    def call_result(self, block_id: str, skill_id: str, inputs: dict[str, Any]) -> CallResult | None:
+        return None
+
+
+def test_a_background_script_on_claude_code_gives_one_command_to_start_in_the_background(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"scripted": BACKGROUND_SKILL})
+
+    run_id, packet = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())
+
+    assert f"uv run .pskill/pskill.py run-script {run_id}" in packet
+    assert "`run_in_background: true` and `timeout: 960000` (16 minutes)" in packet
+    assert "then end your turn" in packet
+    info = read_run_info(project, run_id)
+    assert info["status"] == "active"
+    assert info["current_block"] == "list_files"
+    assert info["wait_reason"] == "the background script list_files"
+    assert info["wait_until"] is not None and info["waits_since"] is not None
+    frame = read_run_state(project, run_id)["frames"][-1]
+    assert frame["background_script"] is not None and frame["background_script"]["state"] == "issued"
+    started = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_started"]
+    assert started[-1]["block"] == "list_files" and started[-1]["packet"] == packet
+
+
+def test_the_shell_timeout_of_a_background_script_stays_within_two_hours(tmp_path: Path) -> None:
+    skill_yaml = BACKGROUND_SKILL.replace("timeout_s: 900", "timeout_s: 7200")
+    project = make_project(tmp_path, {"scripted": skill_yaml})
+
+    _, packet = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())
+
+    assert "`timeout: 7200000` (120 minutes)" in packet
+
+
+def test_a_background_script_runs_in_the_foreground_on_a_harness_that_wakes_nobody(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"scripted": BACKGROUND_SKILL})
+
+    for harness in ("generic", "codex"):
+        run_id, packet = start_run(project, "scripted", {}, mode="interactive", harness=harness)
+
+        assert "finished with status succeeded" in packet, packet
+        assert read_run_info(project, run_id)["outputs"] == {"count": 2}
