@@ -128,6 +128,13 @@ def test_the_pskill_stub_tells_how_to_wait_on_background_work() -> None:
     )
 
 
+def test_the_pskill_stub_tells_how_to_run_a_background_script() -> None:
+    assert (
+        "- Run a background script, in the background (Claude Code only): "
+        "`uv run .pskill/pskill.py run-script <run-id>`" in render_pskill_stub()
+    )
+
+
 def test_sync_updates_a_stub_when_a_parent_folder_has_the_name_of_the_skill(tmp_path: Path) -> None:
     project = make_project(tmp_path / "pskill")
     stub = tmp_path / "pskill" / ".claude" / "skills" / "pskill" / "SKILL.md"
