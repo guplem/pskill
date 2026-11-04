@@ -282,7 +282,8 @@ class RunUpload:
         }
         if "task" in ended:
             metadata["task"] = ended["task"]
-            metadata.update(self.task_model(started, ended["task"]))
+        if ended.get("tier"):
+            metadata.update({"tier": ended["tier"], "tier_model": self.tier_model(ended["tier"])})
         if calls is not None:
             metadata["tokens"] = sum_usage(calls)
         root = {
@@ -337,16 +338,6 @@ class RunUpload:
                 "endTime": event["ts"],
             }
         return None
-
-    def task_model(self, started: dict[str, Any], task: int) -> dict[str, Any]:
-        """The tier of a task's job and the model that the tier means, while the run still holds the task."""
-        state = cast(RunState, read_json(self.folder / "state.json"))
-        for frame in state["frames"]:
-            tasks = frame.get("tasks") or []
-            tier = tasks[task].get("tier") if task < len(tasks) else None
-            if frame.get("call_id", "") == started.get("call_id", "") and tier is not None:
-                return {"tier": tier, "tier_model": self.tier_model(tier)}
-        return {}  # no tier, or the block is over and the run no longer holds its tasks
 
     def tier_model(self, tier: str) -> str:
         row = tier_row(adapter_for(self.info["harness"]), self.project.config.tiers, tier)

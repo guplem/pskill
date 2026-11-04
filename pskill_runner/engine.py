@@ -785,11 +785,16 @@ class Run:
                 return self.issue_packet(new_block=True)
         raise RunnerStop(f"More than {INLINE_BLOCK_LIMIT} runner blocks ran without an agent block.")
 
-    def complete_block(self, block: AnyBlock, value: dict[str, Any], decided_by: str, duration_ms: int) -> None:
-        """Store a block's output, log it, and go to the next block."""
+    def complete_block(
+        self, block: AnyBlock, value: dict[str, Any], decided_by: str, duration_ms: int, tier: str | None = None
+    ) -> None:
+        """Store a block's output, log it, and go to the next block. `tier`: the tier of a one-job task's job."""
         self.frame["steps"][block.id] = value
         self.frame["history"].setdefault(block.id, []).append(value)
-        self.log("block_completed", block=block.id, output=value, decided_by=decided_by, duration_ms=duration_ms)
+        fields: dict[str, Any] = {"output": value, "decided_by": decided_by, "duration_ms": duration_ms}
+        if tier is not None:
+            fields["tier"] = tier  # the Galtea upload names the tier's model from this
+        self.log("block_completed", block=block.id, **fields)
         self.info["attempts"] = 0
         self.follow_edges(block, value)
 
@@ -1480,29 +1485,28 @@ class Run:
         """Store one job's answer. Return how long it took. A task with `for_each` logs each job's answer;
         the answer of a one-job task is the block's own, which `complete_block` logs."""
         self.check_open_task(block, index)
-        (self.frame["tasks"] or [])[index]["output"] = answer
+        job = (self.frame["tasks"] or [])[index]
+        job["output"] = answer
         duration_ms = elapsed_ms_since(self.info["packet_issued_at"])
         if block.for_each is not None:
-            self.log(
-                "block_completed",
-                block=block.id,
-                task=index,
-                output=answer,
-                decided_by="agent",
-                duration_ms=duration_ms,
-            )
+            fields: dict[str, Any] = {"output": answer, "decided_by": "agent", "duration_ms": duration_ms}
+            if job["tier"] is not None:
+                fields["tier"] = job["tier"]  # the Galtea upload names the tier's model from this
+            self.log("block_completed", block=block.id, task=index, **fields)
         return duration_ms
 
     def complete_jobs(self, block: TaskBlock, duration_ms: int) -> str:
         """Store the block's output, then go on: the answers of every job as `results`, or the one job's answer."""
         jobs = self.frame["tasks"] or []
+        tier = None
         if block.for_each is None:
             value = cast(dict[str, Any], jobs[0]["output"])
+            tier = jobs[0]["tier"]
         else:
             value = {"results": [job["output"] for job in jobs]}
         self.frame["tasks"] = None
         self.frame["skipped_tasks"] = None
-        self.complete_block(block, value, decided_by="agent", duration_ms=duration_ms)
+        self.complete_block(block, value, decided_by="agent", duration_ms=duration_ms, tier=tier)
         return self.advance()
 
     def accept_job(self, block: TaskBlock, index: int, answer: dict[str, Any]) -> str:

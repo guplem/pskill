@@ -463,6 +463,29 @@ def test_a_failed_metadata_update_is_swallowed(tmp_path: Path) -> None:
     assert read_json(project.runs_folder / run_id / "galtea.json")["last_seq"] == last_event["seq"]
 
 
+def test_every_job_with_a_tier_names_its_model_after_its_block_is_done(tmp_path: Path) -> None:
+    tiered_fanout = PARALLEL_SKILL.replace("    agent: checker\n", "    agent: checker\n    tier: deep\n")
+    fanout = make_project(tmp_path / "a", {"fanout": with_product(tiered_fanout, "f")})
+    one_job = make_project(tmp_path / "b", {"one-job": with_product(ONE_JOB_SKILL, "j")})
+    fanout_run, _ = start_run(fanout, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code")
+    one_job_run, _ = start_run(one_job, "one-job", {}, mode="interactive", harness="claude-code")
+    submit_answer(fanout, fanout_run, "wrong: []\n", task=0)
+    submit_answer(fanout, fanout_run, "wrong: []\n", task=1)
+    submit_answer(one_job, one_job_run, "verdict: fine\n", task=0)
+    fanout_galtea, one_job_galtea = FakeGaltea(), FakeGaltea()
+
+    upload(fanout, fanout_run, fanout_galtea)
+    upload(one_job, one_job_run, one_job_galtea)
+
+    fanout_roots = [batch["traces"][0] for batch in fanout_galtea.bodies("POST", "/traces/batch?includeRejected=true")]
+    one_job_roots = [
+        batch["traces"][0] for batch in one_job_galtea.bodies("POST", "/traces/batch?includeRejected=true")
+    ]
+    assert [root["metadata"]["tier_model"] for root in fanout_roots if "task" in root["metadata"]] == ["opus", "opus"]
+    [judge] = [root for root in one_job_roots if root["name"] == "judge"]
+    assert (judge["metadata"]["tier"], judge["metadata"]["tier_model"]) == ("fast", "haiku")
+
+
 def test_a_task_with_no_tier_or_a_finished_block_names_no_model(tmp_path: Path) -> None:
     project = make_project(tmp_path, {"fanout": with_product(PARALLEL_SKILL, "f")})
     run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code")
