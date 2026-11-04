@@ -8,6 +8,7 @@ Commands of the pskill runner:
 - Show the current block of a run again: `uv run .pskill/pskill.py current <run-id>`
 - Resume a paused run: `uv run .pskill/pskill.py resume <run-id>`
 - Wait on background work, in the background (Claude Code only): `uv run .pskill/pskill.py wait <run-id> --reason "<what>"`
+- Run a background script, in the background (Claude Code only): `uv run .pskill/pskill.py run-script <run-id>`
 - Pause a run: `uv run .pskill/pskill.py pause <run-id>`
 - Stop a run for good: `uv run .pskill/pskill.py cancel <run-id>`
 - Open the run viewer: `uv run .pskill/pskill.py view`
