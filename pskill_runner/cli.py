@@ -40,7 +40,7 @@ from pskill_runner.hook_settings import SettingsError
 from pskill_runner.hooks import session_start_text, stop_hook_reason
 from pskill_runner.install import InstallError, init_project, update_project
 from pskill_runner.profile_agents import sync_profile_agents
-from pskill_runner.project import Project, ProjectError, find_project
+from pskill_runner.project import Config, Project, ProjectError, find_project
 from pskill_runner.release import release_url
 from pskill_runner.run_records import UNFINISHED_STATUSES, RunInfo
 from pskill_runner.run_store import new_run_id, utc_now
@@ -357,7 +357,7 @@ def validate_command(project: Project, skill_id: str | None) -> int:
     lines = []
     error_count = warning_count = 0
     for folder in folders:
-        for problem in skill_problems(folder, catalog):
+        for problem in skill_problems(folder, catalog, project.config):
             lines.append(f"{problem.level:<7}{folder.name}  {problem.location}: {problem.message}")
             error_count += problem.level == "error"
             warning_count += problem.level == "warning"
@@ -377,12 +377,12 @@ def validate_command(project: Project, skill_id: str | None) -> int:
     return EXIT_VALIDATION_ERROR if error_count else EXIT_OK
 
 
-def skill_problems(folder: Path, catalog: SkillCatalog) -> list[Problem]:
+def skill_problems(folder: Path, catalog: SkillCatalog, config: Config) -> list[Problem]:
     try:
         skill = load_skill(folder)
     except SkillLoadError as error:
         return [Problem(level="error", location="skill.yaml", message=problem) for problem in error.problems]
-    return validate_skill(skill, catalog)
+    return validate_skill(skill, catalog, config)
 
 
 def test_command(project: Project, skill_id: str | None) -> int:

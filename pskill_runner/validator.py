@@ -15,6 +15,7 @@ from pskill_runner.computed_values import (
     syntax_errors,
 )
 from pskill_runner.field_types import FieldMap
+from pskill_runner.project import Config
 from pskill_runner.skill_model import (
     CONTEXTS,
     MODEL_TIERS,
@@ -37,6 +38,9 @@ from pskill_runner.skill_model import (
 from pskill_runner.yaml_loading import load_skill_yaml
 
 DESCRIPTION_LIMIT = 1024
+# Claude Code stops a foreground shell call at 10 minutes (https://code.claude.com/docs/en/tools-reference,
+# "Timeout and output limits", read 2026-11-04). The runner runs a foreground script inside that call.
+FOREGROUND_SHELL_LIMIT_S = 600
 
 
 @dataclass(frozen=True)
@@ -46,8 +50,12 @@ class Problem:
     message: str
 
 
-def validate_skill(skill: Skill, catalog: SkillCatalog | None = None) -> list[Problem]:
-    """Check one skill. With a catalog, also check its calls and its agents against the project."""
+def validate_skill(skill: Skill, catalog: SkillCatalog | None = None, config: Config | None = None) -> list[Problem]:
+    """Check one skill. With a catalog, also check its calls and its agents against the project.
+
+    `config` gives the script limits (`script_timeout_s`, `max_wait_minutes`); without it, the defaults.
+    """
+    limits = config or Config()
     problems: list[Problem] = []
     problems += description_problems(skill)
     problems += field_description_problems("inputs", "the field", skill.inputs)
@@ -56,6 +64,8 @@ def validate_skill(skill: Skill, catalog: SkillCatalog | None = None) -> list[Pr
     problems += reachability_problems(skill)
     for block in skill.blocks.values():
         problems += block_problems(skill, block)
+        if isinstance(block, ScriptBlock):
+            problems += script_timeout_problems(f"blocks.{block.id}", block, limits)
         if catalog is not None:
             problems += catalog_problems(skill, block, catalog)
     problems += on_pause_problems(skill)
@@ -169,6 +179,31 @@ def visit_cap_problems(location: str, block: AnyBlock) -> list[Problem]:
             )
         )
     return problems
+
+
+def script_timeout_problems(location: str, block: ScriptBlock, config: Config) -> list[Problem]:
+    """A background script runs at most `max_wait_minutes`. A foreground one outlasts Claude Code's shell call
+    after 10 minutes (SPEC.md section 6.3)."""
+    if block.background:
+        timeout_s = block.timeout_s if block.timeout_s is not None else config.script_timeout_s
+        if timeout_s > config.max_wait_minutes * 60:
+            return [
+                error(
+                    location,
+                    f"the timeout of a background script ({timeout_s} s) is above max_wait_minutes "
+                    f"({config.max_wait_minutes} minutes, in config.yaml)",
+                )
+            ]
+        return []
+    if block.timeout_s is not None and block.timeout_s > FOREGROUND_SHELL_LIMIT_S:
+        return [
+            warning(
+                location,
+                f"timeout_s ({block.timeout_s} s) is above {FOREGROUND_SHELL_LIMIT_S} s, and Claude Code stops a "
+                "shell call at 10 minutes: set background: true",
+            )
+        ]
+    return []
 
 
 def decision_problems(location: str, block: DecisionBlock) -> list[Problem]:

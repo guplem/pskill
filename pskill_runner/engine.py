@@ -404,7 +404,7 @@ def load_valid_skill(project: Project, skill_id: str, catalog: SkillCatalog) -> 
         skill = load_skill(folder)
     except SkillLoadError as error:
         raise RunError(f"The skill {skill_id!r} is invalid:\n- " + "\n- ".join(error.problems)) from error
-    problems = validate_skill(skill, catalog)
+    problems = validate_skill(skill, catalog, project.config)
     errors = [f"{problem.location}: {problem.message}" for problem in problems if problem.level == "error"]
     if errors:
         raise RunError(f"The skill {skill_id!r} is invalid:\n- " + "\n- ".join(errors))

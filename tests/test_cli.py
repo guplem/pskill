@@ -421,3 +421,36 @@ def test_task_prints_the_full_prompt_of_one_parallel_task(tmp_path: Path) -> Non
     assert task.returncode == 0, task.stderr
     assert "Give the last letter of tide." in task.stdout
     assert f"submit {run_id} --task 1" in task.stdout
+
+
+BACKGROUND_SKILL = """\
+schema: pskill/v1
+id: long-script
+description: A long script.
+goal: Run one script.
+entry: wait_ci
+blocks:
+  wait_ci:
+    type: script
+    run: [uv, run, wait.py]
+    background: true
+    timeout_s: 900
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_validate_and_start_check_a_background_timeout_against_the_project_config(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "long-script", BACKGROUND_SKILL)
+    (tmp_path / ".pskill" / "config.yaml").write_text("max_wait_minutes: 10\n", encoding="utf-8")
+    problem = "the timeout of a background script (900 s) is above max_wait_minutes (10 minutes, in config.yaml)"
+
+    validated = run_pskill(tmp_path, "validate", "long-script")
+    started = run_pskill(tmp_path, "start", "long-script")
+
+    assert validated.returncode == 2
+    assert problem in validated.stdout
+    assert started.returncode == 1
+    assert problem in started.stderr

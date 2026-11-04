@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pskill_runner.project import Config
 from pskill_runner.skill_loader import load_catalog, load_skill
 from pskill_runner.validator import Problem, validate_skill
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
@@ -667,3 +668,52 @@ def test_a_pending_text_gets_the_checks_of_a_report(tmp_path: Path) -> None:
     )
 
     assert "blocks.stopped: 'steps.nowhere' is not a block" in messages(problems_for(tmp_path, skill_yaml), "error")
+
+
+SCRIPT_SKILL = """\
+schema: pskill/v1
+id: long-script
+description: A long script.
+goal: Run one script.
+entry: wait_ci
+blocks:
+  wait_ci:
+    type: script
+    run: [uv, run, wait.py]
+    timeout_s: TIMEOUT
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def script_problems(tmp_path: Path, keys: str, config: Config | None = None) -> list[Problem]:
+    skill_yaml = SCRIPT_SKILL.replace("    timeout_s: TIMEOUT\n", keys)
+    skill = load_skill(write_skill(tmp_path, "long-script", skill_yaml))
+    return validate_skill(skill) if config is None else validate_skill(skill, config=config)
+
+
+def test_a_background_script_may_run_up_to_max_wait_minutes(tmp_path: Path) -> None:
+    assert script_problems(tmp_path / "a", "    background: true\n    timeout_s: 7200\n") == []
+    assert messages(script_problems(tmp_path / "b", "    background: true\n    timeout_s: 7201\n"), "error") == [
+        "blocks.wait_ci: the timeout of a background script (7201 s) is above max_wait_minutes (120 minutes, "
+        "in config.yaml)"
+    ]
+
+
+def test_a_background_script_without_its_own_timeout_uses_the_config_timeout(tmp_path: Path) -> None:
+    config = Config(script_timeout_s=3600, max_wait_minutes=30)
+
+    assert messages(script_problems(tmp_path, "    background: true\n", config), "error") == [
+        "blocks.wait_ci: the timeout of a background script (3600 s) is above max_wait_minutes (30 minutes, "
+        "in config.yaml)"
+    ]
+
+
+def test_a_foreground_script_over_ten_minutes_is_a_warning(tmp_path: Path) -> None:
+    assert script_problems(tmp_path / "a", "    timeout_s: 600\n") == []
+    assert messages(script_problems(tmp_path / "b", "    timeout_s: 601\n"), "warning") == [
+        "blocks.wait_ci: timeout_s (601 s) is above 600 s, and Claude Code stops a shell call at 10 minutes: "
+        "set background: true"
+    ]
