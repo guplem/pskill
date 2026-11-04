@@ -16,6 +16,7 @@ from pskill_runner.computed_values import (
 )
 from pskill_runner.field_types import FieldMap
 from pskill_runner.skill_model import (
+    CONTEXTS,
     MODEL_TIERS,
     TOOL_PROFILES,
     AnyBlock,
@@ -137,6 +138,8 @@ def block_problems(skill: Skill, block: AnyBlock) -> list[Problem]:
         problems += item_when_problems(location, block)
         problems += tier_problems(location, block)
         problems += tool_profile_problems(location, block)
+        problems += context_problems(location, block)
+        problems += main_context_problems(location, block)
     output = block_output(block)
     if output is not None:
         problems += field_description_problems(location, "the output field", output)
@@ -231,6 +234,37 @@ def tool_profile_problems(location: str, block: TaskBlock) -> list[Problem]:
     return [error(location, f"the tool profile {block.tools!r} is not {tool_profile_choices()}")]
 
 
+def context_problems(location: str, block: TaskBlock) -> list[Problem]:
+    """A written context must be `main` or `fresh`. A computed one is checked at run time."""
+    if block.context is None or "{{" in block.context or block.context in CONTEXTS:
+        return []
+    return [error(location, f"the context {block.context!r} is not {' or '.join(CONTEXTS)}")]
+
+
+def main_context_problems(location: str, block: TaskBlock) -> list[Problem]:
+    """`tier`, `tools`, and `agent` only work in a subagent: the main agent cannot change its own model or tools."""
+    if block.context not in (None, "main"):
+        return []
+    named = {"tier": block.tier, "tools": block.tools, "agent": block.agent}
+    fields = [name for name, value in named.items() if value is not None]
+    if not fields:
+        return []
+    verb = "needs" if len(fields) == 1 else "need"
+    return [
+        error(
+            location,
+            f"{word_list(fields)} {verb} `context: fresh`: the main agent cannot change its own model or tools",
+        )
+    ]
+
+
+def word_list(words: list[str]) -> str:
+    """ "a", "a and b", or "a, b, and c"."""
+    if len(words) <= 2:
+        return " and ".join(words)
+    return ", ".join(words[:-1]) + f", and {words[-1]}"
+
+
 def item_when_problems(location: str, block: TaskBlock) -> list[Problem]:
     """Each `when` of a fixed `for_each` list follows the same rule as an edge's `when`."""
     if not isinstance(block.for_each, list):
@@ -293,7 +327,9 @@ def block_texts(skill: Skill, block: AnyBlock, location: str, problems: list[Pro
     if isinstance(block, CallBlock):
         texts += string_values(list(block.inputs.values()))
     if isinstance(block, TaskBlock):
-        texts += nested_strings(block.for_each) + string_values([block.agent, block.task_name, block.tier, block.tools])
+        texts += nested_strings(block.for_each) + string_values(
+            [block.agent, block.task_name, block.tier, block.tools, block.context]
+        )
     prose = prose_value(block)
     if prose is not None:
         text = prose_text(skill, location, prose, problems)
