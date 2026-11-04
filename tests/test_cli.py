@@ -454,3 +454,16 @@ def test_validate_and_start_check_a_background_timeout_against_the_project_confi
     assert problem in validated.stdout
     assert started.returncode == 1
     assert problem in started.stderr
+
+
+def test_run_script_runs_a_background_script_and_prints_the_next_step(tmp_path: Path) -> None:
+    skill_yaml = BACKGROUND_SKILL.replace("run: [uv, run, wait.py]", 'run: [python, -c, "print(42)"]')
+    write_skill(tmp_path / ".pskill" / "skills", "long-script", skill_yaml)
+    started = run_pskill(tmp_path, "start", "long-script", "--harness", "claude-code")
+    run_id = run_id_of(started.stdout)
+    assert f"run-script {run_id}" in started.stdout
+
+    ran = run_pskill(tmp_path, "run-script", run_id)
+
+    assert ran.returncode == 0, ran.stderr
+    assert "finished with status succeeded" in ran.stdout

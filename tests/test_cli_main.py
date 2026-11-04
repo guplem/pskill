@@ -530,6 +530,7 @@ def test_the_environment_variable_turns_the_worktree_mode_on(
         ("cancel", []),
         ("delete", []),
         ("wait", ["--reason", "the CI checks"]),
+        ("run-script", []),
     ],
 )
 def test_a_run_command_from_the_checkout_names_the_worktree_that_holds_the_run(
@@ -594,6 +595,31 @@ def test_current_with_no_run_id_in_the_checkout_names_the_worktree_of_the_run(
     assert run_cli(monkeypatch, "current") == cli.EXIT_USAGE_ERROR
 
     assert f"Run {run_id} lives in `{tree.as_posix()}`: run this command from that folder." in capsys.readouterr().err
+
+
+# --- run-script -----------------------------------------------------------------------------------
+
+BACKGROUND_PLAN_SKILL = PLAN_SKILL.replace(
+    "entry: create_plan\n",
+    "entry: wait_ci\n",
+).replace(
+    "blocks:\n",
+    'blocks:\n  wait_ci:\n    type: script\n    run: [python, -c, "print(42)"]\n    background: true\n'
+    "    next: create_plan\n",
+)
+
+
+def test_run_script_runs_the_background_script_and_prints_the_next_packet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, monkeypatch, BACKGROUND_PLAN_SKILL)
+    run_id = start_plan(monkeypatch, capsys, "--harness", "claude-code")
+
+    exit_code = run_cli(monkeypatch, "run-script", run_id)
+
+    assert exit_code == cli.EXIT_OK
+    assert "Write a plan for x." in capsys.readouterr().out
+    assert read_run_info(project, run_id)["current_block"] == "create_plan"
 
 
 # --- wait -----------------------------------------------------------------------------------------

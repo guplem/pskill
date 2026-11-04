@@ -32,6 +32,7 @@ from pskill_runner.engine import (
     pause_run,
     resolve_run_id,
     resume_run,
+    run_background_script,
     start_run,
     submit_answer,
     task_packet,
@@ -67,7 +68,7 @@ EXIT_VALIDATION_ERROR = 2
 EXIT_INTERNAL_ERROR = 3
 
 USER_ERRORS = (RunError, ProjectError, AnswerInputError, AdapterError, InstallError, SettingsError, StubError)
-RUN_ID_COMMANDS = ("current", "task", "submit", "pause", "resume", "cancel", "delete", "wait")
+RUN_ID_COMMANDS = ("current", "task", "submit", "pause", "resume", "cancel", "delete", "wait", "run-script")
 HOOK_INPUT_TIMEOUT_S = 2.0
 
 
@@ -114,6 +115,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     wait.add_argument("run_id")
     wait.add_argument("--reason", required=True, help="What the agent waits on, such as the CI checks.")
+
+    run_script = commands.add_parser(
+        "run-script",
+        help="Run the current background script, record its result, and print the next step. Start it in the "
+        "background.",
+    )
+    run_script.add_argument("run_id")
 
     runs = commands.add_parser("runs", help="List the runs, newest first.")
     runs.add_argument("--open", action="store_true", help="Only unfinished runs.")
@@ -226,6 +234,8 @@ def run_command(options: argparse.Namespace) -> int:
         return print_text(delete_run(project, options.run_id))
     if command == "wait":
         return print_text(wait_for_run_change(project, options.run_id, options.reason))
+    if command == "run-script":
+        return print_and_upload(project, options.run_id, run_background_script(project, options.run_id))
     if command == "runs":
         return print_text(runs_table(project, only_open=options.open))
     if command == "list":

@@ -12,7 +12,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, TypeGuard, cast
@@ -253,6 +253,32 @@ def submit_answer(
         run.save()
     if answer_file is not None and run.answer_recorded:
         delete_answer_file(answer_file, folder / "answers")
+    return text
+
+
+def run_background_script(
+    project: Project, run_id: str, executor: InlineExecutor | None = None, runs_folder: Path | None = None
+) -> str:
+    """`pskill run-script`: run the current background script, record its result, and print the next packet.
+
+    The run lock is held only to mark the start and to record the result, never while the script runs: other
+    commands (`current`, the Stop hook, `pause`) keep working, and none breaks a lock that is minutes old.
+    """
+    folder = run_folder(project, run_id, runs_folder)
+    with run_lock(folder):
+        run = Run.load(project, run_id, executor, runs_folder)
+        try:
+            script = run.start_background_script()
+        except RunnerStop as stop:
+            text = run.pause("runner_error", str(stop))
+            run.save()
+            return text
+        run.save()
+    results = run_attempts(run.executor, script, project.root)
+    with run_lock(folder):
+        run = Run.load(project, run_id, executor, runs_folder)
+        text = run.guarded(lambda: run.record_background_script(script, results))
+        run.save()
     return text
 
 
@@ -562,6 +588,32 @@ def elapsed_ms_since(timestamp_text: str | None) -> int:
     if timestamp_text is None:  # pragma: no cover - every agent block sets packet_issued_at first
         return 0
     return int((utc_now() - parse_timestamp(timestamp_text)).total_seconds() * 1000)
+
+
+@dataclass(frozen=True)
+class PreparedScript:
+    """A script with its computed command and input: it runs with no run state, so with no run lock held."""
+
+    block_id: str
+    argv: list[str]
+    script_input: Any
+    env: dict[str, str]
+    timeout_s: int
+    attempts: int  # 1 + the block's retries
+    parse: str
+    since: str | None = None  # a background script: when its command started it
+
+
+def run_attempts(executor: InlineExecutor, script: PreparedScript, root: Path) -> list[ScriptResult]:
+    """Run the script until an attempt succeeds or none is left. Return every attempt's whole result."""
+    stdin_text = None if script.script_input is None else stdin_text_of(script.script_input)
+    results = []
+    for _ in range(script.attempts):
+        result = executor.run_script(script.block_id, script.argv, root, script.env, script.timeout_s, stdin_text)
+        results.append(result)
+        if script_problem(result, script.parse) is None:
+            break
+    return results
 
 
 # ---------------------------------------------------------------------------------------------
@@ -987,22 +1039,37 @@ class Run:
     def run_script(self, block: ScriptBlock) -> str | None:
         """Run a script, with retries. Return the pause text on failure, or None on success."""
         self.log_block_started(block, packet=None)
+        script = self.prepared_script(block)
+        return self.record_script(block, script, run_attempts(self.executor, script, self.project.root))
+
+    def prepared_script(self, block: ScriptBlock, since: str | None = None) -> "PreparedScript":
+        """The computed command, input, and limits of a script, ready to run with no run state."""
         argv = [str(part) for part in self.computed(block.run, f"The command of {block.id!r}")]
         script_input = self.computed(block.input, f"The input of {block.id!r}")
-        stdin_text = None if script_input is None else stdin_text_of(script_input)
         # A Python script reads stdin and writes stdout as UTF-8 on every system, as the runner does.
         env = {**os.environ, "PSKILL_RUN_DIR": str(self.folder), "PYTHONIOENCODING": "utf-8"}
+        return PreparedScript(
+            block_id=block.id,
+            argv=argv,
+            script_input=script_input,
+            env=env,
+            timeout_s=self.script_timeout_of(block),
+            attempts=self.retries_of(block) + 1,
+            parse=block.parse,
+            since=since,
+        )
+
+    def record_script(self, block: ScriptBlock, script: "PreparedScript", results: list[ScriptResult]) -> str | None:
+        """Log each attempt, then complete the block with the last result, or pause when every attempt failed."""
         problem = None
-        timeout_s = block.timeout_s if block.timeout_s is not None else self.project.config.script_timeout_s
-        for _ in range(self.retries_of(block) + 1):
-            whole_result = self.executor.run_script(block.id, argv, self.project.root, env, timeout_s, stdin_text)
+        for whole_result in results:
             problem = script_problem(whole_result, block.parse)
             result = stored_result(whole_result, block.parse)
             self.log(
                 "script_ran",
                 block=block.id,
-                argv=argv,
-                input=script_input,
+                argv=script.argv,
+                input=script.script_input,
                 exit_code=result.exit_code,
                 stdout=result.stdout,
                 stderr=result.stderr,
@@ -1020,6 +1087,48 @@ class Run:
                 self.complete_block(block, value, decided_by="runner", duration_ms=result.duration_ms)
                 return None
         return self.pause("block_failed", problem)
+
+    def start_background_script(self) -> "PreparedScript":
+        """Mark the issued background script as running, and return it ready to run outside the lock."""
+        self.require_status(("active",), "run a script")
+        block = self.current_block()
+        marker = self.frame.get("background_script")
+        if not isinstance(block, ScriptBlock) or marker is None:
+            raise RunError(
+                f"The block {block.id!r} does not run a script in the background. Continue the run: run "
+                f"`{runner_command(self.project)} current {self.info['run_id']}`."
+            )
+        if marker["state"] == "running":
+            raise RunError(
+                f"The script {block.id!r} already runs in the background, since {marker['since']}. End your turn: "
+                "its end wakes you."
+            )
+        now = utc_now()
+        self.frame["background_script"] = {"state": "running", "since": timestamp(now)}
+        self.hold_stops_for(block, now)
+        return self.prepared_script(block, since=timestamp(now))
+
+    def record_background_script(self, script: "PreparedScript", results: list[ScriptResult]) -> str:
+        """Record the result of the background script that this command started, then go on with the run.
+
+        When the run changed while the script ran (a pause, a cancel, a resume that gave the packet again),
+        the result is dropped: it belongs to a block visit that is over.
+        """
+        marker = self.frame.get("background_script")
+        block = self.current_block()
+        still_running = marker is not None and marker["state"] == "running" and marker["since"] == script.since
+        if self.info["status"] != "active" or block.id != script.block_id or not still_running:
+            return (
+                f"The script {script.block_id!r} ended, but the run changed while it ran (it is {self.info['status']}, "
+                f"at the block {block.id!r}), so its result is dropped. Continue the run: run "
+                f"`{runner_command(self.project)} current {self.info['run_id']}`.\n"
+            )
+        assert isinstance(block, ScriptBlock)
+        self.frame["background_script"] = None
+        self.clear_wait()
+        self.info["stop_blocks"] = 0
+        pause_text = self.record_script(block, script, results)
+        return pause_text if pause_text is not None else self.advance()
 
     # --- task blocks: their jobs ---------------------------------------------------------------
 
