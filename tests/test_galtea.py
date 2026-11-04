@@ -490,7 +490,7 @@ def test_every_job_with_a_tier_names_its_model_after_its_block_is_done(tmp_path:
     assert judge_turn["input"].startswith("You are a subagent of a pskill run.")
 
 
-def test_a_task_with_no_tier_or_a_finished_block_names_no_model(tmp_path: Path) -> None:
+def test_a_task_with_no_tier_names_no_model(tmp_path: Path) -> None:
     project = make_project(tmp_path, {"fanout": with_product(PARALLEL_SKILL, "f")})
     run_id, _ = start_run(project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="claude-code")
     submit_answer(project, run_id, "wrong: []\n", task=0)
