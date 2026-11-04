@@ -1,5 +1,5 @@
 name: an issue with a waiting-for label is held before any change
-inputs: {request: "https://github.com/octo/app/issues/42"}
+inputs: {request: "https://github.com/example-org/app/issues/42"}
 scripts:
   read_issue:
     - {exit_code: 0, stdout: '{"number": 42, "title": "T", "body": "", "labels": ["waiting-for-design"], "comments": [], "cross_references": [], "hold_reason": "has the blocking labels waiting-for-design", "existing_branches": []}'}

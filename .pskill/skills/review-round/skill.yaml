@@ -92,6 +92,10 @@ blocks:
     type: task
     description: Review with fresh subagents, one per angle
     context: fresh
+    # Reviewers only read. A row with a tier checks the change against written rules or a clear brief, on a cheaper
+    # model; a row with no tier hunts bugs or judges intent on the session model.
+    tools: read
+    tier: "{{ item.tier | default('') }}"
     # One row per reviewer. A row with a `when` runs only when its condition is true. Add a row for an angle that
     # your project needs, for example a database reviewer with a condition on the changed paths.
     for_each:
@@ -100,11 +104,10 @@ blocks:
         focus: >-
           Correctness and safety: wrong results, unhandled errors and edge cases, broken contracts between callers and
           the changed code, security holes (unchecked input, injection, leaked secrets, missing permission checks),
-          data loss, and races. Try each changed form, action, or endpoint the way a user does, in at least these
-          cases: each value of each input or toggle; a save that fails half way, after an earlier write succeeded
-          (what is stored, what the user sees, what a retry does); and the size of each new read (a whole list
-          loaded to show a few items).
+          data loss, and races. Try each changed entry point with each value of each input, and with a failure half
+          way through.
       - name: tests
+        tier: standard
         when: "{{ steps.read_pr.json.code_paths }}"
         focus: >-
           Tests: each changed behavior has a test that fails without the change, the tests check outcomes and not
@@ -116,11 +119,13 @@ blocks:
           and nothing that they rule out. The description matches the code. Every caller, setting, migration, and
           generated file that the change needs is updated.
       - name: conventions
+        tier: standard
         focus: >-
           Conventions and architecture: the change follows the rules of the AGENTS.md, CLAUDE.md, and CONTRIBUTING.md
-          files, the recorded decisions (ADRs), and the patterns of the closest existing code. A broken written rule
+          files, the recorded decisions of the repository, and the patterns of the closest existing code. A broken written rule
           is a finding. So is new code that duplicates code that already exists.
       - name: docs
+        tier: standard
         focus: >-
           Docs: every doc that the change makes false or leaves out: README files, the docs folder, AGENTS.md and
           CLAUDE.md, the comments and docstrings near the change, API descriptions, and the changelog when the

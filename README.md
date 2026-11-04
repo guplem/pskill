@@ -119,6 +119,15 @@ The skills read your project's rules from its own files, so they work in most re
 - **Work in a clean checkout.** The skills stop when the checkout has uncommitted changes, because those changes are yours. They expect the GitHub remote to be named `origin`.
 - **Add your own reviewers.** Each reviewer is one row in the `review` block of `review-round` (the one round that `review-pr` and `implement-issue` run), with an optional `when`, for example a database reviewer when the change touches your migrations.
 
+**The conventions a team overrides**, each in one place, after a copy of the skills:
+
+| Convention | Where |
+|---|---|
+| The label names `waiting-for-human-review` and `waiting-for-human-check` | `implement-issue/instructions/finish.md` and its `done` end; `create-issue/skill.yaml` (`label_issue`) |
+| The rules files that the skills read (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, the README, decision records) | `.pskill/agents/reviewer.md` and `.pskill/agents/adr-checker.md` |
+| The reviewers and their tiers | The rows of the `review` block of `review-round` |
+| The round caps | The `max_rounds` input of `review-pr`, and the edges of the review loop of `implement-issue` |
+
 This repository follows the same setup, with two differences: it requires no approval (it has one maintainer), and its decisions live in `SPEC.md` section 3, which `AGENTS.md` names.
 
 ## Upload runs to Galtea
