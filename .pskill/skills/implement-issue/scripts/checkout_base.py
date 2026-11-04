@@ -7,8 +7,9 @@
 Usage: uv run checkout_base.py, with {"base", "slug", "issue"} on stdin. An issue of 0 means no issue.
 Prints {"ok": true, "base", "branch", "plan_file"}. The branch is `<issue>-<slug>`, or `<slug>` with no issue. It
 assigns the issue to the logged-in user, the person who started the run. open_draft_pr.py creates the branch later.
-It changes nothing and prints {"ok": false, "reason"} when the branch already exists or when the base branch cannot
-be fetched. checkout_default_branch.py already stopped the run on uncommitted changes.
+It changes nothing and prints {"ok": false, "reason"} when the branch already exists, when the base branch cannot
+be fetched, or when HEAD holds commits that no remote branch has, because the detach would lose them.
+checkout_default_branch.py already stopped the run on uncommitted changes.
 """
 
 import json
@@ -34,6 +35,12 @@ def blocking_reason(base: str, branch: str) -> str | None:
         return f"The branch {branch} already exists in this checkout."
     if not succeeds(["git", "fetch", "--quiet", "origin", base]):
         return f"The base branch {base} cannot be fetched from GitHub."
+    unpushed = run(["git", "rev-list", "HEAD", "--not", "--remotes"]).split()
+    if unpushed:
+        return (
+            f"HEAD holds {len(unpushed)} commits that no branch on GitHub has. "
+            "Push or move them before the switch, or they are lost."
+        )
     return None
 
 

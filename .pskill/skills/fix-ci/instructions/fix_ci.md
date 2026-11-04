@@ -5,7 +5,7 @@ CI failed on pull request #{{ inputs.pr }}, at commit `{{ steps.wait_ci.head_sha
 For each failed check:
 
 1. **Find the cause** in its log: `gh run view <run-id> --log-failed`. The run id is in the check link.
-2. **Caused by this pull request:** fix it, commit it as a new commit, and push.
+2. **Caused by this pull request:** fix it, commit it as a new commit, and push with `git push origin HEAD:{{ steps.checkout.outputs.branch }}`. Push to this branch, not to the session's `claude/` branch. Then check that the commit reached the remote: after `git fetch origin {{ steps.checkout.outputs.branch }}`, `git branch -r --contains <hash>` lists `origin/{{ steps.checkout.outputs.branch }}`.
    - Run the failing check locally first, but only when it is fast. Push the fix of a slow suite, and let CI prove it.
    - Run formatters only on the files that you changed.
    - For `merge conflict`, merge the base branch and resolve the conflict.
