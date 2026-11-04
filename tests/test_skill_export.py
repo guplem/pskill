@@ -422,6 +422,22 @@ def test_a_one_job_step_in_a_fresh_context_uses_one_subagent(tmp_path: Path) -> 
     ) in note_step
 
 
+def test_a_one_job_step_with_a_computed_context_says_when_it_gets_a_subagent_and_its_role(tmp_path: Path) -> None:
+    computed = ROLES_SKILL.replace(
+        '    type: task\n    instruction: "Note',
+        '    type: task\n    context: "{{ inputs.where }}"\n    agent: noter\n    instruction: "Note',
+    )
+    write_skill(tmp_path / ".pskill" / "skills", "roles", computed)
+    markdown = export_skill(find_project(tmp_path), "roles")["roles/SKILL.md"].decode("utf-8")
+    note_step = markdown.split("## Step 1: `note`", 1)[1].split("## Step", 1)[0]
+
+    assert (
+        "Use one subagent for this step when `inputs.where` is `fresh` and you can: give it only the task below, "
+        "so it starts with a clean context. Else do it yourself."
+    ) in note_step
+    assert "Give the subagent the role in `subagents/noter.md` first." in note_step
+
+
 def test_a_missing_agent_file_is_left_out_of_the_export(tmp_path: Path) -> None:
     write_skill(tmp_path / ".pskill" / "skills", "fanout", PARALLEL_SKILL)
 

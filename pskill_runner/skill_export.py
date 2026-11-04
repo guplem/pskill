@@ -186,10 +186,9 @@ def step_markdown(skill: Skill, block: AnyBlock, numbers: dict[str, int], defaul
 def block_body(skill: Skill, block: AnyBlock, default_retries: int) -> list[str]:
     if isinstance(block, TaskBlock) and block.for_each is not None:
         return for_each_body(skill, block, block.for_each)
-    if isinstance(block, TaskBlock) and block.context == "fresh":
+    if isinstance(block, TaskBlock) and block.context not in (None, "main"):
         return [
-            "Use one subagent for this step when you can: give it only the task below, so it starts with a clean "
-            "context. When you cannot start subagents, do it yourself.",
+            one_job_context_text(block.context),
             *agent_role_lines(block, "the subagent"),
             "Do this:",
             plain_text(prose(skill, block.instruction)),
@@ -241,6 +240,19 @@ def for_each_body(skill: Skill, block: TaskBlock, for_each: list[Any] | str) -> 
         "Each answer holds:\n\n" + field_lines(block.output)
     )
     return lines
+
+
+def one_job_context_text(context: str | None) -> str:
+    """Where a one-job step runs: in one subagent, or in one only when its computed context is `fresh`."""
+    if context == "fresh":
+        return (
+            "Use one subagent for this step when you can: give it only the task below, so it starts with a clean "
+            "context. When you cannot start subagents, do it yourself."
+        )
+    return (
+        f"Use one subagent for this step when `{condition_text(str(context))}` is `fresh` and you can: give it only "
+        "the task below, so it starts with a clean context. Else do it yourself."
+    )
 
 
 def item_context_text(context: str | None) -> str:
