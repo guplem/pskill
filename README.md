@@ -68,7 +68,7 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 | `start <skill> --input name=value` | Start a skill. Add `--mode autonomous` so the agent decides alone, with no questions. Add `--worktree` to run it in a new git worktree (below). |
 | `runs --open` | List the unfinished runs. |
 | `current <run>` | Show the current step of a run. |
-| `task <run> <n>` | Show the full prompt of one parallel task. A subagent runs this first. |
+| `task <run> <n>` | Show the full prompt of one job of a task block. A subagent runs this first. |
 | `wait <run> --reason <text>` | Claude Code only. The agent waits on background work, such as subagents or a CI wait. The hook lets it stop until the run changes or 20 minutes pass. |
 | `pause <run>`, `resume <run>`, `cancel <run>` | Pause, continue, or stop a run. A run survives when you close the session. |
 | `delete <run>` | Delete a finished run, for cleanup. |
@@ -140,7 +140,7 @@ Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`
 |---|---|
 | Claude Code | Everything. |
 | Codex | Everything, with "Full access" (see below), except tool profiles (`tools`): its subagents get every tool. |
-| Others (Gemini CLI, Cursor, ...) | The basics. There are no hooks, so the agent can stop halfway. Parallel tasks run one after another, so each task sees the earlier ones. |
+| Others (Gemini CLI, Cursor, ...) | The basics. There are no hooks, so the agent can stop halfway. Every task job runs in the main conversation, one after another, so each job sees the earlier ones. |
 
 ## Know before you use it
 

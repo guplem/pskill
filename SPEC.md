@@ -57,7 +57,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D2 | The runner owns the graph. The agent picks choices from fixed lists. | Order becomes a mechanism. |
 | D3 | The skill format is new and is the only source of truth. | A clean format. D4 restores discovery. |
 | D4 | `pskill sync` writes one read-only stub per skill into each folder in `config.stub_folders` (default `.agents/skills/` and `.claude/skills/`). All stubs have the same content and pass `--harness auto`. | Harnesses pick skills by their description. Without stubs, auto-triggering stops. The folder list is configurable because projects already own these folders differently (see 9.3). |
-| D5 | One run can mix main-agent work, parallel subagents, scripts, and questions to the human. | The real skills use all four. |
+| D5 | One run can mix main-agent work, subagents, scripts, and questions to the human. | The real skills use all four. |
 | D6 | Every skill can run in `autonomous` mode. A `decision` block has `decider: agent` or `decider: human`. In autonomous mode the agent takes human decisions itself, from the skill goal, the session, and the project. | User requirement. Replaces all mode-specific prose. |
 | D7 | A Stop hook blocks the agent from ending its turn while a block is open, on harnesses that have such a hook. Other harnesses get packet wording only. Changed in 0.37.0 (#150): while a `pskill wait` runs, on a harness that wakes the agent after a background command, the hook allows the stop (9.2). | Otherwise the agent can simply stop calling the runner. |
 | D8 | The stub gives the skill goal and the loop rules once. A packet contains the current instruction and its return format, and no future blocks. It repeats the goal only where the agent never saw the stub: a subagent task, the first packet of a child skill, and `current` or `resume` (with the rules). | Fewer tokens, no running ahead, one obvious place for the goal, and enough context for autonomous answers. Changed in 0.10.0: before, every packet repeated the goal and the rules. |
@@ -69,7 +69,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D14 | "Replay" means visual step-through of past runs in the viewer. | User scope. |
 | D15 | No up-front checks for required tools. A missing tool fails its block, and D12 applies. | User choice. |
 | D16 | Transport is the CLI: `uv run .pskill/pskill.py <command>`. **One tool call per block:** the agent pipes its answer into `submit` through a literal block on stdin (a bash heredoc, or a PowerShell here-string), and the same call prints the next packet. The answer is YAML (JSON also works, because JSON is valid YAML). **A long answer goes in a file:** for an answer over about 5 KB, the agent writes it to the file that the packet names and runs `submit --file <path>`. Changed in 0.31.0 (#132): before, stdin was the only way. | Every harness can run a shell command. One call per block saves usage. A literal stdin block needs no escaping in any shell. YAML takes multi-line text (plans, comments) with no `\n` escapes. The file form exists because Claude Code's Bash tool on Windows breaks long heredocs: a command over about 7.3 KB with an apostrophe in the body fails before the runner starts (`unexpected EOF while looking for matching '`). It failed 56 of 64 times in one user's transcripts, and 12 pskill submits hit it. The same text runs in plain bash, so the cause is the tool, which pskill cannot fix. |
-| D17 | For a `parallel` block, the harness spawns the subagents. The runner only says what to spawn. Without subagent support, the agent runs the tasks one by one. | Same harness, same permissions. Works everywhere. |
+| D17 | For a task job with `context: fresh`, the harness spawns the subagent. The runner only says what to spawn. Without subagent support, the agent runs the jobs one by one. Changed in 1.0.0 (#170): before, only a `parallel` block spawned subagents. | Same harness, same permissions. Works everywhere. |
 | D18 | The trace records the packet text given to the agent, the submission returned, and durations. | Enough for step-through, simple analytics, and later comparison. |
 | D19 | `skill.yaml` holds the graph. An `instruction` (or `report`) is either a path that ends in `.md` or the text itself. Long prose goes in `instructions/<block-id>.md`; one or two lines can stay inline. | Readable large skills, small diffs, and no tiny files for one-line steps. |
 | D20 | A project commits only the entry script `.pskill/pskill.py`. Its pin (version, release URL, sha256) names one release archive. The first call on a computer downloads that archive once into a cache for the user, checks the sha256, and unpacks it; later calls run the cached copy with no network. `pskill update` moves the pin. Changed in 0.22.0: before, every project vendored the whole runner. | Version pinned per project, no install step for teammates, and no runner code in the project's diffs and searches. Always running the latest release instead would change the runner mid-run, give teammates on the same commit different versions, and need the network on every call. |
@@ -77,7 +77,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D22 | A run copies the skills and pskill agents that it uses into the run folder at start and always resumes from that copy. | The simplest correct behavior when a skill changes mid-run. |
 | D23 | Everything lives in `.pskill/`. Runs live in `.pskill/runs/`, which git ignores. | User choice. |
 | D24 | The MVP viewer is read-only. The skill editor came after the MVP (issue #3, section 14.2). | The editor is the most expensive part. |
-| D25 | MVP adapters: `claude-code` (the reference), `codex`, and `generic`. `generic` makes every skill run in any other harness (Gemini CLI, Cursor, and others) with soft enforcement and one-by-one parallel tasks. Dedicated Gemini and Cursor adapters come after the MVP, and only when a gap hurts. | Each adapter adds harness facts that need checking and upkeep. `generic` already covers the rest. |
+| D25 | MVP adapters: `claude-code` (the reference), `codex`, and `generic`. `generic` makes every skill run in any other harness (Gemini CLI, Cursor, and others) with soft enforcement and one-by-one task jobs. Dedicated Gemini and Cursor adapters come after the MVP, and only when a gap hurts. | Each adapter adds harness facts that need checking and upkeep. `generic` already covers the rest. |
 | D26 | Example skills: `implement-issue` (one pull request, built red-green, then reviewed and resolved round after round until CI is green), `review-pr` (a deep review that posts one GitHub review), `resolve-pr-feedback`, `fix-ci`, `create-issue`, and the internal `checkout-pr`, `review-round`, `review-head-check`, and `review-doubt` (section 13). They are a base that most software projects on GitHub can copy, so they read the project's rules from its own files and hard-code no project detail. Together they must exercise every feature (section 13.3). Changed after 0.23.1: before, three proof skills ported from the setup-guplem-standard templates. Changed after 0.32.0: before, `review-pr` was one round that posted loose comments. | Real runs of the first version showed what a useful base needs: a plan in a draft pull request, separate find and fix steps, replies to comments, and a CI wait. Stacked pull requests and worktree subagents can come later. |
 | D27 | `pskill test` runs skill tests with a scripted fake agent. | Test graph paths with no LLM, no cost, in CI. |
 | D28 | `pskill sync` adds one narrow allow rule to each harness's project settings: the runner command. | Without it, the user gets a permission prompt on every block. Every other agent action still asks as usual. |
@@ -91,7 +91,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 - **L4. The Stop hook binds by harness, checkout, and session.** A run holds only the session that owns it, so two sessions in the same folder do not conflict. A harness that gives no session id (`generic`), and a run from before 0.9.0, hold every session of the harness in the checkout. A worktree run (7.8, since 0.42.0) holds, from the checkout, only the session whose id it records.
 - **L5. Instruction files are on disk.** The agent could read future blocks. This is not a security boundary.
 - **L7. Codex needs Full access.** Inside the Codex sandbox, `uv` cannot open its cache (outside the project) or reach PyPI. The Codex rule lets only plain runner commands, such as `start` and `current`, run outside the sandbox: Codex does not match the rule to the `submit` form with an answer on stdin (verified in #24). So the user runs Codex with Full access (`--sandbox danger-full-access`), or approves each `submit`. pskill never changes this setting. Full access also means that the runner's `script` blocks run without the sandbox.
-- **L6. No isolation without subagents.** With the `generic` adapter, parallel tasks run one by one in the main agent's context, so each task can see the earlier ones.
+- **L6. No isolation without subagents.** With the `generic` adapter, every task job runs in the main agent's context, `fresh` ones too, so each job can see the earlier ones.
 - **L8. `pskill wait` needs a harness that wakes the agent when a background command ends.** Claude Code does (no time limit locally; 30 minutes by default in a cloud session). Codex does not document it, so its Stop hook ignores waits and keeps 3 refused stops, then a pause (9.2).
 - **L9. `on_pause` reaches only a live agent.** A session that dies shows nothing to anyone, and a later `current` of that pause only says that the steps were given if its packet was printed before. Every pause of a live agent gives them, the Stop hook's give-up pause too (9.2), also after the waits of a block used up `max_wait_minutes`. `resume` goes straight back to the block. Write the steps so that running them twice does no harm: `implement-issue` updates its own pause comment instead of posting a second one.
 - **L10. The summary card is a request.** The runner asks the agent to show the card word for word, but it cannot see the chat, so it cannot check that the agent did. Its output only reaches the agent, never the user directly.
@@ -239,18 +239,17 @@ A transition into a block that already has `max_visits` visits is at the cap. Th
 
 ---
 
-## 6. Block types (six, closed list)
+## 6. Block types (five, closed list)
 
 | Type | Who acts | Purpose |
 |---|---|---|
-| `task` | agent | Do work and return typed output. |
+| `task` | agent (or its subagents) | Do work and return typed output: one job, or one job per list item, joined into one list. |
 | `decision` | agent or human | Pick one choice from a list, or answer a question. |
-| `parallel` | subagents | One task per list item, run at the same time, joined into one list. |
 | `script` | runner | Run a command. No LLM. |
 | `call` | runner | Run another skill and get its outputs. |
 | `end` | runner | Finish the skill with a status and outputs. |
 
-Every block may have `description:` (a short label for the viewer).
+Every block may have `description:` (a short label for the viewer). Changed in 1.0.0 (#170): before, a sixth type, `parallel`, ran one subagent per item, and only it took `tier`, `tools`, and `agent`. It is now a `task` with `for_each` and `context: fresh` (section 18).
 
 ### 6.1 `task`
 
@@ -262,7 +261,66 @@ implement:
     pr_number: {type: integer, description: "Number of the pull request you opened."}
     pr_url: {type: string, description: "URL of that pull request."}
   next: review
+
+finish:
+  type: task
+  context: fresh                       # optional: main (default) | fresh
+  tier: standard                       # optional, fresh only: the model tier (fast, standard, deep)
+  tools: read                          # optional, fresh only: the tool profile (read, web)
+  instruction: instructions/finish.md
+  output:
+    labels: {type: array, items: {type: string}, description: "The labels that you added."}
+  next: done
+
+research:
+  type: task
+  context: fresh
+  for_each:                            # optional: a YAML list, or one {{ }} that gives a list
+    - {agent: pattern-scout, focus: "Find the closest existing code and its conventions."}
+    - {agent: adr-checker, focus: "Find the ADRs that limit this change."}
+  agent: "{{ item.agent }}"            # optional, fresh only: a pskill agent from .pskill/agents/
+  task_name: "{{ item.agent }}"        # optional: the name of each task, in the packet and the viewer
+  instruction: instructions/research.md   # uses {{ item.focus }}
+  output:                              # the output of each task
+    report: {type: string, description: "What you found, with file paths."}
+  next: create_plan
 ```
+
+A task runs **jobs**. A job is one agent job: a prompt, a return format, and one submission. It cannot contain other blocks.
+
+- **One job, or one per item.** With no `for_each`, the task is one job, and its output is the block's output: `steps.<id>.<field>`. With `for_each`, each item becomes one job, and `steps.<id>.results` is the list of the job outputs, in item order. `item` is the current list element in the templates. The block completes when every job has a valid submission. An empty list completes at once.
+- **Fields per job.** `context`, `tier`, `tools`, `agent`, and `task_name` are each a fixed value or one `{{ }}` value, computed once per item when the block starts.
+- **`context`** says where a job runs. `main` (the default, also for an empty computed value): the main agent does it in its own conversation. `fresh`: the main agent spawns a subagent for it, which gets only its own prompt: the goal, its rendered instruction, and its return format (D8, D17). It never sees the conversation, the other jobs, or their outputs. The results meet only in the next block. A computed value other than `main` or `fresh` fails the block.
+- **The order of the jobs.** The packet lists the open `fresh` jobs for subagents, all at once, and counts the `main` jobs. When every subagent has finished, `current` gives the `main` jobs one by one. So a block can mix both, with a `context` computed per item.
+- **`tier`, `tools`, and `agent` need `context: fresh`.** The main agent cannot change its own model or tools. `pskill validate` gives an error, naming the block, for any of them on a task whose `context` is missing or written as `main` (section 11). A computed `context` skips that check; a job that comes out `main` then ignores its tier and tools.
+- **Without subagents** (the `generic` adapter), every job runs in the main context, one by one, so the isolation is lost (limitation L6). The adapter ignores `tier` and `tools`, because the main agent cannot change its own model.
+- **A dynamic number of jobs.** The list can come from any earlier block, so the count is decided during the run. One job per thing (for example, fact-check every document): a `script` lists the things, and the task runs one job per item. Or the main agent decides: a `task` returns the list, with one brief per job, within its output schema.
+
+```yaml
+list_docs:
+  type: script
+  run: [uv, run, "{{ skill.dir }}/scripts/list_docs.py", "{{ inputs.folder }}"]
+  parse: json                          # prints {"files": ["docs/a.md", "docs/b.md", ...]}
+  next: fact_check
+
+fact_check:
+  type: task
+  context: fresh
+  for_each: "{{ steps.list_docs.json.files }}"
+  agent: fact-checker
+  instruction: "Check every factual claim in {{ item }} against its cited sources."
+  output:
+    wrong_claims: {type: array, items: {type: string}, description: "Each wrong claim, with the correct fact."}
+  next: report
+```
+
+- **A `when` per item.** In a `for_each` written as a YAML list, an item may have a `when` (exactly one `{{ }}`, like an edge's). The item starts a task only when its `when` is true, and the task's `item` has no `when` key. This keeps one way to list tasks: a fixed list, where each subagent says when it is needed. The `block_started` event lists the skipped items (section 10.3), and the viewer shows them. In a list computed during the run, a `when` key is plain data.
+- **`agent`** names a file `.pskill/agents/<name>.md`. The file is the subagent's role and rules, in Markdown. The runner puts its text at the top of the task prompt. The harness then spawns a plain subagent, so the same agent works on every harness. With no `agent`, the task gets a plain subagent with only its instruction.
+- **`task_name`** is one `{{ }}` value, computed once per item, that names the task. The packet heads the task with `#### Task <n> · <name>`, and the viewer labels the task's node and chip with it. The runner puts the name on one line and cuts it to 60 characters. A name that is missing, empty, or fails to compute is no name: the task shows as `task <n>`, and the run goes on. When the main agent builds the list, give each item an optional `name` field in that block's `output`, and set `task_name: "{{ item.name }}"`.
+- **`tier`** is `fast`, `standard`, or `deep`, or one `{{ }}` value computed once per item, so each task of one block can get its own tier. It is the model tier of the task's subagent. Each harness turns it into a model and an effort through a table, so no skill names a model. A row of the table has an optional `model` (none keeps the session's model) and an optional `effort` (none keeps the model's default). The default rows name no versioned model, so they never expire: Claude Code `fast`, `standard`, `deep` pass `model: haiku`, `sonnet`, `opus` to the task's Agent call; Codex passes `reasoning_effort: low`, `medium`, `high` to the task's `spawn_agent` call, on the session's model, because Codex has no model aliases and its versioned names expire. A project replaces any single row under `tiers` in `config.yaml` (section 10.1), such as `codex: {fast: {model: gpt-6-luna, effort: low}}`; the project row wins whole. The packet says the row on one line under the task's heading (Claude Code `model` and `effort`, Codex `model` and `reasoning_effort`); a row with neither gives no line. With no tier, or an empty computed value, the subagent inherits the main agent's model, as before. `pskill validate` rejects a written value that is not a tier; a computed one fails the block. The generic adapter ignores the tier, because the main agent runs the tasks itself and cannot change its own model. Added in 0.34.0 (#11). The table changed in 0.36.0 (#151).
+- **`tools`** is `read` or `web`, or one `{{ }}` value computed once per item, like `tier`. It is the tool profile of the task's subagent, so a subagent that only reads code starts without the tool definitions it never uses (measured in Claude Code: about 40,000 tokens instead of 80,000 for an empty task). `read` runs shell commands, reads and searches files, and writes its answer file (`submit --file`). `web` adds fetching a page and searching the web. A profile sets tools only: the `agent` text stays the prompt, and `tier` stays the model. The runner holds the profiles; a skill cannot name a tool, because tool names differ per harness. Claude Code asks for `subagent_type: pskill-<profile>` on the task's Agent call, on the same line as the tier wording; `sync` writes those agents (9.3). Codex ignores the profile: a Codex agent file cannot set its sandbox or its MCP servers, so a profile agent would promise a limit that Codex does not keep (VERIFY again when Codex changes). The generic adapter ignores it too. With no `tools`, or an empty computed value, the subagent gets every tool, and the packet is the same as before. `pskill validate` rejects a written value that is not a profile; a computed one fails the block. It is not a security boundary: the shell can still write files. Added in 0.35.0 (#149).
+- pskill agents are only reusable prompt text. pskill never reads harness agent files (`.claude/agents/`, `.codex/agents/`). The main agent spawns a plain subagent (in Claude: `general-purpose`, or a profile agent with `tools`) and gives it the prompt that the runner built. This keeps agents versioned with the skills, so they cannot drift apart. The one exception: `sync` writes a Claude Code profile agent per used tool profile. It holds a tool list and no prompt and no model, so it cannot drift from the skills.
+- **A background subagent.** A subagent call can return before its subagent submits (in Claude Code, the subagent goes on in the background). The block stays open, so the main agent must not go on and must not spawn the task again. On a harness that wakes the agent after a background command, the packet tells the main agent to run `pskill wait <run> --reason "the subagents of <block>"` in the background and end its turn. Each task's submit ends the wait, so the Stop hook never pauses the run while a subagent works. Added in 0.41.0.
 
 ### 6.2 `decision`
 
@@ -292,60 +350,7 @@ ask_user:
 - **A free-text reply to a decision with choices** (for example the "Other" field of Claude's question tool): the agent maps it to the closest choice and copies the user's words into `rationale`. When no choice fits, the agent asks again.
 - **Human decider, autonomous mode.** The agent decides as the user would, from the goal, the session, and the project, and explains it in `rationale`. The trace records `decided_by: agent_autonomous`.
 
-### 6.3 `parallel`
-
-```yaml
-research:
-  type: parallel
-  for_each:                            # a YAML list, or one {{ }} that gives a list
-    - {agent: pattern-scout, focus: "Find the closest existing code and its conventions."}
-    - {agent: adr-checker, focus: "Find the ADRs that limit this change."}
-  agent: "{{ item.agent }}"            # optional: a pskill agent from .pskill/agents/
-  task_name: "{{ item.agent }}"        # optional: the name of each task, in the packet and the viewer
-  tier: deep                           # optional: the model tier of each subagent (fast, standard, deep)
-  tools: read                          # optional: the tool profile of each subagent (read, web)
-  instruction: instructions/research.md   # uses {{ item.focus }}
-  output:                              # the output of each task
-    report: {type: string, description: "What you found, with file paths."}
-  next: create_plan
-```
-
-**A dynamic number of subagents.** The list can come from any earlier block, so the count is decided during the run:
-- **One subagent per thing** (for example, fact-check every document): a `script` lists the things, and `parallel` runs one task per item.
-- **The main agent decides:** a `task` returns the list, with one brief per subagent. The count and each brief are the main agent's choice, within the output schema.
-
-```yaml
-list_docs:
-  type: script
-  run: [uv, run, "{{ skill.dir }}/scripts/list_docs.py", "{{ inputs.folder }}"]
-  parse: json                          # prints {"files": ["docs/a.md", "docs/b.md", ...]}
-  next: fact_check
-
-fact_check:
-  type: parallel
-  for_each: "{{ steps.list_docs.json.files }}"
-  agent: fact-checker
-  instruction: "Check every factual claim in {{ item }} against its cited sources."
-  output:
-    wrong_claims: {type: array, items: {type: string}, description: "Each wrong claim, with the correct fact."}
-  next: report
-```
-
-- Each item becomes one task. `item` is the current list element in the templates.
-- **A `when` per item.** In a `for_each` written as a YAML list, an item may have a `when` (exactly one `{{ }}`, like an edge's). The item starts a task only when its `when` is true, and the task's `item` has no `when` key. This keeps one way to list tasks: a fixed list, where each subagent says when it is needed. The `block_started` event lists the skipped items (section 10.3), and the viewer shows them. In a list computed during the run, a `when` key is plain data.
-- **`agent`** names a file `.pskill/agents/<name>.md`. The file is the subagent's role and rules, in Markdown. The runner puts its text at the top of the task prompt. The harness then spawns a plain subagent, so the same agent works on every harness. With no `agent`, the task gets a plain subagent with only its instruction.
-- **`task_name`** is one `{{ }}` value, computed once per item, that names the task. The packet heads the task with `#### Task <n> · <name>`, and the viewer labels the task's node and chip with it. The runner puts the name on one line and cuts it to 60 characters. A name that is missing, empty, or fails to compute is no name: the task shows as `task <n>`, and the run goes on. When the main agent builds the list, give each item an optional `name` field in that block's `output`, and set `task_name: "{{ item.name }}"`.
-- **`tier`** is `fast`, `standard`, or `deep`, or one `{{ }}` value computed once per item, so each task of one block can get its own tier. It is the model tier of the task's subagent. Each harness turns it into a model and an effort through a table, so no skill names a model. A row of the table has an optional `model` (none keeps the session's model) and an optional `effort` (none keeps the model's default). The default rows name no versioned model, so they never expire: Claude Code `fast`, `standard`, `deep` pass `model: haiku`, `sonnet`, `opus` to the task's Agent call; Codex passes `reasoning_effort: low`, `medium`, `high` to the task's `spawn_agent` call, on the session's model, because Codex has no model aliases and its versioned names expire. A project replaces any single row under `tiers` in `config.yaml` (section 10.1), such as `codex: {fast: {model: gpt-6-luna, effort: low}}`; the project row wins whole. The packet says the row on one line under the task's heading (Claude Code `model` and `effort`, Codex `model` and `reasoning_effort`); a row with neither gives no line. With no tier, or an empty computed value, the subagent inherits the main agent's model, as before. `pskill validate` rejects a written value that is not a tier; a computed one fails the block. The generic adapter ignores the tier, because the main agent runs the tasks itself and cannot change its own model. Added in 0.34.0 (#11). The table changed in 0.36.0 (#151).
-- **`tools`** is `read` or `web`, or one `{{ }}` value computed once per item, like `tier`. It is the tool profile of the task's subagent, so a subagent that only reads code starts without the tool definitions it never uses (measured in Claude Code: about 40,000 tokens instead of 80,000 for an empty task). `read` runs shell commands, reads and searches files, and writes its answer file (`submit --file`). `web` adds fetching a page and searching the web. A profile sets tools only: the `agent` text stays the prompt, and `tier` stays the model. The runner holds the profiles; a skill cannot name a tool, because tool names differ per harness. Claude Code asks for `subagent_type: pskill-<profile>` on the task's Agent call, on the same line as the tier wording; `sync` writes those agents (9.3). Codex ignores the profile: a Codex agent file cannot set its sandbox or its MCP servers, so a profile agent would promise a limit that Codex does not keep (VERIFY again when Codex changes). The generic adapter ignores it too. With no `tools`, or an empty computed value, the subagent gets every tool, and the packet is the same as before. `pskill validate` rejects a written value that is not a profile; a computed one fails the block. It is not a security boundary: the shell can still write files. Added in 0.35.0 (#149).
-- pskill agents are only reusable prompt text. pskill never reads harness agent files (`.claude/agents/`, `.codex/agents/`). The main agent spawns a plain subagent (in Claude: `general-purpose`, or a profile agent with `tools`) and gives it the prompt that the runner built. This keeps agents versioned with the skills, so they cannot drift apart. The one exception: `sync` writes a Claude Code profile agent per used tool profile. It holds a tool list and no prompt and no model, so it cannot drift from the skills.
-- `steps.research.results` is the list of task outputs, in item order.
-- Each task has its own submission. The block completes when every task has a valid submission. An empty list completes at once.
-- **A background subagent.** A subagent call can return before its subagent submits (in Claude Code, the subagent goes on in the background). The block stays open, so the main agent must not go on and must not spawn the task again. On a harness that wakes the agent after a background command, the packet tells the main agent to run `pskill wait <run> --reason "the subagents of <block>"` in the background and end its turn. Each task's submit ends the wait, so the Stop hook never pauses the run while a subagent works. Added in 0.41.0.
-- A task is one agent job. It cannot contain other blocks.
-- **Isolated contexts.** Each subagent gets only its own prompt: the goal, its rendered instruction, and its return format. It never sees the other tasks or their outputs. The results meet only in the next block, which reads `steps.<id>.results`.
-- Without subagent support (the `generic` adapter), the main agent does the tasks one by one in its own context, so the isolation is lost (limitation L6).
-
-### 6.4 `script`
+### 6.3 `script`
 
 ```yaml
 read_issue:
@@ -374,7 +379,7 @@ verify_quotes:
 - **Output limit.** With `parse: json`, the runner keeps the whole stdout: it is the block's value. It keeps the first 64 KiB of any other stdout, and of stderr, and appends a note on its own line: `[pskill cut this output: it keeps the first 65536 of <size> characters.]`. So no later step takes a cut text as whole. The runner checks the whole result first, so a failure message shows the real end of stderr. Changed in 0.32.1 (#139): before, the runner cut stdout and stderr to 64 KiB with no note, so a JSON value over 64 KiB failed as "not valid JSON".
 - A non-zero exit code, a timeout (config `script_timeout_s`, default 300, or the block's own `timeout_s: <seconds>`), or bad JSON is a block failure. A script that wants to report a normal "no" result exits 0 and prints JSON.
 
-### 6.5 `call`
+### 6.4 `call`
 
 ```yaml
 review:
@@ -391,7 +396,7 @@ review:
 - When the child reaches an `end` block, the call block completes with `steps.review.status` (`succeeded`, `failed`, or `cancelled`) and `steps.review.outputs`. The caller branches on `status` when it matters.
 - The validator rejects call cycles.
 
-### 6.6 `end`
+### 6.5 `end`
 
 ```yaml
 done:
@@ -426,7 +431,7 @@ done:
 | `history.<block_id>` | A list of every valid output of that block in the current frame, oldest first. A child skill's frame starts empty. |
 | `run` | `id`, `mode`, `harness`, `dir`. |
 | `skill` | `id`, `dir`. |
-| `item` | The current element, in a `parallel` block only. |
+| `item` | The current element, in a `task` with `for_each` only. |
 
 - **Missing values.** A value from a block that has not run, or an optional field that was not given, is undefined.
   - Chains over it do not crash, `| default(x)` replaces it, and `is defined` tests it. A comparison with it is false.
@@ -470,14 +475,14 @@ done:
     ```
   - Both forms are literal: the shell changes nothing inside them (no quote, `$`, or backtick handling).
 - **A long answer goes in a file** (D16). The Return section of each packet, and each task prompt, has one line after the submit command that names an answer file and the full command: `uv run .pskill/pskill.py submit <run> [--task <n>] --file <path>`. The agent uses it for an answer over about 5 KB.
-  - The path is `.pskill/runs/<run>/answers/<block>.yaml`, or `<block>-task-<n>.yaml` for a parallel task, so parallel subagents never write the same file. The runner creates the `answers/` folder when it prints the packet.
+  - The path is `.pskill/runs/<run>/answers/<block>.yaml`, or `<block>-task-<n>.yaml` for one job of a task, so subagents never write the same file. The runner creates the `answers/` folder when it prints the packet.
   - The command has no stdin, so it is the same in bash and PowerShell.
   - The runner reads the file as UTF-8 and drops a byte order mark. It then handles the text exactly like the same text on stdin. A missing, empty, or non-UTF-8 file (such as UTF-16, which Windows PowerShell 5.1 writes) is a usage error (exit code 1). With `--file`, the runner never reads stdin. After it records the answer, it deletes the file (a file that another program holds open stays), so a later visit of the block does not send an old answer. It deletes only a file inside the run's `answers/` folder, never a file of the user's. A rejected answer keeps its file, so the agent fixes only the wrong fields.
 - **Shell detection.** On macOS and Linux, use the bash form. On Windows, use the bash form when the env var `MSYSTEM` is set (Git Bash), else the PowerShell form. The adapter may override this (VERIFY which shell Codex uses on Windows). When `submit` fails to parse, its error message shows the other form too.
 - **No answer.** When stdin is a terminal, or no data arrives within 10 s, `submit` fails at once with the correct command form. It never hangs.
 - **Parsing.** Read the answer with PyYAML's `BaseLoader`, so every value arrives as text. Then convert each field to its declared type from the block's output schema: `integer`, `number`, `boolean` (only `true` or `false`), arrays and objects field by field. So `choice: no` stays the text `no`, and `question: 1.10` stays `1.10`. A value that does not convert is a validation error that names the field. **A colon in a plain value.** `summary: api/src/a.ts:12: unused import` is not valid YAML (`mapping values are not allowed here`), yet it can only mean text. On that error, the runner puts the plain value of the error's line in double quotes and parses again, line by line. The value ends at ` #`, as a plain value does. A line that quoting cannot fix (a continuation line, a value that starts with a quote) rejects the answer with the first error. Added in 0.41.0.
-- **Parallel tasks:** each subagent runs `submit <run> --task <n>` with its own answer. The reply only says that the task is recorded, also for the last task: the main agent reads the next block with `current`. When the answer pauses the run, the reply says that the run is paused and tells the subagent to stop and tell the main agent, who reads the pause with `current` (section 8).
-- **A task answer while the run is paused:** when the Stop hook paused the run (reason `agent_stopped`), `submit --task` still records a valid task answer, so a subagent that was still working loses nothing. It only records: `resume` advances, and it completes a parallel block whose tasks all have answers. Any other pause still refuses every answer.
+- **Task jobs:** each job's agent runs `submit <run> --task <n>` with its own answer; a task with one `main` job and no `for_each` takes no `--task`. The reply to a `fresh` job only says that the task is recorded, also for the last one: the main agent reads the next block with `current`. The reply to a `main` job is the next `main` job's packet, or the next block's packet after the last one. When the answer pauses the run, the reply says that the run is paused and tells the subagent to stop and tell the main agent, who reads the pause with `current` (section 8).
+- **A task answer while the run is paused:** when the Stop hook paused the run (reason `agent_stopped`), `submit --task` still records a valid task answer, so a subagent that was still working loses nothing. It only records: `resume` advances, and it completes a task whose jobs all have answers. Any other pause still refuses every answer.
 - **Reserved keys**, removed before validation:
   - `$answered_by`: `human` or `agent`. Required for human decisions in interactive mode.
   - `$cannot_complete`: a reason text. The agent declares that it cannot do the block. This counts as a failed attempt. It is the agent's only escape.
@@ -487,7 +492,7 @@ done:
 ### 7.4 Failures
 
 Two kinds of failure exist:
-- **Retried failures** can succeed on a second try: an invalid submission, a `$cannot_complete`, and a failed script. The runner retries up to `retries` times (config, default 2): it reprints the packet with the errors, or it runs the script again. After that it pauses the run with the reason `block_failed`. A `task`, `decision`, `parallel`, or `script` block can set its own `retries: <n>` (0 means no second try), which overrides the config value for that block.
+- **Retried failures** can succeed on a second try: an invalid submission, a `$cannot_complete`, and a failed script. The runner retries up to `retries` times (config, default 2): it reprints the packet with the errors, or it runs the script again. After that it pauses the run with the reason `block_failed`. A `task`, `decision`, or `script` block can set its own `retries: <n>` (0 means no second try), which overrides the config value for that block.
 - **Runner-side failures** fail the same way every time, because nothing changed: a computed value that fails, no matching edge, invalid end outputs, and a visit cap with no `on_max_visits` (only in a run copy from before 0.33.0, because the validator now requires it). The runner pauses the run at once with the reason `runner_error`.
 
 The pause packet shows the error, the `on_pause` steps of the skills (section 8), and three commands: `resume` (retry the block with a fresh count), `cancel`, and `current`.
@@ -503,7 +508,7 @@ Set the mode with `start --mode interactive|autonomous` (default from config: `i
 - `pskill current [<run-id>]` prints the current packet again. With no id, it uses the newest unfinished run.
 - `pskill resume <run-id>` moves a paused run back to `active` and prints the packet.
 - `pskill runs --open` lists the unfinished runs. The session-start hook does not list them: a run of another live session would invite the new session to take it over (L4).
-- A run always uses its own copy of the skills in `runs/<id>/skills/` (D22).
+- A run always uses its own copy of the skills in `runs/<id>/skills/` (D22). A copy that the runner can no longer load, such as one from before 1.0.0 with a `parallel` block, stops every command of the run with one line: the load problem, and "Cancel this run and start a new one." `cancel` and `delete` still work, and the viewer still shows the run's steps, without the graph.
 - `start`, `current`, `submit`, and `resume` detect the harness on every call. When it differs from `run.harness`, the runner updates `run.harness` and logs `harness_changed`. The Stop hook and the packet wording then follow the new harness.
 - The same commands read the session id of the calling app: `CLAUDE_CODE_SESSION_ID` in Claude Code, `CODEX_THREAD_ID` in Codex (VERIFY: that it equals the hook's `session_id`). When it differs from `run.session_id`, the runner updates it and logs `session_changed`. So the session that continues a run (after `/clear`, or in a new session) becomes its owner. A `submit --task` never changes the owner: a subagent sends it, and a subagent may have its own id.
 - `start` adds one line to its packet when other unfinished runs exist in this checkout. It still starts the new run.
@@ -511,7 +516,7 @@ Set the mode with `start --mode interactive|autonomous` (default from config: `i
 ### 7.7 File safety
 
 - Write `run.json` and `state.json` to a temp file, then call `os.replace` (atomic on every OS).
-- Every command holds a lock on `runs/<run-id>/.lock`. Create it with `os.open(O_CREAT | O_EXCL)`. Wait up to 10 s. Break a lock older than 60 s. Parallel task submissions depend on this lock.
+- Every command holds a lock on `runs/<run-id>/.lock`. Create it with `os.open(O_CREAT | O_EXCL)`. Wait up to 10 s. Break a lock older than 60 s. Concurrent job submissions depend on this lock.
 - The upload to Galtea (10.4) runs after the command, outside the lock, so a slow network never blocks a submit. It writes `galtea.json` with `os.replace` too.
 - `wait` holds the lock only while it writes or reads `run.json`, never while it sleeps: a lock held for minutes would block every submit, and other commands would break it after 60 s.
 
@@ -573,14 +578,14 @@ Additions by block type:
 - **Decision with choices:** the Return section lists each choice and its meaning.
 - **Human decision, interactive:** "Ask the user and wait. Submit the user's answer with `"$answered_by": "human"`. Do not decide for the user." The adapter adds the wording for its question tool (section 9).
 - **Human decision, autonomous:** "This run is autonomous. Decide as the user would, from the goal, this session, and the project. Explain why in `rationale`."
-- **Parallel with subagents:** the packet lists every open task under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with a one-line prompt: "You are a subagent of pskill run <run>. In the folder `<project root>`, run `pskill task <run> <n>`, and do what it prints." A task with a tool profile or a tier gets one more line under its heading, with the harness wording for both (for Claude Code: "Pass `subagent_type: pskill-read` in this task's Agent call, instead of `general-purpose`. If that agent type is unknown, use `general-purpose`. Pass `model: haiku` in this task's Agent call."). The fallback covers a profile agent that is missing (no `sync` yet, or `claude-code` not in `permissions`) or that Claude Code does not see yet (a `.claude/agents/` folder newer than the session). `pskill task` prints the task's full prompt: the work folder, the agent role, the goal, the instruction, the return format, and its own submit command with `--task <n>`, plus its `--file` line. The packet says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each subagent exactly the one-line prompt of its task. When every subagent has finished, run `pskill current <run>`." The same line restarts a task whose subagent stalled. Changed in 0.12.0: before, the packet held every full prompt, which the main agent copied by hand.
-- **Parallel without subagents:** the packet gives one task at a time, like a normal block.
+- **Fresh jobs with subagents:** the packet (heading `### Subagent tasks`, before 1.0.0 `### Parallel tasks`) lists every open `fresh` job under the heading `#### Task <n>` (`#### Task <n> · <name>` with a `task_name`), with a one-line prompt: "You are a subagent of pskill run <run>. In the folder `<project root>`, run `pskill task <run> <n>`, and do what it prints." A task with a tool profile or a tier gets one more line under its heading, with the harness wording for both (for Claude Code: "Pass `subagent_type: pskill-read` in this task's Agent call, instead of `general-purpose`. If that agent type is unknown, use `general-purpose`. Pass `model: haiku` in this task's Agent call."). The fallback covers a profile agent that is missing (no `sync` yet, or `claude-code` not in `permissions`) or that Claude Code does not see yet (a `.claude/agents/` folder newer than the session). `pskill task` prints the task's full prompt: the work folder, the agent role, the goal, the instruction, the return format, and its own submit command with `--task <n>`, plus its `--file` line. The packet says: "Spawn one subagent per task, all at once, each with a fresh context (none of this conversation). Give each subagent exactly the one-line prompt of its task. When every subagent has finished, run `pskill current <run>`." The same line restarts a task whose subagent stalled. Changed in 0.12.0: before, the packet held every full prompt, which the main agent copied by hand.
+- **Main jobs:** when `main` jobs are open too, the subagent packet says how many: "N more tasks are yours, in this conversation: run `current` for them when every subagent has finished." With no open `fresh` job, the packet gives one `main` job at a time, like a normal block, with `--task <n>` when the task has `for_each`. Without subagents, every job is `main`.
 - **Final packet:** the status, the summary card, the rendered `report`, the outputs that the card cut, whole, under `### Outputs cut in the card`, and "The run is finished." Changed in 0.43.0: before, it listed every output in place of the card.
 - **Summary card:** one Markdown table with the same rows for every skill, so that the user always knows at a glance that a run ended, how, and what is left. The packet asks the agent to start its last message to the user in the turn with the table, unchanged and not in a code block; a subagent starts its answer to the agent that started it with the table, and asks that agent to show it to the user unchanged. The header row is an icon for the status (✅ succeeded, ❌ failed, ⏹️ cancelled, ⏸️ paused), the label, the skill, and the status. The rows: `Result`, `Run` (id, mode, and the time since the run started, paused time included, in minutes), `Outputs` (each output with a value, as `name: value`: a list joined with `; `, a value over 200 characters cut; "None" when no output has a value), and `Pending`. Cells are on one line, with each `|` escaped, and a backslash right before one. Only the root skill gives a card: a child skill's end returns to its caller. Added in 0.43.0.
   - **End of the run:** the label is the end block's id in capitals (`REVIEWED`, `CAPPED`), `Result` its `description`, and `Pending` its rendered `pending` (6.6): "⚠️ Not declared by the skill" with none, "Nothing left to do" when empty. An end with no `description` gives "The skill ended at its block `<id>`.". The rendered `pending` loses its outer whitespace. `current` of a finished run prints the same card from `run.json`; a run that ended before 0.43.0 gets its status as the label, "The run <status>." as the result, and "Not recorded: the run ended before pskill 0.43.0." as `Pending`.
   - **`cancel`:** the text adds a card with the label `CANCELLED`, the result "The run was cancelled with `pskill cancel`.", and as `Pending` "The run stopped before its end: check what it left, such as branches, pull requests, comments, and files.", because the runner cannot know what a cancelled run left.
   - **Pause:** the pause packet adds a card after its header: the label `PAUSED`, the result "Paused at block `<block>` (<reason>).", no outputs, and as `Pending` the `resume` and `cancel` commands.
-- **Worktree run (7.8):** every agent, parallel, and pause packet adds one line after the header: "This run works in the folder `<absolute path>`. Run every command and make every file change of this run in that folder." The `--file` line names the absolute path of the answer file. The final packet adds, before its last line (`cancel` and `delete` add it after their text): "The run worked in the worktree `<absolute path>`. Before you remove it, push every commit that you want to keep: a commit on no branch is lost with the worktree. Then, from the checkout and not from inside the worktree, run: `git worktree remove "<absolute path>"`." The worktree is detached, and Windows cannot remove a folder that is the shell's working folder. Added in 0.42.0.
+- **Worktree run (7.8):** every agent, subagent, and pause packet adds one line after the header: "This run works in the folder `<absolute path>`. Run every command and make every file change of this run in that folder." The `--file` line names the absolute path of the answer file. The final packet adds, before its last line (`cancel` and `delete` add it after their text): "The run worked in the worktree `<absolute path>`. Before you remove it, push every commit that you want to keep: a commit on no branch is lost with the worktree. Then, from the checkout and not from inside the worktree, run: `git worktree remove "<absolute path>"`." The worktree is detached, and Windows cannot remove a folder that is the shell's working folder. Added in 0.42.0.
 - **Pause packet:** the block and the reason, the summary card, the error, then one `### Pause steps of <skill>` section per skill on the call stack that has an `on_pause`, the paused skill first and the root last. Each text is rendered with the names of its own skill's frame (7.1), so a child skill and its caller each name their own values. A text that renders empty adds no section. A text that fails to render, with any error (or whose file is missing from the run copy, or is not UTF-8), shows the error and the text as written, so a pause never fails. With a section, the Next part starts "Do the pause steps above. Then tell the user why the run paused." With none, the packet is the same as before 0.38.0. Every pause reason gets the same packet. **The steps run once:** only the first packet that reaches an agent gives them. A later `current` of the same pause shows `### Pause steps` with "The first packet of this pause gave them. Do not do them again." instead, so the agent does not post a comment twice; `run.json` records it as `pause_steps_shown`. A new pause gives them again. A subagent whose task answer pauses the run gets only a short note to stop and tell the main agent, because the pause steps are the main agent's work: it reads the packet with `current`. That pause reached no agent, so the next `current` gives the steps. The Stop hook's give-up pause gives them in the hook's reason (9.2).
 
 ---
@@ -694,7 +699,7 @@ Goal: Resolve the issue with a reviewed pull request that follows the plan the u
 - `sync` overwrites and deletes only files that carry the generated marker. If a hand-written skill has the same name, `sync` stops with an error.
 - `sync` also writes one built-in stub, `pskill`: "Resume, inspect, pause, or cancel a pskill run. Use when the user mentions an unfinished skill run." Its body lists `runs`, `current`, `resume`, `wait`, `pause`, `cancel`, and `view`, and says that a worktree run (7.8) lives in its own worktree folder, which `runs` names, and that its other commands run from there.
 - Commit the stubs. `pskill validate` fails when a stub is out of date.
-- **Profile agents.** For each tool profile that some `parallel` block uses (a computed `tools` value counts as every profile), `sync` writes `.claude/agents/pskill-<profile>.md`, when `claude-code` is in `config.permissions`:
+- **Profile agents.** For each tool profile that some `task` block uses (a computed `tools` value counts as every profile), `sync` writes `.claude/agents/pskill-<profile>.md`, when `claude-code` is in `config.permissions`:
   ```markdown
   ---
   name: pskill-read
@@ -747,7 +752,7 @@ pskill/
 ├── .gitignore           # runs/, galtea.env
 ├── galtea.env           # optional: one person's Galtea key (10.4). Never in git.
 ├── skills/<skill-id>/{skill.yaml, instructions/, scripts/, tests/}
-├── agents/<name>.md     # pskill agents: subagent roles, shared by all skills (section 6.3)
+├── agents/<name>.md     # pskill agents: subagent roles, shared by all skills (section 6.1)
 └── runs/<run-id>/       # gitignored
 ```
 
@@ -759,7 +764,7 @@ The runner itself lives in the user's cache: `PSKILL_CACHE_DIR` when set, else `
 - **`permissions`** are app names, because each app keeps its rules in its own format, in a fixed place: Claude Code in `permissions.allow` of `.claude/settings.json`, Codex in `.codex/rules/pskill.rules`. An app in this list is one that pskill sets up, so `claude-code` here also gets the profile agents in `.claude/agents/` (9.3).
 - The old setting `harnesses` stops with an error that names these two settings.
 - **`worktree_folder`** is where a worktree run (7.8) gets its worktree: a folder relative to the project root, with no `..`. The default `.pskill/worktrees` keeps it inside `.pskill/` (D23). **`worktree_setup`** is the command that prepares a new worktree, run in its project folder, as a list of non-empty texts (no shell), such as `[npm, ci]`; empty by default. Anything else stops with an error. Added in 0.42.0.
-- **`tiers`** changes rows of the tier table (section 6.3): a harness (`claude-code` or `codex`), a tier, and a row with `model` and `effort`, each optional. A row replaces the default row of its harness and tier; every other row keeps its default. An unknown harness, tier, or key, or a value that is not a non-empty text, stops with an error.
+- **`tiers`** changes rows of the tier table (section 6.1): a harness (`claude-code` or `codex`), a tier, and a row with `model` and `effort`, each optional. A row replaces the default row of its harness and tier; every other row keeps its default. An unknown harness, tier, or key, or a value that is not a non-empty text, stops with an error.
 
 ```yaml
 stub_folders: [.agents/skills, .claude/skills]          # where sync writes stubs
@@ -775,7 +780,7 @@ max_wait_minutes: 120                                    # the waits of one bloc
 viewer_port: 7777
 worktree_folder: .pskill/worktrees                       # where `start --worktree` makes the run's worktree (7.8)
 worktree_setup: []                                       # the command that prepares a new worktree, such as [npm, ci]
-tiers:                                                   # rows that replace the default tier rows (6.3)
+tiers:                                                   # rows that replace the default tier rows (6.1)
   codex:
     fast: {model: gpt-6-luna, effort: low}
 ```
@@ -808,10 +813,10 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 | type | Extra fields |
 |---|---|
 | `run_started` | `skill_id`, `skill_hash`, `inputs`, `mode`, `harness`, `runner_version` |
-| `block_started` | `block`, `block_type` (`visit_cap` for the question at a visit cap, since schema version 6), `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `task?` (the task of a one-by-one parallel packet), `task_names?` (a parallel block with a `task_name`: the name of each task, or null), `skipped_tasks?` (a parallel block: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a parallel block with subagents: the full prompt of each task, which the viewer shows; since schema version 4), `inputs?` (a `call` block: the computed inputs of the child; since schema version 7) |
+| `block_started` | `block`, `block_type` (`visit_cap` for the question at a visit cap, since schema version 6), `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `for_each?` (true for a `task` with `for_each`, whose tasks the viewer draws; since schema version 8: before, such a block logged `block_type: parallel`), `task?` (the job of a one-by-one packet), `task_names?` (a task with `for_each` and a `task_name`: the name of each task, or null), `skipped_tasks?` (a task with `for_each`: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a task with `for_each`, on its first packet: the full prompt of each task, which the viewer shows; since schema version 4), `inputs?` (a `call` block: the computed inputs of the child; since schema version 7) |
 | `submission_rejected` | `block`, `task?`, `errors`, `raw` |
 | `block_completed` | `block`, `task?`, `output`, `decided_by` (`agent`, `human`, `agent_autonomous`, `runner`), `duration_ms` |
-| `script_ran` | `block`, `argv`, `input` (what the script read on stdin, or null; since schema version 5), `exit_code`, `stdout` (whole with `parse: json`, else limited as in 6.4), `stderr` (limited as in 6.4), `duration_ms` |
+| `script_ran` | `block`, `argv`, `input` (what the script read on stdin, or null; since schema version 5), `exit_code`, `stdout` (whole with `parse: json`, else limited as in 6.3), `stderr` (limited as in 6.3), `duration_ms` |
 | `run_paused` / `run_resumed` | `reason` |
 | `harness_changed` | `from`, `to` |
 | `session_changed` | `from`, `to` |
@@ -835,10 +840,10 @@ x-galtea:
 - **When:** `start`, `current`, `task`, `submit`, `pause`, `resume`, and `cancel` print their packet, then send the run's new events. The hooks and `pskill test` never upload.
 - **Best effort:** one short timeout per call. Any error is swallowed: the command's output and exit code never change. A failed event is not sent again, and nothing records the failure. A refused event (an HTTP error) skips only that event. A network error (no reply) stops the upload for the rest of the command: its other new events are never sent.
 - **Product:** found by its exact name, or created. pskill sets its description to the skill's description, its auto-close to 7 days (a run can pause for days), and the policy for a turn that reaches a closed session to "reopen".
-- **Version:** Galtea's get-or-create by facts: `skill` (the hash of the skill copy), `runner`, `harness`, `llm` (from `start --model`, else `unknown`), and `tiers` (the model of each tier, only for a skill with a `parallel` block).
+- **Version:** Galtea's get-or-create by facts: `skill` (the hash of the skill copy), `runner`, `harness`, `llm` (from `start --model`, else `unknown`), and `tiers` (the model of each tier, only for a skill with a task that sets a `tier`).
 - **Session:** one per execution of a skill with a product: the root skill, or one call of a child skill. Its custom id is `<skill id>@<run id>`, plus `/<call id>` for a child. Its metadata holds the run facts (`run_id`, `repo_commit`, `harness`, `llm`, ...), the parent session of a child, the `x-galtea.metadata` values once they render, and the final status.
 - **Turn:** one per completed block, in order: its packet (or a script's command and stdin, or a call's inputs), its answer or outputs, and its duration. A block that pauses the run with `block_failed` or `runner_error` gives a FAILED turn with the error.
-- **Spans** inside each turn: the block (frame, call id, visit, edge, `decided_by`, and the tier model of a parallel task), each rejected submission, each script attempt, and each pause and resume.
+- **Spans** inside each turn: the block (frame, call id, visit, edge, `decided_by`, and the tier model of a task job), each rejected submission, each script attempt, and each pause and resume.
 - **Token use:** read from the Claude Code session transcript of the run (`~/.claude/projects/*/<session id>.jsonl`) and its `subagents/` transcripts, at each upload.
   - A model call counts once, by its message id. It belongs to the block that started last before it, in any frame of the run. Calls before the first block, and calls after the end of their block, count nowhere.
   - A turn counts the calls of its block from the block start to the turn's end. It also counts the calls of the child skills that it calls, unless a child has its own session.
@@ -874,7 +879,7 @@ x-galtea:
 17. A stub or a profile agent out of date.
 18. A loop that can repeat after every cap is used up: a loop with no `max_visits` on the way (also inside a capped loop), or caps whose `on_max_visits` blocks lead back into the same loop.
 19. `max_visits` without `on_max_visits`; `on_max_visits`, `ask_on_max_visits`, or `autonomous_max_visits` without `max_visits`; `autonomous_max_visits` below `max_visits`.
-20. A `parallel` block's written `tier` is not `fast`, `standard`, or `deep`, or its written `tools` is not `read` or `web`. A computed value is checked at run time, and an unknown one fails the block.
+20. A task's written `tier` is not `fast`, `standard`, or `deep`, its written `tools` is not `read` or `web`, or its written `context` is not `main` or `fresh`. A computed value is checked at run time, and an unknown one fails the block. A `tier`, `tools`, or `agent` on a task whose `context` is missing or `main` is an error too, which names the block: the main agent cannot change its own model or tools.
 21. `x-galtea` (section 10.4) is not a mapping, its `product` is not a non-empty text, or its `metadata` is not a mapping of texts.
 
 **Warnings:**
@@ -915,7 +920,7 @@ expect:
 Rules:
 - Scripts and calls are always mocked in tests. A called skill has its own tests.
 - A recorded call can state `inputs`: the values that the call block must send on that visit. The case checks only the named inputs, and an input that the block does not send is a mismatch. The FAIL line names the block, the visit, the input, and the expected and actual values. A recorded call without `inputs` checks nothing.
-- For a `parallel` block, list the answers of its tasks in task order, as for any other block. The test runner uses the one-by-one mode, so each task takes the next answer in the queue.
+- For a task with `for_each`, list the answers of its jobs in item order, as for any other block. The test runner uses the one-by-one mode, so each task takes the next answer in the queue.
 - An answer that fails validation is rejected, as in a real run, and the next answer is used. This lets a test prove that the schema catches bad output.
 - When a case runs out of answers, it fails and names the block that asked for more.
 - A visit cap question (5.5) takes its answer from `caps`, not from `answers`. A question with no answer left fails the case and names the block. The questions stay out of the `path`.
@@ -932,9 +937,9 @@ The example skills are a base that almost any software project on GitHub can cop
 
 | Skill | What it does | Its blocks, in order |
 |---|---|---|
-| `implement-issue` | An issue (or a described change) to a pull request that is ready to merge. It never merges. | `create_new_issue` (call `create-issue`, for a described change only), `read_issue`, `checkout_default`, `understand`, `checkout_base`, `research_code` and `research_gaps` (parallel), `ask_user`, `write_plan`, `approve_plan`, `open_draft_pr`, `implement_step` (one red-green cycle per visit), `write_description`, then the loop `review` (call `review-round`) and `resolve` (call `resolve-pr-feedback`), then `ready`, `get_ci_green` (call `fix-ci`), `answer_comments` (call `resolve-pr-feedback`), `check_unreviewed`, the required-only loop `final_review` and `final_resolve`, and `finish`. |
+| `implement-issue` | An issue (or a described change) to a pull request that is ready to merge. It never merges. | `create_new_issue` (call `create-issue`, for a described change only), `read_issue`, `checkout_default`, `understand`, `checkout_base`, `research_code` and `research_gaps` (fresh subagents, one per item), `ask_user`, `write_plan`, `approve_plan`, `open_draft_pr`, `implement_step` (one red-green cycle per visit), `write_description`, then the loop `review` (call `review-round`) and `resolve` (call `resolve-pr-feedback`), then `ready`, `get_ci_green` (call `fix-ci`), `answer_comments` (call `resolve-pr-feedback`), `check_unreviewed`, the required-only loop `final_review` and `final_resolve`, and `finish`. |
 | `review-pr` | A deep review that ends in one GitHub review that the user confirms: it requests changes while a required finding is open, approves otherwise, and only comments on the user's own pull request. It changes no file. An autonomous run ends with the draft. | `read_earlier` (the findings of earlier reviews and their replies), then the loop `review` (call `review-round`) and `check_head_before_round` (call `review-head-check`), `triage`, `settle_doubt` (call `review-doubt`, once per finding in doubt), `final`, `draft`, `confirm` and `ask_revision` in a loop, `check_head_before_post`, `post`. |
-| `review-round` (internal) | One review round: five reviewer subagents (correctness, tests, completeness, conventions, docs) in parallel. It finds problems only, and skips the findings that it is told were already raised or reported. | `checkout` (call `checkout-pr`), `read_pr`, `review` (parallel over a fixed list, with a `when` per angle), `collect_findings`. |
+| `review-round` (internal) | One review round: five reviewer subagents (correctness, tests, completeness, conventions, docs) in parallel. It finds problems only, and skips the findings that it is told were already raised or reported. | `checkout` (call `checkout-pr`), `read_pr`, `review` (fresh subagents over a fixed list, with a `when` per angle), `collect_findings`. |
 | `review-head-check` (internal) | Whether the review can go on after the head of the pull request moved: a clean merge of the base or a small change goes on, a significant change asks the user. | `read_head`, `judge`, `ask`. |
 | `review-doubt` (internal) | The verdict on one finding in real doubt: required, suggestion, or drop. "I don't know" starts simple yes/no questions, at most 6. | `ask`, then `next_question` and `ask_question` in a loop, `decide`. |
 | `resolve-pr-feedback` | Each given finding and each unaddressed pull request comment, one at a time: fix it or dismiss it, and reply to the comment. | `checkout`, `collect_items`, then per item `claim_item` (the 👀 reaction), `resolve_item`, `finish_item` (the reply). |
@@ -961,7 +966,7 @@ The pskill agents: `reviewer` (one review angle, no quote no finding), `explorer
 - **Change the code, not the rule.** A finding that the code breaks a written rule is fixed in the code. The rule changes only when the rule itself is wrong.
 - **Wait in the foreground.** `fix-ci` waits for CI inside the turn, so the Stop hook never sees an agent that ends its turn to wait.
 - **A human label, not a merge.** `finish` adds `waiting-for-human-review` when a human must look (a risky area, a visible change, a cap reached, a dismissed finding, CI not green), with a short note at the top of the description that says what to check. The run never merges.
-- **Every end says what is left.** Each end of a skill that a user starts has a `pending` (6.6), empty when nothing is left, so the summary card never says "not declared" (`tests/test_skills_pending.py` checks it). Write it for every path into the end: the cases check the texts with `expect.pending`.
+- **Every end says what is left.** Each end of a skill that a user starts has a `pending` (6.5), empty when nothing is left, so the summary card never says "not declared" (`tests/test_skills_pending.py` checks it). Write it for every path into the end: the cases check the texts with `expect.pending`.
 - **A limit says so.** In `implement-issue` and `resolve-pr-feedback`, a visit limit that cuts work short ends the run on `capped`, not on the plain end. The run still succeeds, because the pull request exists. `implement-issue` runs to `finish`, which adds an Incomplete warning at the top of the description for each limit whose skipped work matters (its own judgment). The `limits` output and the report name each limit and the work it skipped. `resolve-pr-feedback` ends on its own `capped` at its item cap, with the items `left`. A failed `fix-ci` is not such a limit: the run ends on `done`, and `finish` labels the pull request because CI is not green.
 - **No unchecked last fix.** Two caps push no fix that nothing would check. The 5th required-only round leaves its required findings open, and `finish` names them. `fix-ci` caps its fixes, not its waits, so it asks before a fix that no CI run would check.
 
@@ -971,15 +976,17 @@ The example skills together must exercise every runtime feature. pytest fixtures
 
 | Feature | Covered by |
 |---|---|
-| `task` | `implement-issue.understand`, `resolve-pr-feedback.resolve_item` |
+| `task` in the main context | `implement-issue.understand`, `resolve-pr-feedback.resolve_item` |
+| One-job `task` with `context: fresh` | `implement-issue.finish`, `review-head-check.judge` |
+| Model tier (`tier`) | `implement-issue.finish` and `review-head-check.judge` (`standard`) |
 | Agent `decision` | `create-issue.judge_duplicates` |
 | Human `decision` with choices | `implement-issue.approve_plan`, `review-pr.confirm`, `review-doubt.ask` |
 | Human `decision` without choices (a question) | `implement-issue.ask_user`, `create-issue.ask_clarify` |
 | A revision loop through a human decision | `implement-issue`: `write_plan` to `approve_plan` to `write_plan` |
-| `parallel` over a fixed list, with an agent per item | `implement-issue.research_code` |
-| `parallel` over a fixed list, with a `when` per item | `review-round.review` |
-| `parallel` over a list computed during the run | `implement-issue.research_gaps` (one task per gap from `understand`) |
-| Tool profiles (`tools`) | `implement-issue.research_code` (`read`), `implement-issue.research_gaps` (`web`) |
+| `task` with `for_each` over a fixed list, with an agent per item | `implement-issue.research_code` |
+| `task` with `for_each` over a fixed list, with a `when` per item | `review-round.review` |
+| `task` with `for_each` over a list computed during the run | `implement-issue.research_gaps` (one task per gap from `understand`) |
+| Tool profiles (`tools`) | `implement-issue.research_code` and `implement-issue.finish` (`read`), `implement-issue.research_gaps` (`web`) |
 | pskill agents (`.pskill/agents/`) | `implement-issue.research_code` (from the item), `implement-issue.research_gaps` and `review-round.review` (fixed) |
 | Inline instruction text | `implement-issue.research_gaps`, `implement-issue.approve_plan` |
 | `script` with `parse: json` and with text | `implement-issue.read_issue`; `create-issue.create` |
@@ -999,7 +1006,7 @@ The example skills together must exercise every runtime feature. pytest fixtures
 | `$cannot_complete`, retries, then pause | test cases below |
 | `invocation: manual` | `review-pr` |
 | `on_pause`, with `run.mode` | `implement-issue` (a comment on the pull request or the issue when an autonomous run pauses) |
-| Parallel one by one, Stop hook, resume in a new session | the M3 and M4 acceptance runs |
+| Jobs one by one (`generic`), Stop hook, resume in a new session | the M3 and M4 acceptance runs |
 
 ### 13.4 Tests to ship
 
@@ -1013,8 +1020,8 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 - **The hosted viewer** shows the same screens on GitHub Pages, for every folder that the user picks (section 14.3).
 - `viewer_api.py` answers the API for both: a request path in, an answer out.
 - **All logic lives in the Python server,** so pytest covers it. The server builds:
-  - the canvas: one Mermaid template for the whole run. Each child skill that the run entered is a framed `subgraph` inside the frame of the skill that called it, linked by a dotted edge from its call block. Each parallel block that the run entered has a frame of task nodes next to it, one per task, in balanced rows of at most 4, linked by a dotted edge. Node ids are `f<frame>_<block>`, and `f<frame>_<block>_T<n>` for a task (upper case, which a block id cannot contain). Each node label is a token that the page replaces.
-  - the timeline rows. Each row carries its node, the edge that it arrived by (matched from the logged `from` and `reason`), its node label after the step, whether a person decides it, and the edge that it left by. It also carries its input and output titles, the stdout of each script run parsed as JSON when it is JSON, and, for a parallel block, every task of its visit: its name (from `task_name`, logged on `block_started`), its state (done, rejected, or open), its prompt, its answers, and its output.
+  - the canvas: one Mermaid template for the whole run. Each child skill that the run entered is a framed `subgraph` inside the frame of the skill that called it, linked by a dotted edge from its call block. Each task with `for_each` that the run entered has a frame of task nodes next to it, one per task, in balanced rows of at most 4, linked by a dotted edge. Node ids are `f<frame>_<block>`, and `f<frame>_<block>_T<n>` for a task (upper case, which a block id cannot contain). Each node label is a token that the page replaces.
+  - the timeline rows. Each row carries its node, the edge that it arrived by (matched from the logged `from` and `reason`), its node label after the step, whether a person decides it, and the edge that it left by. It also carries its input and output titles, the stdout of each script run parsed as JSON when it is JSON, and, for a task with `for_each`, every task of its visit: its name (from `task_name`, logged on `block_started`), its state (done, rejected, or open), its prompt, its answers, and its output.
   - a hint in plain words for each node (the block's `description`, what its type does, who decides) and each edge (when the run takes it, with the whole condition). The page shows them as hover tooltips.
   - the current step and its state (now, waiting for the user, or failed),
   - the summary numbers.
@@ -1039,7 +1046,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 | `GET /api/skills/<id>/export` | The skill as plain Markdown skills, in a zip file (section 14.1). |
 | `POST /api/skills/<id>/edit` | The skill editor's one write: update, add, or delete a block (section 14.2). Returns the new skill detail, or the problems. |
 | `GET /api/agents` | One row per agent in `.pskill/agents/`: its name, its first line, and the skills that use it. |
-| `GET /api/agents/<name>` | The agent's file path, its text, and each skill and parallel block that uses it. |
+| `GET /api/agents/<name>` | The agent's file path, its text, and each skill and task block that uses it. |
 | `POST /api/agents/<name>/edit` | The agent editor's one write: the new text of an existing agent file (`{"text": ...}`). Returns the new agent detail, or the problems. |
 | `POST /api/runs/<id>/cancel` | Cancel an unfinished run, as `pskill cancel` does. Returns the new run detail, or the runner's reason. |
 | `POST /api/runs/<id>/delete` | Delete a finished run, as `pskill delete` does. Returns `{"deleted": <id>}`, or the runner's reason. |
@@ -1060,7 +1067,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
      - the status and the type, and a visit picker when the block ran more than once,
      - where it came from and why, the duration, who decided, and the edge that it left by,
      - the input: the packet as rendered Markdown, or the command of a script,
-     - for a parallel block, one chip per task, with the task's name (or `task <n>`); a click on a chip or on a task node shows that task's prompt, answers, and output,
+     - for a task with `for_each`, one chip per task, with the task's name (or `task <n>`); a click on a chip or on a task node shows that task's prompt, answers, and output,
      - every submission (rejected ones with their errors), and the output: a JSON tree, or the exit code and parsed result of a script,
      - the run state as a JSON tree.
 
@@ -1078,7 +1085,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
    - **Child skills:** each call block is drawn as a dashed frame that holds its child skill, in the call block's place. The edges into the call block end at the frame, and its exits leave from the frame. The frame's title, at its top left, is the call block's name, with `call: <child skill>` below it. A click on the title or on the frame's empty area selects the call block. A child's own call blocks are frames inside its frame. (The run screen keeps the call block as a node, with the child's frame next to it.) A child that does not load, or a call back into a skill of its own chain, gets no frame. A click on a block of a child frame shows its details read-only, with a link to the child skill's own screen, where it can be edited. The panel finds a child block by its node id, because its name can be the name of a block of the parent.
    - **Collapse sub-skills:** an on and off switch in the top bar draws each call block as one node instead of its child's frame. It is on by default, for a quick look at the flow of a skill with many child skills. The server sends this second canvas too (`collapsed_canvas`). A block of a child frame that the panel shows gives way to the call block that holds it. The page keeps only a choice to expand, in `localStorage`. A skill with no child skill has no switch.
    - The side panel with nothing selected: the goal, the `on_pause` text, the inputs and outputs, and the `pskill validate` problems.
-   - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A name that leads to another screen is a link with an arrow: the child skill of a call block, and the agent of a parallel block (one link per agent of a fixed `for_each` list). An agent name computed from run data has no link.
+   - The side panel for a clicked block: its facts (decider, visit cap, retries, command), its instruction as Markdown (with the `{{ }}` values unfilled), its choices, its output fields, the inputs and outputs of a call or an end block, and where it can go. A name that leads to another screen is a link with an arrow: the child skill of a call block, and the agent of a task block (one link per agent of a fixed `for_each` list). An agent name computed from run data has no link.
    - A script block also shows the text of each file inside its skill folder that its command runs as `{{ skill.dir }}/<path>`.
    - Each output field is a card: its name, its type, optional, its default, its allowed values, its description, and its nested fields.
    - Each exit is a card: the target block, a tag (if, otherwise, always, choice, or visit cap), and the whole condition. A hover on the card highlights its edge and its target on the canvas. A click opens the target.
@@ -1099,7 +1106,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 - **Steps:** one `## Step N: <block>` heading per block, in graph order (breadth first from the entry). A short "How to follow this skill" part comes first.
 - **Edges:** "go to step N" lines, with each condition as a plain expression. A visit cap becomes "Do this step at most N times", and asks the user before more times unless the block opts out.
 - **Values:** `{{ steps.x.y }}` becomes `x.y`, `history.x` becomes `x.all_visits`, and `{% %}` tags become words. Inside the author's own code, a value stays a bare name.
-- **Block types:** a human decision asks the user, a script is a command that the agent runs, a parallel block uses subagents or does the items one by one, and an end step names its status, outputs, report, and what is left to do (`pending`).
+- **Block types:** a human decision asks the user, a script is a command that the agent runs, a task with `for_each` uses one subagent per item or does the items one by one (by its `context`), a one-job task with `context: fresh` uses one subagent, and an end step names its status, outputs, report, and what is left to do (`pending`).
 - **Files:** the zip holds `<skill>/SKILL.md`, the skill's `scripts/`, and each pskill agent that it uses as `<skill>/subagents/<name>.md`. (Not `agents/`: Codex reads `agents/openai.yaml` there.)
 - **Child skills:** each child skill of a call block is exported as its own folder in the same zip. The call step tells the agent to follow it, then to come back.
 - **Script input:** a script step with an `input` tells the agent what to send on the command's standard input: each field of the JSON object, or the text.
@@ -1145,7 +1152,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `list` | Skills: id, invocation, description. |
 | `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h] [--model id] [--worktree]` | Validate the skill (every error except 17: a stale stub or profile agent never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. `--model` records the model id that the agent names (`llm` in `run.json`); the stub asks the agent to pass it. `--worktree` (or `PSKILL_RUN_IN_WORKTREE=true`) starts the run in a new git worktree (7.8). Added in 0.42.0. |
 | `current [<run>]` | Print the current packet. No state change. |
-| `task <run> <n>` | Print the full prompt of task `<n>` of the current parallel block. A subagent runs it first. No state change. |
+| `task <run> <n>` | Print the full prompt of job `<n>` of the current task block. A subagent runs it first. No state change. |
 | `submit <run> [--task <n>] [--file <path>]` | Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. |
 | `pause <run>` / `resume <run>` / `cancel <run>` | Lifecycle control. |
 | `delete <run>` | Delete the folder of a finished run, for cleanup. An unfinished run must be cancelled first. The id must name a folder right inside `runs/`. |
@@ -1163,7 +1170,7 @@ Run ids look like `r-YYYYMMDD-HHMM-<4 hex>`.
 
 Keep it under 150 lines. It covers:
 1. **When to write a programmatic skill:** an ordered workflow with branches, loops, human decisions, or nested skills. Reference and rules content stays a normal prose skill.
-2. **The six block types,** with one short example each.
+2. **The five block types,** with one short example each.
 3. **Edges, `max_visits`, and `{{ }}`,** including the "exactly one `{{ }}` keeps its type" rule.
 4. **Instructions:** only the block's own job, no return format, and no rules about order. Inline text for one or two lines; a `.md` file for anything longer.
 5. **How to port a prose skill:**
@@ -1215,7 +1222,7 @@ Each milestone starts with the listed failing tests and ends with green CI on th
 | # | Milestone | First red tests | Done when |
 |---|---|---|---|
 | M1 | Core engine | Load a skill; reject an unknown block type; `task` then `end`; a choice map picks the edge; a condition list picks the first match; an invalid submission is rejected with errors; a YAML answer with `choice: no` and a multi-line `plan` converts by schema; `submit` with no stdin fails in under 10 s; retries run out and the run pauses; `max_visits` redirects; `history` keeps every visit | A 5-block fixture skill runs to the end with `start` and `submit`. |
-| M2 | All blocks + tests | A `script` result lands in `steps`; a failing script pauses; a script reads its `input` on stdin; a `call` runs the child and returns `status` and `outputs`; a child cannot read the caller's steps; `parallel` completes only after all tasks; one-by-one mode; the lock holds under concurrent submits; the `pskill test` answer queue and path check | The three proof skills validate, and all their test cases pass. |
+| M2 | All blocks + tests | A `script` result lands in `steps`; a failing script pauses; a script reads its `input` on stdin; a `call` runs the child and returns `status` and `outputs`; a child cannot read the caller's steps; a task with `for_each` completes only after all jobs; one-by-one mode; the lock holds under concurrent submits; the `pskill test` answer queue and path check | The three proof skills validate, and all their test cases pass. |
 | M3 | Claude Code | The stub text; `sync` is idempotent; `sync` keeps foreign hooks, foreign permission rules, and hand-written skills; `sync` adds the one allow rule; the Stop hook blocks an `active` run and gives up after 3 blocks; the session-start hook rewrites a stale stub, skips a broken skill with a warning, and lists open runs; `init` and `update` with a hash check | In the `guplem/pskill` repository, `implement-issue` runs in real Claude Code from trigger to end on a real issue. An early stop gets blocked. A new session resumes the run. |
 | M4 | Codex + generic check | Codex: detection, `.codex/hooks.json` merge that keeps foreign hooks, Stop and session-start responses from fixtures, subagent wording, the `agents/openai.yaml` sidecar for `manual` skills. Generic: an unknown environment falls back to `generic`; its packets name no harness tool | In the same repository, `implement-issue` runs in real Codex from trigger to end, with an early stop blocked. A manual run in Gemini CLI or Cursor through `generic` also reaches the end. The trace shows the right harness each time. |
 | M5 | Viewer | Canvas marks; the page still shows the steps when Mermaid fails to load; timeline rows; summary numbers; the API returns 404 for an unknown run; the server binds only to 127.0.0.1 | A live run updates within 2 s. A finished run can be stepped through. |
@@ -1233,7 +1240,8 @@ Each of these was in an earlier draft. Each one added complexity for little user
 | A `route` block | Conditional `entry`, and conditional `next` on any block |
 | A separate `question` block | `decision` with no `choices` |
 | Named reusable types | YAML anchors under `x-` keys |
-| A static task list in a parallel block | `for_each` over a YAML list |
+| A static task list in a task block | `for_each` over a YAML list |
+| A `parallel` block (removed in 1.0.0, #170) | A `task` with `for_each` and `context: fresh`. A task in a clean context and a parallel task were the same job, so two types doubled every code path. `pskill validate` and `run` refuse `type: parallel` with one line: "`parallel` is now `task` with `for_each`: change the type". |
 | `for_each` on `call` | A loop through edges, with `history` |
 | `on_error` per block | Retries (global, or the block's own `retries`), then pause, then `resume` |
 | `ok_exit_codes` | Exit 0 plus JSON output |
@@ -1264,11 +1272,11 @@ Each item below exists as a GitHub issue with the label `future` (guplem/pskill 
 | `pskill eval`: run one skill headless in several harnesses on the same inputs and compare the traces | Needs the runner to launch agents (the opposite direction of D1). |
 | Export traces to OpenTelemetry | The trace format must settle first. The upload to Galtea shipped in 0.39.0 (10.4). |
 | MCP front door (the same commands as MCP tools) | The CLI works everywhere. |
-| `parallel` blocks that run whole skills per item | Tasks are single jobs in the MVP. |
+| Tasks with `for_each` that run whole skills per item | A job is one agent job, never a skill. |
 | Token counts per block | Harness session files are private formats. |
 | Replay from a chosen block (fork a run) | Step-through playback covers the MVP need. |
 | Up-front check of required tools and connectors | A missing tool fails its block, then the run pauses. |
-| Tool limits for a pskill agent | The block part shipped: the model tier in 0.34.0 as the `parallel` field `tier` (#11), and the tools in 0.35.0 as the `parallel` field `tools` (#149). A `tools` default in a pskill agent file waits: a block sets it today, and one way to do it is enough. |
+| Tool limits for a pskill agent | The block part shipped: the model tier in 0.34.0 (#11) and the tools in 0.35.0 (#149), on `parallel` then, and on every `task` job with `context: fresh` since 1.0.0 (#170). A `tools` default in a pskill agent file waits: a block sets it today, and one way to do it is enough. |
 | `implement-issue`: split big issues into stacked PRs, worktree subagents | The example version makes one PR. (`resolve-pr-feedback` now replies to review threads.) |
 
 ---
