@@ -277,6 +277,21 @@ def test_a_task_name_goes_after_the_agent(tmp_path: Path) -> None:
     assert block_lines.index('    task_name: "{{ item }}"') == block_lines.index("    agent: checker") + 1
 
 
+def test_an_agent_goes_before_a_written_tier_and_tools(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    add_block(project, "plan-work", "fan", "task")
+    update_block(project, "plan-work", "fan", {"context": "fresh"})
+    path = project.skills_folder / "plan-work" / "skill.yaml"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("    context: fresh\n", "    context: fresh\n    tier: fast\n    tools: read\n", 1))
+
+    update_block(project, "plan-work", "fan", {"agent": "checker"})
+
+    block_lines = skill_text(project).split("\n  fan:\n", 1)[1].splitlines()
+    assert block_lines.index("    agent: checker") < block_lines.index("    tier: fast")
+    assert block_lines.index("    tier: fast") < block_lines.index("    tools: read")
+
+
 def test_the_cap_keys_go_after_on_max_visits(tmp_path: Path) -> None:
     project = make_project(tmp_path)
 
