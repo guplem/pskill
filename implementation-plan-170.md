@@ -22,13 +22,14 @@ Acceptance criteria (from the issue):
 - **Validate:** an error for `tier`, `tools`, or `agent` (fixed or `{{ }}`) when `context` is missing or written as `main`. An error for a written `context` that is not `main` or `fresh`. A computed `context` skips the rule, the way a computed tier skips the tier check; items that come out `main` then ignore tier and tools at run time.
 - **Packet** (one function replaces `parallel_packet`):
   - No open fresh job: the main-agent packet of the next open main job. Without `for_each` it has no `--task`, so every existing task block prints the same packet as before. With `for_each` it uses `--task <n>`.
-  - Open fresh jobs: today's spawn list (`render_parallel_packet`, heading reworded from "Parallel tasks" to "Subagent tasks"). When main jobs are open too, a section follows: do task `<n>` yourself, in this conversation, with its full instruction. The `pskill wait` line applies only when no main job is left.
+  - Open fresh jobs: today's spawn list (`render_parallel_packet`, heading reworded from "Parallel tasks" to "Subagent tasks"). When main jobs are open too, one line counts them: "N more tasks are yours, in this conversation: run `current` for them when every subagent has finished." So the main jobs come one by one after the subagents, through `current`, with no second packet inside the first. The `pskill wait` line stays as it is.
 - **Submit:** `--task` is required with `for_each` or with a fresh job. On a one-job main task it is optional and means job 0. The reply depends on the submitting job's context, not on `adapter.can_spawn_subagents`:
   - A fresh job never sees the next block: "Task k is recorded. d of n tasks are done.", or its own errors, or the paused line.
-  - A main job: the next open main job's packet; or, when only fresh jobs are open, "recorded, wait for the subagents, then run `current`" (with the wait line when the harness can wake); or, when it was the last open job, the join and the next block's packet; or, when rejected, the packet again with the errors.
+  - A main job: the next open main job's packet; or, when fresh jobs are still open, the "recorded" line; or, when it was the last open job, the join and the next block's packet; or, when rejected, the packet again with the errors.
+  - When the last fresh job is recorded and main jobs remain, the runner logs the first main job's `block_started`, so `current` gives its packet.
   - Attempts stay counted per job.
 - **Old runs.** The loader refuses `type: parallel` with the one line. No reading mode for old copies (that would be a second code path). A run whose own skill copy has `parallel` cannot continue: `Run.skill_by_id` turns the load failure into a `RunError` with the line plus "Cancel this run and start a new one." (today it would be an internal error). `cancel` and `delete` work, because they never load the skill. The viewer still shows old runs: `load_run_skills` skips a copy that fails to load, so the run shows its steps without the canvas. The viewer keeps the `"parallel"` keys for old `block_started` rows, through one helper that is true for an old `parallel` row or a task row with tasks.
-- **Trace.** `block_type` of a task block is `task`. `SCHEMA_VERSION` goes from 7 to 8. `block_started` keeps `task_names`, `skipped_tasks`, and `task_prompts` for a task with `for_each`, and adds `task_contexts` (the context of each job) when any job is fresh.
+- **Trace.** `block_type` of a task block is `task`. `SCHEMA_VERSION` goes from 7 to 8. `block_started` of a task with `for_each` says `for_each: true` (the viewer draws its tasks from it), and keeps `task_names`, `skipped_tasks`, and `task_prompts`.
 - **Galtea.** `version_facts` adds the tier facts for any task with a `tier`. `SPAN_TYPES` keeps `"parallel"` for old traces.
 - **Example skills.** `implement-issue` `research_code` and `research_gaps`, and `review-round` `review`, become `type: task` with `context: fresh` (behavior unchanged). Two self-contained tasks move to a fresh context on a cheaper tier, so the examples cover a one-job fresh task and `tier`: `implement-issue` `finish` (`context: fresh`, `tier: standard`, `tools: read`, one added line to read the diff and the description first) and `review-head-check` `judge` (`context: fresh`, `tier: standard`, `tools: read`). New keys go after `description` (a skill-editor test checks the order). `resolve_item` stays in the main context: its instruction relies on earlier items, so moving it needs its own change.
 - **This run.** This run of `implement-issue` uses the checkout's own runner (dev pin), and its skill copies say `type: parallel`. Once the loader refuses it, the run's next command fails. When the loader commit lands, its copies in `.pskill/runs/<run>/skills/` get the same two-line change as the example skills (by hand, in the ignored run folder), so the run goes on.
@@ -55,14 +56,12 @@ Acceptance criteria (from the issue):
 
 1. Model, schema, and loader: `TaskBlock` with the new fields, the `parallel` refusal. Migrate every test fixture and the example skills from `parallel` to `task` + `context: fresh` in the same commit (the loader tests fail otherwise). Migrate this run's copies.
 2. Validator: the `main` context rule, the `context` value check, and today's tier, tools, `when`, and agent checks on tasks.
-3. Run records and engine: `TaskJob`, `start_jobs` for every task, `job_context`, the flat output of a one-job task, `results` with `for_each`; `SCHEMA_VERSION` 8.
-4. Engine and packets: the mixed packet (fresh jobs spawned, then main jobs one by one), submit replies by job context, `--task` optional on a one-job main task, the wait line.
-5. Generic adapter: every job main, tier and tools ignored.
-6. Old runs: `skill_by_id` refusal for a `parallel` run copy; viewer shows the old run with no canvas.
-7. Viewer data, skill view, export, editor, agent view: one path for a task with jobs; old `parallel` rows still read.
-8. `sync` profile agents and Galtea facts from fresh task jobs and tasks with a tier.
-9. Example skills: `finish` and `judge` in a fresh context with `tier: standard` and `tools: read`.
-10. Docs: SPEC.md (6 with five types, 6.1 holds the old 6.3, 7, 8, 9.3, 10.3, 10.4, 11, 12, 13.1, 13.3, 14, 15, 18 with a `parallel` row), AUTHORING.md and its tested example, README.md, CHANGELOG.md 1.0.0 (with "finish or cancel runs before updating"), version 1.0.0.
+3. Run records, engine, and packets (one cycle, because the job path replaces the parallel path whole): `TaskJob`, `start_jobs` for every task, `job_context` (generic: every job main, tier and tools ignored), the flat output of a one-job task, `results` with `for_each`, the mixed packet, submit replies by job context, `--task` optional on a one-job main task; `SCHEMA_VERSION` 8.
+4. Old runs: `skill_by_id` refusal for a `parallel` run copy; viewer shows the old run with no canvas.
+5. Viewer data, skill view, export, editor, agent view: one path for a task with jobs; old `parallel` rows still read.
+6. `sync` profile agents and Galtea facts from fresh task jobs and tasks with a tier.
+7. Example skills: `finish` and `judge` in a fresh context with `tier: standard` and `tools: read`.
+8. Docs: SPEC.md (6 with five types, 6.1 holds the old 6.3, 7, 8, 9.3, 10.3, 10.4, 11, 12, 13.1, 13.3, 14, 15, 18 with a `parallel` row), AUTHORING.md and its tested example, README.md, CHANGELOG.md 1.0.0 (with "finish or cancel runs before updating"), version 1.0.0.
 
 ## 5. Checks
 

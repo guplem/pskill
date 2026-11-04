@@ -4,11 +4,12 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, TypedDict
 
-SCHEMA_VERSION = 7  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
+SCHEMA_VERSION = 8  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
 # 4: a parallel block with subagents logs the full prompt of each task (`task_prompts`).
 # 5: a `script_ran` event holds the `input` that the script read on stdin.
 # 6: `block_type` is `visit_cap` for the question at a visit cap.
 # 7: every event has the `call_id` of its call instance; a call's `block_started` has its `inputs`.
+# 8: `parallel` is a task with `for_each`: its `block_type` is `task`, and its `block_started` has `for_each`.
 
 ACTIVE_STATUSES = ("active", "waiting_for_human")
 UNFINISHED_STATUSES = ("active", "waiting_for_human", "paused")
@@ -57,14 +58,15 @@ class RunInfo(TypedDict):
     final_pending: str | None
 
 
-class ParallelTask(TypedDict):
-    """One task of the current parallel block."""
+class TaskJob(TypedDict):
+    """One job of the current task block: its only job, or the job of one `for_each` item."""
 
     item: Any
     agent: str | None
     name: str | None  # from the block's `task_name`; None shows as "task <n>"
     tier: str | None  # from the block's `tier`; None: the subagent inherits the model
     tools: str | None  # from the block's `tools`; None: the subagent gets every tool
+    context: str  # `main` (the main agent does it) or `fresh` (a subagent does it)
     output: dict[str, Any] | None  # None until a valid answer arrives
     attempts: int
 
@@ -87,7 +89,7 @@ class Frame(TypedDict):
     current_block: str | None
     arrived_from: str | None
     arrival_reason: str | None
-    tasks: list[ParallelTask] | None  # the tasks of the current parallel block, if any
+    tasks: list[TaskJob] | None  # the jobs of the current task block; None before 1.0.0 at a task without for_each
     skipped_tasks: list[SkippedTask] | None  # its items whose `when` was false; absent in runs before 0.11.0
     started_at: str
     goal_shown: bool  # a child skill's first packet showed its goal; absent in runs before 0.10.0

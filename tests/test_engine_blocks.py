@@ -1290,3 +1290,176 @@ def test_only_the_root_skill_gives_a_summary_card(tmp_path: Path) -> None:
     assert final.count("### Summary card") == 1
     assert "| ✅ DONE | parent · succeeded |" in final
     assert "Child work left." not in final
+
+
+# --- task jobs: one job or one per item, each in the main context or a fresh one ----------------------
+
+ONE_JOB_SKILL = """\
+schema: pskill/v1
+id: one-job
+description: Does one job.
+goal: Judge the change.
+outputs:
+  verdict: {type: string, description: "The verdict."}
+entry: judge
+blocks:
+  judge:
+    type: task
+    context: fresh
+    tier: fast
+    instruction: Judge the change.
+    output:
+      verdict: {type: string, description: "The verdict."}
+    next: done
+  done:
+    type: end
+    status: succeeded
+    outputs: {verdict: "{{ steps.judge.verdict }}"}
+"""
+
+MIXED_SKILL = """\
+schema: pskill/v1
+id: mixed
+description: Mixes jobs.
+goal: Check every part.
+entry: check
+blocks:
+  check:
+    type: task
+    for_each:
+      - {part: a, context: fresh}
+      - {part: b, context: main}
+      - {part: c, context: fresh}
+    context: "{{ item.context }}"
+    task_name: "{{ item.part }}"
+    instruction: "Check part {{ item.part }}."
+    output:
+      note: {type: string, description: "What you found."}
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_a_one_job_fresh_task_spawns_one_subagent_and_stores_its_output_flat(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"one-job": ONE_JOB_SKILL})
+
+    run_id, packet = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")
+    reply = submit_answer(project, run_id, "verdict: fine\n", task=0)
+
+    assert "### Subagent tasks" in packet
+    assert "#### Task 0" in packet
+    assert reply == "Task 0 is recorded. All 1 tasks are done.\n"
+    assert read_run_state(project, run_id)["frames"][0]["steps"]["judge"] == {"verdict": "fine"}
+    assert read_run_info(project, run_id)["outputs"] == {"verdict": "fine"}
+
+
+def test_a_one_job_fresh_task_needs_the_task_number(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"one-job": ONE_JOB_SKILL})
+    run_id, _ = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")
+
+    reply = submit_answer(project, run_id, "verdict: fine\n", task=None)
+
+    assert "Add `--task <n>` to the submit command." in reply
+
+
+def test_a_harness_without_subagents_does_a_fresh_job_itself_and_ignores_its_tier(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"one-job": ONE_JOB_SKILL})
+
+    run_id, packet = start_run(project, "one-job", {}, mode="interactive", harness="generic")
+    final = submit_answer(project, run_id, "verdict: fine\n")
+
+    assert "Subagent tasks" not in packet
+    assert "Judge the change." in packet
+    assert "--task" not in packet
+    assert "haiku" not in packet
+    assert "finished with status succeeded" in final
+    assert read_run_state(project, run_id)["frames"][0]["steps"]["judge"] == {"verdict": "fine"}
+
+
+def test_a_one_job_main_task_takes_task_zero_too(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"one-job": ONE_JOB_SKILL.replace("    context: fresh\n    tier: fast\n", "")})
+    run_id, _ = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")
+
+    final = submit_answer(project, run_id, "verdict: fine\n", task=0)
+
+    assert "finished with status succeeded" in final
+
+
+def test_main_jobs_of_a_for_each_run_one_by_one_and_join_in_item_order(tmp_path: Path) -> None:
+    main_only = PARALLEL_SKILL.replace("    context: fresh\n", "").replace("    agent: checker\n", "")
+    project = make_project(tmp_path, {"fanout": main_only})
+
+    run_id, first = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    second = submit_answer(project, run_id, "wrong: [x]\n", task=0)
+    final = submit_answer(project, run_id, "wrong: []\n", task=1)
+
+    assert "Check every claim in a.md." in first
+    assert "--task 0" in first
+    assert "Subagent tasks" not in first
+    assert "Check every claim in b.md." in second
+    assert "--task 1" in second
+    assert "finished with status succeeded" in final
+    assert read_run_state(project, run_id)["frames"][0]["steps"]["check"] == {
+        "results": [{"wrong": ["x"]}, {"wrong": []}]
+    }
+
+
+def test_a_mixed_block_spawns_the_fresh_jobs_then_gives_the_main_jobs(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"mixed": MIXED_SKILL})
+
+    run_id, packet = start_run(project, "mixed", {}, mode="interactive", harness="subagents-for-tests")
+    first_reply = submit_answer(project, run_id, "note: c is fine\n", task=2)
+    last_fresh_reply = submit_answer(project, run_id, "note: a is fine\n", task=0)
+    main_packet = current_packet(project, run_id)
+    final = submit_answer(project, run_id, "note: b is fine\n", task=1)
+
+    assert "#### Task 0 · a" in packet and "#### Task 2 · c" in packet
+    assert "#### Task 1" not in packet
+    assert "1 more task is yours, in this conversation: run `current` for it when every subagent has finished." in (
+        packet
+    )
+    assert first_reply == "Task 2 is recorded. 1 of 3 tasks are done.\n"
+    assert last_fresh_reply == "Task 0 is recorded. 2 of 3 tasks are done.\n"
+    assert "Check part b." in main_packet
+    assert "--task 1" in main_packet
+    assert "finished with status succeeded" in final
+    assert read_run_state(project, run_id)["frames"][0]["steps"]["check"] == {
+        "results": [{"note": "a is fine"}, {"note": "b is fine"}, {"note": "c is fine"}]
+    }
+    events = read_events(project.runs_folder / run_id)
+    started = [event for event in events if event["type"] == "block_started" and event["block"] == "check"]
+    assert [event.get("task") for event in started] == [None, 1]
+
+
+def test_a_main_job_answered_while_subagents_work_is_recorded(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"mixed": MIXED_SKILL})
+    run_id, _ = start_run(project, "mixed", {}, mode="interactive", harness="subagents-for-tests")
+
+    reply = submit_answer(project, run_id, "note: b is fine\n", task=1)
+
+    assert reply == "Task 1 is recorded. 1 of 3 tasks are done.\n"
+
+
+def test_a_computed_context_that_is_not_main_or_fresh_pauses_the_run(tmp_path: Path) -> None:
+    project = make_project(
+        tmp_path, {"mixed": MIXED_SKILL.replace("{part: b, context: main}", "{part: b, context: x}")}
+    )
+
+    run_id, packet = start_run(project, "mixed", {}, mode="interactive", harness="subagents-for-tests")
+
+    assert read_run_info(project, run_id)["status"] == "paused"
+    assert "The context of 'check' must be main or fresh, not 'x'." in packet
+
+
+def test_an_empty_computed_context_is_the_main_context(tmp_path: Path) -> None:
+    project = make_project(
+        tmp_path, {"mixed": MIXED_SKILL.replace("{part: b, context: main}", "{part: b, context: ''}")}
+    )
+
+    _, packet = start_run(project, "mixed", {}, mode="interactive", harness="subagents-for-tests")
+
+    assert "1 more task is yours" in packet

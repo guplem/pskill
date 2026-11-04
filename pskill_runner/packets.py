@@ -59,14 +59,18 @@ def render_agent_packet(packet: AgentPacket) -> str:
         sections.append(f"### Goal\n{packet.goal.strip()}")
     sections.append(f"### Instruction\n{packet.instruction.strip()}")
     if packet.errors:
-        listed = "\n".join(f"- {error}" for error in packet.errors)
-        sections.append(f"### Errors\nYour last answer was rejected. Fix these problems and submit again:\n{listed}")
+        sections.append(errors_section(packet.errors))
     if packet.decider is not None:
         sections.append(decision_section(packet))
     sections.append(return_section(packet))
     if packet.show_rules:
         sections.append(rules_section(packet))
     return "\n\n".join(sections) + "\n"
+
+
+def errors_section(errors: list[str]) -> str:
+    listed = "\n".join(f"- {error}" for error in errors)
+    return f"### Errors\nYour last answer was rejected. Fix these problems and submit again:\n{listed}"
 
 
 def header(packet: AgentPacket) -> str:
@@ -156,21 +160,27 @@ class TaskPrompt:
     spawn_wording: str = ""  # how to spawn this task's subagent with its tool profile and model tier, in this harness
 
 
-def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], total_tasks: int) -> str:
-    """The packet of a parallel block when the harness can spawn subagents: a one-line prompt per open task.
+def render_parallel_packet(
+    packet: AgentPacket, open_tasks: list[TaskPrompt], total_tasks: int, main_tasks: int = 0
+) -> str:
+    """The packet of the open fresh jobs of a task block: a one-line prompt per open job, for its subagent.
+
+    `main_tasks` counts the open jobs that the main agent does itself, after the subagents.
 
     The subagent reads its full prompt with `pskill task`, so the main agent copies one short line per task.
     The same line restarts a task whose subagent stalled.
     """
     lines = [
         header(packet),
+        *(["", errors_section(packet.errors)] if packet.errors else []),
         "",
-        "### Parallel tasks",
+        "### Subagent tasks",
         "Spawn one subagent per task below, all at once, each with a fresh context (none of this conversation).",
         "Give each subagent exactly the one-line prompt of its task.",
         *([packet.subagent_wording] if packet.subagent_wording else []),
         f"{len(open_tasks)} of {total_tasks} tasks are still open.",
         f"When every subagent has finished, run: {packet.runner_command} current {packet.run_id}",
+        *([main_tasks_line(main_tasks)] if main_tasks else []),
         *([background_subagent_line(packet)] if packet.can_wait else []),
     ]
     for task in open_tasks:
@@ -178,6 +188,15 @@ def render_parallel_packet(packet: AgentPacket, open_tasks: list[TaskPrompt], to
         lines += ["", f"#### Task {task.index}{name}", *([task.spawn_wording] if task.spawn_wording else [])]
         lines.append(task_line(packet, task.index))
     return "\n".join(lines) + "\n"
+
+
+def main_tasks_line(count: int) -> str:
+    """The jobs of the same block that the main agent does itself, once the subagents are done."""
+    if count == 1:
+        return "1 more task is yours, in this conversation: run `current` for it when every subagent has finished."
+    return (
+        f"{count} more tasks are yours, in this conversation: run `current` for them when every subagent has finished."
+    )
 
 
 def background_subagent_line(packet: AgentPacket) -> str:

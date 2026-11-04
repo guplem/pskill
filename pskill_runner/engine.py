@@ -42,10 +42,10 @@ from pskill_runner.run_records import (
     SCHEMA_VERSION,
     UNFINISHED_STATUSES,
     Frame,
-    ParallelTask,
     RunInfo,
     RunState,
     SkippedTask,
+    TaskJob,
     child_call_id,
     frame_context,
     new_frame,
@@ -65,6 +65,7 @@ from pskill_runner.run_store import (
 from pskill_runner.shells import detect_shell
 from pskill_runner.skill_loader import SkillLoadError, load_catalog, load_skill
 from pskill_runner.skill_model import (
+    CONTEXTS,
     MODEL_TIERS,
     TOOL_PROFILES,
     AgentBlock,
@@ -772,7 +773,7 @@ class Run:
                     return pause_text
             elif isinstance(block, CallBlock):
                 self.start_call(block)
-            elif has_jobs_per_item(block) and not self.start_parallel(block):
+            elif isinstance(block, TaskBlock) and not self.start_jobs(block):
                 continue  # an empty list: the block completed at once
             else:
                 return self.issue_packet(new_block=True)
@@ -813,7 +814,7 @@ class Run:
         skipped_tasks = self.frame.get("skipped_tasks")
         if has_jobs_per_item(block) and skipped_tasks:
             fields["skipped_tasks"] = skipped_tasks
-        if isinstance(block, TaskBlock) and has_jobs_per_item(block) and task is None and self.frame["tasks"]:
+        if has_jobs_per_item(block) and task is None and self.frame["tasks"]:
             fields["task_prompts"] = self.task_prompts(block)
         self.log("block_started", **fields)
 
@@ -933,10 +934,14 @@ class Run:
                 return None
         return self.pause("block_failed", problem)
 
-    # --- parallel blocks ----------------------------------------------------------------------
+    # --- task blocks: their jobs ---------------------------------------------------------------
 
-    def start_parallel(self, block: TaskBlock) -> bool:
-        """Create the tasks. Return False when no item runs (the block then completes at once)."""
+    def start_jobs(self, block: TaskBlock) -> bool:
+        """Create the jobs of a task: one, or one per item. Return False when no item runs (the block then
+        completes at once)."""
+        if block.for_each is None:
+            self.frame["tasks"] = [self.new_job(block, None)]
+            return True
         items = self.computed(block.for_each, f"The for_each of {block.id!r}")
         if not isinstance(items, list):
             raise RunnerStop(f"The for_each of {block.id!r} must give a list, not {type(items).__name__}.")
@@ -946,19 +951,34 @@ class Run:
             self.frame["skipped_tasks"] = None
             self.complete_block(block, {"results": []}, decided_by="runner", duration_ms=0)
             return False
-        self.frame["tasks"] = [
-            ParallelTask(
-                item=item,
-                agent=str(self.computed(block.agent, f"The agent of {block.id!r}", item)) if block.agent else None,
-                name=self.task_name(block, item),
-                tier=self.task_tier(block, item),
-                tools=self.task_tools(block, item),
-                output=None,
-                attempts=0,
-            )
-            for item in items
-        ]
+        self.frame["tasks"] = [self.new_job(block, item) for item in items]
         return True
+
+    def new_job(self, block: TaskBlock, item: Any) -> TaskJob:
+        """One job. Only a fresh job gets a tier and a tool profile: the main agent cannot change its own."""
+        context = self.job_context(block, item)
+        fresh = context == "fresh"
+        return TaskJob(
+            item=item,
+            agent=str(self.computed(block.agent, f"The agent of {block.id!r}", item)) if block.agent else None,
+            name=self.task_name(block, item),
+            tier=self.task_tier(block, item) if fresh else None,
+            tools=self.task_tools(block, item) if fresh else None,
+            context=context,
+            output=None,
+            attempts=0,
+        )
+
+    def job_context(self, block: TaskBlock, item: Any) -> str:
+        """`main` or `fresh`. An empty value is `main`. A harness without subagents does every job itself."""
+        if block.context is None:
+            return "main"
+        context = self.computed(block.context, f"The context of {block.id!r}", item)
+        if context is None or context == "":
+            return "main"
+        if context not in CONTEXTS:
+            raise RunnerStop(f"The context of {block.id!r} must be {' or '.join(CONTEXTS)}, not {context!r}.")
+        return str(context) if self.adapter.can_spawn_subagents else "main"
 
     def items_that_run(self, block: TaskBlock, items: list[Any]) -> list[Any]:
         """The items of a fixed `for_each` list whose `when` is true, without their `when` key.
@@ -1032,7 +1052,8 @@ class Run:
     def task_prompt(self, block: TaskBlock, index: int) -> TaskPrompt:
         task = (self.frame["tasks"] or [])[index]
         skill = self.skill_of(self.frame)
-        instruction = self.rendered(skill.instruction_text(block.instruction), f"Task {index}", task["item"])
+        label = f"Task {index}" if block.for_each is not None else f"The instruction of {block.id!r}"
+        instruction = self.rendered(skill.instruction_text(block.instruction), label, task["item"])
         return TaskPrompt(
             index=index,
             agent_text=self.agent_text(task["agent"]),
@@ -1042,7 +1063,7 @@ class Run:
             spawn_wording=self.spawn_wording(task),
         )
 
-    def spawn_wording(self, task: ParallelTask) -> str:
+    def spawn_wording(self, task: TaskJob) -> str:
         """How to spawn the task's subagent in this harness: its tool profile, then its model tier, on one line."""
         wordings = [
             self.adapter.tools_wording.get(task.get("tools") or "", ""),
@@ -1050,16 +1071,31 @@ class Run:
         ]
         return " ".join(wording for wording in wordings if wording)
 
-    def parallel_packet(self, block: TaskBlock, errors: list[str], show_goal: bool, show_rules: bool) -> str:
-        """All open tasks for subagents (each task prompt has the goal), or the next open task for the main agent."""
-        open_indexes = self.open_task_indexes()
-        if self.adapter.can_spawn_subagents:
-            tasks = [self.task_prompt(block, index) for index in open_indexes]
-            text = render_parallel_packet(self.base_packet(block, errors), tasks, len(self.frame["tasks"] or []))
-            return text
-        next_task = self.task_prompt(block, open_indexes[0])
-        instruction = "\n\n".join(part for part in (next_task.agent_text, next_task.instruction) if part)
-        packet = self.base_packet(block, errors, instruction, task_index=next_task.index)
+    def open_job_indexes(self, context: str) -> list[int]:
+        """The open jobs of one context, in item order."""
+        jobs = self.frame["tasks"] or []
+        return [index for index in self.open_task_indexes() if jobs[index]["context"] == context]
+
+    def jobs_of(self, block: TaskBlock) -> list[TaskJob]:
+        """The jobs of the current task. A run paused at a task before 1.0.0 has none yet: it gets its one job."""
+        jobs = self.frame["tasks"]
+        if jobs is None:
+            jobs = [self.new_job(block, None)]
+            self.frame["tasks"] = jobs
+        return jobs
+
+    def task_packet(self, block: TaskBlock, errors: list[str], show_goal: bool, show_rules: bool) -> str:
+        """The open fresh jobs for subagents (each prompt has the goal), or else the next main job."""
+        jobs = self.jobs_of(block)
+        fresh_indexes = self.open_job_indexes("fresh")
+        main_indexes = self.open_job_indexes("main")
+        if fresh_indexes:
+            tasks = [self.task_prompt(block, index) for index in fresh_indexes]
+            return render_parallel_packet(self.base_packet(block, errors), tasks, len(jobs), len(main_indexes))
+        job = self.task_prompt(block, main_indexes[0])
+        instruction = "\n\n".join(part for part in (job.agent_text, job.instruction) if part)
+        task_index = job.index if block.for_each is not None else None
+        packet = self.base_packet(block, errors, instruction, task_index=task_index)
         return render_agent_packet(replace(packet, show_goal=show_goal, show_rules=show_rules))
 
     # --- packets -------------------------------------------------------------------------------
@@ -1083,18 +1119,16 @@ class Run:
         return text
 
     def sequential_task_index(self, block: AnyBlock) -> int | None:
-        """The task that a one-by-one parallel packet shows, or None."""
-        if has_jobs_per_item(block) and not self.adapter.can_spawn_subagents:
-            return self.open_task_indexes()[0]
+        """The job of a task with `for_each` that the main agent does next, when no subagent is to spawn."""
+        if has_jobs_per_item(block) and not self.open_job_indexes("fresh"):
+            return self.open_job_indexes("main")[0]
         return None
 
     def agent_packet(self, errors: list[str], show_goal: bool = False, show_rules: bool = False) -> str:
         block = self.current_block()
-        if isinstance(block, TaskBlock) and has_jobs_per_item(block):
-            return self.parallel_packet(block, errors, show_goal, show_rules)
-        if not isinstance(
-            block, TaskBlock | DecisionBlock
-        ):  # pragma: no cover - an active run waits only at an agent block
+        if isinstance(block, TaskBlock):
+            return self.task_packet(block, errors, show_goal, show_rules)
+        if not isinstance(block, DecisionBlock):  # pragma: no cover - an active run waits only at an agent block
             raise RunError(f"The block {block.id!r} does not need the agent.")
         skill = self.skill_of(self.frame)
         instruction = self.rendered(skill.instruction_text(block.instruction), f"The instruction of {block.id!r}")
@@ -1264,7 +1298,7 @@ class Run:
     def resume(self) -> str:
         """Retry the current block with fresh attempt counts.
 
-        A parallel block whose tasks all got their answers while the run was paused completes now.
+        A task whose jobs all got their answers while the run was paused completes now.
         """
         self.info["attempts"] = 0
         self.info["stop_blocks"] = 0
@@ -1277,7 +1311,7 @@ class Run:
         block = self.current_block()
         if isinstance(block, TaskBlock) and self.frame["tasks"] is not None and not self.open_task_indexes():
             self.info["status"] = "active"
-            return self.guarded(lambda: self.complete_parallel(block, duration_ms=0))
+            return self.guarded(lambda: self.complete_jobs(block, duration_ms=0))
         if isinstance(block, TaskBlock | DecisionBlock):
             return self.guarded(lambda: self.issue_packet(new_block=False, reentry=True))
         self.info["status"] = "active"
@@ -1309,12 +1343,12 @@ class Run:
         block = self.current_block()
         if not isinstance(block, TaskBlock | DecisionBlock):  # pragma: no cover - same: an agent block
             raise RunError(f"The block {block.id!r} does not take an answer.")
-        if task is not None and not has_jobs_per_item(block):
+        if task is not None and not isinstance(block, TaskBlock):
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
         self.info["stop_blocks"] = 0
         self.clear_wait()
-        if isinstance(block, TaskBlock) and has_jobs_per_item(block):
-            return self.submit_task(block, answer_text, task)
+        if isinstance(block, TaskBlock):
+            return self.submit_job(block, answer_text, task)
         answer, answered_by, errors = self.read_answer(answer_text, block)
         if errors:
             return self.reject(errors, answer_text)
@@ -1323,20 +1357,29 @@ class Run:
         self.answer_recorded = True
         return self.guarded(lambda: self.accept(block, answer, decided_by, duration_ms))
 
-    def submit_task(self, block: TaskBlock, answer_text: str, task: int | None) -> str:
-        """The answer of one task of a parallel block."""
-        if task is None:
-            return self.reject(["This block has several tasks. Add `--task <n>` to the submit command."], answer_text)
+    def submit_job(self, block: TaskBlock, answer_text: str, task: int | None) -> str:
+        """The answer of one job. Only a one-job task in the main context takes no `--task`."""
+        jobs = self.jobs_of(block)
+        one_main_job = block.for_each is None and jobs[0]["context"] == "main"
+        if task is None and not one_main_job:
+            return self.reject(["This block has tasks. Add `--task <n>` to the submit command."], answer_text)
+        index = 0 if task is None else task
+        fresh = self.is_fresh_job(index)  # known before the answer: the join clears the jobs
         answer, _, errors = self.read_answer(answer_text, block)
         if errors:
-            return self.task_reply(task, recorded=False, text=self.reject(errors, answer_text, task))
+            return self.task_reply(index, fresh, recorded=False, text=self.reject(errors, answer_text, task))
         self.answer_recorded = True
-        text = self.guarded(lambda: self.accept_task(block, task, answer))
-        return self.task_reply(task, recorded=True, text=text)
+        text = self.guarded(lambda: self.accept_job(block, index, answer))
+        return self.task_reply(index, fresh, recorded=True, text=text)
 
-    def task_reply(self, task: int, recorded: bool, text: str) -> str:
+    def is_fresh_job(self, index: int) -> bool:
+        """Whether the job with this number runs in a subagent, so its replies never show the next block."""
+        jobs = self.frame["tasks"] or []
+        return 0 <= index < len(jobs) and jobs[index]["context"] == "fresh"
+
+    def task_reply(self, task: int, fresh: bool, recorded: bool, text: str) -> str:
         """The reply to a subagent. A pause and its pause steps are the main agent's work, read with `current`."""
-        if self.info["status"] != "paused" or not self.adapter.can_spawn_subagents:
+        if self.info["status"] != "paused" or not fresh:
             return text
         self.pause_steps_not_shown()
         state = "recorded" if recorded else "not recorded"
@@ -1348,12 +1391,12 @@ class Run:
     def record_task_while_paused(self, answer_text: str, task: int) -> str:
         """Keep a subagent's answer when the main agent's stop attempts paused the run. Only `resume` advances."""
         block = self.current_block()
-        if not isinstance(block, TaskBlock) or not has_jobs_per_item(block):
+        if not isinstance(block, TaskBlock):
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
         answer, _, errors = self.read_answer(answer_text, block)
         if errors:
             return task_not_recorded(task, errors)
-        self.record_task(block, task, answer)
+        self.record_job(block, task, answer)
         self.answer_recorded = True
         tasks = self.frame["tasks"] or []
         done = len(tasks) - len(self.open_task_indexes())
@@ -1399,13 +1442,11 @@ class Run:
         self.log("submission_rejected", block=self.frame["current_block"], task=task, errors=errors, raw=answer_text)
         if attempts > self.retries_of(self.current_block()):
             return self.pause("block_failed", "\n".join(errors))
-        if task is not None and self.adapter.can_spawn_subagents:
+        if task is not None and self.is_fresh_job(task):
             return task_not_recorded(task, errors)  # the subagent gets its own errors, not the main agent's packet
         return self.guarded(lambda: self.agent_packet(errors=errors))
 
-    def accept(
-        self, block: TaskBlock | DecisionBlock, answer: dict[str, Any], decided_by: str, duration_ms: int
-    ) -> str:
+    def accept(self, block: DecisionBlock, answer: dict[str, Any], decided_by: str, duration_ms: int) -> str:
         if self.frame.get("visit_cap_question"):
             return self.answer_visit_cap(block.id, answer, decided_by, duration_ms)
         self.complete_block(block, answer, decided_by, duration_ms)
@@ -1425,38 +1466,49 @@ class Run:
             self.move_on_from_cap(block)
         return self.advance()
 
-    def record_task(self, block: TaskBlock, index: int, answer: dict[str, Any]) -> int:
-        """Store one task's answer and log it. Return how long the task took."""
+    def record_job(self, block: TaskBlock, index: int, answer: dict[str, Any]) -> int:
+        """Store one job's answer. Return how long it took. A task with `for_each` logs each job's answer;
+        the answer of a one-job task is the block's own, which `complete_block` logs."""
         self.check_open_task(block, index)
         (self.frame["tasks"] or [])[index]["output"] = answer
         duration_ms = elapsed_ms_since(self.info["packet_issued_at"])
-        self.log(
-            "block_completed", block=block.id, task=index, output=answer, decided_by="agent", duration_ms=duration_ms
-        )
+        if block.for_each is not None:
+            self.log(
+                "block_completed",
+                block=block.id,
+                task=index,
+                output=answer,
+                decided_by="agent",
+                duration_ms=duration_ms,
+            )
         return duration_ms
 
-    def complete_parallel(self, block: TaskBlock, duration_ms: int) -> str:
-        """Join the answers of every task into the block's results, then go on."""
-        results = [task["output"] for task in self.frame["tasks"] or []]
+    def complete_jobs(self, block: TaskBlock, duration_ms: int) -> str:
+        """Store the block's output, then go on: the answers of every job as `results`, or the one job's answer."""
+        jobs = self.frame["tasks"] or []
+        if block.for_each is None:
+            value = cast(dict[str, Any], jobs[0]["output"])
+        else:
+            value = {"results": [job["output"] for job in jobs]}
         self.frame["tasks"] = None
         self.frame["skipped_tasks"] = None
-        self.complete_block(block, {"results": results}, decided_by="agent", duration_ms=duration_ms)
+        self.complete_block(block, value, decided_by="agent", duration_ms=duration_ms)
         return self.advance()
 
-    def accept_task(self, block: TaskBlock, index: int, answer: dict[str, Any]) -> str:
-        duration_ms = self.record_task(block, index, answer)
-        tasks = self.frame["tasks"] or []
+    def accept_job(self, block: TaskBlock, index: int, answer: dict[str, Any]) -> str:
+        """Record a job. A subagent's reply never shows the next block: the main agent reads it with `current`."""
+        duration_ms = self.record_job(block, index, answer)
+        jobs = self.frame["tasks"] or []
+        fresh = jobs[index]["context"] == "fresh"
         open_indexes = self.open_task_indexes()
-        if open_indexes:
-            if self.adapter.can_spawn_subagents:
-                done = len(tasks) - len(open_indexes)
-                return f"Task {index} is recorded. {done} of {len(tasks)} tasks are done.\n"
-            return self.issue_packet_for_next_task(block)
-        next_text = self.complete_parallel(block, duration_ms)
-        if self.adapter.can_spawn_subagents:
-            # The last subagent must not see the next block: the main agent reads it with `current`.
-            return f"Task {index} is recorded. All {len(tasks)} tasks are done.\n"
-        return next_text
+        recorded = f"Task {index} is recorded. {len(jobs) - len(open_indexes)} of {len(jobs)} tasks are done.\n"
+        if not open_indexes:
+            next_text = self.complete_jobs(block, duration_ms)
+            return f"Task {index} is recorded. All {len(jobs)} tasks are done.\n" if fresh else next_text
+        if self.open_job_indexes("fresh"):
+            return recorded
+        next_packet = self.issue_packet_for_next_task(block)
+        return recorded if fresh else next_packet
 
     def issue_packet_for_next_task(self, block: TaskBlock) -> str:
         self.info["packet_issued_at"] = timestamp(utc_now())

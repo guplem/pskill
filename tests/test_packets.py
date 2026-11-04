@@ -421,7 +421,22 @@ def test_a_parallel_packet_of_a_worktree_run_names_its_folder_after_the_header()
 
     text = render_parallel_packet(packet, [task], total_tasks=1)
 
-    assert f"Run r-20260927-1432-ab12 · interactive\n{WORKTREE_LINE}\n\n### Parallel tasks" in text
+    assert f"Run r-20260927-1432-ab12 · interactive\n{WORKTREE_LINE}\n\n### Subagent tasks" in text
+
+
+def test_a_subagent_packet_counts_the_tasks_that_the_main_agent_does_after_it() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
+
+    one = render_parallel_packet(PLAN_PACKET, [task], total_tasks=2, main_tasks=1)
+    two = render_parallel_packet(PLAN_PACKET, [task], total_tasks=3, main_tasks=2)
+    none = render_parallel_packet(PLAN_PACKET, [task], total_tasks=1)
+
+    assert "1 more task is yours, in this conversation: run `current` for it when every subagent has finished." in one
+    assert (
+        "2 more tasks are yours, in this conversation: run `current` for them when every subagent has finished." in two
+    )
+    assert "more task" not in none
 
 
 def test_a_packet_of_a_run_in_the_checkout_names_no_folder_in_its_header() -> None:

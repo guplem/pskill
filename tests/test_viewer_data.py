@@ -1312,7 +1312,7 @@ def test_a_parallel_row_lists_the_items_that_its_when_skipped(tmp_path: Path) ->
 
 def test_a_packet_from_before_schema_version_4_still_gives_each_task_its_full_prompt() -> None:
     packet = (
-        "## pskill · fanout · check (visit 1)\n\n### Parallel tasks\n2 of 2 tasks are still open.\n\n"
+        "## pskill · fanout · check (visit 1)\n\n### Subagent tasks\n2 of 2 tasks are still open.\n\n"
         "#### Task 0\nYou are a subagent of a pskill run. Do only this task.\n\nCheck a.md.\n\n"
         "#### Task 1\nYou are a subagent of a pskill run. Do only this task.\n\nCheck b.md.\n"
     )
