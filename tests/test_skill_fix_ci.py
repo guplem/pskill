@@ -202,3 +202,33 @@ def test_main_passes_the_pull_request_and_its_wait(
 
     assert run_main(monkeypatch, capsys, script, script_input) == {"state": "passed"}
     assert calls == [wait]
+
+
+def test_read_once_keeps_only_the_newest_run_of_a_check_that_a_rerun_replaced(monkeypatch: pytest.MonkeyPatch) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    cancelled = {**check_run("tests", conclusion="cancelled"), "id": 1}
+    rerun = {**check_run("tests"), "id": 2}
+    install_shell(monkeypatch, script, checks_shell([rerun, cancelled]))
+
+    result = script.read_once(7)
+
+    assert result["state"] == "passed"
+    assert result["checks"] == [{"name": "tests", "state": "passed", "link": "https://ci/tests"}]
+
+
+def test_read_once_reports_a_closed_pull_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    shell = checks_shell([check_run("lint", status="in_progress", conclusion=None)])
+    shell.outputs[PULLS] = json.dumps(pull_request(state="closed"))
+    install_shell(monkeypatch, script, shell)
+
+    assert script.read_once(7)["state"] == "closed"
+
+
+def test_read_checks_stops_waiting_when_the_pull_request_closes(monkeypatch: pytest.MonkeyPatch) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    polls(monkeypatch, script, ["pending", "closed"])
+    clock = FakeClock()
+
+    assert script.read_checks(7, 540, clock.sleep, clock.time)["state"] == "closed"
+    assert clock.sleeps == [30]

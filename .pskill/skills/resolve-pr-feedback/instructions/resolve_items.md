@@ -22,7 +22,7 @@ For each item:
    - Write a failing test first when the fix changes behavior.
    - Run the fast local checks that the `AGENTS.md`, `CLAUDE.md`, or README files name for the touched code. Run formatters only on the files that you changed.
    - Before you commit, check the fix's own diff (`git diff`): each branch that it adds has a test, no comment, docstring, or doc that it touches says something that is now false, and no import, variable, or helper that it leaves is unused. Fix what you find in the same commit.
-   - Commit and push the fix as a new commit, and give its short hash in `commit`. Never amend a pushed commit.
+   - Commit the fix as a new commit, give its short hash in `commit`, and push with `git push origin HEAD:{{ steps.checkout.outputs.branch }}`. Push to this branch, not to the session's `claude/` branch. Then check that the commit reached the remote: after `git fetch origin {{ steps.checkout.outputs.branch }}`, `git branch -r --contains <hash>` lists `origin/{{ steps.checkout.outputs.branch }}`. Never amend a pushed commit.
 3. **Dismiss it** when the finding acceptance rules reject it. Give the reason in one sentence.
    - Dismiss a partial fix too: say what you fixed, and why you left the rest. The next reviewers see it.
 

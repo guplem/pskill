@@ -24,5 +24,9 @@ The user asked for changes to the last version of the plan: {{ steps.approve_pla
 2. **Decisions:** each open question with its answer.
 3. **Approach:** the files to change, and the existing code that each change copies.
 4. **Steps:** the steps to build, in order. Each step is one red-green cycle.
-5. **Checks:** each test to add, the fast local checks to run, and the CI checks that prove the rest.
-6. **Out of scope.**
+5. **Lists**, one line each, so the build can tick them:
+   - **New cases:** each new case of the change, with the name of the test that covers it. A case is each value of a new input or option, each new branch, and each way a save can fail half way.
+   - **Stale texts:** each text that `git grep` finds for a name or a value that the change renames, removes, or changes: docs, comments, docstrings, messages, and tests. Run the search; do not guess.
+   - **Reused code:** for each new piece, the existing code that it reuses, or "none found".
+6. **Checks:** the fast local checks to run, and the CI checks that prove the rest.
+7. **Out of scope.**

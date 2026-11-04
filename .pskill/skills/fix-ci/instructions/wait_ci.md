@@ -6,6 +6,7 @@ Wait until every CI check on the head commit of pull request #{{ inputs.pr }} ha
   - `passed`: report `passed`. A skipped check counts as passed.
   - `failed`: report `failed`, with its `failed_checks`.
   - `pending`: run the script again.
+  - `closed`: the pull request merged or closed, so nothing is left to wait for or fix. Report `closed`.
   - `none`: no check started within 5 minutes. When `mergeable` is `null`, GitHub still computes it: run the script once more. Then:
     - `mergeable` is `false`: a conflict with the base starts no CI. Report `failed` with the failed check `merge conflict`.
     - `draft` is `true`: a draft starts no CI until it is ready for review. Report `failed` with the failed check `draft`.

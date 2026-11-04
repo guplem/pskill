@@ -5,7 +5,9 @@
 """Find the commits after the reviewed commit that change the pull request.
 
 Usage: uv run check_head.py, with {"pr", "reviewed_sha"} on stdin.
-Prints {"head_sha", "commits"}: the head commit on GitHub, and the short hashes of the new commits. A clean merge of
+Prints {"head_sha", "commits"}: the head commit, and the short hashes of the new commits. The head is the branch tip on
+origin, because GitHub can serve an old head for minutes after a push; a fork branch is not on origin, so there it is
+the head of GitHub. A clean merge of
 the base branch changes nothing in the pull request, so it is left out.
 """
 
@@ -46,7 +48,8 @@ def main() -> None:
     script_input = json.load(sys.stdin)
     pr_number, reviewed_sha = str(script_input["pr"]), str(script_input["reviewed_sha"])
     head: dict[str, Any] = gh_api(f"repos/{{owner}}/{{repo}}/pulls/{pr_number}")["head"]
-    head_sha = str(head["sha"])
+    origin_tip = run(["git", "ls-remote", "origin", f"refs/heads/{head['ref']}"]).split()
+    head_sha = origin_tip[0] if origin_tip else str(head["sha"])
     commits: list[str] = []
     if head_sha != reviewed_sha:
         run(["git", "fetch", "--quiet", "origin", head["ref"]])

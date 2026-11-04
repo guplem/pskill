@@ -5,10 +5,11 @@
 """Post the pause comment of a run on an issue or a pull request, from a file. Safe to run twice.
 
 Usage: uv run post_comment.py, with {"number", "run_id", "body_file"} on stdin: body_file holds the comment's Markdown.
-Prints {"comment_url", "updated"}.
+Prints {"comment_url", "posted"}.
 
-The comment ends with the marker `<!-- implement-issue-pause: <run_id> -->`. When a comment with the marker exists,
-the script updates it instead of posting a second one, so a run keeps one pause comment that says its latest pause.
+The comment ends with the marker `<!-- implement-issue-pause: <run_id> -->`. Each new pause gets a new comment, so the
+people who follow the issue get a notification; an edit sends none. When the latest comment with the marker already
+holds the same text, a second run of the script posts nothing and prints that comment with `posted` false.
 The body goes from the file to the REST call with no shell in between, so its backticks, `$`, and quotes stay text.
 """
 
@@ -23,9 +24,10 @@ def pause_marker(run_id: str) -> str:
     return f"<!-- implement-issue-pause: {run_id} -->"
 
 
-def comment_of_run(number: int, marker: str) -> dict[str, Any] | None:
+def latest_comment_of_run(number: int, marker: str) -> dict[str, Any] | None:
     comments: list[dict[str, Any]] = gh_api_pages(f"repos/{{owner}}/{{repo}}/issues/{number}/comments")
-    return next((comment for comment in comments if marker in (comment.get("body") or "")), None)
+    of_run = [comment for comment in comments if marker in (comment.get("body") or "")]
+    return of_run[-1] if of_run else None
 
 
 def main() -> None:
@@ -34,13 +36,12 @@ def main() -> None:
     with open(script_input["body_file"], encoding="utf-8", newline="") as body_file:
         marker = pause_marker(str(script_input["run_id"]))
         body = f"{body_file.read().rstrip()}\n\n{marker}"
-    existing = comment_of_run(script_input["number"], marker)
-    if existing is None:
-        path, method = f"repos/{{owner}}/{{repo}}/issues/{script_input['number']}/comments", "POST"
-    else:
-        path, method = f"repos/{{owner}}/{{repo}}/issues/comments/{existing['id']}", "PATCH"
-    comment = gh_api(path, method, {"body": body})
-    print(json.dumps({"comment_url": comment["html_url"], "updated": existing is not None}))
+    latest = latest_comment_of_run(script_input["number"], marker)
+    if latest is not None and latest["body"] == body:
+        print(json.dumps({"comment_url": latest["html_url"], "posted": False}))
+        return
+    comment = gh_api(f"repos/{{owner}}/{{repo}}/issues/{script_input['number']}/comments", "POST", {"body": body})
+    print(json.dumps({"comment_url": comment["html_url"], "posted": True}))
 
 
 if __name__ == "__main__":

@@ -154,6 +154,10 @@ def test_checkout_base_names_the_branch_and_claims_the_issue(
         ),
         (FakeShell(), "The branch 42-fix-save already exists in this checkout."),
         (FakeShell(failing=["git rev-parse", "git fetch"]), "The base branch main cannot be fetched from GitHub."),
+        (
+            FakeShell({"git rev-list HEAD --not --remotes": "c1\nc2"}, failing=["git rev-parse"]),
+            "HEAD holds 2 commits that no branch on GitHub has. Push or move them before the switch, or they are lost.",
+        ),
     ],
 )
 def test_checkout_base_changes_nothing_on_a_problem(
@@ -255,7 +259,9 @@ def test_mark_ready_marks_the_draft_ready_then_removes_the_plan(
 ) -> None:
     script, shell = install_mark_ready(monkeypatch, True, ready_result(0))
 
-    printed = run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
+    printed = run_main(
+        monkeypatch, capsys, script, {"pr": 9, "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}
+    )
 
     assert printed == {"head_sha": "def456"}
     changes = [
@@ -267,7 +273,7 @@ def test_mark_ready_marks_the_draft_ready_then_removes_the_plan(
         "gh pr ready 9",
         "git rm --quiet implementation-plan-42.md",
         "git commit --quiet -m Remove the implementation plan",
-        "git push --quiet",
+        "git push --quiet origin HEAD:42-fix-save",
     ]
 
 
@@ -277,7 +283,7 @@ def test_mark_ready_uses_the_proxy_route_when_graphql_is_refused(
     refused = ready_result(1, "GitHub GraphQL is not available through this proxy (HTTP 403)")
     script, shell = install_mark_ready(monkeypatch, True, refused)
 
-    run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
+    run_main(monkeypatch, capsys, script, {"pr": 9, "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"})
 
     assert shell.ran("gh api POST repos/{owner}/{repo}/pulls/9/ccr/ready_for_review")
 
@@ -288,7 +294,9 @@ def test_mark_ready_stops_on_another_failure(
     script, shell = install_mark_ready(monkeypatch, True, ready_result(1, "HTTP 401: Bad credentials\n"))
 
     with pytest.raises(SystemExit, match="`gh pr ready 9` failed: HTTP 401: Bad credentials"):
-        run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
+        run_main(
+            monkeypatch, capsys, script, {"pr": 9, "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}
+        )
     assert not shell.ran("gh api POST")
     assert not shell.ran("git push")
 
@@ -298,11 +306,11 @@ def test_mark_ready_a_second_time_only_pushes(
 ) -> None:
     script, shell = install_mark_ready(monkeypatch, False, ready_result(0), failing=["git ls-files"])
 
-    run_main(monkeypatch, capsys, script, {"pr": 9, "plan_file": "implementation-plan-42.md"})
+    run_main(monkeypatch, capsys, script, {"pr": 9, "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"})
 
     assert not shell.ran("gh pr ready")
     assert not shell.ran("git rm")
-    assert shell.ran("git push --quiet")
+    assert shell.ran("git push --quiet origin HEAD:42-fix-save")
 
 
 def unreviewed_shell(commits: str, merged_tree: str = "t3") -> FakeShell:
@@ -546,7 +554,6 @@ def post_comment(
     outputs = {
         "gh api GET repos/{owner}/{repo}/issues/57/comments": json.dumps(comments),
         "gh api POST repos/{owner}/{repo}/issues/57/comments": json.dumps({"html_url": "https://x/57#c1"}),
-        "gh api PATCH repos/{owner}/{repo}/issues/comments/8": json.dumps({"html_url": "https://x/57#c8"}),
     }
     shell = install_shell(monkeypatch, script, FakeShell(outputs))
     printed = run_main(monkeypatch, capsys, script, {"number": 57, "run_id": "r-1", "body_file": str(body_file)})
@@ -559,24 +566,37 @@ POSTED_PAUSE_BODY = 'Paused at `review`: $(rm -rf) "quoted".\n\n<!-- implement-i
 def test_post_comment_posts_the_file_as_a_comment_with_no_shell_in_between(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    printed, shell = post_comment(monkeypatch, capsys, tmp_path, [{"id": 7, "body": "Another comment."}])
+    printed, shell = post_comment(
+        monkeypatch, capsys, tmp_path, [{"id": 7, "body": "Another comment.", "html_url": "u7"}]
+    )
 
-    assert printed == {"comment_url": "https://x/57#c1", "updated": False}
+    assert printed == {"comment_url": "https://x/57#c1", "posted": True}
     expected_body = json.dumps({"body": POSTED_PAUSE_BODY})
     assert shell.ran(f"gh api POST repos/{{owner}}/{{repo}}/issues/57/comments {expected_body}")
 
 
-def test_post_comment_run_twice_updates_the_comment_of_its_run(
+def test_post_comment_posts_a_new_comment_for_a_later_pause_and_edits_none(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    earlier = {"id": 8, "body": "Paused earlier.\n\n<!-- implement-issue-pause: r-1 -->"}
+    earlier = {"id": 8, "body": "Paused earlier.\n\n<!-- implement-issue-pause: r-1 -->", "html_url": "u8"}
 
-    printed, shell = post_comment(monkeypatch, capsys, tmp_path, [{"id": 7, "body": "Another comment."}, earlier])
+    printed, shell = post_comment(monkeypatch, capsys, tmp_path, [earlier])
 
-    assert printed == {"comment_url": "https://x/57#c8", "updated": True}
-    assert shell.ran(
-        f"gh api PATCH repos/{{owner}}/{{repo}}/issues/comments/8 {json.dumps({'body': POSTED_PAUSE_BODY})}"
+    assert printed == {"comment_url": "https://x/57#c1", "posted": True}
+    assert not shell.ran("gh api PATCH")
+
+
+def test_post_comment_run_twice_for_the_same_pause_posts_once(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    older = {"id": 6, "body": POSTED_PAUSE_BODY, "html_url": "u6"}
+    same = {"id": 8, "body": POSTED_PAUSE_BODY, "html_url": "https://x/57#c8"}
+
+    printed, shell = post_comment(
+        monkeypatch, capsys, tmp_path, [older, {"id": 7, "body": "Other.", "html_url": "u7"}, same]
     )
+
+    assert printed == {"comment_url": "https://x/57#c8", "posted": False}
     assert not shell.ran("gh api POST")
 
 
@@ -616,3 +636,25 @@ def test_list_limits_names_each_limit_that_cut_work_short(
     printed = run_main(monkeypatch, capsys, script, {**NO_LIMIT_INPUT, **changes})
 
     assert printed == {"limits": limits}
+
+
+def instruction(name: str) -> str:
+    return (SKILLS_FOLDER / SKILL / "instructions" / name).read_text(encoding="utf-8")
+
+
+def test_the_plan_lists_the_tests_the_stale_texts_and_the_reused_code() -> None:
+    text = instruction("write_plan.md")
+
+    assert "5. **Lists**" in text
+    assert "**New cases:** each new case of the change, with the name of the test that covers it." in text
+    assert "**Stale texts:** each text that `git grep` finds for a name or a value that the change renames" in text
+    assert '**Reused code:** for each new piece, the existing code that it reuses, or "none found".' in text
+    assert "6. **Checks:**" in text and "7. **Out of scope.**" in text
+
+
+def test_the_build_proves_each_test_can_fail_and_ticks_the_lists_before_the_review() -> None:
+    text = instruction("implement_step.md")
+
+    assert "break the guarded code on purpose" in text
+    assert "never with `git checkout -- <file>`" in text
+    assert "tick each line of the three **Lists** of the plan against the diff" in text

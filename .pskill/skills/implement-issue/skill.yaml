@@ -15,7 +15,7 @@ on_pause: instructions/on_pause.md
 inputs:
   request: {type: string, description: "The issue number or link ('#123' too), or a description of the change to build."}
 outputs:
-  result: {type: string, enum: [implemented, capped, held, stopped], description: "How the skill ended."}
+  result: {type: string, enum: [implemented, capped, held, stopped, closed], description: "How the skill ended. closed when the pull request merged or closed during the CI wait."}
   pr_number: {type: integer, optional: true, description: "Number of the pull request, when one exists."}
   pr_url: {type: string, optional: true, description: "URL of the pull request, when one exists."}
   limits: {type: array, items: {type: string}, optional: true, description: "The limits that cut work short, for the capped result. The report and the PR description say what each one skipped."}
@@ -235,7 +235,7 @@ blocks:
     type: script
     description: Mark the pull request ready, then remove the plan and push
     run: [uv, run, "{{ skill.dir }}/scripts/mark_ready.py"]
-    input: {pr: "{{ steps.open_draft_pr.json.pr_number }}", plan_file: "{{ steps.checkout_base.json.plan_file }}"}
+    input: {pr: "{{ steps.open_draft_pr.json.pr_number }}", branch: "{{ steps.checkout_base.json.branch }}", plan_file: "{{ steps.checkout_base.json.plan_file }}"}
     parse: json
     next: get_ci_green
 
@@ -246,7 +246,10 @@ blocks:
     inputs: {pr: "{{ steps.open_draft_pr.json.pr_number }}"}
     max_visits: 7
     on_max_visits: limits
-    next: answer_comments
+    next:
+      - when: "{{ steps.get_ci_green.outputs.state == 'closed' }}"
+        to: closed
+      - to: answer_comments
 
   answer_comments:
     type: call
@@ -363,6 +366,16 @@ blocks:
       pr_url: "{{ steps.open_draft_pr.json.pr_url }}"
       limits: "{{ steps.limits.json.limits }}"
     report: instructions/report.md
+
+  closed:
+    type: end
+    description: The pull request merged or closed during the CI wait
+    status: succeeded
+    pending: ""
+    outputs: {result: closed, pr_number: "{{ steps.open_draft_pr.json.pr_number }}", pr_url: "{{ steps.open_draft_pr.json.pr_url }}"}
+    report: >-
+      Tell the user that pull request {{ steps.open_draft_pr.json.pr_url }} merged or closed during the CI wait, so the
+      run stopped there, with no comment round and no labels.
 
   held:
     type: end
