@@ -39,9 +39,9 @@ class AgentPacket:
     shell: str
     question_wording: str
     answers_folder: str  # for example ".pskill/runs/<run>/answers", where a long answer goes
-    task_index: int | None = None  # set for one task of a parallel block
-    subagent_wording: str = ""  # how this harness spawns subagents, for parallel packets
-    work_folder: str = ""  # the project root, where every subagent of a parallel block works
+    task_index: int | None = None  # set for one job of a task with `for_each`
+    subagent_wording: str = ""  # how this harness spawns subagents, for subagent packets
+    work_folder: str = ""  # the project root, where every subagent works
     can_wait: bool = False  # the harness wakes the agent after a background command, so `pskill wait` works
     in_worktree: bool = False  # the run works in its own git worktree, so the header names the work folder
     # The stub gives the goal and the rules once. A packet repeats them only where the agent never saw them.
@@ -125,7 +125,7 @@ def submit_command(packet: AgentPacket, fields: FieldMap, task_index: int | None
 
 
 def plain_submit_command(packet: AgentPacket, task_index: int | None) -> str:
-    """`<runner> submit <run>`, with `--task <n>` for one task of a parallel block."""
+    """`<runner> submit <run>`, with `--task <n>` for one job of a task block."""
     task_option = f" --task {task_index}" if task_index is not None else ""
     return f"{packet.runner_command} submit {packet.run_id}{task_option}"
 
@@ -133,7 +133,7 @@ def plain_submit_command(packet: AgentPacket, task_index: int | None) -> str:
 def answer_file_line(packet: AgentPacket, task_index: int | None) -> str:
     """The `--file` form of the submit command, for a long answer (SPEC.md section 7.3).
 
-    A long heredoc fails in Claude Code's Bash tool on Windows. Each task gets its own file, so parallel
+    A long heredoc fails in Claude Code's Bash tool on Windows. Each task gets its own file, so concurrent
     subagents never write the same one. A worktree run's path is absolute, and may hold a space: it is quoted.
     """
     task_suffix = f"-task-{task_index}" if task_index is not None else ""
@@ -150,7 +150,7 @@ def return_section(packet: AgentPacket) -> str:
 
 @dataclass(frozen=True)
 class TaskPrompt:
-    """One task of a parallel block, as a full prompt for one subagent."""
+    """One job of a task block, as a full prompt for one subagent."""
 
     index: int
     agent_text: str | None  # the pskill agent's role, or None

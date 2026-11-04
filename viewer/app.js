@@ -71,14 +71,13 @@ const MODE_MEANING = {
 const BLOCK_ICONS = {
   task: ["M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z", "M5.5 8.2l1.8 1.8 3.4-3.8"], // a checked box
   decision: ["M8 1.8l6.2 6.2L8 14.2 1.8 8z", "M8 8h.01"], // a diamond with a dot
-  parallel: ["M2 8h4", "M6 8c2 0 2-4.5 4.5-4.5H14", "M6 8h8", "M6 8c2 0 2 4.5 4.5 4.5H14"], // one line that splits in three
   script: ["M2.5 3h11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z", "M4.5 6.5l2 1.5-2 1.5", "M8.5 10h3"], // a terminal
   call: ["M9 2.5h3.5a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9", "M2 8h8", "M7.5 5.5L10 8l-2.5 2.5"], // an arrow into a box
   end: ["M4 14V2.5", "M4 3h8l-2 2.75L12 8.5H4"], // a flag
 };
 const START_HINT = "The run begins here.";
 const CHILD_SKILL_HINT = "A child skill. The call block at the end of the dotted edge runs it, and gets its outputs back.";
-const TASK_FRAME_HINT = "The tasks of the parallel block at the end of the dotted edge. Each node is one task that one subagent does.";
+const TASK_FRAME_HINT = "The tasks of the block at the end of the dotted edge: one per list item, each done by a subagent or by the main agent.";
 const TASK_STATE_TEXT = { done: "Done", rejected: "Answer rejected", open: "Open" };
 const TASK_STATE_MEANING = {
   done: "The task has an accepted answer.",
@@ -761,7 +760,7 @@ async function showContent(place) {
   }
   page.append(
     element("h2", "Agents"),
-    element("p", "Every agent in .pskill/agents/. A parallel block gives its text to each subagent, before the task.", "note"),
+    element("p", "Every agent in .pskill/agents/. A task block gives its text to each subagent, before the task.", "note"),
     agents.agents.length ? agentCards(agents.agents) : element("p", "This project has no agents yet.", "note"),
   );
   app.className = "";
@@ -2389,7 +2388,7 @@ function rowSections(row) {
   if (row.packet) parts.push(section(row.input_title, folded(markdown(row.packet), `${row.seq}:input`)));
   if (row.tasks.length) parts.push(tasksSection(row));
   if (row.skipped_tasks.length) parts.push(skippedSection(row));
-  // The answers of a parallel block's tasks show with their task; the rest shows here.
+  // The answers of a block's tasks show with their task; the rest shows here.
   const listed = new Set(row.tasks.map((task) => task.task));
   const answers = row.submissions.filter((submission) => submission.task === null || !listed.has(submission.task));
   if (answers.length) parts.push(section(`Answers · ${answers.length}`, ...answers.map((item, index) => answerCard(item, index, row.seq))));

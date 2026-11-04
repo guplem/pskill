@@ -67,7 +67,7 @@ def agent_file(project: Project, name: str) -> Path:
 
 
 def agent_users(catalog: SkillCatalog, name: str) -> list[dict[str, Any]]:
-    """The skills, and their parallel blocks, that name this agent in a way that `pskill validate` can see.
+    """The skills, and their task blocks, that name this agent in a way that `pskill validate` can see.
 
     An agent name computed from run data (a list that a script returns) is known only during a run.
     """

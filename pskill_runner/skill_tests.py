@@ -194,7 +194,7 @@ def run_case(project: Project, skill_id: str, case: dict[str, Any]) -> str | Non
 
 
 def open_task(project: Project, run_id: str, runs_folder: Path) -> int | None:
-    """The first open task of the current parallel block, or None for other blocks."""
+    """The first open job of the current task block, or None for other blocks."""
     tasks = read_run_state(project, run_id, runs_folder)["frames"][-1]["tasks"]
     if not tasks:
         return None
@@ -202,7 +202,7 @@ def open_task(project: Project, run_id: str, runs_folder: Path) -> int | None:
 
 
 def run_path(run_folder: Path, skill_id: str) -> list[str]:
-    """The blocks that the root skill entered, in order. A parallel block counts once."""
+    """The blocks that the root skill entered, in order. A task with `for_each` counts once."""
     return [
         event["block"]
         for event in read_events(run_folder)

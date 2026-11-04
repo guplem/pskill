@@ -457,7 +457,7 @@ def number_edges(edges: list[CanvasEdge], drawn_as: dict[str, str] | None = None
 
 
 def task_frame_lines(parent: str, block_id: str, count: int, indent: str) -> list[str]:
-    """The frame of a parallel block's tasks: one small node per task, in rows of TASKS_PER_ROW.
+    """The frame of the tasks of a task with `for_each`: one small node per task, in rows of TASKS_PER_ROW.
 
     Mermaid ignores `direction LR` in a frame that an edge links, so invisible links (`~~~`) make the rows.
     """
@@ -610,7 +610,7 @@ def asks_human(block: AnyBlock | None, mode: str) -> bool:
 
 
 def next_step_in_frame(rows: list[dict[str, Any]], index: int, row_frames: list[int | None]) -> dict[str, Any] | None:
-    """The next row of the same frame, skipping the other tasks of the same parallel block."""
+    """The next row of the same frame, skipping the other tasks of the same block."""
     row = rows[index]
     if row["block_type"] == "end":
         return None
@@ -708,7 +708,7 @@ def load_run_skills(folder: Path) -> dict[str, Skill]:
 
 
 def parallel_task_counts(rows: list[dict[str, Any]], row_frames: list[int | None]) -> dict[tuple[int, str], int]:
-    """The most tasks that each parallel block had in one visit, per canvas frame and block."""
+    """The most tasks that each block with `for_each` had in one visit, per canvas frame and block."""
     counts: dict[tuple[int, str], int] = {}
     for row, frame in zip(rows, row_frames, strict=True):
         if frame is not None and row["tasks"]:
@@ -731,7 +731,7 @@ def parallel_task_names(rows: list[dict[str, Any]], row_frames: list[int | None]
 
 
 def task_frame_edges(task_counts: dict[tuple[int, str], int]) -> list[CanvasEdge]:
-    """One dotted edge from each parallel block to the frame of its tasks."""
+    """One dotted edge from each block with `for_each` to the frame of its tasks."""
     edges = []
     for index, block_id in task_counts:
         parent = node_id(index, block_id)
@@ -932,7 +932,7 @@ def skill_summaries(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return summaries
 
 
-# --- the tasks of parallel blocks ---------------------------------------------------------------
+# --- the tasks of blocks with for_each ----------------------------------------------------------
 
 
 def task_packets(packet: str | None) -> dict[int, str]:
@@ -953,7 +953,7 @@ def task_packets(packet: str | None) -> dict[int, str]:
 
 
 def live_tasks(state: RunState) -> tuple[str, str, int] | None:
-    """The frame chain, the block, and the task count of the parallel block that the run is in, if any."""
+    """The frame chain, the block, and the task count of the block with `for_each` that the run is in, if any."""
     frames = state["frames"]
     top = frames[-1] if frames else None
     if top is None or top["tasks"] is None or top["current_block"] is None:
@@ -983,7 +983,7 @@ def task_view(entry: dict[str, Any] | None, task: int, packet: str | None, name:
 
 
 def parallel_visits(rows: list[dict[str, Any]]) -> dict[tuple[str, int, str, int], list[dict[str, Any]]]:
-    """The rows of each visit of a parallel block, by frame chain, call of that frame, block, and visit.
+    """The rows of each visit of a block with `for_each`, by frame chain, call of that frame, block, and visit.
 
     A child skill counts its visits from 1 again on each call, so the call number keeps two calls apart.
     """
@@ -1002,7 +1002,7 @@ def parallel_visits(rows: list[dict[str, Any]]) -> dict[tuple[str, int, str, int
 
 
 def add_task_lists(rows: list[dict[str, Any]], state: RunState) -> None:
-    """Give each row of a parallel block every task of its visit, as known up to that row.
+    """Give each row of a block with `for_each` every task of its visit, as known up to that row.
 
     With subagents, one row holds every task. One by one (the generic adapter), each task has its own row.
     """
@@ -1113,7 +1113,7 @@ def parsed_json(text: str | None) -> Any:
 
 
 def task_entry(row: dict[str, Any], task: int) -> dict[str, Any]:
-    """The entry of one task of a parallel row, created on first use."""
+    """The entry of one task of a row with tasks, created on first use."""
     entries: list[dict[str, Any]] = row["tasks"]
     for entry in entries:
         if entry["task"] == task:
@@ -1158,13 +1158,13 @@ def find_open_row(
         return open_rows[(frame, block, task)]
     if task is not None and (frame, block, None) in open_rows:
         return open_rows[(frame, block, None)]
-    # Else the newest row of the block: for a one-by-one parallel block, the task that the packet shows.
+    # Else the newest row of the block: when the main agent does the tasks one by one, the task that the packet shows.
     same_block = [row for key, row in open_rows.items() if key[:2] == (frame, block)]
     return max(same_block, key=lambda row: int(row["seq"])) if same_block else None
 
 
 def record_completion(row: dict[str, Any], event: dict[str, Any]) -> None:
-    """A task's answer, or the end of the block. The join of a parallel block's tasks is not an answer."""
+    """A task's answer, or the end of the block. The join of a block's tasks is not an answer."""
     task: int | None = event.get("task")
     if task is not None:
         accepted = {"accepted": True, "errors": [], "raw": None, "task": task}

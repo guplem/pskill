@@ -2,7 +2,7 @@
 
 The public functions (`start_run`, `submit_answer`, ...) each load a run from disk, change it,
 save it, and return the text to print. A `Run` object lives only for one command. Commands that
-change a run hold the run's lock, because parallel subagents submit at the same time.
+change a run hold the run's lock, because the subagents of a task block submit at the same time.
 """
 
 import contextlib
@@ -262,7 +262,7 @@ def delete_answer_file(answer_file: Path, answers_folder: Path) -> None:
 
 
 def task_packet(project: Project, run_id: str, index: int) -> str:
-    """The full prompt of one open task of the current parallel block, for the subagent that runs it."""
+    """The full prompt of one open task of the current task block, for the subagent that runs it."""
     with run_lock(run_folder(project, run_id)):
         run = Run.load(project, run_id)
         return run.task_text(index)

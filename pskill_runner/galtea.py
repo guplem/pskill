@@ -339,7 +339,7 @@ class RunUpload:
         return None
 
     def task_model(self, started: dict[str, Any], task: int) -> dict[str, Any]:
-        """The tier of a parallel task and the model that the tier means, while the run still holds the task."""
+        """The tier of a task's job and the model that the tier means, while the run still holds the task."""
         state = cast(RunState, read_json(self.folder / "state.json"))
         for frame in state["frames"]:
             tasks = frame.get("tasks") or []

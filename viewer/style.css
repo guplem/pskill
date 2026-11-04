@@ -589,7 +589,7 @@ pre {
   ry: 14px;
 }
 
-/* A child skill's frame is dashed; a parallel block's task frame stays solid. */
+/* A child skill's frame is dashed; the task frame of a block with for_each stays solid. */
 .layer .cluster:not([id$="_TASKS"]) rect {
   stroke-dasharray: 7 5;
 }
@@ -976,7 +976,7 @@ details[open] summary {
   color: var(--bad);
 }
 
-/* The side panel: folded blocks, JSON trees, Markdown, and the tasks of a parallel block. */
+/* The side panel: folded blocks, JSON trees, Markdown, and the tasks of a block with for_each. */
 
 .fold-body {
   max-height: calc(var(--fold-lines) * 1.55em + 20px);

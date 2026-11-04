@@ -88,7 +88,7 @@ def folder_hash(folder: Path) -> str:
 
 @contextmanager
 def run_lock(run_folder: Path) -> Iterator[None]:
-    """Let one command at a time change a run. Parallel subagents submit at the same time.
+    """Let one command at a time change a run. The subagents of a task block submit at the same time.
 
     Creating a file with O_EXCL fails when the file exists, on every operating system.
     A lock older than STALE_LOCK_S is left over from a crashed command, so it is removed.

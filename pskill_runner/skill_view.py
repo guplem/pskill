@@ -325,6 +325,8 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
             facts.append(["tier", block.tier])
         if block.tools is not None:
             facts.append(["tools", block.tools])
+        if block.context is not None:
+            facts.append(["context", block.context])
     if isinstance(block, ScriptBlock):
         facts.append(["parse", block.parse])
         if block.timeout_s is not None:

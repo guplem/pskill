@@ -14,7 +14,7 @@ from pskill_runner.stubs import StubChange, StubError, is_generated
 
 
 def used_profiles(catalog: SkillCatalog) -> list[str]:
-    """The profiles that some parallel block asks for. A computed value can be any profile."""
+    """The profiles that some task block asks for. A computed value can be any profile."""
     values = {
         block.tools
         for skill in catalog.skills.values()

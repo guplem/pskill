@@ -508,7 +508,7 @@ def test_a_fixed_list_of_plain_items_shows_one_card_per_item(tmp_path: Path) -> 
 
     check = detail_of(find_project(tmp_path), "limits")["blocks"]["check"]
 
-    assert check["facts"] == [["for each", "a fixed list of 2 items"]]
+    assert check["facts"] == [["for each", "a fixed list of 2 items"], ["context", "fresh"]]
     assert check["for_each_items"] == [
         {"fields": [["item", "a.md"]], "when": None},
         {"fields": [["item", "b.md"]], "when": None},
@@ -525,7 +525,19 @@ def test_a_script_block_shows_its_input(tmp_path: Path) -> None:
     assert detail_of(project, "scripted")["blocks"]["list_files"]["input"] is None
 
 
-def test_a_parallel_block_shows_its_tier_and_tool_profile(tmp_path: Path) -> None:
+def test_a_task_shows_its_context_and_a_task_without_one_shows_none(tmp_path: Path) -> None:
+    write_skill(tmp_path / ".pskill" / "skills", "fanout", NAMED_PARALLEL_SKILL)
+    write_skill(tmp_path / ".pskill" / "skills", "plan-work", PLAN_SKILL, PLAN_SKILL_FILES)
+    project = find_project(tmp_path)
+
+    check = (skill_detail(project, "fanout") or {})["blocks"]["check"]
+    create_plan = (skill_detail(project, "plan-work") or {})["blocks"]["create_plan"]
+
+    assert ["context", "fresh"] in check["facts"]
+    assert not [fact for fact in create_plan["facts"] if fact[0] == "context"]
+
+
+def test_a_task_with_for_each_shows_its_tier_and_tool_profile(tmp_path: Path) -> None:
     skill_yaml = NAMED_PARALLEL_SKILL.replace(
         "    agent: checker\n", "    agent: checker\n    tier: fast\n    tools: read\n"
     )
