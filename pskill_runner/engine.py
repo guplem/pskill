@@ -1355,11 +1355,18 @@ class Run:
             return self.guarded(lambda: self.complete_jobs(block, duration_ms=0))
         if isinstance(block, TaskBlock) and self.frame["tasks"] is None:
             self.info["status"] = "active"
-            return self.guarded(self.advance)  # its start failed: start its jobs again, and log its start
+            return self.guarded(lambda: self.restart_jobs(block))
         if isinstance(block, TaskBlock | DecisionBlock):
             return self.guarded(lambda: self.issue_packet(new_block=False, reentry=True))
         self.info["status"] = "active"
         return self.guarded(self.advance)  # a script or a call: run it again
+
+    def restart_jobs(self, block: TaskBlock) -> str:
+        """Start the jobs of a task whose start failed, and log its start. The packet is a re-entry: it repeats
+        the goal and the rules (D8). An empty `for_each` list completes the block at once."""
+        if self.start_jobs(block):
+            return self.issue_packet(new_block=True, reentry=True)
+        return self.advance()
 
     # --- submissions ---------------------------------------------------------------------------
 

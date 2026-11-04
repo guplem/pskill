@@ -1579,3 +1579,30 @@ def test_for_each_jobs_continued_in_a_harness_without_subagents_log_no_tier(tmp_
     completed = [event for event in events if event["type"] == "block_completed" and event["block"] == "check"]
     assert [event.get("task") for event in completed] == [0, 1, None]
     assert all("tier" not in event for event in completed)
+
+
+def test_resume_of_a_main_job_whose_start_failed_repeats_the_goal_and_the_rules(tmp_path: Path) -> None:
+    broken = ONE_JOB_SKILL.replace("    context: fresh\n    tier: fast\n", "    context: \"{{ 'huge' }}\"\n")
+    project = make_project(tmp_path, {"one-job": broken})
+    run_id, _ = start_run(project, "one-job", {}, mode="interactive", harness="subagents-for-tests")
+    copy = project.runs_folder / run_id / "skills" / "one-job" / "skill.yaml"
+    copy.write_text(copy.read_text(encoding="utf-8").replace("    context: \"{{ 'huge' }}\"\n", ""), encoding="utf-8")
+
+    packet = resume_run(project, run_id)
+
+    assert "Judge the change." in packet
+    assert "### Goal" in packet
+    assert "### Rules" in packet
+
+
+def test_resume_of_a_for_each_task_whose_start_failed_and_now_gives_no_item_completes_it(tmp_path: Path) -> None:
+    not_a_list = PARALLEL_SKILL.replace('for_each: "{{ inputs.files }}"', 'for_each: "{{ run.id }}"')
+    project = make_project(tmp_path, {"fanout": not_a_list}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
+    copy = project.runs_folder / run_id / "skills" / "fanout" / "skill.yaml"
+    copy.write_text(copy.read_text(encoding="utf-8").replace('"{{ run.id }}"', '"{{ [] }}"'), encoding="utf-8")
+
+    packet = resume_run(project, run_id)
+
+    assert "finished with status succeeded" in packet
+    assert read_run_state(project, run_id)["frames"][0]["steps"]["check"] == {"results": []}
