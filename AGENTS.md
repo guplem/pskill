@@ -7,6 +7,7 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | Path | What it is |
 |---|---|
 | `pskill.py` | Entry script. Holds the PEP 723 dependency block, then calls `pskill_runner.cli.main`. |
+| `dev.py` | The developer commands: `check`, `fast`, and `sync` (below). |
 | `pskill_runner/` | The runner package. One module per concern (table below). |
 | `viewer/` | The viewer page: plain HTML, CSS, and JavaScript, no build step. It only draws what `viewer_data.py` returns. `hosted.js` is the hosted viewer's engine: picked folders, their copy, and Pyodide. |
 | `docs/` | Images for the README, such as the viewer screenshot. |
@@ -66,18 +67,26 @@ pskill runs agent skills written as YAML graphs of typed blocks, one block at a 
 | Lint and format | `uv run ruff check .` and `uv run ruff format .` |
 | Type check | `uv run mypy` |
 | Run the runner | `uv run pskill.py <command>` |
-| Run every CI check, as CI does | `uv run ruff format --check . && uv run ruff check . && uv run mypy && uv run pytest --cov && uv run pskill.py validate && uv run pskill.py test` |
+| Run every CI check, as CI does, up to the first failure | `uv run dev.py check` |
+| Run a quick pass: lint, the tests up to the first failure, the skill tests | `uv run dev.py fast` |
+| Rewrite every copy of a shared file from its source, then the dev pin and the stubs | `uv run dev.py sync` |
 
-CI (`.github/workflows/pull-request-checks.yml`) runs those checks on Windows, macOS, and Linux with Python 3.11. The ruleset on `main` requires the jobs `checks (ubuntu-latest)`, `checks (windows-latest)`, and `checks (macos-latest)`.
+CI (`.github/workflows/pull-request-checks.yml`) runs format, lint, and mypy once on Linux (job `static`), and the tests, `validate`, and the skill tests on Windows, macOS, and Linux with Python 3.11. The ruleset on `main` requires `static`, `checks (ubuntu-latest)`, `checks (windows-latest)`, and `checks (macos-latest)`.
+
+## Before you push
+
+1. `uv run dev.py sync` when you changed a shared file (`github_rest.py`, `publish_body.py`, `finding-acceptance.md`), the root `pskill.py`, or the id, description, inputs, or `tools` of a skill.
+2. `uv run dev.py check`, and fix the first failure.
+3. Update the docs that the change makes false: `SPEC.md` for the design, `AUTHORING.md` for skill authors, `README.md` for users, and the version's section of `CHANGELOG.md` for a release.
 
 ## Rules
 
 - **Full coverage.** `uv run pytest --cov` fails below 100% of lines and branches. Test every new line. Mark a line that no input can reach with `# pragma: no cover` (or `no branch`) and its reason; never to skip a hard case.
 - **Red-green, always.** Write the failing test first, run it, and see it fail for the expected reason. Then write the least code that passes. Commit the test with its code.
 - **Simplicity first.** Code must be easy to read for a junior developer: small functions, descriptive names, explicit types, no clever tricks.
-- **`.pskill/pskill.py` runs this checkout** (the dev pin), so the test bed always uses the current code. After a change to the root `pskill.py`, run `uv run pskill.py update --from .`; a test fails until the copy matches. Never edit `.pskill/pskill.py` by hand.
+- **`.pskill/pskill.py` runs this checkout** (the dev pin), so the test bed always uses the current code. After a change to the root `pskill.py`, run `uv run dev.py sync`; a test fails until the copy matches. Never edit `.pskill/pskill.py` by hand.
 - **Dependencies live in two places.** Keep the PEP 723 block in `pskill.py` equal to `[project].dependencies` in `pyproject.toml`. A test checks this.
-- **Example skills reach GitHub only through REST**, because the Claude Code cloud GitHub proxy refuses GraphQL, the search API, and `--paginate`. It is the proxy's restriction, not a pskill rule: drop it when the proxy allows them. SPEC 13.2 holds the rule and its one exception; `tests/test_skills_github_calls.py` checks it.
+- **Example skills follow the design rules of SPEC 13.2**, such as GitHub through REST only (`tests/test_skills_github_calls.py` checks it). Read them before you change a skill.
 - **Branch and pull request.** Branch from `main`, open one pull request per issue, and close the issue from it. CI must be green on Windows, macOS, and Linux before a merge.
 
 ## Releasing
