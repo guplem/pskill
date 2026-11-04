@@ -1,6 +1,8 @@
 name: a CI fix gets a required-only review round, and the run finishes when CI already ran on that head
 inputs: {request: "#42"}
 scripts:
+  limits:
+    - {exit_code: 0, stdout: '{"limits": []}'}
   read_issue:
     - exit_code: 0
       stdout: >-
@@ -20,8 +22,6 @@ scripts:
 calls:
   review:
     - {status: succeeded, outputs: {findings: [], reviewed_sha: r1, scope_sha: r1}}
-  resolve:
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
   final_review:
     - {status: succeeded, outputs: {findings: [], reviewed_sha: h2, scope_sha: r1}}
   get_ci_green:
@@ -45,6 +45,6 @@ answers:
   finish:
     - {labels: [], reasons: "A small bug fix with a test."}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, check_unreviewed, finish, done]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, ready, get_ci_green, answer_comments, check_unreviewed, final_review, check_unreviewed, limits, finish, done]
   status: succeeded
   outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9"}

@@ -1,6 +1,8 @@
-name: after the review loop ends at its limit of 7 rounds, required-only rounds review the last fixes, and the run ends capped with the review limit
+name: after the review loop ends at its limit of 3 rounds, required-only rounds review the last fixes, and the run ends capped with the review limit
 inputs: {request: "#42"}
 scripts:
+  limits:
+    - {exit_code: 0, stdout: '{"limits": ["review"]}'}
   read_issue:
     - exit_code: 0
       stdout: >-
@@ -25,15 +27,7 @@ calls:
     - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r1, scope_sha: r1}}
     - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r2, scope_sha: r1}}
     - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r3, scope_sha: r1}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r4, scope_sha: r1}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r5, scope_sha: r1}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r6, scope_sha: r1}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r7, scope_sha: r1}}
   resolve:
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
     - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
     - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
     - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
@@ -65,6 +59,6 @@ answers:
   finish:
     - {labels: [], reasons: "The last fixes got a required-only review."}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, finish, capped]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, resolve, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, limits, finish, capped]
   status: succeeded
   outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9", limits: [review]}

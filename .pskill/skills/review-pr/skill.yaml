@@ -28,18 +28,8 @@ inputs:
   max_rounds:
     type: integer
     optional: true
-    default: 7
-    description: "The most review rounds to run. The runner stops at 20 rounds in any case."
-  rounds_without_required:
-    type: integer
-    optional: true
     default: 4
-    description: "Stop when this many rounds in total found no new required finding."
-  rounds_without_findings:
-    type: integer
-    optional: true
-    default: 1
-    description: "Stop when this many rounds in total found no new finding."
+    description: "The most review rounds to run. The loop also stops at the first round with no new required finding."
 outputs:
   result:
     type: string
@@ -71,15 +61,12 @@ blocks:
       reported: "{{ history.review | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) }}"
       dismissed: "{{ steps.read_earlier.json.dismissed }}"
     # The arrow below already stops at max_rounds. This cap is only a safety net, so it never asks.
-    max_visits: 20
+    max_visits: 10
     on_max_visits: triage
     ask_on_max_visits: false
     next:
-      - when: >-
-          {{ (history.review | length) < inputs.max_rounds
-          and (history.review | map(attribute='outputs') | map(attribute='findings')
-          | map('selectattr', 'severity', 'equalto', 'required') | map('list') | reject | list | length) < inputs.rounds_without_required
-          and (history.review | map(attribute='outputs') | map(attribute='findings') | reject | list | length) < inputs.rounds_without_findings }}
+      # Review again while the last round found a new required finding, for at most max_rounds rounds.
+      - when: "{{ (history.review | length) < inputs.max_rounds and steps.review.outputs.findings | selectattr('severity', 'equalto', 'required') | list }}"
         to: check_head_before_round
       - to: triage
 
@@ -89,7 +76,7 @@ blocks:
     skill: review-head-check
     inputs: {pr: "{{ inputs.pr }}", reviewed_sha: "{{ steps.review.outputs.reviewed_sha }}"}
     # The same safety net as on review.
-    max_visits: 20
+    max_visits: 10
     on_max_visits: triage
     ask_on_max_visits: false
     next:
@@ -102,6 +89,9 @@ blocks:
   triage:
     type: task
     description: Check and merge the findings of every round, and mark the ones in real doubt
+    context: fresh  # the instruction holds every finding: a clean context on a cheaper model, reading code only
+    tier: standard
+    tools: read
     instruction: instructions/triage.md
     output:
       findings: {type: array, items: *finding, description: "The findings to post, each with its final severity."}

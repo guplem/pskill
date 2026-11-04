@@ -1,0 +1,20 @@
+name: suggestions are listed in one comment and never fixed, so a run with only suggestions resolves nothing
+inputs:
+  pr: 9
+  findings: [{reviewer: completeness, file: src/app.py, line: 3, severity: suggestion, title: Shorter name, summary: S, quote: q}]
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: aaa, plan_file: ""}}
+scripts:
+  collect_items:
+    - exit_code: 0
+      stdout: >-
+        {"queue": [], "count": 0, "suggestions": [{"reviewer": "completeness", "file": "src/app.py", "line": 3,
+        "severity": "suggestion", "title": "Shorter name", "summary": "S", "quote": "q"}]}
+  post_suggestions:
+    - {exit_code: 0, stdout: '{"comment_url": "https://github.com/o/r/pull/9#issuecomment-1"}'}
+expect:
+  path: [checkout, collect_items, post_suggestions, resolved]
+  status: succeeded
+  outputs: {fixed: 0, left: 0, decisions: []}
+  pending: ""

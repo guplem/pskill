@@ -1,0 +1,13 @@
+name: a pull request that merges or closes during the wait ends the run with no fix
+inputs: {pr: 9}
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: c1, plan_file: ""}}
+answers:
+  wait_ci:
+    - {state: closed, failed_checks: [], head_sha: c2}
+expect:
+  path: [checkout, wait_ci, closed]
+  status: succeeded
+  outputs: {state: closed, failed_checks: [], head_sha: c2, fixes: 0}
+  pending: ""

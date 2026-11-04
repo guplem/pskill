@@ -1,6 +1,8 @@
-name: the fourth review round with no required finding, counted in total, ends the loop after its fixes
+name: a round with only suggestions ends the review loop, and the first comment round after CI gets its suggestions to list in one comment
 inputs: {request: "#42"}
 scripts:
+  limits:
+    - {exit_code: 0, stdout: '{"limits": []}'}
   read_issue:
     - exit_code: 0
       stdout: >-
@@ -21,23 +23,16 @@ calls:
   review:
     - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r1, scope_sha: r1}}
     - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: suggestion, title: No test, summary: S, quote: q}], reviewed_sha: r2, scope_sha: r1}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: r3, scope_sha: r1}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: suggestion, title: No test, summary: S, quote: q}], reviewed_sha: r4, scope_sha: r1}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: suggestion, title: No test, summary: S, quote: q}], reviewed_sha: r5, scope_sha: r1}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: suggestion, title: No test, summary: S, quote: q}], reviewed_sha: r6, scope_sha: r1}}
   resolve:
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
     - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
   final_review:
     - {status: succeeded, outputs: {findings: [], reviewed_sha: h6, scope_sha: r1}}
   get_ci_green:
     - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h6, fixes: 0}}
   answer_comments:
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+    - status: succeeded
+      inputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: suggestion, title: No test, summary: S, quote: q}]}
+      outputs: {decisions: [], fixed: 0}
 answers:
   understand:
     - {title: Fix the crash when a file is saved with no name, slug: fix-save, brief: Guard the save., base: main, gaps: []}
@@ -55,6 +50,6 @@ answers:
   finish:
     - {labels: [], reasons: "A small bug fix with a test."}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, final_review, check_unreviewed, finish, done]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, ready, get_ci_green, answer_comments, check_unreviewed, final_review, check_unreviewed, limits, finish, done]
   status: succeeded
   outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9"}
