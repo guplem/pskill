@@ -1915,7 +1915,9 @@ function editControl(key, value) {
     return { node: area, read: () => area.value.split("\n").map((line) => line.trim()).filter(Boolean) };
   }
   if (key === "for_each") {
-    const area = element("textarea", typeof value === "string" ? value : JSON.stringify(value ?? []), "edit-text mono");
+    // A task without for_each starts empty, so an untouched field reads back as null and saves nothing.
+    const text = value == null ? "" : typeof value === "string" ? value : JSON.stringify(value);
+    const area = element("textarea", text, "edit-text mono");
     area.rows = 2;
     return { node: area, read: () => (area.value.trim().startsWith("[") ? JSON.parse(area.value) : area.value.trim() || null) };
   }

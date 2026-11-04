@@ -450,3 +450,11 @@ def test_the_skill_screen_shows_the_on_pause_text_with_its_help() -> None:
     assert "\n  on_pause: {\n" in help_script
     assert "From ${file}. " in script  # which file to edit, as in the instruction panel
     assert "The file ${file} is missing." in script
+
+
+def test_an_untouched_for_each_field_of_a_task_saves_nothing() -> None:
+    script = (VIEWER / "app.js").read_text(encoding="utf-8")
+    control = script.split('if (key === "for_each") {', 1)[1].split("\n  }", 1)[0]
+
+    assert 'value == null ? "" : typeof value === "string" ? value : JSON.stringify(value)' in control
+    assert "area.value.trim() || null" in control
