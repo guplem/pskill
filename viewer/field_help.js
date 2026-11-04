@@ -265,7 +265,7 @@ export const FIELD_HELP = {
       "An empty computed value means no tier. `pskill validate` rejects a written value that is not a tier; a computed one fails the block at run time.",
     ],
     examples: [
-      { caption: "One tier for every task", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntier: standard' },
+      { caption: "One tier for every task", code: 'context: fresh\nfor_each: "{{ steps.list_docs.json.files }}"\ntier: standard' },
       {
         caption: "A tier per item",
         code: 'review:\n  type: task\n  context: fresh\n  for_each:\n    - {name: docs, tier: standard}\n    - {name: correctness, tier: deep}\n  task_name: "{{ item.name }}"\n  tier: "{{ item.tier }}"\n  instruction: "Review as {{ item.name }}."\n  output:\n    findings: {type: array, items: {type: string}, description: "What you found."}\n  next: fix',
@@ -282,7 +282,7 @@ export const FIELD_HELP = {
       "An empty computed value means no profile. `pskill validate` rejects a written value that is not a profile; a computed one fails the block at run time.",
     ],
     examples: [
-      { caption: "Reviewers that only read code", code: 'for_each: "{{ steps.list_docs.json.files }}"\ntools: read' },
+      { caption: "Reviewers that only read code", code: 'context: fresh\nfor_each: "{{ steps.list_docs.json.files }}"\ntools: read' },
     ],
   },
   context: {
