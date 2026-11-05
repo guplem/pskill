@@ -15,14 +15,14 @@ Acceptance:
 1. **Block limits:** `timeout_s: 7140`, `retries: 0`. Total 7140 + 60 = 7200 s, the 2-hour limit and the default `max_wait_minutes`. A retry would halve the wait, and a CI run can take up to 2 hours.
 2. **The script's own wait:** `wait_s: 6900` (115 minutes) on the block input, and `MAX_WAIT_SECONDS = 6900` in the script (the cap and the default). The 240 s left before `timeout_s` cover the last poll, so the runner never kills the script.
 3. **A check still pending when the wait ends:** the state is `failed`, and each pending check is in `failed_checks` as `<name> (still running after 115 minutes): <link>`. `fix_ci` then finds out why it hangs; a hang that this pull request does not explain is `flaky` (rerun) or `unrelated`. A non-zero exit would pause the run instead, with no clue in the trace.
-4. **`none` (no check exists):** the script waits at most 300 s for a first check, as today. When `mergeable` is `null`, it waits one more poll (30 s) and reads once more. Then: `mergeable` false gives `failed` with `merge conflict`; `draft` true gives `failed` with `draft`; otherwise `passed`.
+4. **`none` (no check exists):** the script waits at most 300 s for a first check, as today. While `mergeable` is `null`, it keeps polling past those 300 s, within the same deadline: a later read can still find a conflict, or a check that started. Then: `mergeable` false gives `failed` with `merge conflict`; `draft` true gives `failed` with `draft`; otherwise `passed`.
 5. **No version bump and no CHANGELOG entry**, as #187 did for the same issue: only an example skill changes.
 6. **Transient GitHub errors** stay a block failure (pause, then `resume`), as today for every script.
 
 ## Approach
 
 - `.pskill/skills/fix-ci/scripts/read_checks.py`: keep `read_once` and `read_checks`. Add small functions:
-  - `settle_unknown_mergeable(result, pr, sleep)`: one more read after `POLL_SECONDS` when the state is `none` and `mergeable` is `None`.
+  - `read_checks` keeps polling a `none` state while `mergeable` is `None` (no separate re-read, which could find a check just started and call it hung).
   - `final_result(result, wait_minutes)`: maps `none` and `pending` to `passed` / `failed` with the checks named; leaves `passed`, `failed`, `closed` as they are.
   - `main()` prints `final_result(...)` of the wait. Docstring updated.
   Tests follow `tests/test_skill_fix_ci.py` (`FakeClock`, `polls`, `FakeShell`, `run_main`).
@@ -35,7 +35,7 @@ Acceptance:
 ## Steps
 
 1. Red-green: the wait cap rises to 6900 s (change the 540 tests, the `main` default).
-2. Red-green: `none` with `mergeable` null reads once more.
+2. Red-green: `none` with `mergeable` null keeps polling (first built as a separate re-read, folded into the loop in step 3).
 3. Red-green: `final_result` for `none` (conflict, draft, no CI) and `pending` at the end of the wait; `main` prints it.
 4. The skill: `wait_ci` script block, `.json` reads, `fix_ci.md`, delete `wait_ci.md`, the 5 cases. Check with `pskill validate` and `pskill test` (red first: the cases fail with the task still in place once moved to `scripts:`).
 5. Docs: SPEC 13.2, 13.3, AUTHORING.md.
@@ -47,8 +47,8 @@ Acceptance:
 
 - Wait cap 6900 s whatever the input asks: `test_read_checks_waits_at_most_6900_seconds_whatever_the_input_asks`.
 - `main` default wait 6900: `test_main_passes_the_pull_request_and_its_wait`.
-- `none` with `mergeable` null, read once more: `test_settle_unknown_mergeable_reads_once_more_when_github_did_not_compute_it`.
-- `none` with `mergeable` known, no extra read: `test_settle_unknown_mergeable_keeps_a_known_answer`.
+- `none` with `mergeable` null keeps polling past 300 s: `test_read_checks_keeps_polling_while_github_computes_mergeable`.
+- `none` with `mergeable` known stops at 300 s: `test_read_checks_waits_at_most_300_seconds_for_a_first_check`.
 - `none` + conflict -> failed `merge conflict`: `test_final_result_fails_on_a_merge_conflict`.
 - `none` + draft -> failed `draft`: `test_final_result_fails_on_a_draft`.
 - `none` otherwise -> passed: `test_final_result_passes_a_pull_request_with_no_ci`.
