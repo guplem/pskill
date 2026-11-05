@@ -986,9 +986,6 @@ class Run:
         """A background script waits for its own command only where the harness wakes the agent after it."""
         return block.background and self.adapter.wakes_after_background_command
 
-    def script_timeout_of(self, block: ScriptBlock) -> int:
-        return block.timeout_s if block.timeout_s is not None else self.project.config.script_timeout_s
-
     def background_shell_timeout_s(self, block: ScriptBlock) -> int:
         """The timeout of the agent's background command: every attempt of the script, plus a minute to record
         it, within the harness's longest timeout."""
@@ -1071,13 +1068,14 @@ class Run:
         script_input = self.computed(block.input, f"The input of {block.id!r}")
         # A Python script reads stdin and writes stdout as UTF-8 on every system, as the runner does.
         env = {**os.environ, "PSKILL_RUN_DIR": str(self.folder), "PYTHONIOENCODING": "utf-8"}
+        limits = background_timeout(block, self.project.config)  # the one rule, also for a foreground script
         return PreparedScript(
             block_id=block.id,
             argv=argv,
             script_input=script_input,
             env=env,
-            timeout_s=self.script_timeout_of(block),
-            attempts=self.retries_of(block) + 1,
+            timeout_s=limits.timeout_s,
+            attempts=limits.attempts,
             parse=block.parse,
             since=since,
         )

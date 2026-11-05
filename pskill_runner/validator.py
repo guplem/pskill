@@ -192,7 +192,8 @@ class BackgroundTimeout(NamedTuple):
 
 
 def background_timeout(block: ScriptBlock, config: Config) -> BackgroundTimeout:
-    """The one rule of a background script's time. The engine caps its command with it; `validate` checks it."""
+    """The one rule of a script's timeout and attempts: the engine runs every script with it and caps a
+    background script's command with its total; `validate` checks that total."""
     timeout_s = block.timeout_s if block.timeout_s is not None else config.script_timeout_s
     retries = block.retries if block.retries is not None else config.retries
     attempts = retries + 1
