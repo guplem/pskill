@@ -3,9 +3,9 @@ inputs: {pr: 9}
 calls:
   checkout:
     - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: c1, plan_file: implementation-plan-api-key-copy-button.md}}
-answers:
+scripts:
   wait_ci:
-    - {state: passed, failed_checks: [], head_sha: c2}
+    - {exit_code: 0, stdout: '{"state": "passed", "failed_checks": [], "head_sha": "c2"}'}
 expect:
   path: [checkout, wait_ci, passed]
   status: succeeded

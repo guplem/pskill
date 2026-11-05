@@ -4,11 +4,12 @@ calls:
   checkout:
     - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: c1, plan_file: implementation-plan-api-key-copy-button.md}}
 answers:
-  wait_ci:
-    - {state: failed, failed_checks: ["tests (ubuntu): https://x/1"], head_sha: c2}
-    - {state: passed, failed_checks: [], head_sha: c3}
   fix_ci:
     - {cause: this_pr, summary: A fixture expected one call.}
+scripts:
+  wait_ci:
+    - {exit_code: 0, stdout: '{"state": "failed", "failed_checks": ["tests (ubuntu): https://x/1"], "head_sha": "c2"}'}
+    - {exit_code: 0, stdout: '{"state": "passed", "failed_checks": [], "head_sha": "c3"}'}
 expect:
   path: [checkout, wait_ci, fix_ci, wait_ci, passed]
   status: succeeded
