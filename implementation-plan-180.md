@@ -49,10 +49,10 @@ Acceptance:
 - `main` default wait 6900: `test_main_passes_the_pull_request_and_its_wait`.
 - `none` with `mergeable` null keeps polling past 300 s: `test_read_checks_keeps_polling_while_github_computes_mergeable`.
 - `none` with `mergeable` known stops at 300 s: `test_read_checks_waits_at_most_300_seconds_for_a_first_check`.
-- `none` + conflict -> failed `merge conflict`: `test_final_result_fails_on_a_merge_conflict`.
-- `none` + draft -> failed `draft`: `test_final_result_fails_on_a_draft`.
-- `none` otherwise -> passed: `test_final_result_passes_a_pull_request_with_no_ci`.
-- `pending` at the end of the wait -> failed with the pending checks named: `test_final_result_fails_the_checks_still_running`.
+- `none` + conflict / draft / no CI (also with `mergeable` null): `test_final_result_settles_a_pull_request_with_no_check` (parametrized).
+- `none` with `mergeable` null until the wait ends: `test_read_checks_stops_at_the_end_of_the_wait_while_mergeable_stays_unknown`.
+- `main` settles a draft with no check: `test_main_settles_a_draft_with_no_check`.
+- `pending` at the end of the wait -> failed with the pending checks named: `test_final_result_fails_the_checks_still_running_when_the_wait_ends`.
 - `passed` / `failed` / `closed` unchanged: `test_final_result_keeps_a_finished_state`.
 - `main` prints the final result: `test_main_prints_the_checks_of_the_pull_request` (updated).
 - Skill: the 5 cases in `.pskill/skills/fix-ci/tests/` replay `wait_ci` as a script.
