@@ -17,10 +17,12 @@ Prints {"head_sha", "state", "mergeable", "draft", "checks", "failed_checks"}.
 - `draft` is true for a draft pull request.
 
 It polls every 30 seconds and returns when no check is pending. While no check exists, it waits at most 300 seconds
-for one to start, and longer while `mergeable` is null. The head commit is the one on origin, because GitHub can
-serve an old head for minutes after a push. Both the check runs and the commit statuses count. The newest run of each
-check wins, so a run that a rerun cancelled or replaced does not count, and the newest status of each context wins.
-It replaces `gh pr checks --watch`, which uses GraphQL: the Claude Code cloud GitHub proxy refuses that.
+for one to start, and longer while `mergeable` is null. A read that fails (GitHub or git) is skipped, and the next
+poll tries again; only a failed last read at the end of the wait exits with an error. The head commit is the one on
+origin, because GitHub can serve an old head for minutes after a push. Both the check runs and the commit statuses
+count. The newest run of each check wins, so a run that a rerun cancelled or replaced does not count, and the newest
+status of each context wins. It replaces `gh pr checks --watch`, which uses GraphQL: the Claude Code cloud GitHub
+proxy refuses that.
 """
 
 import json
@@ -100,6 +102,15 @@ def read_once(pr_number: int) -> dict[str, Any]:
     }
 
 
+def try_read_once(pr_number: int) -> dict[str, Any] | None:
+    """One read, or None when GitHub or git failed: a short outage must not end a wait of up to 2 hours."""
+    try:
+        return read_once(pr_number)
+    except (SystemExit, subprocess.CalledProcessError, ValueError) as error:
+        print(f"A read of the checks failed; the next poll tries again: {error}", file=sys.stderr)
+        return None
+
+
 def read_checks(
     pr_number: int,
     wait_s: int,
@@ -110,14 +121,19 @@ def read_checks(
     started = clock()
     # One poll at a time: each poll decides whether another one is needed.
     while True:
-        result = read_once(pr_number)
+        result = try_read_once(pr_number)
         elapsed = clock() - started
+        remaining = wait_seconds - elapsed
+        if result is None:
+            if remaining <= 0:
+                sys.exit("The last read of the checks failed at the end of the wait: see the errors above.")
+            sleep(min(POLL_SECONDS, remaining))
+            continue
         if result["state"] in ("passed", "failed", "closed"):
             return result
         # While GitHub still computes `mergeable`, a conflict (which starts no CI) can still show up.
         if result["state"] == "none" and elapsed >= NO_CHECK_WAIT_SECONDS and result["mergeable"] is not None:
             return result
-        remaining = wait_seconds - elapsed
         if remaining <= 0:
             return result
         sleep(min(POLL_SECONDS, remaining))

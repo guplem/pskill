@@ -1,6 +1,7 @@
 """Tests for the fix-ci skill's read_checks.py script."""
 
 import json
+import subprocess
 from typing import Any
 
 import pytest
@@ -323,3 +324,45 @@ def test_read_checks_stops_waiting_when_the_pull_request_closes(monkeypatch: pyt
 
     assert script.read_checks(7, 540, clock.sleep, clock.time)["state"] == "closed"
     assert clock.sleeps == [30]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        SystemExit("`gh api --method GET repos/o/r/pulls/7` failed: HTTP 502"),
+        subprocess.CalledProcessError(128, ["git", "ls-remote"]),
+        json.JSONDecodeError("Expecting value", "", 0),
+    ],
+)
+def test_read_checks_skips_a_read_that_failed_and_polls_again(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], error: BaseException
+) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    answers: list[dict[str, Any] | BaseException] = [error, {"state": "passed", "mergeable": True}]
+
+    def fake_read_once(pr_number: int) -> dict[str, Any]:
+        answer = answers.pop(0)
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(script, "read_once", fake_read_once)
+    clock = FakeClock()
+
+    assert script.read_checks(7, 6900, clock.sleep, clock.time)["state"] == "passed"
+    assert clock.sleeps == [30]
+    assert "A read of the checks failed; the next poll tries again" in capsys.readouterr().err
+
+
+def test_read_checks_fails_when_the_last_read_of_the_wait_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+
+    def fake_read_once(pr_number: int) -> dict[str, Any]:
+        raise SystemExit("`gh api` failed: HTTP 502")
+
+    monkeypatch.setattr(script, "read_once", fake_read_once)
+    clock = FakeClock()
+
+    with pytest.raises(SystemExit, match="The last read of the checks failed at the end of the wait"):
+        script.read_checks(7, 45, clock.sleep, clock.time)
+    assert clock.now == 45
