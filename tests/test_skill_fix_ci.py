@@ -118,14 +118,14 @@ class FakeClock:
         return self.now
 
 
-def polls(monkeypatch: pytest.MonkeyPatch, script: Any, states: list[str]) -> None:
+def polls(monkeypatch: pytest.MonkeyPatch, script: Any, states: list[str], mergeable: bool | None = True) -> None:
     """Answer each read with the next state of `states`, then with the last one."""
     answers = iter(states)
     last = {"state": states[-1]}
 
     def fake_read_once(pr_number: int) -> dict[str, Any]:
         last["state"] = next(answers, last["state"])
-        return {"state": last["state"]}
+        return {"state": last["state"], "mergeable": mergeable}
 
     monkeypatch.setattr(script, "read_once", fake_read_once)
 
@@ -166,6 +166,84 @@ def test_read_checks_waits_at_most_300_seconds_for_a_first_check(monkeypatch: py
     assert clock.now == 300
 
 
+def test_read_checks_keeps_polling_while_github_computes_mergeable(monkeypatch: pytest.MonkeyPatch) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    answers = iter([{"state": "none", "mergeable": None}] * 12 + [{"state": "none", "mergeable": False}])
+    monkeypatch.setattr(script, "read_once", lambda pr_number: next(answers))
+    clock = FakeClock()
+
+    assert script.read_checks(7, 9999, clock.sleep, clock.time) == {"state": "none", "mergeable": False}
+    assert clock.now == 360
+
+
+def test_read_checks_stops_at_the_end_of_the_wait_while_mergeable_stays_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    polls(monkeypatch, script, ["none"], mergeable=None)
+    clock = FakeClock()
+
+    assert script.read_checks(7, 400, clock.sleep, clock.time)["state"] == "none"
+    assert clock.now == 400
+
+
+def finished(state: str, **changes: Any) -> dict[str, Any]:
+    """A result of read_checks, with a passed lint check and a still running test check."""
+    return {
+        "head_sha": "origin1",
+        "state": state,
+        "mergeable": True,
+        "draft": False,
+        "checks": [
+            {"name": "lint", "state": "passed", "link": "https://ci/lint"},
+            {"name": "tests", "state": "pending", "link": "https://ci/tests"},
+        ],
+        "failed_checks": [],
+        **changes,
+    }
+
+
+@pytest.mark.parametrize(
+    ("result", "state", "failed_checks"),
+    [
+        (finished("none", mergeable=False), "failed", ["merge conflict"]),
+        (finished("none", mergeable=None, draft=True), "failed", ["draft"]),
+        (finished("none", draft=True), "failed", ["draft"]),
+        (finished("none"), "passed", []),
+        (finished("none", mergeable=None), "passed", []),
+    ],
+)
+def test_final_result_settles_a_pull_request_with_no_check(
+    result: dict[str, Any], state: str, failed_checks: list[str]
+) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+
+    settled = script.final_result(result, 6900)
+
+    assert (settled["state"], settled["failed_checks"]) == (state, failed_checks)
+    assert settled["head_sha"] == "origin1"
+
+
+def test_final_result_fails_the_checks_still_running_when_the_wait_ends() -> None:
+    script = load_skill_script(SKILL, "read_checks")
+
+    settled = script.final_result(finished("pending", failed_checks=["docs: https://ci/docs"]), 6900)
+
+    assert settled["state"] == "failed"
+    assert settled["failed_checks"] == [
+        "docs: https://ci/docs",
+        "tests (still running after 115 minutes): https://ci/tests",
+    ]
+
+
+@pytest.mark.parametrize("state", ["passed", "failed", "closed"])
+def test_final_result_keeps_a_finished_state(state: str) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    result = finished(state, failed_checks=["docs: https://ci/docs"])
+
+    assert script.final_result(result, 6900) == result
+
+
 def test_main_prints_the_checks_of_the_pull_request(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -182,6 +260,19 @@ def test_main_prints_the_checks_of_the_pull_request(
         "checks": [{"name": "lint", "state": "passed", "link": "https://ci/lint"}],
         "failed_checks": [],
     }
+
+
+def test_main_settles_a_draft_with_no_check(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    shell = checks_shell([])
+    shell.outputs[PULLS] = json.dumps(pull_request(draft=True))
+    install_shell(monkeypatch, script, shell)
+
+    printed = run_main(monkeypatch, capsys, script, {"pr": 7, "wait_s": 0})
+
+    assert (printed["state"], printed["failed_checks"]) == ("failed", ["draft"])
 
 
 @pytest.mark.parametrize(("script_input", "wait"), [({"pr": 7, "wait_s": 0}, (7, 0)), ({"pr": "7"}, (7, 6900))])
@@ -232,40 +323,3 @@ def test_read_checks_stops_waiting_when_the_pull_request_closes(monkeypatch: pyt
 
     assert script.read_checks(7, 540, clock.sleep, clock.time)["state"] == "closed"
     assert clock.sleeps == [30]
-
-
-def test_settle_unknown_mergeable_reads_once_more_when_github_did_not_compute_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    script = load_skill_script(SKILL, "read_checks")
-    reads: list[int] = []
-
-    def fake_read_once(pr_number: int) -> dict[str, Any]:
-        reads.append(pr_number)
-        return {"state": "none", "mergeable": False}
-
-    monkeypatch.setattr(script, "read_once", fake_read_once)
-    clock = FakeClock()
-
-    result = script.settle_unknown_mergeable({"state": "none", "mergeable": None}, 7, clock.sleep)
-
-    assert result == {"state": "none", "mergeable": False}
-    assert reads == [7]
-    assert clock.sleeps == [30]
-
-
-@pytest.mark.parametrize(
-    "result",
-    [
-        {"state": "none", "mergeable": True},
-        {"state": "none", "mergeable": False},
-        {"state": "pending", "mergeable": None},
-    ],
-)
-def test_settle_unknown_mergeable_keeps_a_known_answer(monkeypatch: pytest.MonkeyPatch, result: dict[str, Any]) -> None:
-    script = load_skill_script(SKILL, "read_checks")
-    polls(monkeypatch, script, ["passed"])
-    clock = FakeClock()
-
-    assert script.settle_unknown_mergeable(result, 7, clock.sleep) == result
-    assert clock.sleeps == []

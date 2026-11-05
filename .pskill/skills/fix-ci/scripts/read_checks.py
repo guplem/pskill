@@ -7,18 +7,20 @@
 Usage: uv run read_checks.py, with {"pr", "wait_s"} on stdin. `wait_s` is the most seconds to wait (at most 6900,
 115 minutes: the skill runs it as a background script block that the runner stops after 7140 seconds).
 Prints {"head_sha", "state", "mergeable", "draft", "checks", "failed_checks"}.
-- `state` is `none` (no check exists), `pending` (a check has not finished), `failed`, `passed`, or `closed` (the
+- `state` is `passed` (every check passed, or no check exists and nothing stops CI), `failed`, or `closed` (the
   pull request is merged or closed, so no wait or fix is needed).
 - `checks` is [{"name", "state", "link"}], with the state `pending`, `failed`, or `passed`. A skipped check passed.
 - `failed_checks` is ["<name>: <link>"]. The link of a check run holds the `/actions/runs/<run id>/` of its workflow.
+  A check still running when the wait ends is "<name> (still running after <n> minutes): <link>". With no check,
+  it is ["merge conflict"] or ["draft"]: neither starts CI.
 - `mergeable` is GitHub's answer: false means a merge conflict, null means GitHub did not compute it yet.
 - `draft` is true for a draft pull request.
 
 It polls every 30 seconds and returns when no check is pending. While no check exists, it waits at most 300 seconds
-for one to start. The head commit is the one on origin, because GitHub can serve an old head for minutes after a
-push. Both the check runs and the commit statuses count. The newest run of each check wins, so a run that a rerun
-cancelled or replaced does not count, and the newest status of each context wins. It replaces
-`gh pr checks --watch`, which uses GraphQL: the Claude Code cloud GitHub proxy refuses that.
+for one to start, and longer while `mergeable` is null. The head commit is the one on origin, because GitHub can
+serve an old head for minutes after a push. Both the check runs and the commit statuses count. The newest run of each
+check wins, so a run that a rerun cancelled or replaced does not count, and the newest status of each context wins.
+It replaces `gh pr checks --watch`, which uses GraphQL: the Claude Code cloud GitHub proxy refuses that.
 """
 
 import json
@@ -112,7 +114,8 @@ def read_checks(
         elapsed = clock() - started
         if result["state"] in ("passed", "failed", "closed"):
             return result
-        if result["state"] == "none" and elapsed >= NO_CHECK_WAIT_SECONDS:
+        # While GitHub still computes `mergeable`, a conflict (which starts no CI) can still show up.
+        if result["state"] == "none" and elapsed >= NO_CHECK_WAIT_SECONDS and result["mergeable"] is not None:
             return result
         remaining = wait_seconds - elapsed
         if remaining <= 0:
@@ -120,20 +123,30 @@ def read_checks(
         sleep(min(POLL_SECONDS, remaining))
 
 
-def settle_unknown_mergeable(
-    result: dict[str, Any], pr_number: int, sleep: Callable[[float], None] = time.sleep
-) -> dict[str, Any]:
-    """With no check, read once more when GitHub did not compute `mergeable` yet: a conflict starts no CI."""
-    if result["state"] != "none" or result["mergeable"] is not None:
+def final_result(result: dict[str, Any], wait_s: int) -> dict[str, Any]:
+    """The result with a `state` of passed, failed, or closed: what the skill acts on after the wait."""
+    if result["state"] == "pending":
+        minutes = min(wait_s, MAX_WAIT_SECONDS) // 60
+        still_running = [
+            f"{row['name']} (still running after {minutes} minutes): {row['link']}"
+            for row in result["checks"]
+            if row["state"] == "pending"
+        ]
+        return {**result, "state": "failed", "failed_checks": result["failed_checks"] + still_running}
+    if result["state"] != "none":
         return result
-    sleep(POLL_SECONDS)
-    return read_once(pr_number)
+    # No check exists: a conflict or a draft starts no CI; otherwise the repository runs none on this pull request.
+    if result["mergeable"] is False:
+        return {**result, "state": "failed", "failed_checks": ["merge conflict"]}
+    if result["draft"]:
+        return {**result, "state": "failed", "failed_checks": ["draft"]}
+    return {**result, "state": "passed"}
 
 
 def main() -> None:
     script_input = json.load(sys.stdin)
     wait_s = int(script_input.get("wait_s", MAX_WAIT_SECONDS))
-    print(json.dumps(read_checks(int(script_input["pr"]), wait_s)))
+    print(json.dumps(final_result(read_checks(int(script_input["pr"]), wait_s), wait_s)))
 
 
 if __name__ == "__main__":
