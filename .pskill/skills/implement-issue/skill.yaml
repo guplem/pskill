@@ -272,10 +272,11 @@ blocks:
       plan_file: "{{ steps.checkout_base.json.plan_file }}"
     parse: json
     next:
-      - when: "{{ steps.check_unreviewed.json.unreviewed and (history.final_review | default([]) | length) < 2 }}"
+      - when: "{{ steps.check_unreviewed.json.unreviewed and (history.final_review | default([]) | length) < 4 }}"
         to: final_review
-      # Finish when the 2 extra rounds are used, or when nothing is unreviewed and CI ran on the head commit.
-      - when: "{{ steps.check_unreviewed.json.unreviewed or steps.check_unreviewed.json.head_sha == steps.get_ci_green.outputs.head_sha }}"
+      # Finish once CI ran on the head commit: nothing is unreviewed, or the 4 extra rounds are used and finish names
+      # the commits that no review saw. Otherwise CI runs again, on the last fix too.
+      - when: "{{ steps.check_unreviewed.json.head_sha == steps.get_ci_green.outputs.head_sha }}"
         to: limits
       - to: ready
 
@@ -288,17 +289,15 @@ blocks:
       scope_sha: "{{ steps.review.outputs.scope_sha }}"
       since_sha: "{{ steps.final_review.outputs.reviewed_sha if steps.final_review is defined else steps.review.outputs.reviewed_sha }}"
       dismissed: "{{ (history.resolve + (history.final_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
-    # The arrow from check_unreviewed already limits these rounds to 2. This cap is only a safety net, so it never
+    # The arrow from check_unreviewed already limits these rounds to 4. This cap is only a safety net, so it never
     # asks.
-    max_visits: 2
+    max_visits: 4
     on_max_visits: limits
     ask_on_max_visits: false
     next:
-      - when: "{{ (steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list) and (history.final_review | length) < 2 }}"
-        to: final_resolve
-      # The 2nd round's fixes would get no review, so its required findings stay open, and finish names them.
+      # The 4th round's findings get fixed too, with no review after them, and finish names the unreviewed commits.
       - when: "{{ steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list }}"
-        to: limits
+        to: final_resolve
       - to: check_unreviewed
 
   final_resolve:

@@ -1,4 +1,4 @@
-name: the 2nd required-only round leaves its findings open, with no unreviewed fix, and the run ends capped
+name: the 4th required-only round's findings get fixed with no review, CI runs on that fix, and the run ends capped naming the unreviewed commit
 inputs: {request: "#42"}
 scripts:
   limits:
@@ -16,20 +16,32 @@ scripts:
     - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/example-org/app/pull/9"}'}
   ready:
     - {exit_code: 0, stdout: '{"head_sha": "h1"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "h5"}'}
   check_unreviewed:
     - {exit_code: 0, stdout: '{"unreviewed": true, "commits": ["c1"], "head_sha": "h1"}'}
-    - {exit_code: 0, stdout: '{"unreviewed": true, "commits": ["c1"], "head_sha": "h1"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": true, "commits": ["c2"], "head_sha": "h2"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": true, "commits": ["c3"], "head_sha": "h3"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": true, "commits": ["c4"], "head_sha": "h4"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": true, "commits": ["c5"], "head_sha": "h5"}'}
+    - {exit_code: 0, stdout: '{"unreviewed": true, "commits": ["c5"], "head_sha": "h5"}'}
 calls:
   review:
     - {status: succeeded, outputs: {findings: [], reviewed_sha: r1, scope_sha: r1}}
   final_review:
     - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: f1, scope_sha: r1}}
     - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: f2, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: f3, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test, summary: S, quote: q}], reviewed_sha: f4, scope_sha: r1}}
   final_resolve:
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
     - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test, verdict: fixed, reason: Added it.}], fixed: 1}}
   get_ci_green:
     - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h1, fixes: 0}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h5, fixes: 0}}
   answer_comments:
+    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
     - {status: succeeded, outputs: {decisions: [], fixed: 0}}
 answers:
   understand:
@@ -46,8 +58,8 @@ answers:
   write_description:
     - {summary: Saving a file with no name shows an error instead of crashing.}
   finish:
-    - {labels: [], reasons: "Required findings are still left after 5 extra rounds."}
+    - {labels: [], reasons: "The fix of the 4th required-only round, commit c5, got no review."}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, limits, finish, capped]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, ready, get_ci_green, answer_comments, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, final_review, final_resolve, check_unreviewed, ready, get_ci_green, answer_comments, check_unreviewed, limits, finish, capped]
   status: succeeded
   outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9", limits: [final_review]}
