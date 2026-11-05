@@ -662,3 +662,45 @@ def test_the_build_proves_each_test_can_fail_and_ticks_the_lists_before_the_revi
     assert "break the guarded code on purpose" in text
     assert "never with `git checkout -- <file>`" in text
     assert "tick each line of the three **Lists** of the plan against the diff" in text
+
+
+def rendered_instruction(name: str, limits: list[str], unreviewed_commits: list[str]) -> str:
+    fixed = {"outputs": {"decisions": [{"verdict": "fixed", "title": "No test"}], "left": 0}}
+    context = {
+        "steps": {
+            "limits": {"json": {"limits": limits}},
+            "open_draft_pr": {"json": {"pr_number": 9, "pr_url": "https://x/9"}},
+            "check_unreviewed": {"json": {"unreviewed": True, "commits": unreviewed_commits, "head_sha": "h5"}},
+            "final_review": {"outputs": {"findings": [{"severity": "required", "title": "No test"}]}},
+            "get_ci_green": {"outputs": {"state": "passed", "failed_checks": [], "head_sha": "h5", "fixes": 0}},
+            "write_description": {"summary": "S"},
+            "finish": {"labels": [], "reasons": "R"},
+        },
+        "history": {
+            "implement_step": [{}],
+            "review": [{}],
+            "resolve": [],
+            "answer_comments": [],
+            "final_review": [{}, {}, {}, {}],
+            "final_resolve": [fixed, fixed, fixed, fixed],
+            "get_ci_green": [{"outputs": {"fixes": 0}}],
+        },
+        "skill": {"id": SKILL, "dir": "skill"},
+    }
+    return render_text(instruction(name), context)
+
+
+@pytest.mark.parametrize("name", ["finish.md", "report.md"])
+def test_the_final_review_limit_names_the_commits_that_no_review_saw(name: str) -> None:
+    text = rendered_instruction(name, ["final_review"], ["c4", "c5"])
+
+    assert (
+        "the required-only review rounds used their 4 rounds, so no review saw these commits: c4, c5." in text.lower()
+    )
+    assert "stay open" not in text
+    assert "No test" not in text
+
+
+@pytest.mark.parametrize("name", ["finish.md", "report.md"])
+def test_no_final_review_limit_names_no_unreviewed_commit(name: str) -> None:
+    assert "c5" not in rendered_instruction(name, [], ["c5"])
