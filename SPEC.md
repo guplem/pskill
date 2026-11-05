@@ -59,7 +59,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D4 | `pskill sync` writes one read-only stub per skill into each folder in `config.stub_folders` (default `.agents/skills/` and `.claude/skills/`). All stubs have the same content and pass `--harness auto`. | Harnesses pick skills by their description. Without stubs, auto-triggering stops. The folder list is configurable because projects already own these folders differently (see 9.3). |
 | D5 | One run can mix main-agent work, subagents, scripts, and questions to the human. | The real skills use all four. |
 | D6 | Every skill can run in `autonomous` mode. A `decision` block has `decider: agent` or `decider: human`. In autonomous mode the agent takes human decisions itself, from the skill goal, the session, and the project. | User requirement. Replaces all mode-specific prose. |
-| D7 | A Stop hook blocks the agent from ending its turn while a block is open, on harnesses that have such a hook. Other harnesses get packet wording only. Changed in 0.37.0 (#150): while a `pskill wait` runs, on a harness that wakes the agent after a background command, the hook allows the stop (9.2). | Otherwise the agent can simply stop calling the runner. |
+| D7 | A Stop hook blocks the agent from ending its turn while a block is open, on harnesses that have such a hook. Other harnesses get packet wording only. Changed in 0.37.0 (#150): while a `pskill wait` runs, on a harness that wakes the agent after a background command, the hook allows the stop (9.2). Changed in 1.1.0 (#190): so does a background script (6.3) while its command can run. | Otherwise the agent can simply stop calling the runner. |
 | D8 | The stub gives the skill goal and the loop rules once. A packet contains the current instruction and its return format, and no future blocks. It repeats the goal only where the agent never saw the stub: a subagent task, the first packet of a child skill, and `current` or `resume` (with the rules). | Fewer tokens, no running ahead, one obvious place for the goal, and enough context for autonomous answers. Changed in 0.10.0: before, every packet repeated the goal and the rules. |
 | D9 | Every agent block declares a typed output. The runner rejects invalid submissions with the error text. | State lives in the runner, typed, and survives tool calls. |
 | D10 | A nested skill call works like a function: inputs in, outputs out, no access to the caller's state. | Replaces line-number citations and file-heading contracts. |
@@ -92,7 +92,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 - **L5. Instruction files are on disk.** The agent could read future blocks. This is not a security boundary.
 - **L7. Codex needs Full access.** Inside the Codex sandbox, `uv` cannot open its cache (outside the project) or reach PyPI. The Codex rule lets only plain runner commands, such as `start` and `current`, run outside the sandbox: Codex does not match the rule to the `submit` form with an answer on stdin (verified in #24). So the user runs Codex with Full access (`--sandbox danger-full-access`), or approves each `submit`. pskill never changes this setting. Full access also means that the runner's `script` blocks run without the sandbox.
 - **L6. No isolation without subagents.** With the `generic` adapter, every task job runs in the main agent's context, `fresh` ones too, so each job can see the earlier ones.
-- **L8. `pskill wait` needs a harness that wakes the agent when a background command ends.** Claude Code does (no time limit locally; 30 minutes by default in a cloud session). Codex does not document it, so its Stop hook ignores waits and keeps 3 refused stops, then a pause (9.2).
+- **L8. `pskill wait` and background scripts need a harness that wakes the agent when a background command ends.** Claude Code does (no time limit locally; 30 minutes by default in a cloud session, up to 2 hours with the call's `timeout`, which a background script's packet gives). Elsewhere a background script runs in the foreground (6.3). Codex does not document it, so its Stop hook ignores waits and keeps 3 refused stops, then a pause (9.2).
 - **L9. `on_pause` reaches only a live agent.** A session that dies shows nothing to anyone, and a later `current` of that pause only says that the steps were given if its packet was printed before. Every pause of a live agent gives them, the Stop hook's give-up pause too (9.2), also after the waits of a block used up `max_wait_minutes`. `resume` goes straight back to the block. Write the steps so that running them twice does no harm: `implement-issue` posts nothing when its latest pause comment already says the same.
 - **L10. The summary card is a request.** The runner asks the agent to show the card word for word, but it cannot see the chat, so it cannot check that the agent did. Its output only reaches the agent, never the user directly.
 
@@ -125,7 +125,7 @@ Harness features change fast. Every statement tagged **VERIFY** comes from resea
 2. The agent does the work with its own tools.
 3. The agent runs `submit` once, with its answer on stdin (a long answer: in the file that the packet names, with `--file`).
 4. The runner validates the answer. If it is invalid, the runner prints the same packet with the errors.
-5. If it is valid, the runner stores it, records the duration, follows the edge, executes every following `script`, `call`, and `end` block by itself, and stops at the next agent block.
+5. If it is valid, the runner stores it, records the duration, follows the edge, executes every following `script`, `call`, and `end` block by itself, and stops at the next agent block, or at a background script (6.3) on a harness that wakes the agent after a background command.
 6. The runner prints the next packet, as the output of the same command.
 
 ---
@@ -367,7 +367,7 @@ verify_quotes:
   next: report
 ```
 
-- **The runner executes the script, never the agent.** It costs no agent tool call and no tokens, and it gives the same result every time.
+- **The runner executes the script, not the agent.** A script costs no agent tool call and no tokens, and it gives the same result every time. Only a background script costs the agent one call, to start the runner command (see the `background: true` bullet).
 - `run` is an argument list. The runner computes each element, converts it to text, and runs the list with no shell. This prevents shell injection and removes shell differences between operating systems.
 - Put real logic in `scripts/` as Python or Node, and call it: `[uv, run, "{{ skill.dir }}/scripts/verify_quotes.py"]`.
 - **A script gets its data through `input`, on stdin.** The runner computes `input`, then writes it to the script's stdin: a text as it is, and any other value (usually a mapping) as one JSON object. Stdin has no length limit; a command line has one (about 32,000 characters on Windows). Without `input`, stdin is empty.
@@ -378,6 +378,13 @@ verify_quotes:
 - Output: `steps.<id>.stdout`, and `steps.<id>.json` with `parse: json`.
 - **Output limit.** With `parse: json`, the runner keeps the whole stdout: it is the block's value. It keeps the first 64 KiB of any other stdout, and of stderr, and appends a note on its own line: `[pskill cut this output: it keeps the first 65536 of <size> characters.]`. So no later step takes a cut text as whole. The runner checks the whole result first, so a failure message shows the real end of stderr. Changed in 0.32.1 (#139): before, the runner cut stdout and stderr to 64 KiB with no note, so a JSON value over 64 KiB failed as "not valid JSON".
 - A non-zero exit code, a timeout (config `script_timeout_s`, default 300, or the block's own `timeout_s: <seconds>`), or bad JSON is a block failure. A script that wants to report a normal "no" result exits 0 and prints JSON.
+- **A foreground script runs inside the agent's shell call** (the `submit` or `start` that reaches it), so the harness's shell limit applies too. Claude Code stops a foreground call at 10 minutes (`BASH_MAX_TIMEOUT_MS`, https://code.claude.com/docs/en/tools-reference, read 2026-11-04), so `validate` warns about a foreground `timeout_s` over 600. Codex sets no hard limit: its `exec_command` returns after at most 30 s and the agent polls the command with `write_stdin`, up to 5 minutes per poll (openai/codex b9099a1, `codex-rs/core/src/unified_exec/mod.rs`), and each poll is a model turn. A skill that must run on every harness keeps its scripts short.
+- **`background: true`** (added in 1.1.0, #190) is for a long script, such as a wait for CI. Its timeout, for every attempt (`retries + 1`) plus the 60 s to record, may go up to `max_wait_minutes` (default 120, and at most 2 hours, the longest background command): `validate` and `start` give an error above it.
+  - On a harness that wakes the agent after a background command (`wakes_after_background_command`, 9.1), the run stops at the block. Its packet gives one command, `uv run .pskill/pskill.py run-script <run>`, to start in the background with the harness's own timeout (Claude Code: the Bash tool's `run_in_background: true` and `timeout`, the timeout of every attempt of the script plus 60 s, at most 2 hours), and tells the agent to end its turn. The packet sets the wait fields (9.2) until that timeout, so the Stop hook lets the agent stop.
+  - `run-script` takes the run lock to mark the script as running, runs it with no lock held (other commands go on, and none breaks a lock that is minutes old), then takes the lock again to record each attempt as a foreground script does (`script_ran`, retries, then `block_failed`), clears the wait fields, and prints the next packet. The agent wakes once, with that packet as the command's output.
+  - While the script is open: `current` gives the command again until it starts, then says that it runs; `submit` refuses an answer; a second `run-script` is refused; `pskill wait` is refused (its shorter alarm would replace the script's). `resume` gives the command again, which recovers a command that died with its session.
+  - When the run changed while the script ran (a pause, a cancel, or a `resume` that gave the command again), `run-script` drops the result and says how to continue.
+  - Elsewhere (Codex, generic) and in `pskill test`, the block runs in the foreground, like any script. A run that moves to such a harness (D13) while a background script is open runs the script in the foreground at its next `current` or `resume`. A script that ends, in either way, clears its marker and the wait fields.
 
 ### 6.4 `call`
 
@@ -446,7 +453,7 @@ done:
 
 | Status | Meaning | Stop hook |
 |---|---|---|
-| `active` | The runner waits for the agent's submission. | Blocks the stop, except while a `pskill wait` runs (9.2). |
+| `active` | The runner waits for the agent's submission. | Blocks the stop, except while a `pskill wait` or a background script runs (9.2). |
 | `waiting_for_human` | A human decision, or a visit cap question (5.5), is open in interactive mode. | Allows the stop. |
 | `paused` | A block failed, `pskill pause` ran, or the Stop hook gave up. `pause_reason` says why. | Allows the stop. |
 | `succeeded`, `failed`, `cancelled` | Final. | Allows the stop. |
@@ -614,7 +621,8 @@ class HarnessAdapter(Protocol):
 | Subagents | Agent tool with `subagent_type: general-purpose` and `run_in_background: false` (the turn waits for every subagent; the calls still run in parallel) | `spawn_agent`, then `wait_agent` | no (one by one) |
 | Model tier (`tier`) | the row's `model` and `effort` on the task's Agent call (default: `model: haiku`, `sonnet`, or `opus`) | the row's `model` and `reasoning_effort` on the task's `spawn_agent` call (default: `reasoning_effort: low`, `medium`, or `high`) | ignored |
 | Tool profile (`tools`) | `subagent_type: pskill-<profile>` on the task's Agent call; `sync` writes `.claude/agents/pskill-<profile>.md` | ignored: an agent file cannot set `sandbox_mode` or `mcp_servers` (openai/codex `codex-rs/core/src/agent/role.rs`, read 2026-10-10) | ignored |
-| Wakes the agent after a background command (`wakes_after_background_command`, for `pskill wait`) | yes: a new turn when the command ends (no time limit locally; 30 minutes by default in a cloud session) | not documented, so no: the Stop hook ignores waits | no |
+| Wakes the agent after a background command (`wakes_after_background_command`, for `pskill wait` and background scripts) | yes: a new turn when the command ends (no time limit locally; 30 minutes by default in a cloud session, up to 2 hours with `timeout`) | not documented, so no: the Stop hook ignores waits, and a background script runs in the foreground | no |
+| Shell limit of one foreground command | 10 minutes (`BASH_MAX_TIMEOUT_MS`) | none: `exec_command` returns after at most 30 s, and the agent polls the command | unknown |
 | Question tool | `AskUserQuestion` (2-4 options; above 4, use a plain question) | plain question | plain question |
 
 - An adapter that cannot VERIFY a capability uses the `generic` behavior for it.
@@ -642,6 +650,7 @@ class HarnessAdapter(Protocol):
     - A newer wait ends a running one with "A newer wait replaced this one. End your turn: the newer wait wakes you.", so the agent does not wake twice.
     - A wait resets `stop_blocks`: the hook can count a stop before the background `wait` writes `run.json`.
     - A submit or a `resume` clears the four fields. A wait that starts more than `wait_minutes` after the last alarm starts a new `waits_since`: the agent worked between the two waits. When `waits_since` is `max_wait_minutes` old (default 120), `wait` refuses to start: the stops count again, and the `agent_stopped` pause error names the last wait reason.
+    - **A background script (6.3, since 1.1.0)** sets the same fields, with the reason "the background script <id>" and `wait_until` at the end of its command's timeout, when its packet is given and when `run-script` starts it. Recording its result clears them.
     - A killed `wait` holds the stop only until `wait_until`. Only an adapter with `wakes_after_background_command` (Claude Code) gets the quiet stop and the wait line. Every other harness (Codex: not documented) keeps the old behavior, because nothing would wake the agent and the run would stay active and idle.
   - Never block the stop of a subagent. Claude Code sends subagent stops as a separate `SubagentStop` event, which pskill does not hook. VERIFY how Codex marks a subagent stop.
   - After 3 blocks in a row (config `stop_hook_max_blocks`) with no submission, resume, or `pskill wait` between them, allow the stop and pause the run with reason `agent_stopped`. This prevents an endless loop.
@@ -776,7 +785,7 @@ autonomous_max_visits: 150                               # the agent's ceiling a
 script_timeout_s: 300
 stop_hook_max_blocks: 3
 wait_minutes: 20                                         # how long one `pskill wait` sleeps when nothing changes
-max_wait_minutes: 120                                    # the waits of one block with nothing new, before wait refuses
+max_wait_minutes: 120                                    # the waits of one block with nothing new, before wait refuses; also the longest total timeout of a background script and its retries (6.3)
 viewer_port: 7777
 worktree_folder: .pskill/worktrees                       # where `start --worktree` makes the run's worktree (7.8)
 worktree_setup: []                                       # the command that prepares a new worktree, such as [npm, ci]
@@ -802,7 +811,7 @@ runs/<run-id>/
 - `schema_version`, `run_id`, `skill_id`, `skill_hash` (sha256 of the copied skill files)
 - `repo_commit`, `repo_dirty`, `runner_version`, `harness`, `llm` (the model id from `start --model`, or null; absent in runs before 0.39.0), `worktree` (the absolute path of the worktree that `start --worktree` made, or null; absent in runs before 0.42.0), `session_id` (the owner session, or null), `mode`, `inputs`
 - `status`, `pause_reason`, `current` (`{frame, block, visit}`), `attempts`, `stop_blocks`
-- `wait_reason`, `wait_started_at`, `wait_until`, `waits_since`: the `pskill wait` alarm (section 9.2). Absent in runs before 0.37.0.
+- `wait_reason`, `wait_started_at`, `wait_until`, `waits_since`: the `pskill wait` alarm or a background script (sections 6.3 and 9.2). Absent in runs before 0.37.0.
 - `created_at`, `updated_at`, `ended_at`, `outputs`, `final_report`
 - `end_block`, `end_description`, `final_pending`: the summary card (section 8). The end block of a finished run and its `description`, and its rendered `pending` (null: not declared). A run that `cancel` ended has no end block, and the cancel texts of section 8. Absent in runs before 0.43.0.
 
@@ -813,7 +822,7 @@ Each line of `events.jsonl` has `ts` (UTC ISO 8601 with milliseconds), `seq` (a 
 | type | Extra fields |
 |---|---|
 | `run_started` | `skill_id`, `skill_hash`, `inputs`, `mode`, `harness`, `runner_version` |
-| `block_started` | `block`, `block_type` (`visit_cap` for the question at a visit cap, since schema version 6), `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks), `for_each?` (true for a `task` with `for_each`, whose tasks the viewer draws; since schema version 8: before, such a block logged `block_type: parallel`), `task?` (the job of a one-by-one packet), `task_names?` (a task with `for_each` and a `task_name`: the name of each task, or null), `skipped_tasks?` (a task with `for_each`: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a task with `for_each`, or one whose packet spawns a `fresh` job: the full prompt of each task, which the viewer shows, and for a one-job task the input of its row and of its Galtea turn; since schema version 4, and for a one-job task since schema version 8), `inputs?` (a `call` block: the computed inputs of the child; since schema version 7) |
+| `block_started` | `block`, `block_type` (`visit_cap` for the question at a visit cap, since schema version 6), `visit`, `from`, `reason` (the condition, the choice, or `always`), `packet` (the exact text given to the agent; none for runner blocks, except a background script's command since schema version 9), `for_each?` (true for a `task` with `for_each`, whose tasks the viewer draws; since schema version 8: before, such a block logged `block_type: parallel`), `task?` (the job of a one-by-one packet), `task_names?` (a task with `for_each` and a `task_name`: the name of each task, or null), `skipped_tasks?` (a task with `for_each`: each item of its fixed list whose `when` was false, as `{name, when}`; since schema version 3), `task_prompts?` (a task with `for_each`, or one whose packet spawns a `fresh` job: the full prompt of each task, which the viewer shows, and for a one-job task the input of its row and of its Galtea turn; since schema version 4, and for a one-job task since schema version 8), `inputs?` (a `call` block: the computed inputs of the child; since schema version 7) |
 | `submission_rejected` | `block`, `task?`, `errors`, `raw` |
 | `block_completed` | `block`, `task?`, `output`, `decided_by` (`agent`, `human`, `agent_autonomous`, `runner`), `duration_ms`, `tier?` (the tier of a `fresh` job with a tier, since schema version 8: the Galtea upload names its model) |
 | `script_ran` | `block`, `argv`, `input` (what the script read on stdin, or null; since schema version 5), `exit_code`, `stdout` (whole with `parse: json`, else limited as in 6.3), `stderr` (limited as in 6.3), `duration_ms` |
@@ -881,11 +890,13 @@ x-galtea:
 19. `max_visits` without `on_max_visits`; `on_max_visits`, `ask_on_max_visits`, or `autonomous_max_visits` without `max_visits`; `autonomous_max_visits` below `max_visits`.
 20. A task's written `tier` is not `fast`, `standard`, or `deep`, its written `tools` is not `read` or `web`, or its written `context` is not `main` or `fresh`. A computed value is checked at run time, and an unknown one fails the block. A `tier`, `tools`, or `agent` on a task whose `context` is missing or `main` is an error too, which names the block: the main agent cannot change its own model or tools.
 21. `x-galtea` (section 10.4) is not a mapping, its `product` is not a non-empty text, or its `metadata` is not a mapping of texts.
+22. A background script whose attempts (`retries + 1`, each of its `timeout_s`, else `script_timeout_s`), plus 60 s, last longer than `max_wait_minutes` of `config.yaml` or 2 hours (6.3).
 
 **Warnings:**
 1. A condition list whose last item has a `when`.
 2. An instruction file that no block (and not the skill's `on_pause`) uses.
 3. A Codex row in `tiers` whose model the local Codex model catalog does not list, or lists with an `upgrade` (named in the warning). The catalog is `models_cache.json` in `$CODEX_HOME`, else `~/.codex`. With no catalog, or one that cannot be read, there is no check. Checked when `validate` checks every skill.
+4. A foreground script whose `timeout_s` is above 600: Claude Code stops its shell call at 10 minutes (6.3).
 
 ---
 
@@ -1013,6 +1024,7 @@ The example skills together must exercise every runtime feature. pytest fixtures
 | `invocation: manual` | `review-pr` |
 | `on_pause`, with `run.mode` | `implement-issue` (a comment on the pull request or the issue when an autonomous run pauses) |
 | Jobs one by one (`generic`), Stop hook, resume in a new session | the M3 and M4 acceptance runs |
+| A `script` with `background: true` | pytest fixtures (`tests/test_engine_blocks.py`, `tests/test_skill_tests.py`); `fix-ci` uses it after #180 |
 
 ### 13.4 Tests to ship
 
@@ -1122,7 +1134,7 @@ Each skill has test cases in `tests/`, for each of its paths: for example a clea
 
 The skill screen can change a skill. `skill_editor.py` writes the change to `skill.yaml`.
 
-- **What it edits:** a block's description, visit cap (with `ask_on_max_visits` and `autonomous_max_visits`), retries, instruction or report (inline, or the text of its `.md` file), `next` edges (with conditions, and per choice), choices, decider, command, parse, timeout, child skill, agent, task name, `for_each`, `context`, and end status. It also adds a block of any type (the smallest valid block) and deletes a block that no edge leads to. It does not edit field maps, `inputs`, `outputs`, an end's `pending`, or the skill's top level: edit those in the file.
+- **What it edits:** a block's description, visit cap (with `ask_on_max_visits` and `autonomous_max_visits`), retries, instruction or report (inline, or the text of its `.md` file), `next` edges (with conditions, and per choice), choices, decider, command, parse, timeout, background (a script), child skill, agent, task name, `for_each`, `context`, and end status. It also adds a block of any type (the smallest valid block) and deletes a block that no edge leads to. It does not edit field maps, `inputs`, `outputs`, an end's `pending`, or the skill's top level: edit those in the file.
 - **Only the changed block changes.** `ruamel.yaml` (a YAML library that keeps comments) reads the file. The editor replaces only the lines of the changed block, so every other line stays byte for byte the same. Inside the block, the comments, the quotes, and the anchors stay. A new key goes where the skill files put it (for example `description` after `type`). A list that the author wrapped over two lines becomes one line, but only in the changed block.
 - **Only keys that changed:** the page sends only the keys that the user changed, so an untouched key keeps its exact form.
 - **A structure error is refused:** a change after which the skill does not load is not saved, and the file stays as it was. A validation problem (for example an end that misses a required output) is saved, and the checks show it, because many edits need several steps.
@@ -1163,6 +1175,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `pause <run>` / `resume <run>` / `cancel <run>` | Lifecycle control. |
 | `delete <run>` | Delete the folder of a finished run, for cleanup. An unfinished run must be cancelled first. The id must name a folder right inside `runs/`. |
 | `wait <run> --reason <text>` | The agent waits on background work. Record the wait, then sleep until the run changes or `wait_minutes` pass (9.2). The agent runs it in the background, then ends its turn. |
+| `run-script <run>` | Run the current background script (6.3) with no run lock held, record its result, and print the next packet. The agent starts it in the background, then ends its turn. Added in 1.1.0. |
 | `runs [--open]` | List runs. A waiting run shows its wait reason and the start of the wait. |
 | `validate [<skill>]` | Section 11. |
 | `test [<skill>]` | Section 12. |

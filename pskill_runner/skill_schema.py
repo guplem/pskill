@@ -138,6 +138,7 @@ BLOCK_SCHEMAS: dict[str, dict[str, Any]] = {
             "parse": {"enum": ["text", "json"]},
             "next": {"$ref": "#/$defs/edges"},
             "timeout_s": {"type": "integer", "minimum": 1},
+            "background": {"type": "boolean"},
             **RETRIES_PROPERTY,
         },
     ),

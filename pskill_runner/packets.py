@@ -73,12 +73,51 @@ def errors_section(errors: list[str]) -> str:
     return f"### Errors\nYour last answer was rejected. Fix these problems and submit again:\n{listed}"
 
 
-def header(packet: AgentPacket) -> str:
+def header(packet: "AgentPacket | BackgroundScriptPacket") -> str:
     chain = " > ".join(packet.chain)
     lines = [f"## pskill · {chain} · {packet.block_id} (visit {packet.visit})", f"Run {packet.run_id} · {packet.mode}"]
     if packet.in_worktree:
         lines.append(worktree_line(packet.work_folder))
     return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class BackgroundScriptPacket:
+    """The packet of a background script (SPEC.md section 6.3): one command to start in the background."""
+
+    run_id: str
+    chain: list[str]
+    block_id: str
+    visit: int
+    mode: str
+    goal: str
+    runner_command: str
+    start_wording: str  # how this harness starts a background command, with its timeout
+    work_folder: str = ""
+    in_worktree: bool = False
+    show_goal: bool = False  # `current` and `resume`: a new session may not have read the stub
+    show_rules: bool = False
+
+
+def render_background_script_packet(packet: BackgroundScriptPacket) -> str:
+    command = f"{packet.runner_command} run-script {packet.run_id}"
+    sections = [header(packet)]
+    if packet.show_goal:
+        sections.append(f"### Goal\n{packet.goal.strip()}")
+    sections.append(
+        "### Background script\n"
+        "The runner runs the script of this block itself, and it can take long. Start this command in the "
+        f"background, then end your turn:\n{command}\n{packet.start_wording}\n"
+        "Do not wait on it, poll it, or run it again. When it ends, you get a new turn with its output: the next "
+        "step of the run."
+    )
+    if packet.show_rules:
+        sections.append(
+            "### Rules\n"
+            "- Do only this block. The runner gives you the next one.\n"
+            f"- If the user asks to stop, run: {packet.runner_command} pause {packet.run_id}"
+        )
+    return "\n\n".join(sections) + "\n"
 
 
 def worktree_line(work_folder: str) -> str:

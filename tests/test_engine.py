@@ -899,6 +899,16 @@ def test_a_run_that_matched_no_entry_edge_cannot_resume(tmp_path: Path) -> None:
         resume_run(project, run_id)
 
 
+def test_current_gives_the_pause_text_of_a_run_that_matched_no_entry_edge(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        "entry: create_plan", "entry:\n  - when: \"{{ inputs.topic == 'nothing' }}\"\n    to: create_plan"
+    )
+    project = make_project(tmp_path, skill_yaml=skill_yaml)
+    run_id, _ = start_run(project, "plan-work", {"topic": "the login page"}, mode="interactive", harness="generic")
+
+    assert "is paused at block (none) (runner_error)" in current_packet(project, run_id)
+
+
 def test_a_condition_that_fails_pauses_the_run(tmp_path: Path) -> None:
     skill_yaml = PLAN_SKILL.replace("steps.create_plan.status == 'question'", "steps.create_plan.question | length > 0")
     project = make_project(tmp_path, skill_yaml=skill_yaml)

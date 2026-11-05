@@ -7,11 +7,13 @@ change a run hold the run's lock, because the subagents of a task block submit a
 
 import contextlib
 import json
+import math
 import os
 import shutil
 import subprocess
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, TypeGuard, cast
 
@@ -24,10 +26,12 @@ from pskill_runner.packets import (
     VISIT_CAP_CHOICES,
     VISIT_CAP_ROUNDS,
     AgentPacket,
+    BackgroundScriptPacket,
     PauseSteps,
     SummaryCard,
     TaskPrompt,
     render_agent_packet,
+    render_background_script_packet,
     render_final_packet,
     render_pause_packet,
     render_subagent_packet,
@@ -83,7 +87,7 @@ from pskill_runner.skill_model import (
     tier_choices,
     tool_profile_choices,
 )
-from pskill_runner.validator import validate_skill
+from pskill_runner.validator import background_timeout, validate_skill
 from pskill_runner.yaml_loading import load_answer_yaml
 
 ENTRY_SCRIPT_NAME = "pskill.py"
@@ -251,6 +255,32 @@ def submit_answer(
     return text
 
 
+def run_background_script(
+    project: Project, run_id: str, executor: InlineExecutor | None = None, runs_folder: Path | None = None
+) -> str:
+    """`pskill run-script`: run the current background script, record its result, and print the next packet.
+
+    The run lock is held only to mark the start and to record the result, never while the script runs: other
+    commands (`current`, the Stop hook, `pause`) keep working, and none breaks a lock that is minutes old.
+    """
+    folder = run_folder(project, run_id, runs_folder)
+    with run_lock(folder):
+        run = Run.load(project, run_id, executor, runs_folder)
+        try:
+            script = run.start_background_script()
+        except RunnerStop as stop:
+            text = run.pause("runner_error", str(stop))
+            run.save()
+            return text
+        run.save()
+    results = run_attempts(run.executor, script, project.root)
+    with run_lock(folder):
+        run = Run.load(project, run_id, executor, runs_folder)
+        text = run.guarded(lambda: run.record_background_script(script, results))
+        run.save()
+    return text
+
+
 def delete_answer_file(answer_file: Path, answers_folder: Path) -> None:
     """Delete a recorded answer's file, only inside the run's `answers/` folder: never a file of the user's.
 
@@ -404,7 +434,7 @@ def load_valid_skill(project: Project, skill_id: str, catalog: SkillCatalog) -> 
         skill = load_skill(folder)
     except SkillLoadError as error:
         raise RunError(f"The skill {skill_id!r} is invalid:\n- " + "\n- ".join(error.problems)) from error
-    problems = validate_skill(skill, catalog)
+    problems = validate_skill(skill, catalog, project.config)
     errors = [f"{problem.location}: {problem.message}" for problem in problems if problem.level == "error"]
     if errors:
         raise RunError(f"The skill {skill_id!r} is invalid:\n- " + "\n- ".join(errors))
@@ -557,6 +587,32 @@ def elapsed_ms_since(timestamp_text: str | None) -> int:
     if timestamp_text is None:  # pragma: no cover - every agent block sets packet_issued_at first
         return 0
     return int((utc_now() - parse_timestamp(timestamp_text)).total_seconds() * 1000)
+
+
+@dataclass(frozen=True)
+class PreparedScript:
+    """A script with its computed command and input: it runs with no run state, so with no run lock held."""
+
+    block_id: str
+    argv: list[str]
+    script_input: Any
+    env: dict[str, str]
+    timeout_s: int
+    attempts: int  # 1 + the block's retries
+    parse: str
+    since: str | None = None  # a background script: when its command started it
+
+
+def run_attempts(executor: InlineExecutor, script: PreparedScript, root: Path) -> list[ScriptResult]:
+    """Run the script until an attempt succeeds or none is left. Return every attempt's whole result."""
+    stdin_text = None if script.script_input is None else stdin_text_of(script.script_input)
+    results = []
+    for _ in range(script.attempts):
+        result = executor.run_script(script.block_id, script.argv, root, script.env, script.timeout_s, stdin_text)
+        results.append(result)
+        if script_problem(result, script.parse) is None:
+            break
+    return results
 
 
 # ---------------------------------------------------------------------------------------------
@@ -774,6 +830,8 @@ class Run:
                 final_text = self.finish(block)
                 if final_text is not None:
                     return final_text
+            elif isinstance(block, ScriptBlock) and self.runs_in_background(block):
+                return self.issue_background_script(block)
             elif isinstance(block, ScriptBlock):
                 pause_text = self.run_script(block)
                 if pause_text is not None:
@@ -924,25 +982,117 @@ class Run:
 
     # --- script blocks ------------------------------------------------------------------------
 
+    def runs_in_background(self, block: ScriptBlock) -> bool:
+        """A background script waits for its own command only where the harness wakes the agent after it."""
+        return block.background and self.adapter.wakes_after_background_command
+
+    def background_shell_timeout_s(self, block: ScriptBlock) -> int:
+        """The timeout of the agent's background command: every attempt of the script, plus a minute to record
+        it, within the harness's longest timeout."""
+        total_s = background_timeout(block, self.project.config).total_s
+        return min(total_s, self.adapter.background_command_max_s)
+
+    def issue_background_script(self, block: ScriptBlock, reentry: bool = False) -> str:
+        """Give the command that runs the script in the background. The wait fields keep the Stop hook quiet."""
+        now = utc_now()
+        self.frame["background_script"] = {"state": "issued", "since": timestamp(now)}
+        self.hold_stops_for(block, now)
+        self.info["status"] = "active"
+        self.info["attempts"] = 0
+        text = self.background_script_packet(block, reentry)
+        self.log_block_started(block, packet=text)
+        return text
+
+    def hold_stops_for(self, block: ScriptBlock, now: datetime) -> None:
+        """While the background command can run, the Stop hook lets the agent stop (SPEC.md section 9.2)."""
+        self.info["wait_reason"] = f"the background script {block.id}"
+        self.info["wait_started_at"] = timestamp(now)
+        self.info["wait_until"] = timestamp(now + timedelta(seconds=self.background_shell_timeout_s(block)))
+        self.info["waits_since"] = timestamp(now)
+        self.info["stop_blocks"] = 0
+
+    def script_text(self, block: ScriptBlock) -> str:
+        """What `current` does at an open script: on a harness that does not wake the agent after a background
+        command (the run moved to one), the script runs in the foreground now, unless its background command
+        already runs it (it would run twice)."""
+        marker = self.frame.get("background_script")
+        already_running = marker is not None and marker["state"] == "running"
+        if self.runs_in_background(block) or already_running:
+            return self.background_script_text(block)
+        return self.guarded(self.advance)
+
+    def background_script_text(self, block: ScriptBlock) -> str:
+        """What `current` says at a background script: its command until it starts, then that it runs."""
+        marker = self.frame.get("background_script")
+        if marker is None or marker["state"] == "issued":
+            return self.background_script_packet(block, reentry=True)
+        command = runner_command(self.project)
+        run_id = self.info["run_id"]
+        return (
+            f"The script {block.id!r} runs in the background, since {marker['since']}. End your turn: its end "
+            "wakes you with the next step. If its command no longer runs (for example, the session ended), run "
+            f"`{command} pause {run_id}`, then `{command} resume {run_id}`: that gives the command again.\n"
+        )
+
+    def background_script_packet(self, block: ScriptBlock, reentry: bool) -> str:
+        timeout_s = self.background_shell_timeout_s(block)
+        wording = self.adapter.background_command_wording.format(
+            timeout_ms=timeout_s * 1000, minutes=math.ceil(timeout_s / 60)
+        )
+        return render_background_script_packet(
+            BackgroundScriptPacket(
+                run_id=self.info["run_id"],
+                chain=self.chain(),
+                block_id=block.id,
+                visit=self.frame["visits"].get(block.id, 0),
+                mode=self.info["mode"],
+                goal=self.skill_of(self.frame).goal,
+                runner_command=runner_command(self.project),
+                start_wording=wording,
+                work_folder=self.project.root.as_posix(),
+                in_worktree=bool(self.info.get("worktree")),
+                show_goal=reentry,
+                show_rules=reentry,
+            )
+        )
+
     def run_script(self, block: ScriptBlock) -> str | None:
         """Run a script, with retries. Return the pause text on failure, or None on success."""
         self.log_block_started(block, packet=None)
+        script = self.prepared_script(block)
+        return self.record_script(block, script, run_attempts(self.executor, script, self.project.root))
+
+    def prepared_script(self, block: ScriptBlock, since: str | None = None) -> "PreparedScript":
+        """The computed command, input, and limits of a script, ready to run with no run state."""
         argv = [str(part) for part in self.computed(block.run, f"The command of {block.id!r}")]
         script_input = self.computed(block.input, f"The input of {block.id!r}")
-        stdin_text = None if script_input is None else stdin_text_of(script_input)
         # A Python script reads stdin and writes stdout as UTF-8 on every system, as the runner does.
         env = {**os.environ, "PSKILL_RUN_DIR": str(self.folder), "PYTHONIOENCODING": "utf-8"}
+        limits = background_timeout(block, self.project.config)  # the one rule, also for a foreground script
+        return PreparedScript(
+            block_id=block.id,
+            argv=argv,
+            script_input=script_input,
+            env=env,
+            timeout_s=limits.timeout_s,
+            attempts=limits.attempts,
+            parse=block.parse,
+            since=since,
+        )
+
+    def record_script(self, block: ScriptBlock, script: "PreparedScript", results: list[ScriptResult]) -> str | None:
+        """Log each attempt, then complete the block with the last result, or pause when every attempt failed."""
+        self.frame["background_script"] = None  # a script that ends, in the background or not, is no longer open
+        self.clear_wait()
         problem = None
-        timeout_s = block.timeout_s if block.timeout_s is not None else self.project.config.script_timeout_s
-        for _ in range(self.retries_of(block) + 1):
-            whole_result = self.executor.run_script(block.id, argv, self.project.root, env, timeout_s, stdin_text)
+        for whole_result in results:
             problem = script_problem(whole_result, block.parse)
             result = stored_result(whole_result, block.parse)
             self.log(
                 "script_ran",
                 block=block.id,
-                argv=argv,
-                input=script_input,
+                argv=script.argv,
+                input=script.script_input,
                 exit_code=result.exit_code,
                 stdout=result.stdout,
                 stderr=result.stderr,
@@ -960,6 +1110,46 @@ class Run:
                 self.complete_block(block, value, decided_by="runner", duration_ms=result.duration_ms)
                 return None
         return self.pause("block_failed", problem)
+
+    def start_background_script(self) -> "PreparedScript":
+        """Mark the issued background script as running, and return it ready to run outside the lock."""
+        self.require_status(("active",), "run a script")
+        block = self.current_block()
+        marker = self.frame.get("background_script")
+        if not isinstance(block, ScriptBlock) or marker is None:
+            raise RunError(
+                f"The block {block.id!r} does not run a script in the background. Continue the run: run "
+                f"`{runner_command(self.project)} current {self.info['run_id']}`."
+            )
+        if marker["state"] == "running":
+            raise RunError(
+                f"The script {block.id!r} already runs in the background, since {marker['since']}. End your turn: "
+                "its end wakes you."
+            )
+        now = utc_now()
+        self.frame["background_script"] = {"state": "running", "since": timestamp(now)}
+        self.hold_stops_for(block, now)
+        return self.prepared_script(block, since=timestamp(now))
+
+    def record_background_script(self, script: "PreparedScript", results: list[ScriptResult]) -> str:
+        """Record the result of the background script that this command started, then go on with the run.
+
+        When the run changed while the script ran (a pause, a cancel, a resume that gave the packet again),
+        the result is dropped: it belongs to a block visit that is over.
+        """
+        marker = self.frame.get("background_script")
+        block = self.current_block()
+        still_running = marker is not None and marker["state"] == "running" and marker["since"] == script.since
+        if self.info["status"] != "active" or block.id != script.block_id or not still_running:
+            return (
+                f"The script {script.block_id!r} ended, but the run changed while it ran (it is {self.info['status']}, "
+                f"at the block {block.id!r}), so its result is dropped. Continue the run: run "
+                f"`{runner_command(self.project)} current {self.info['run_id']}`.\n"
+            )
+        assert isinstance(block, ScriptBlock)
+        self.info["stop_blocks"] = 0
+        pause_text = self.record_script(block, script, results)
+        return pause_text if pause_text is not None else self.advance()
 
     # --- task blocks: their jobs ---------------------------------------------------------------
 
@@ -1221,6 +1411,10 @@ class Run:
 
     def current_text(self) -> str:
         status = self.info["status"]
+        if status == "active":  # only an active run needs its block here: a paused or finished one may have none
+            block = self.current_block()
+            if isinstance(block, ScriptBlock):
+                return self.script_text(block)
         if status in ACTIVE_STATUSES:  # a re-entry: a new session may not have read the stub
             return self.guarded(lambda: self.agent_packet(errors=[], show_goal=True, show_rules=True))
         if status == "paused":
@@ -1359,6 +1553,8 @@ class Run:
         if isinstance(block, TaskBlock | DecisionBlock):
             return self.guarded(lambda: self.issue_packet(new_block=False, reentry=True))
         self.info["status"] = "active"
+        if isinstance(block, ScriptBlock) and self.runs_in_background(block):  # a new session: goal and rules
+            return self.guarded(lambda: self.issue_background_script(block, reentry=True))
         return self.guarded(self.advance)  # a script or a call: run it again
 
     def restart_jobs(self, block: TaskBlock) -> str:
@@ -1397,8 +1593,11 @@ class Run:
             return self.record_task_while_paused(answer_text, task)
         self.require_status(ACTIVE_STATUSES, "take an answer (run `pskill resume` first)")
         block = self.current_block()
-        if not isinstance(block, TaskBlock | DecisionBlock):  # pragma: no cover - same: an agent block
-            raise RunError(f"The block {block.id!r} does not take an answer.")
+        if not isinstance(block, TaskBlock | DecisionBlock):  # an active run waits elsewhere only on its script
+            raise RunError(
+                f"The block {block.id!r} runs a script in the background, so it takes no answer. End your turn: "
+                "the script's end wakes you with the next step."
+            )
         if task is not None and not isinstance(block, TaskBlock):
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
         self.info["stop_blocks"] = 0

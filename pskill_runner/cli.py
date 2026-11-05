@@ -32,6 +32,7 @@ from pskill_runner.engine import (
     pause_run,
     resolve_run_id,
     resume_run,
+    run_background_script,
     start_run,
     submit_answer,
     task_packet,
@@ -40,7 +41,7 @@ from pskill_runner.hook_settings import SettingsError
 from pskill_runner.hooks import session_start_text, stop_hook_reason
 from pskill_runner.install import InstallError, init_project, update_project
 from pskill_runner.profile_agents import sync_profile_agents
-from pskill_runner.project import Project, ProjectError, find_project
+from pskill_runner.project import Config, Project, ProjectError, find_project
 from pskill_runner.release import release_url
 from pskill_runner.run_records import UNFINISHED_STATUSES, RunInfo
 from pskill_runner.run_store import new_run_id, utc_now
@@ -67,7 +68,7 @@ EXIT_VALIDATION_ERROR = 2
 EXIT_INTERNAL_ERROR = 3
 
 USER_ERRORS = (RunError, ProjectError, AnswerInputError, AdapterError, InstallError, SettingsError, StubError)
-RUN_ID_COMMANDS = ("current", "task", "submit", "pause", "resume", "cancel", "delete", "wait")
+RUN_ID_COMMANDS = ("current", "task", "submit", "pause", "resume", "cancel", "delete", "wait", "run-script")
 HOOK_INPUT_TIMEOUT_S = 2.0
 
 
@@ -114,6 +115,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     wait.add_argument("run_id")
     wait.add_argument("--reason", required=True, help="What the agent waits on, such as the CI checks.")
+
+    run_script = commands.add_parser(
+        "run-script",
+        help="Run the current background script, record its result, and print the next step. Start it in the "
+        "background.",
+    )
+    run_script.add_argument("run_id")
 
     runs = commands.add_parser("runs", help="List the runs, newest first.")
     runs.add_argument("--open", action="store_true", help="Only unfinished runs.")
@@ -226,6 +234,8 @@ def run_command(options: argparse.Namespace) -> int:
         return print_text(delete_run(project, options.run_id))
     if command == "wait":
         return print_text(wait_for_run_change(project, options.run_id, options.reason))
+    if command == "run-script":
+        return print_and_upload(project, options.run_id, run_background_script(project, options.run_id))
     if command == "runs":
         return print_text(runs_table(project, only_open=options.open))
     if command == "list":
@@ -357,7 +367,7 @@ def validate_command(project: Project, skill_id: str | None) -> int:
     lines = []
     error_count = warning_count = 0
     for folder in folders:
-        for problem in skill_problems(folder, catalog):
+        for problem in skill_problems(folder, catalog, project.config):
             lines.append(f"{problem.level:<7}{folder.name}  {problem.location}: {problem.message}")
             error_count += problem.level == "error"
             warning_count += problem.level == "warning"
@@ -377,12 +387,12 @@ def validate_command(project: Project, skill_id: str | None) -> int:
     return EXIT_VALIDATION_ERROR if error_count else EXIT_OK
 
 
-def skill_problems(folder: Path, catalog: SkillCatalog) -> list[Problem]:
+def skill_problems(folder: Path, catalog: SkillCatalog, config: Config) -> list[Problem]:
     try:
         skill = load_skill(folder)
     except SkillLoadError as error:
         return [Problem(level="error", location="skill.yaml", message=problem) for problem in error.problems]
-    return validate_skill(skill, catalog)
+    return validate_skill(skill, catalog, config)
 
 
 def test_command(project: Project, skill_id: str | None) -> int:

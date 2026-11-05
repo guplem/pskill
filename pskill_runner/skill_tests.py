@@ -162,7 +162,7 @@ def run_case(project: Project, skill_id: str, case: dict[str, Any]) -> str | Non
             skill_id,
             as_text_values(case.get("inputs", {})),
             mode=case.get("mode", "interactive"),
-            harness="generic",
+            harness="generic",  # it wakes nobody, so a background script replays inline like any other
             executor=executor,
             runs_folder=runs_folder,
             allow_internal=True,

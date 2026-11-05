@@ -15,6 +15,12 @@ Verified on 2026-10-10, for `pskill wait`:
 - No time limit in a local session; 30 minutes by default (up to 2 hours with `timeout`) in a cloud
   session: https://code.claude.com/docs/en/tools-reference#time-limit-for-background-commands
 
+Verified on 2026-11-04, for background scripts (`run-script`):
+- A foreground Bash call stops at 10 minutes (`BASH_MAX_TIMEOUT_MS`); a background command takes `timeout` up
+  to 2 hours in a cloud session: https://code.claude.com/docs/en/tools-reference ("Timeout and output limits")
+- After a background command that the main conversation started, Claude takes one more turn with the outcome:
+  https://code.claude.com/docs/en/headless#background-tasks-at-exit
+
 Verified against the Claude Code docs on 2026-10-10 (https://code.claude.com/docs/en/sub-agents):
 - A project agent is `.claude/agents/<name>.md`; only `name` and `description` are required, and `name` is
   the `subagent_type` of the Agent call.

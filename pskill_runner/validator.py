@@ -6,7 +6,9 @@ cannot express: the graph, the references inside `{{ }}`, the files, and the des
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import NamedTuple
 
+from pskill_runner.adapters import ADAPTERS, BACKGROUND_MARGIN_S
 from pskill_runner.computed_values import (
     ComputedValueError,
     compute,
@@ -15,6 +17,7 @@ from pskill_runner.computed_values import (
     syntax_errors,
 )
 from pskill_runner.field_types import FieldMap
+from pskill_runner.project import Config
 from pskill_runner.skill_model import (
     CONTEXTS,
     MODEL_TIERS,
@@ -37,6 +40,9 @@ from pskill_runner.skill_model import (
 from pskill_runner.yaml_loading import load_skill_yaml
 
 DESCRIPTION_LIMIT = 1024
+# Claude Code stops a foreground shell call at 10 minutes (https://code.claude.com/docs/en/tools-reference,
+# "Timeout and output limits", read 2026-11-04). The runner runs a foreground script inside that call.
+FOREGROUND_SHELL_LIMIT_S = 600
 
 
 @dataclass(frozen=True)
@@ -46,8 +52,12 @@ class Problem:
     message: str
 
 
-def validate_skill(skill: Skill, catalog: SkillCatalog | None = None) -> list[Problem]:
-    """Check one skill. With a catalog, also check its calls and its agents against the project."""
+def validate_skill(skill: Skill, catalog: SkillCatalog | None = None, config: Config | None = None) -> list[Problem]:
+    """Check one skill. With a catalog, also check its calls and its agents against the project.
+
+    `config` gives the script limits (`script_timeout_s`, `max_wait_minutes`); without it, the defaults.
+    """
+    limits = config or Config()
     problems: list[Problem] = []
     problems += description_problems(skill)
     problems += field_description_problems("inputs", "the field", skill.inputs)
@@ -56,6 +66,8 @@ def validate_skill(skill: Skill, catalog: SkillCatalog | None = None) -> list[Pr
     problems += reachability_problems(skill)
     for block in skill.blocks.values():
         problems += block_problems(skill, block)
+        if isinstance(block, ScriptBlock):
+            problems += script_timeout_problems(f"blocks.{block.id}", block, limits)
         if catalog is not None:
             problems += catalog_problems(skill, block, catalog)
     problems += on_pause_problems(skill)
@@ -169,6 +181,55 @@ def visit_cap_problems(location: str, block: AnyBlock) -> list[Problem]:
             )
         )
     return problems
+
+
+class BackgroundTimeout(NamedTuple):
+    """The time a background script may take: every attempt, plus a minute to record the result."""
+
+    timeout_s: int
+    attempts: int
+    total_s: int
+
+
+def background_timeout(block: ScriptBlock, config: Config) -> BackgroundTimeout:
+    """The one rule of a script's timeout and attempts: the engine runs every script with it and caps a
+    background script's command with its total; `validate` checks that total."""
+    timeout_s = block.timeout_s if block.timeout_s is not None else config.script_timeout_s
+    retries = block.retries if block.retries is not None else config.retries
+    attempts = retries + 1
+    return BackgroundTimeout(timeout_s, attempts, attempts * timeout_s + BACKGROUND_MARGIN_S)
+
+
+def script_timeout_problems(location: str, block: ScriptBlock, config: Config) -> list[Problem]:
+    """A background script, with every attempt, runs at most `max_wait_minutes` and the longest background
+    command. A foreground one outlasts Claude Code's shell call after 10 minutes (SPEC.md section 6.3)."""
+    if block.background:
+        timeout_s, attempts, total_s = background_timeout(block, config)
+        command_max_s = max(adapter.background_command_max_s for adapter in ADAPTERS.values())
+        attempts_text = "1 attempt" if attempts == 1 else f"{attempts} attempts"
+        description = (
+            f"the timeout of a background script ({total_s} s: {attempts_text} of "
+            f"{timeout_s} s, plus {BACKGROUND_MARGIN_S} s to record)"
+        )
+        if total_s > config.max_wait_minutes * 60:
+            return [
+                error(
+                    location,
+                    f"{description} is above max_wait_minutes ({config.max_wait_minutes} minutes, in config.yaml)",
+                )
+            ]
+        if total_s > command_max_s:
+            return [error(location, f"{description} is above {command_max_s} s, the longest background command")]
+        return []
+    if block.timeout_s is not None and block.timeout_s > FOREGROUND_SHELL_LIMIT_S:
+        return [
+            warning(
+                location,
+                f"timeout_s ({block.timeout_s} s) is above {FOREGROUND_SHELL_LIMIT_S} s, and Claude Code stops a "
+                "shell call at 10 minutes: set background: true",
+            )
+        ]
+    return []
 
 
 def decision_problems(location: str, block: DecisionBlock) -> list[Problem]:

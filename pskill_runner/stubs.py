@@ -106,6 +106,7 @@ def render_pskill_stub() -> str:
             f"- Resume a paused run: `{RUNNER} resume <run-id>`",
             "- Wait on background work, in the background (Claude Code only): "
             f'`{RUNNER} wait <run-id> --reason "<what>"`',
+            f"- Run a background script, in the background (Claude Code only): `{RUNNER} run-script <run-id>`",
             f"- Pause a run: `{RUNNER} pause <run-id>`",
             f"- Stop a run for good: `{RUNNER} cancel <run-id>`",
             f"- Open the run viewer: `{RUNNER} view`",

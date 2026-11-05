@@ -103,7 +103,7 @@ def skill_detail(project: Project, skill_id: str) -> dict[str, Any] | None:
     raw_blocks = load_skill_yaml((folder / SKILL_FILE_NAME).read_text(encoding="utf-8"))["blocks"]
     problems = [
         {"level": problem.level, "location": problem.location, "message": problem.message}
-        for problem in validate_skill(skill, catalog)
+        for problem in validate_skill(skill, catalog, project.config)
     ]
     frames = skill_frames(skill, catalog.skills)
     return {
@@ -331,6 +331,8 @@ def block_facts(block: AnyBlock) -> list[list[str]]:
         facts.append(["parse", block.parse])
         if block.timeout_s is not None:
             facts.append(["timeout", f"{block.timeout_s} s"])
+        if block.background:
+            facts.append(["background", "yes"])
     if isinstance(block, CallBlock):
         facts.append(["skill", block.skill])
     if isinstance(block, EndBlock):

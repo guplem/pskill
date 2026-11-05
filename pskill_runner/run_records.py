@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, TypedDict
 
-SCHEMA_VERSION = 8  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
+SCHEMA_VERSION = 9  # 2: parallel tasks have a name. 3: a parallel item can be skipped by its `when`.
 # 4: a parallel block with subagents logs the full prompt of each task (`task_prompts`).
 # 5: a `script_ran` event holds the `input` that the script read on stdin.
 # 6: `block_type` is `visit_cap` for the question at a visit cap.
@@ -13,6 +13,8 @@ SCHEMA_VERSION = 8  # 2: parallel tasks have a name. 3: a parallel item can be s
 # 8: `parallel` is a task with `for_each`: its `block_type` is `task`, its `block_started` has `for_each`; the
 # `block_completed` of a job that ran in a subagent with a tier has `tier`; and the `block_started` of a one-job
 # task that spawns a `fresh` job has `task_prompts`.
+# 9: a background script's `block_started` has the `packet` that gives its command, and a frame has
+# `background_script`.
 
 ACTIVE_STATUSES = ("active", "waiting_for_human")
 UNFINISHED_STATUSES = ("active", "waiting_for_human", "paused")
@@ -81,6 +83,13 @@ class SkippedTask(TypedDict):
     when: str  # the condition, as written in skill.yaml
 
 
+class BackgroundScript(TypedDict):
+    """A background script of the current block (SPEC.md section 6.3): its packet was given, or it runs."""
+
+    state: str  # "issued" (the packet was given) or "running" (`run-script` runs it)
+    since: str  # when it entered that state; `run-script` records only the run that it started
+
+
 class Frame(TypedDict):
     """One skill on the call stack. A `call` block pushes a frame; the child's end block pops it."""
 
@@ -99,6 +108,7 @@ class Frame(TypedDict):
     visit_cap_question: bool  # the current block's visit cap question is open; absent in runs before 0.33.0
     extra_visits: dict[str, int]  # the rounds that "more" added to each capped block; absent before 0.33.0
     call_id: str  # the call instance, like `review#2>doubt#1`; "" for the root; absent before 0.39.0
+    background_script: BackgroundScript | None  # the current block's background script; absent before 1.1.0
 
 
 class RunState(TypedDict):
@@ -143,6 +153,7 @@ def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str, call_id: s
         visit_cap_question=False,
         extra_visits={},
         call_id=call_id,
+        background_script=None,
     )
 
 

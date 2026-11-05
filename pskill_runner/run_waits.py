@@ -95,6 +95,12 @@ def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> Run
                 f"a background command ends, so nothing would wake you after a wait. Continue the run: run "
                 f"`{runner_command(project)} current {run_id}`."
             )
+        script = run.current_block()
+        if run.frame.get("background_script") is not None:
+            raise RunError(
+                f"Run {run_id} runs the script {script.id!r} in the background. Do not wait on it: end your turn, "
+                "its end wakes you."
+            )
         waits_since = run.info.get("waits_since")
         last_alarm = run.info.get("wait_until")
         wait_length = timedelta(minutes=project.config.wait_minutes)

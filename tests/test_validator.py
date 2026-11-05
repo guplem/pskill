@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pskill_runner.project import Config
 from pskill_runner.skill_loader import load_catalog, load_skill
 from pskill_runner.validator import Problem, validate_skill
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
@@ -667,3 +668,84 @@ def test_a_pending_text_gets_the_checks_of_a_report(tmp_path: Path) -> None:
     )
 
     assert "blocks.stopped: 'steps.nowhere' is not a block" in messages(problems_for(tmp_path, skill_yaml), "error")
+
+
+SCRIPT_SKILL = """\
+schema: pskill/v1
+id: long-script
+description: A long script.
+goal: Run one script.
+entry: wait_ci
+blocks:
+  wait_ci:
+    type: script
+    run: [uv, run, wait.py]
+    timeout_s: TIMEOUT
+    next: done
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def script_problems(tmp_path: Path, keys: str, config: Config | None = None) -> list[Problem]:
+    skill_yaml = SCRIPT_SKILL.replace("    timeout_s: TIMEOUT\n", keys)
+    skill = load_skill(write_skill(tmp_path, "long-script", skill_yaml))
+    return validate_skill(skill) if config is None else validate_skill(skill, config=config)
+
+
+def test_a_background_script_may_run_up_to_max_wait_minutes(tmp_path: Path) -> None:
+    assert script_problems(tmp_path / "a", "    background: true\n    retries: 0\n    timeout_s: 7140\n") == []
+    assert messages(
+        script_problems(tmp_path / "b", "    background: true\n    retries: 0\n    timeout_s: 7141\n"), "error"
+    ) == [
+        "blocks.wait_ci: the timeout of a background script (7201 s: 1 attempt of 7141 s, plus 60 s to record) is "
+        "above max_wait_minutes (120 minutes, in config.yaml)"
+    ]
+
+
+def test_the_retries_of_a_background_script_count_in_its_timeout(tmp_path: Path) -> None:
+    keys = "    background: true\n    retries: 2\n    timeout_s: 1800\n"
+
+    assert script_problems(tmp_path / "a", keys, Config(max_wait_minutes=120)) == []
+    assert messages(script_problems(tmp_path / "b", keys, Config(max_wait_minutes=60)), "error") == [
+        "blocks.wait_ci: the timeout of a background script (5460 s: 3 attempts of 1800 s, plus 60 s to record) is "
+        "above max_wait_minutes (60 minutes, in config.yaml)"
+    ]
+
+
+def test_a_background_script_without_its_own_retries_uses_the_config_retries(tmp_path: Path) -> None:
+    keys = "    background: true\n    timeout_s: 3000\n"
+
+    assert script_problems(tmp_path / "a", keys, Config(retries=1)) == []
+    assert messages(script_problems(tmp_path / "b", keys, Config(retries=2)), "error") == [
+        "blocks.wait_ci: the timeout of a background script (9060 s: 3 attempts of 3000 s, plus 60 s to record) is "
+        "above max_wait_minutes (120 minutes, in config.yaml)"
+    ]
+
+
+def test_a_background_script_may_not_outlast_the_longest_background_command(tmp_path: Path) -> None:
+    config = Config(max_wait_minutes=300)
+    keys = "    background: true\n    retries: 0\n    timeout_s: 7141\n"
+
+    assert messages(script_problems(tmp_path, keys, config), "error") == [
+        "blocks.wait_ci: the timeout of a background script (7201 s: 1 attempt of 7141 s, plus 60 s to record) is "
+        "above 7200 s, the longest background command"
+    ]
+
+
+def test_a_background_script_without_its_own_timeout_uses_the_config_timeout(tmp_path: Path) -> None:
+    config = Config(script_timeout_s=3600, max_wait_minutes=30, retries=0)
+
+    assert messages(script_problems(tmp_path, "    background: true\n", config), "error") == [
+        "blocks.wait_ci: the timeout of a background script (3660 s: 1 attempt of 3600 s, plus 60 s to record) is "
+        "above max_wait_minutes (30 minutes, in config.yaml)"
+    ]
+
+
+def test_a_foreground_script_over_ten_minutes_is_a_warning(tmp_path: Path) -> None:
+    assert script_problems(tmp_path / "a", "    timeout_s: 600\n") == []
+    assert messages(script_problems(tmp_path / "b", "    timeout_s: 601\n"), "warning") == [
+        "blocks.wait_ci: timeout_s (601 s) is above 600 s, and Claude Code stops a shell call at 10 minutes: "
+        "set background: true"
+    ]

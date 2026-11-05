@@ -13,6 +13,10 @@ class AdapterError(Exception):
     """An unknown harness was named."""
 
 
+BACKGROUND_MARGIN_S = 60  # the background command's time to record the result and print the next packet
+BACKGROUND_COMMAND_MAX_S = 7200  # the longest timeout of a background command (2 hours in Claude Code)
+
+
 @dataclass(frozen=True)
 class TierRow:
     """What a model tier means in one harness. None keeps the session's model, or the model's default effort."""
@@ -33,6 +37,9 @@ class HarnessAdapter:
     tools_wording: Mapping[str, str] = field(default_factory=dict)  # tool profile -> how to spawn a task with it
     # The harness starts a turn when a background command ends, so `pskill wait` can keep the Stop hook quiet.
     wakes_after_background_command: bool = False
+    # How the agent starts a background script's command ({timeout_ms}, {minutes}), and the longest timeout.
+    background_command_wording: str = ""
+    background_command_max_s: int = 0
 
 
 GENERIC = HarnessAdapter(
@@ -77,6 +84,11 @@ CLAUDE_CODE = HarnessAdapter(
     },
     # https://code.claude.com/docs/en/tools-reference#when-a-background-command-stops (see claude_code.py)
     wakes_after_background_command=True,
+    # A background command takes `timeout` up to 2 hours in a cloud session (see claude_code.py).
+    background_command_wording=(
+        "Run it with the Bash tool, with `run_in_background: true` and `timeout: {timeout_ms}` ({minutes} minutes)."
+    ),
+    background_command_max_s=BACKGROUND_COMMAND_MAX_S,
 )
 
 CODEX = HarnessAdapter(

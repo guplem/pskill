@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0 (2026-11-05)
+
+A `script` block can run in the background for up to hours, and the agent only starts it and ends its turn, so a long wait (CI) costs no agent turn per poll (#190).
+
+- **`background: true` on a `script`,** with a `timeout_s` that, times its attempts (`retries + 1`), plus 60 s to record the result, stays within `max_wait_minutes` (120 by default) and 2 hours, Claude Code's longest background command. `validate` and `start` give an error above it, and `validate` warns about a foreground `timeout_s` over 600: Claude Code stops a shell call at 10 minutes.
+- **In Claude Code,** the run stops at the block. Its packet gives one command, `run-script <run>`, to start with the Bash tool's `run_in_background: true` and a `timeout` that covers the script, then to end the turn. The runner runs the script with no run lock held, records its result as a foreground script does (retries, then a pause), and prints the next step, so the agent wakes once. The Stop hook stays quiet while the command can run.
+- **While the script is open,** `current` gives the command again, then says that it runs; `submit` and a second `run-script` are refused; `wait` is refused; `resume` gives the command again. A result is dropped when the run changed meanwhile.
+- **Codex, generic, and `pskill test`** run the block in the foreground, as any script. A run that moves to such a harness at an open background script runs it in the foreground at the next `current` or `resume`, unless its background command already runs it.
+- **The viewer** shows and edits `background`, the Markdown export says the command can take long, the skill editor keeps it, and the `pskill` stub lists `run-script`. Events schema 9: a background script's `block_started` has its packet.
+
 ## 1.0.0 (2026-11-04)
 
 One agent-work block, `task`, runs one job or one job per list item, and each job sets its own model tier, tools, agent, and context (#170). The `parallel` block is gone: a task in a clean context and a parallel task were the same job.

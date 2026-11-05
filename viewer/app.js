@@ -1795,6 +1795,7 @@ const EDIT_LABELS = {
   autonomous_max_visits: "Autonomous ceiling (visits)",
   retries: "Retries after a failure",
   timeout_s: "Timeout (seconds)",
+  background: "Run in the background",
   decider: "Decider",
   parse: "Parse the output as",
   status: "Status",
@@ -1900,6 +1901,11 @@ function editControl(key, value) {
     const control = selectControl(["yes", "no"], value === false ? "no" : "yes", false);
     // Keep an explicit `true` as written, so a save of another key does not delete the line.
     return { node: control.node, read: () => (control.read() === "no" ? false : value === true ? true : null) };
+  }
+  if (key === "background") {
+    // Unset means false (the foreground); only true is written, and an explicit `false` stays as written.
+    const control = selectControl(["no", "yes"], value === true ? "yes" : "no", false);
+    return { node: control.node, read: () => (control.read() === "yes" ? true : value === false ? false : null) };
   }
   if (key === "skill") return selectControl(view.skills.map((skill) => skill.skill_id), value, false);
   if (["max_visits", "autonomous_max_visits", "retries", "timeout_s"].includes(key)) {

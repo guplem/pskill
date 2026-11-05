@@ -3,6 +3,7 @@
 import json
 import threading
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,13 +19,14 @@ from pskill_runner.engine import (
     read_run_state,
     register_stop_attempt,
     resume_run,
+    run_background_script,
     start_run,
     submit_answer,
     task_packet,
 )
 from pskill_runner.inline_executor import CallResult, ScriptResult
 from pskill_runner.project import Config, Project, find_project
-from pskill_runner.run_store import read_events
+from pskill_runner.run_store import LOCK_FILE_NAME, read_events
 from tests.skill_files import write_skill
 
 SCRIPT_SKILL = """\
@@ -1606,3 +1608,292 @@ def test_resume_of_a_for_each_task_whose_start_failed_and_now_gives_no_item_comp
 
     assert "finished with status succeeded" in packet
     assert read_run_state(project, run_id)["frames"][0]["steps"]["check"] == {"results": []}
+
+
+BACKGROUND_SKILL = SCRIPT_SKILL.replace(
+    "    parse: json\n", "    parse: json\n    background: true\n    timeout_s: 900\n"
+)
+
+
+class NoScripts:
+    """An executor for a run that must not run any script now."""
+
+    def run_script(
+        self,
+        block_id: str,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        timeout_s: int,
+        stdin_text: str | None = None,
+    ) -> ScriptResult:
+        raise AssertionError("The script must run in the background command, not here.")
+
+    def call_result(self, block_id: str, skill_id: str, inputs: dict[str, Any]) -> CallResult | None:
+        return None
+
+
+def test_a_background_script_on_claude_code_gives_one_command_to_start_in_the_background(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"scripted": BACKGROUND_SKILL})
+
+    run_id, packet = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())
+
+    assert f"uv run .pskill/pskill.py run-script {run_id}" in packet
+    assert "`run_in_background: true` and `timeout: 2760000` (46 minutes)" in packet  # 3 attempts of 900 s, plus 60 s
+    assert "then end your turn" in packet
+    info = read_run_info(project, run_id)
+    assert info["status"] == "active"
+    assert info["current_block"] == "list_files"
+    assert info["wait_reason"] == "the background script list_files"
+    assert info["wait_until"] is not None and info["waits_since"] is not None
+    frame = read_run_state(project, run_id)["frames"][-1]
+    assert frame["background_script"] is not None and frame["background_script"]["state"] == "issued"
+    started = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "block_started"]
+    assert started[-1]["block"] == "list_files" and started[-1]["packet"] == packet
+
+
+def test_the_shell_timeout_of_a_background_script_covers_every_attempt(tmp_path: Path) -> None:
+    skill_yaml = BACKGROUND_SKILL.replace("timeout_s: 900", "timeout_s: 1800\n    retries: 1")
+    project = make_project(tmp_path, {"scripted": skill_yaml})
+
+    run_id, packet = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())
+
+    assert "`timeout: 3660000` (61 minutes)" in packet  # 2 attempts of 1800 s, plus 60 s
+    info = read_run_info(project, run_id)
+    assert info["wait_until"] is not None and info["wait_started_at"] is not None
+    waited_s = (datetime.fromisoformat(info["wait_until"]) - datetime.fromisoformat(info["wait_started_at"])).seconds
+    assert waited_s == 3660
+
+
+def test_the_shell_timeout_of_a_background_script_stays_within_two_hours(tmp_path: Path) -> None:
+    skill_yaml = BACKGROUND_SKILL.replace("timeout_s: 900", "timeout_s: 7140\n    retries: 0")
+    project = make_project(tmp_path, {"scripted": skill_yaml})
+
+    _, packet = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())
+
+    assert "`timeout: 7200000` (120 minutes)" in packet
+
+
+def test_a_background_script_runs_in_the_foreground_on_a_harness_that_wakes_nobody(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"scripted": BACKGROUND_SKILL})
+
+    for harness in ("generic", "codex"):
+        run_id, packet = start_run(project, "scripted", {}, mode="interactive", harness=harness)
+
+        assert "finished with status succeeded" in packet, packet
+        assert read_run_info(project, run_id)["outputs"] == {"count": 2}
+
+
+def start_background(tmp_path: Path, skill_yaml: str = BACKGROUND_SKILL) -> tuple[Project, str]:
+    project = make_project(tmp_path, {"scripted": skill_yaml})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="claude-code", executor=NoScripts())
+    return project, run_id
+
+
+class ScriptWithSideEffect:
+    """Runs `while_running` while the script runs (the run lock is free then), then returns a good result."""
+
+    def __init__(self, while_running: Any) -> None:
+        self.while_running = while_running
+        self.calls = 0
+
+    def run_script(
+        self,
+        block_id: str,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        timeout_s: int,
+        stdin_text: str | None = None,
+    ) -> ScriptResult:
+        self.calls += 1
+        self.while_running()
+        return ScriptResult(exit_code=0, stdout=json.dumps({"files": ["a.md"]}), stderr="", duration_ms=5)
+
+    def call_result(self, block_id: str, skill_id: str, inputs: dict[str, Any]) -> CallResult | None:
+        return None
+
+
+def test_the_background_command_runs_the_script_records_it_and_prints_the_next_packet(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+
+    text = run_background_script(project, run_id)
+
+    assert "finished with status succeeded" in text
+    info = read_run_info(project, run_id)
+    assert info["outputs"] == {"count": 2}
+    assert (info["wait_reason"], info["wait_until"], info["waits_since"]) == (None, None, None)
+    assert read_run_state(project, run_id)["frames"][-1]["background_script"] is None
+    events = read_events(project.runs_folder / run_id)
+    ran = [event for event in events if event["type"] == "script_ran"]
+    assert len(ran) == 1 and ran[0]["block"] == "list_files" and ran[0]["exit_code"] == 0
+    completed = [event for event in events if event["type"] == "block_completed" and event["block"] == "list_files"]
+    assert len(completed) == 1
+
+
+def test_the_background_command_runs_the_script_with_no_run_lock_held(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    seen: list[str] = []
+
+    def look_at_the_lock() -> None:
+        seen.append("held" if (project.runs_folder / run_id / LOCK_FILE_NAME).exists() else "free")
+
+    run_background_script(project, run_id, ScriptWithSideEffect(look_at_the_lock))
+
+    assert seen == ["free"]
+
+
+def test_a_failed_background_script_is_retried_then_pauses_the_run(tmp_path: Path) -> None:
+    failing = BACKGROUND_SKILL.replace(
+        "\"import json; print(json.dumps({'files': ['a.md', 'b.md']}))\"", '"import sys; sys.exit(3)"'
+    ).replace("    background: true\n", "    background: true\n    retries: 1\n")
+    project, run_id = start_background(tmp_path, failing)
+
+    text = run_background_script(project, run_id)
+
+    info = read_run_info(project, run_id)
+    assert (info["status"], info["pause_reason"]) == ("paused", "block_failed")
+    assert "exit code 3" in text
+    ran = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
+    assert len(ran) == 2
+
+
+def test_a_second_background_command_is_refused_while_the_script_runs(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    refusals: list[str] = []
+
+    def start_again() -> None:
+        with pytest.raises(RunError) as raised:
+            run_background_script(project, run_id, NoScripts())
+        refusals.append(str(raised.value))
+
+    run_background_script(project, run_id, ScriptWithSideEffect(start_again))
+
+    assert "already runs in the background" in refusals[0]
+    assert read_run_info(project, run_id)["status"] == "succeeded"
+
+
+def test_current_on_another_harness_does_not_run_a_script_that_already_runs_in_the_background(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    seen: list[str] = []
+
+    def current_on_codex() -> None:
+        seen.append(current_packet(project, run_id, harness="codex"))
+
+    executor = ScriptWithSideEffect(current_on_codex)
+    run_background_script(project, run_id, executor)
+
+    assert executor.calls == 1
+    assert "runs in the background" in seen[0]
+    assert read_run_info(project, run_id)["status"] == "succeeded"
+    ran = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
+    assert len(ran) == 1
+
+
+def test_the_result_is_dropped_when_the_run_changed_while_the_script_ran(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+
+    text = run_background_script(project, run_id, ScriptWithSideEffect(lambda: pause_run(project, run_id)))
+
+    assert "its result is dropped" in text
+    assert f"uv run .pskill/pskill.py current {run_id}" in text
+    info = read_run_info(project, run_id)
+    assert info["status"] == "paused" and info["current_block"] == "list_files"
+    assert not [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
+
+
+def test_the_background_command_needs_a_background_script_that_waits_for_it(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"parent": PARENT_SKILL, "child": CHILD_SKILL})
+    run_id, _ = start_run(project, "parent", {}, mode="interactive", harness="claude-code")
+
+    with pytest.raises(RunError) as raised:
+        run_background_script(project, run_id)
+
+    assert "does not run a script in the background" in str(raised.value)
+
+
+def test_a_background_command_that_cannot_compute_its_command_pauses_the_run(tmp_path: Path) -> None:
+    broken = BACKGROUND_SKILL.replace("run: [python, -c,", 'run: ["{{ [1][5] }}", -c,')
+    project, run_id = start_background(tmp_path, broken)
+
+    text = run_background_script(project, run_id, NoScripts())
+
+    assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
+    assert "The command of 'list_files'" in text
+
+
+def test_current_gives_the_background_command_again_until_it_starts(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+
+    packet = current_packet(project, run_id)
+
+    assert f"run-script {run_id}" in packet
+    assert "### Goal\nRead data with a script." in packet and "### Rules" in packet
+
+
+def test_current_on_a_harness_that_wakes_nobody_runs_the_background_script_in_the_foreground(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+
+    packet = current_packet(project, run_id, harness="codex")
+
+    assert "finished with status succeeded" in packet, packet
+    info = read_run_info(project, run_id)
+    assert info["outputs"] == {"count": 2}
+    assert (info["wait_reason"], info["wait_until"], info["waits_since"]) == (None, None, None)
+    assert read_run_state(project, run_id)["frames"][-1]["background_script"] is None
+
+
+def test_a_foreground_run_clears_the_marker_of_a_background_script_it_replaces(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    pause_run(project, run_id)
+
+    packet = resume_run(project, run_id, harness="codex")
+
+    assert "finished with status succeeded" in packet, packet
+    assert read_run_state(project, run_id)["frames"][-1]["background_script"] is None
+
+
+def test_current_at_a_paused_background_script_gives_the_pause_text(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    pause_run(project, run_id)
+
+    packet = current_packet(project, run_id)
+
+    assert "paused" in packet and "run-script" not in packet
+
+
+def test_current_says_that_the_script_runs_while_it_runs(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    seen: list[str] = []
+
+    run_background_script(project, run_id, ScriptWithSideEffect(lambda: seen.append(current_packet(project, run_id))))
+
+    assert "The script 'list_files' runs in the background" in seen[0]
+    assert "End your turn" in seen[0]
+    assert f"pause {run_id}" in seen[0] and f"resume {run_id}" in seen[0]
+
+
+def test_a_background_script_takes_no_answer(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+
+    with pytest.raises(RunError) as raised:
+        submit_answer(project, run_id, "status: done\n")
+
+    assert "runs a script in the background, so it takes no answer" in str(raised.value)
+
+
+def test_resume_gives_the_background_command_again_and_drops_the_old_run(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    resumed: list[str] = []
+
+    def pause_and_resume() -> None:
+        pause_run(project, run_id)
+        resumed.append(resume_run(project, run_id))
+
+    dropped = run_background_script(project, run_id, ScriptWithSideEffect(pause_and_resume))
+
+    assert f"run-script {run_id}" in resumed[0] and "### Goal" in resumed[0]
+    assert "its result is dropped" in dropped
+    marker = read_run_state(project, run_id)["frames"][-1]["background_script"]
+    assert marker is not None and marker["state"] == "issued"
+    assert "finished with status succeeded" in run_background_script(project, run_id)

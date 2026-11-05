@@ -503,6 +503,32 @@ def test_a_script_block_shows_its_timeout_and_its_retries(tmp_path: Path) -> Non
     assert list_files["facts"] == [["parse", "text"], ["timeout", "30 s"], ["retries", "2"]]
 
 
+def test_a_background_script_says_so_in_its_facts(tmp_path: Path) -> None:
+    skill_yaml = LIMITS_SKILL.replace("    timeout_s: 30\n", "    timeout_s: 30\n    background: true\n")
+    write_skill(tmp_path / ".pskill" / "skills", "limits", skill_yaml)
+
+    list_files = detail_of(find_project(tmp_path), "limits")["blocks"]["list_files"]
+
+    assert ["background", "yes"] in list_files["facts"]
+
+
+def test_the_skill_screen_checks_a_background_timeout_against_the_project_config(tmp_path: Path) -> None:
+    skill_yaml = LIMITS_SKILL.replace("    timeout_s: 30\n", "    timeout_s: 30\n    background: true\n")
+    write_skill(tmp_path / ".pskill" / "skills", "limits", skill_yaml)
+    (tmp_path / ".pskill" / "config.yaml").write_text("max_wait_minutes: 2\n", encoding="utf-8")
+
+    problems = detail_of(find_project(tmp_path), "limits")["problems"]
+
+    assert [(problem["level"], problem["location"], problem["message"]) for problem in problems] == [
+        (
+            "error",
+            "blocks.list_files",
+            "the timeout of a background script (150 s: 3 attempts of 30 s, plus 60 s to record) is above "
+            "max_wait_minutes (2 minutes, in config.yaml)",
+        )
+    ]
+
+
 def test_a_fixed_list_of_plain_items_shows_one_card_per_item(tmp_path: Path) -> None:
     write_skill(tmp_path / ".pskill" / "skills", "limits", LIMITS_SKILL)
 
