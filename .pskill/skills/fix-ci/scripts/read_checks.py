@@ -120,6 +120,16 @@ def read_checks(
         sleep(min(POLL_SECONDS, remaining))
 
 
+def settle_unknown_mergeable(
+    result: dict[str, Any], pr_number: int, sleep: Callable[[float], None] = time.sleep
+) -> dict[str, Any]:
+    """With no check, read once more when GitHub did not compute `mergeable` yet: a conflict starts no CI."""
+    if result["state"] != "none" or result["mergeable"] is not None:
+        return result
+    sleep(POLL_SECONDS)
+    return read_once(pr_number)
+
+
 def main() -> None:
     script_input = json.load(sys.stdin)
     wait_s = int(script_input.get("wait_s", MAX_WAIT_SECONDS))

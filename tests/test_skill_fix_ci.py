@@ -232,3 +232,40 @@ def test_read_checks_stops_waiting_when_the_pull_request_closes(monkeypatch: pyt
 
     assert script.read_checks(7, 540, clock.sleep, clock.time)["state"] == "closed"
     assert clock.sleeps == [30]
+
+
+def test_settle_unknown_mergeable_reads_once_more_when_github_did_not_compute_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    reads: list[int] = []
+
+    def fake_read_once(pr_number: int) -> dict[str, Any]:
+        reads.append(pr_number)
+        return {"state": "none", "mergeable": False}
+
+    monkeypatch.setattr(script, "read_once", fake_read_once)
+    clock = FakeClock()
+
+    result = script.settle_unknown_mergeable({"state": "none", "mergeable": None}, 7, clock.sleep)
+
+    assert result == {"state": "none", "mergeable": False}
+    assert reads == [7]
+    assert clock.sleeps == [30]
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"state": "none", "mergeable": True},
+        {"state": "none", "mergeable": False},
+        {"state": "pending", "mergeable": None},
+    ],
+)
+def test_settle_unknown_mergeable_keeps_a_known_answer(monkeypatch: pytest.MonkeyPatch, result: dict[str, Any]) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    polls(monkeypatch, script, ["passed"])
+    clock = FakeClock()
+
+    assert script.settle_unknown_mergeable(result, 7, clock.sleep) == result
+    assert clock.sleeps == []
