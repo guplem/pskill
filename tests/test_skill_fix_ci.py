@@ -1,6 +1,7 @@
 """Tests for the fix-ci skill's read_checks.py script."""
 
 import json
+import subprocess
 from typing import Any
 
 import pytest
@@ -118,14 +119,14 @@ class FakeClock:
         return self.now
 
 
-def polls(monkeypatch: pytest.MonkeyPatch, script: Any, states: list[str]) -> None:
+def polls(monkeypatch: pytest.MonkeyPatch, script: Any, states: list[str], mergeable: bool | None = True) -> None:
     """Answer each read with the next state of `states`, then with the last one."""
     answers = iter(states)
     last = {"state": states[-1]}
 
     def fake_read_once(pr_number: int) -> dict[str, Any]:
         last["state"] = next(answers, last["state"])
-        return {"state": last["state"]}
+        return {"state": last["state"], "mergeable": mergeable}
 
     monkeypatch.setattr(script, "read_once", fake_read_once)
 
@@ -148,13 +149,13 @@ def test_read_checks_returns_a_pending_state_when_the_wait_ends(monkeypatch: pyt
     assert clock.sleeps == [30, 15]
 
 
-def test_read_checks_waits_at_most_540_seconds_whatever_the_input_asks(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_checks_waits_at_most_6900_seconds_whatever_the_input_asks(monkeypatch: pytest.MonkeyPatch) -> None:
     script = load_skill_script(SKILL, "read_checks")
     polls(monkeypatch, script, ["pending"])
     clock = FakeClock()
 
-    assert script.read_checks(7, 9999, clock.sleep, clock.time)["state"] == "pending"
-    assert clock.now == 540
+    assert script.read_checks(7, 99999, clock.sleep, clock.time)["state"] == "pending"
+    assert clock.now == 6900
 
 
 def test_read_checks_waits_at_most_300_seconds_for_a_first_check(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -164,6 +165,84 @@ def test_read_checks_waits_at_most_300_seconds_for_a_first_check(monkeypatch: py
 
     assert script.read_checks(7, 9999, clock.sleep, clock.time)["state"] == "none"
     assert clock.now == 300
+
+
+def test_read_checks_keeps_polling_while_github_computes_mergeable(monkeypatch: pytest.MonkeyPatch) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    answers = iter([{"state": "none", "mergeable": None}] * 12 + [{"state": "none", "mergeable": False}])
+    monkeypatch.setattr(script, "read_once", lambda pr_number: next(answers))
+    clock = FakeClock()
+
+    assert script.read_checks(7, 9999, clock.sleep, clock.time) == {"state": "none", "mergeable": False}
+    assert clock.now == 360
+
+
+def test_read_checks_stops_at_the_end_of_the_wait_while_mergeable_stays_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    polls(monkeypatch, script, ["none"], mergeable=None)
+    clock = FakeClock()
+
+    assert script.read_checks(7, 400, clock.sleep, clock.time)["state"] == "none"
+    assert clock.now == 400
+
+
+def finished(state: str, **changes: Any) -> dict[str, Any]:
+    """A result of read_checks, with a passed lint check and a still running test check."""
+    return {
+        "head_sha": "origin1",
+        "state": state,
+        "mergeable": True,
+        "draft": False,
+        "checks": [
+            {"name": "lint", "state": "passed", "link": "https://ci/lint"},
+            {"name": "tests", "state": "pending", "link": "https://ci/tests"},
+        ],
+        "failed_checks": [],
+        **changes,
+    }
+
+
+@pytest.mark.parametrize(
+    ("result", "state", "failed_checks"),
+    [
+        (finished("none", mergeable=False), "failed", ["merge conflict"]),
+        (finished("none", mergeable=None, draft=True), "failed", ["draft"]),
+        (finished("none", draft=True), "failed", ["draft"]),
+        (finished("none"), "passed", []),
+        (finished("none", mergeable=None), "passed", []),
+    ],
+)
+def test_final_result_settles_a_pull_request_with_no_check(
+    result: dict[str, Any], state: str, failed_checks: list[str]
+) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+
+    settled = script.final_result(result, 6900)
+
+    assert (settled["state"], settled["failed_checks"]) == (state, failed_checks)
+    assert settled["head_sha"] == "origin1"
+
+
+def test_final_result_fails_the_checks_still_running_when_the_wait_ends() -> None:
+    script = load_skill_script(SKILL, "read_checks")
+
+    settled = script.final_result(finished("pending", failed_checks=["docs: https://ci/docs"]), 6900)
+
+    assert settled["state"] == "failed"
+    assert settled["failed_checks"] == [
+        "docs: https://ci/docs",
+        "tests (still running after 115 minutes): https://ci/tests",
+    ]
+
+
+@pytest.mark.parametrize("state", ["passed", "failed", "closed"])
+def test_final_result_keeps_a_finished_state(state: str) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    result = finished(state, failed_checks=["docs: https://ci/docs"])
+
+    assert script.final_result(result, 6900) == result
 
 
 def test_main_prints_the_checks_of_the_pull_request(
@@ -184,7 +263,20 @@ def test_main_prints_the_checks_of_the_pull_request(
     }
 
 
-@pytest.mark.parametrize(("script_input", "wait"), [({"pr": 7, "wait_s": 0}, (7, 0)), ({"pr": "7"}, (7, 540))])
+def test_main_settles_a_draft_with_no_check(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    shell = checks_shell([])
+    shell.outputs[PULLS] = json.dumps(pull_request(draft=True))
+    install_shell(monkeypatch, script, shell)
+
+    printed = run_main(monkeypatch, capsys, script, {"pr": 7, "wait_s": 0})
+
+    assert (printed["state"], printed["failed_checks"]) == ("failed", ["draft"])
+
+
+@pytest.mark.parametrize(("script_input", "wait"), [({"pr": 7, "wait_s": 0}, (7, 0)), ({"pr": "7"}, (7, 6900))])
 def test_main_passes_the_pull_request_and_its_wait(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -232,3 +324,45 @@ def test_read_checks_stops_waiting_when_the_pull_request_closes(monkeypatch: pyt
 
     assert script.read_checks(7, 540, clock.sleep, clock.time)["state"] == "closed"
     assert clock.sleeps == [30]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        SystemExit("`gh api --method GET repos/o/r/pulls/7` failed: HTTP 502"),
+        subprocess.CalledProcessError(128, ["git", "ls-remote"]),
+        json.JSONDecodeError("Expecting value", "", 0),
+    ],
+)
+def test_read_checks_skips_a_read_that_failed_and_polls_again(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], error: BaseException
+) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+    answers: list[dict[str, Any] | BaseException] = [error, {"state": "passed", "mergeable": True}]
+
+    def fake_read_once(pr_number: int) -> dict[str, Any]:
+        answer = answers.pop(0)
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(script, "read_once", fake_read_once)
+    clock = FakeClock()
+
+    assert script.read_checks(7, 6900, clock.sleep, clock.time)["state"] == "passed"
+    assert clock.sleeps == [30]
+    assert "A read of the checks failed; the next poll tries again" in capsys.readouterr().err
+
+
+def test_read_checks_fails_when_the_last_read_of_the_wait_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    script = load_skill_script(SKILL, "read_checks")
+
+    def fake_read_once(pr_number: int) -> dict[str, Any]:
+        raise SystemExit("`gh api` failed: HTTP 502")
+
+    monkeypatch.setattr(script, "read_once", fake_read_once)
+    clock = FakeClock()
+
+    with pytest.raises(SystemExit, match="The last read of the checks failed at the end of the wait"):
+        script.read_checks(7, 45, clock.sleep, clock.time)
+    assert clock.now == 45

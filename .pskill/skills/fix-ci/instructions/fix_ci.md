@@ -1,6 +1,6 @@
-CI failed on pull request #{{ inputs.pr }}, at commit `{{ steps.wait_ci.head_sha }}`:
+CI failed on pull request #{{ inputs.pr }}, at commit `{{ steps.wait_ci.json.head_sha }}`:
 
-{% for check in steps.wait_ci.failed_checks %}- {{ check }}
+{% for check in steps.wait_ci.json.failed_checks %}- {{ check }}
 {% endfor %}
 For each failed check:
 
@@ -10,5 +10,6 @@ For each failed check:
    - Run formatters only on the files that you changed.
    - For `merge conflict`, merge the base branch and resolve the conflict.
 3. **Flaky** (a timeout, or an outage outside this code): rerun the failed jobs once with `gh run rerun <run-id> --failed`.
+   - A check marked `still running` did not finish within the wait. Find in its log why it hangs: a hang that this pull request causes is `this_pr`; otherwise cancel the run with `gh run cancel <run-id>` and rerun it, as flaky.
 4. **Not caused by this pull request** (it fails on the base branch too): change nothing.
 5. **`draft`:** change nothing, and report the cause `unrelated`. Only the author marks the pull request ready.

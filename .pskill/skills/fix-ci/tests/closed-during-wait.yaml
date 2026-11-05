@@ -3,9 +3,9 @@ inputs: {pr: 9}
 calls:
   checkout:
     - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: c1, plan_file: ""}}
-answers:
+scripts:
   wait_ci:
-    - {state: closed, failed_checks: [], head_sha: c2}
+    - {exit_code: 0, stdout: '{"state": "closed", "failed_checks": [], "head_sha": "c2"}'}
 expect:
   path: [checkout, wait_ci, closed]
   status: succeeded

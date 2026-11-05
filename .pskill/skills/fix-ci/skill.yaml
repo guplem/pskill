@@ -26,17 +26,20 @@ blocks:
     next: wait_ci
 
   wait_ci:
-    type: task
+    type: script
     description: Wait for the CI checks
-    instruction: instructions/wait_ci.md
-    output:
-      state: {type: string, enum: [passed, failed, closed], description: "passed when every check passed or was skipped. closed when the pull request is merged or closed."}
-      failed_checks: {type: array, items: {type: string}, description: "Each failed check as '<name>: <link>'."}
-      head_sha: {type: string, description: "The full sha of the head commit that the checks ran on."}
+    # In the background, the wait costs no agent turn: the agent wakes once, when the checks end (SPEC 6.3).
+    # The script stops on its own after wait_s (115 minutes), before timeout_s, and prints the checks that still run.
+    run: [uv, run, "{{ skill.dir }}/scripts/read_checks.py"]
+    input: {pr: "{{ inputs.pr }}", wait_s: 6900}
+    parse: json
+    background: true
+    timeout_s: 7140
+    retries: 0
     next:
-      - when: "{{ steps.wait_ci.state == 'failed' }}"
+      - when: "{{ steps.wait_ci.json.state == 'failed' }}"
         to: fix_ci
-      - when: "{{ steps.wait_ci.state == 'closed' }}"
+      - when: "{{ steps.wait_ci.json.state == 'closed' }}"
         to: closed
       - to: passed
 
@@ -66,7 +69,7 @@ blocks:
     outputs:
       state: passed
       failed_checks: []
-      head_sha: "{{ steps.wait_ci.head_sha }}"
+      head_sha: "{{ steps.wait_ci.json.head_sha }}"
       fixes: "{{ history.fix_ci | default([]) | length }}"
     report: >-
       Tell the user that every CI check of pull request #{{ inputs.pr }} passed{% if history.fix_ci | default([]) %},
@@ -80,7 +83,7 @@ blocks:
     outputs:
       state: closed
       failed_checks: []
-      head_sha: "{{ steps.wait_ci.head_sha }}"
+      head_sha: "{{ steps.wait_ci.json.head_sha }}"
       fixes: "{{ history.fix_ci | default([]) | length }}"
     report: >-
       Tell the user that pull request #{{ inputs.pr }} merged or closed during the CI wait, so no check was waited
@@ -96,9 +99,9 @@ blocks:
       {{ history.fix_ci | length }} fix rounds.{% endif %}
     outputs:
       state: failed
-      failed_checks: "{{ steps.wait_ci.failed_checks }}"
-      head_sha: "{{ steps.wait_ci.head_sha }}"
+      failed_checks: "{{ steps.wait_ci.json.failed_checks }}"
+      head_sha: "{{ steps.wait_ci.json.head_sha }}"
       fixes: "{{ history.fix_ci | default([]) | length }}"
     report: >-
       Tell the user which CI checks of pull request #{{ inputs.pr }} still fail
-      ({{ steps.wait_ci.failed_checks | join('; ') }}), and why: {{ steps.fix_ci.summary }}
+      ({{ steps.wait_ci.json.failed_checks | join('; ') }}), and why: {{ steps.fix_ci.summary }}
