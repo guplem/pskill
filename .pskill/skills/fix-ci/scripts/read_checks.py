@@ -4,7 +4,8 @@
 # ///
 """Read every CI check of the head commit of a pull request, and wait while one is still running.
 
-Usage: uv run read_checks.py, with {"pr", "wait_s"} on stdin. `wait_s` is the most seconds to wait (at most 540).
+Usage: uv run read_checks.py, with {"pr", "wait_s"} on stdin. `wait_s` is the most seconds to wait (at most 6900,
+115 minutes: the skill runs it as a background script block that the runner stops after 7140 seconds).
 Prints {"head_sha", "state", "mergeable", "draft", "checks", "failed_checks"}.
 - `state` is `none` (no check exists), `pending` (a check has not finished), `failed`, `passed`, or `closed` (the
   pull request is merged or closed, so no wait or fix is needed).
@@ -30,7 +31,7 @@ from typing import Any
 from github_rest import gh_api, gh_api_pages, is_cross_repository
 
 POLL_SECONDS = 30
-MAX_WAIT_SECONDS = 540
+MAX_WAIT_SECONDS = 6900
 NO_CHECK_WAIT_SECONDS = 300
 PASSING_CONCLUSIONS = {"success", "skipped", "neutral"}
 STATE_OF_COMMIT_STATUS = {"success": "passed", "pending": "pending"}

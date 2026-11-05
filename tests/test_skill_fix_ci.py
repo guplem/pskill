@@ -148,13 +148,13 @@ def test_read_checks_returns_a_pending_state_when_the_wait_ends(monkeypatch: pyt
     assert clock.sleeps == [30, 15]
 
 
-def test_read_checks_waits_at_most_540_seconds_whatever_the_input_asks(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_checks_waits_at_most_6900_seconds_whatever_the_input_asks(monkeypatch: pytest.MonkeyPatch) -> None:
     script = load_skill_script(SKILL, "read_checks")
     polls(monkeypatch, script, ["pending"])
     clock = FakeClock()
 
-    assert script.read_checks(7, 9999, clock.sleep, clock.time)["state"] == "pending"
-    assert clock.now == 540
+    assert script.read_checks(7, 99999, clock.sleep, clock.time)["state"] == "pending"
+    assert clock.now == 6900
 
 
 def test_read_checks_waits_at_most_300_seconds_for_a_first_check(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,7 +184,7 @@ def test_main_prints_the_checks_of_the_pull_request(
     }
 
 
-@pytest.mark.parametrize(("script_input", "wait"), [({"pr": 7, "wait_s": 0}, (7, 0)), ({"pr": "7"}, (7, 540))])
+@pytest.mark.parametrize(("script_input", "wait"), [({"pr": 7, "wait_s": 0}, (7, 0)), ({"pr": "7"}, (7, 6900))])
 def test_main_passes_the_pull_request_and_its_wait(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
