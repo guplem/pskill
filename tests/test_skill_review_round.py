@@ -132,3 +132,15 @@ def test_the_rule_reviewers_run_on_the_standard_tier_and_correctness_keeps_the_s
         "conventions": "standard",
         "docs": "standard",
     }
+
+
+def test_a_round_since_a_commit_raises_only_broken_code() -> None:
+    text = (SKILLS_FOLDER / SKILL / "instructions" / "review.md").read_text(encoding="utf-8")
+    since_sha = text[text.index("{% if inputs.since_sha %}") :]
+    since_sha = since_sha[: since_sha.index("{% endif %}")]
+
+    assert (
+        "`required` here is only broken code: wrong output, a security hole, a missing or broken test for new behavior,"
+        " a type error, or text that the new code makes false." in since_sha
+    )
+    assert "A finding that only breaks a style rule or a project pattern is a `suggestion`" in since_sha
