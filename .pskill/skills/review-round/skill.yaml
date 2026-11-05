@@ -32,7 +32,9 @@ inputs:
     optional: true
     default: ""
     description: >-
-      Review only the lines that the commits after this commit add or change, and report only required findings.
+      Review only the lines that the commits after this commit add or change, and report only required findings,
+      with a narrower bar: only broken code (wrong output, a security hole, a missing or broken test for new
+      behavior, a type error, or text that the new code makes false), not a broken style rule or project pattern.
       Empty reviews the whole pull request.
   dismissed:
     type: array
