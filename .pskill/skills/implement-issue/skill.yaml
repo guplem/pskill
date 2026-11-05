@@ -322,8 +322,6 @@ blocks:
       ready_runs: "{{ history.ready | default([]) | length }}"
       ci_runs: "{{ history.get_ci_green | default([]) | length }}"
       unreviewed: "{{ steps.check_unreviewed.json.unreviewed if steps.check_unreviewed is defined else false }}"
-      final_rounds: "{{ history.final_review | default([]) | length }}"
-      final_required: "{{ (steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list | length) if steps.final_review is defined else 0 }}"
       items_left: "{{ (history.resolve + history.answer_comments + history.final_resolve) | map(attribute='outputs') | selectattr('left') | list | length }}"
     parse: json
     next: finish

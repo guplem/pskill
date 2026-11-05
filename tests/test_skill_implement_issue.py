@@ -607,8 +607,6 @@ NO_LIMIT_INPUT: dict[str, Any] = {
     "ready_runs": 1,
     "ci_runs": 1,
     "unreviewed": False,
-    "final_rounds": 0,
-    "final_required": 0,
     "items_left": 0,
 }
 
@@ -622,8 +620,6 @@ NO_LIMIT_INPUT: dict[str, Any] = {
         ({"resolve_rounds": 3, "last_fixed": 0}, []),
         ({"ready_runs": 2}, ["get_ci_green"]),
         ({"unreviewed": True}, ["final_review"]),
-        ({"final_rounds": 2, "final_required": 1}, ["final_review"]),
-        ({"final_rounds": 1, "final_required": 1}, []),
         ({"items_left": 1}, ["resolve_items"]),
         ({"build_done": False, "items_left": 2}, ["implement_step", "resolve_items"]),
     ],
