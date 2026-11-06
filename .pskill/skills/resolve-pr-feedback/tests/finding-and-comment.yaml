@@ -19,7 +19,7 @@ scripts:
       stdout: >-
         {"decisions": [{"kind": "finding", "reviewer": "completeness", "title": "Missing guard", "verdict": "fixed",
         "reason": "Added the guard."}, {"kind": "comment", "reviewer": "", "title": "Looks good.", "verdict": "dismissed",
-        "reason": "Thanks!"}], "left": 0}
+        "reason": "Thanks!"}], "left": 0, "head_sha": "bbb"}
 answers:
   resolve_items:
     - decisions:
@@ -31,6 +31,7 @@ expect:
   outputs:
     fixed: 1
     left: 0
+    head_sha: bbb
     decisions:
       - {kind: finding, reviewer: completeness, title: Missing guard, verdict: fixed, reason: Added the guard.}
       - {kind: comment, reviewer: "", title: Looks good., verdict: dismissed, reason: Thanks!}

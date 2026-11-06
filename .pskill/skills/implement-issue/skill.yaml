@@ -23,6 +23,9 @@ outputs:
 x-reported: &reported "{{ ((history.review | default([])) + (history.critical | default([]))) | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) | list }}"
 # The findings that a resolution of this run dismissed.
 x-dismissed: &dismissed "{{ ((history.resolve | default([])) + (history.critical_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
+# The commit that ends the acceptance scope of finding-acceptance.md: the head that the first review round reviewed.
+# The fix commits after it are in scope, but an older function that they touch does not bring its older problems in.
+x-scope-sha: &scope_sha "{{ history.review[0].outputs.reviewed_sha if history.review | default([]) else '' }}"
 entry:
   - when: "{{ inputs.request is matches('^ *#?[0-9]+ *$|^ *https://github[.]com/[^ ]+/issues/[0-9]+ *$') }}"
     to: read_issue
@@ -211,6 +214,7 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       round: "{{ (history.review | default([]) | length) + 1 }}"
+      scope_sha: *scope_sha
       reported: *reported
       dismissed: *dismissed
     # The arrow from resolve already limits the phase to 4 rounds. This cap is only a safety net, so it never asks.
@@ -230,6 +234,7 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       findings: "{{ steps.review.outputs.findings | selectattr('severity', 'equalto', 'required') | list }}"
+      scope_sha: *scope_sha
     next:
       # A round with a required finding gets the next round, up to round 4.
       - when: "{{ (history.review | length) < 4 }}"
@@ -245,22 +250,17 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       critical: true
+      scope_sha: *scope_sha
       reported: *reported
       dismissed: *dismissed
     # The arrow from critical_resolve stops the loop at 6 rounds. After that, each push of CI or of a comment gets one
-    # round, so the CI cap bounds them: this cap is only a safety net, so it never asks.
+    # round. This cap is only a safety net, so it never asks: list_limits.py names a push that it stops.
     max_visits: 13
-    on_max_visits: ready
+    on_max_visits: limits
     ask_on_max_visits: false
     next:
       - when: "{{ steps.critical.outputs.findings }}"
         to: critical_resolve
-      # CI ended failed on the head that this round reviewed: nothing was pushed since CI ran. Another CI call would
-      # only restart its fix budget, so only a fix of a critical round or of a comment starts CI again.
-      - when: >-
-          {{ steps.get_ci_green is defined and steps.get_ci_green.outputs.state == 'failed'
-          and steps.critical.outputs.reviewed_sha == steps.get_ci_green.outputs.head_sha }}
-        to: limits
       - to: ready
 
   critical_resolve:
@@ -270,15 +270,12 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       findings: "{{ steps.critical.outputs.findings }}"
+      scope_sha: *scope_sha
     next:
       - when: "{{ (history.critical | length) < 6 }}"
         to: critical
       # At the cap, and after the one round of a later push, the fix goes to CI with no review, and finish names its
-      # commits. A resolution that fixed nothing leaves the head on which CI failed: as for a clean round, finish.
-      - when: >-
-          {{ steps.critical_resolve.outputs.fixed == 0 and steps.get_ci_green is defined
-          and steps.get_ci_green.outputs.state == 'failed' and steps.critical.outputs.reviewed_sha == steps.get_ci_green.outputs.head_sha }}
-        to: limits
+      # commits. A resolution that fixed nothing leaves the head where CI may have run already: ready checks it.
       - to: ready
 
   # Phase 3: CI on a ready pull request, then the comments that arrived during it.
@@ -288,7 +285,16 @@ blocks:
     run: [uv, run, "{{ skill.dir }}/scripts/mark_ready.py"]
     input: {pr: "{{ steps.open_draft_pr.json.pr_number }}", branch: "{{ steps.checkout_base.json.branch }}", plan_file: "{{ steps.checkout_base.json.plan_file }}"}
     parse: json
-    next: get_ci_green
+    next:
+      # CI already ran on this exact head: nothing was pushed since it ran. It does not wait again, so a failed CI
+      # never restarts its fix budget: failed finishes, and passed goes on to the comments.
+      - when: >-
+          {{ steps.get_ci_green is defined and steps.get_ci_green.outputs.head_sha == steps.ready.json.head_sha
+          and steps.get_ci_green.outputs.state == 'failed' }}
+        to: limits
+      - when: "{{ steps.get_ci_green is defined and steps.get_ci_green.outputs.head_sha == steps.ready.json.head_sha }}"
+        to: answer_comments
+      - to: get_ci_green
 
   get_ci_green:
     type: call
@@ -309,12 +315,12 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       # The first round after CI lists the suggestions of the review rounds in one comment, for a person.
+      scope_sha: *scope_sha
       findings: "{{ [] if history.answer_comments | default([]) else (history.review | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) | selectattr('severity', 'equalto', 'suggestion') | list) }}"
     next:
-      # Any pushed commit gets a critical round, then CI again, also after the 6th round. A CI fix moves the head away
-      # from the one that ready pushed. A fixed item that only changed the description pushed nothing, but the output
-      # does not say so: it costs one more round.
-      - when: "{{ steps.get_ci_green.outputs.head_sha != steps.ready.json.head_sha or steps.answer_comments.outputs.fixed > 0 }}"
+      # Any pushed commit gets a critical round, then CI again, also after the 6th round: a CI fix or a comment fix
+      # moves the head away from the one that ready pushed. A fix of the description only pushes nothing.
+      - when: "{{ steps.answer_comments.outputs.head_sha != steps.ready.json.head_sha }}"
         to: critical
       - to: limits
 
@@ -328,7 +334,7 @@ blocks:
       ci_runs: "{{ history.get_ci_green | default([]) | length }}"
       critical_rounds: "{{ history.critical | default([]) | length }}"
       last_critical_findings: "{{ steps.critical.outputs.findings | length }}"
-      last_critical_fixed: "{{ steps.critical_resolve.outputs.fixed if steps.critical_resolve is defined else 0 }}"
+      pushed_since_ready: "{{ steps.answer_comments is defined and steps.answer_comments.outputs.head_sha != steps.ready.json.head_sha }}"
       items_left: "{{ (history.resolve + history.critical_resolve + history.answer_comments) | map(attribute='outputs') | selectattr('left') | list | length }}"
     parse: json
     next: finish

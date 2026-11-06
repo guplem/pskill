@@ -1,0 +1,89 @@
+name: each CI fix and each comment fix gets a critical round, until the safety cap of the critical rounds stops the round of a push, and the run ends capped
+inputs: {request: "#42"}
+scripts:
+  limits:
+    - {exit_code: 0, stdout: '{"limits": ["critical"], "unreviewed_push": true}'}
+  read_issue:
+    - exit_code: 0
+      stdout: >-
+        {"number": 42, "title": "Saving a file crashes", "body": "Saving a file with no name crashes.", "labels": ["bug"],
+        "comments": [], "cross_references": [], "hold_reason": null, "existing_branches": []}
+  checkout_default:
+    - {exit_code: 0, stdout: '{"ok": true, "default_branch": "main"}'}
+  checkout_base:
+    - {exit_code: 0, stdout: '{"ok": true, "base": "main", "branch": "42-fix-save", "plan_file": "implementation-plan-42.md"}'}
+  open_draft_pr:
+    - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/example-org/app/pull/9"}'}
+  ready:
+    - {exit_code: 0, stdout: '{"head_sha": "h1"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "g1"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "p1"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "g2"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "p2"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "g3"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "p3"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "g4"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "p4"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "g5"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "p5"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "g6"}'}
+    - {exit_code: 0, stdout: '{"head_sha": "p6"}'}
+calls:
+  review:
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: r1}}
+  critical:
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: r1}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: g1}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: p1}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: g2}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: p2}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: g3}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: p3}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: g4}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: p4}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: g5}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: p5}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: g6}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: p6}}
+  get_ci_green:
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: g1, fixes: 1}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: g2, fixes: 1}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: g3, fixes: 1}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: g4, fixes: 1}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: g5, fixes: 1}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: g6, fixes: 1}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: g7, fixes: 1}}
+  answer_comments:
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: g1}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: p1}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: g2}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: p2}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: g3}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: p3}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: g4}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: p4}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: g5}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: p5}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: g6}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: p6}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: g7}}
+answers:
+  understand:
+    - {title: Fix the crash when a file is saved with no name, slug: fix-save, brief: Guard the save., base: main, gaps: []}
+  research_code:
+    - {report: The rename guard in files.py is the closest code.}
+    - {report: No recorded decision affects this work.}
+  write_plan:
+    - {summary: "1. Guard the save. 2. Test it."}
+  approve_plan:
+    - {choice: approve, rationale: The user approved., $answered_by: human}
+  implement_step:
+    - {behavior: A file with no name is not saved., red: The new test crashed., commit: a1, done: true}
+  write_description:
+    - {summary: Saving a file with no name shows an error instead of crashing.}
+  finish:
+    - {labels: [waiting-for-human-review], reasons: The last CI fix got no critical round.}
+expect:
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, critical, ready, get_ci_green, answer_comments, critical, ready, answer_comments, critical, ready, get_ci_green, answer_comments, critical, ready, answer_comments, critical, ready, get_ci_green, answer_comments, critical, ready, answer_comments, critical, ready, get_ci_green, answer_comments, critical, ready, answer_comments, critical, ready, get_ci_green, answer_comments, critical, ready, answer_comments, critical, ready, get_ci_green, answer_comments, critical, ready, answer_comments, critical, ready, get_ci_green, answer_comments, limits, finish, capped]
+  status: succeeded
+  outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9", limits: [critical]}

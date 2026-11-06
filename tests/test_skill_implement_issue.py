@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from pskill_runner.computed_values import render_text
+from pskill_runner.computed_values import compute, render_text
 from pskill_runner.skill_loader import load_skill
 from pskill_runner.skill_model import CallBlock, EndBlock, TaskBlock
 from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
@@ -512,7 +512,7 @@ NO_LIMIT_INPUT: dict[str, Any] = {
     "ci_runs": 1,
     "critical_rounds": 1,
     "last_critical_findings": 0,
-    "last_critical_fixed": 0,
+    "pushed_since_ready": False,
     "items_left": 0,
 }
 
@@ -523,11 +523,13 @@ NO_LIMIT_INPUT: dict[str, Any] = {
         ({}, []),
         ({"build_done": False}, ["implement_step"]),
         ({"ready_runs": 2}, ["get_ci_green"]),
-        ({"critical_rounds": 6, "last_critical_findings": 1, "last_critical_fixed": 1}, ["critical"]),
-        ({"critical_rounds": 7, "last_critical_findings": 2, "last_critical_fixed": 1}, ["critical"]),
-        ({"critical_rounds": 6, "last_critical_findings": 1, "last_critical_fixed": 0}, []),
-        ({"critical_rounds": 6, "last_critical_findings": 0, "last_critical_fixed": 1}, []),
-        ({"critical_rounds": 5, "last_critical_findings": 1, "last_critical_fixed": 1}, []),
+        ({"critical_rounds": 6, "last_critical_findings": 1}, ["critical"]),
+        ({"critical_rounds": 7, "last_critical_findings": 2}, ["critical"]),
+        ({"critical_rounds": 6, "last_critical_findings": 0}, []),
+        ({"critical_rounds": 5, "last_critical_findings": 1}, []),
+        ({"critical_rounds": 13, "pushed_since_ready": True}, ["critical"]),
+        ({"critical_rounds": 12, "pushed_since_ready": True}, []),
+        ({"critical_rounds": 13, "pushed_since_ready": False}, []),
         ({"items_left": 1}, ["resolve_items"]),
         ({"build_done": False, "items_left": 2}, ["implement_step", "resolve_items"]),
     ],
@@ -539,7 +541,25 @@ def test_list_limits_names_each_limit_that_cut_work_short(
 
     printed = run_main(monkeypatch, capsys, script, {**NO_LIMIT_INPUT, **changes})
 
-    assert printed == {"limits": limits}
+    assert printed["limits"] == limits
+
+
+@pytest.mark.parametrize(
+    ("changes", "unreviewed_push"),
+    [
+        ({"critical_rounds": 13, "pushed_since_ready": True}, True),
+        ({"critical_rounds": 13, "pushed_since_ready": False}, False),
+        ({"critical_rounds": 12, "pushed_since_ready": True}, False),
+    ],
+)
+def test_list_limits_says_when_the_safety_cap_of_the_critical_rounds_left_a_push_with_no_round(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], changes: dict[str, Any], unreviewed_push: bool
+) -> None:
+    script = load_skill_script(SKILL, "list_limits")
+
+    printed = run_main(monkeypatch, capsys, script, {**NO_LIMIT_INPUT, **changes})
+
+    assert printed["unreviewed_push"] is unreviewed_push
 
 
 def test_list_limits_counts_the_critical_rounds_of_the_skill() -> None:
@@ -550,6 +570,14 @@ def test_list_limits_counts_the_critical_rounds_of_the_skill() -> None:
 
     assert critical_resolve.next[0].when == "{{ (history.critical | length) < 6 }}"
     assert script.CRITICAL_ROUNDS == 6
+
+
+def test_the_safety_cap_of_the_critical_rounds_goes_to_the_limits_that_name_it() -> None:
+    critical = load_skill(SKILLS_FOLDER / SKILL).blocks["critical"]
+    script = load_skill_script(SKILL, "list_limits")
+
+    assert critical.on_max_visits == "limits"
+    assert critical.max_visits == script.CRITICAL_VISITS
 
 
 def test_the_finish_note_lists_the_decisions_and_asks_only_what_can_change_the_pull_request() -> None:
@@ -582,14 +610,24 @@ def test_the_build_proves_each_test_can_fail_and_ticks_the_lists_before_the_revi
     assert "tick each line of the three **Lists** of the plan against the diff" in text
 
 
-def rendered_instruction(name: str, limits: list[str]) -> str:
-    finding = {"reviewer": "correctness", "title": "Missing guard"}
-    fixed = {"outputs": {"decisions": [{**finding, "verdict": "fixed", "reason": "Added it."}], "fixed": 1, "left": 0}}
+FINDING = {"reviewer": "correctness", "title": "Missing guard"}
+
+
+def rendered_instruction(
+    name: str,
+    limits: list[str],
+    verdict: str = "fixed",
+    last_findings: list[dict[str, Any]] | None = None,
+    unreviewed_push: bool = False,
+) -> str:
+    decision = {**FINDING, "verdict": verdict, "reason": "Added it."}
+    fixed = {"outputs": {"decisions": [decision], "fixed": int(verdict == "fixed"), "left": 0}}
+    findings = [FINDING] if last_findings is None else last_findings
     context = {
         "steps": {
-            "limits": {"json": {"limits": limits}},
+            "limits": {"json": {"limits": limits, "unreviewed_push": unreviewed_push}},
             "open_draft_pr": {"json": {"pr_number": 9, "pr_url": "https://x/9"}},
-            "critical": {"outputs": {"findings": [finding], "reviewed_sha": "c6c6c6c6c6c6c6"}},
+            "critical": {"outputs": {"findings": findings, "reviewed_sha": "c6c6c6c6c6c6c6"}},
             "critical_resolve": fixed,
             "get_ci_green": {"outputs": {"state": "passed", "failed_checks": [], "head_sha": "h5", "fixes": 0}},
             "write_description": {"summary": "S"},
@@ -613,7 +651,32 @@ def rendered_instruction(name: str, limits: list[str]) -> str:
 def test_the_critical_limit_names_the_fixes_that_no_review_saw(name: str) -> None:
     text = rendered_instruction(name, ["critical"])
 
-    assert 'used their 6 rounds, so no review saw the commits after c6c6c6c6c6, which fix: "Missing guard".' in text
+    assert (
+        "he critical rounds stopped at their cap after 6 rounds, and the last critical round was not clean. The head"
+        ' has an unreviewed fix: no review saw the commits after c6c6c6c6c6, which fix: "Missing guard".\n'
+    ) in text
+
+
+@pytest.mark.parametrize("name", ["finish.md", "report.md"])
+def test_the_critical_limit_names_a_last_round_whose_findings_got_no_fix(name: str) -> None:
+    text = rendered_instruction(name, ["critical"], verdict="dismissed")
+
+    assert (
+        "he critical rounds stopped at their cap after 6 rounds, and the last critical round was not clean: its"
+        " findings got no fix, and no later round checked them.\n"
+    ) in text
+    assert "unreviewed fix" not in text
+
+
+@pytest.mark.parametrize("name", ["finish.md", "report.md"])
+def test_the_critical_limit_names_a_push_that_the_safety_cap_left_with_no_round(name: str) -> None:
+    text = rendered_instruction(name, ["critical"], last_findings=[], unreviewed_push=True)
+
+    assert (
+        "he critical rounds stopped at their cap after 6 rounds. The head has an unreviewed fix: no review saw the"
+        " commits after c6c6c6c6c6, and a push after the safety cap of the critical rounds got no round.\n"
+    ) in text
+    assert "not clean" not in text
 
 
 @pytest.mark.parametrize("name", ["finish.md", "report.md"])
@@ -623,3 +686,17 @@ def test_no_critical_limit_names_no_unreviewed_commit(name: str) -> None:
 
 def test_the_report_counts_the_review_and_the_critical_rounds() -> None:
     assert "- Review rounds: 2, then 6 critical rounds." in rendered_instruction("report.md", [])
+
+
+SCOPED_CALLS = ["review", "resolve", "critical", "critical_resolve", "answer_comments"]
+
+
+@pytest.mark.parametrize("name", SCOPED_CALLS)
+def test_every_review_and_resolution_pins_the_scope_to_the_head_of_the_first_review_round(name: str) -> None:
+    block = load_skill(SKILLS_FOLDER / SKILL).blocks[name]
+    assert isinstance(block, CallBlock)
+    first_round = {"outputs": {"findings": [], "reviewed_sha": "r1"}}
+    later_round = {"outputs": {"findings": [], "reviewed_sha": "r2"}}
+
+    assert compute(block.inputs["scope_sha"], {"history": {}}) == ""
+    assert compute(block.inputs["scope_sha"], {"history": {"review": [first_round, later_round]}}) == "r1"

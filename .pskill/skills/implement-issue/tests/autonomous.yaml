@@ -3,7 +3,7 @@ inputs: {request: "#42"}
 mode: autonomous
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": []}'}
+    - {exit_code: 0, stdout: '{"limits": [], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-
@@ -25,7 +25,7 @@ calls:
   get_ci_green:
     - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h1, fixes: 0}}
   answer_comments:
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: h1}}
 answers:
   understand:
     - {title: Fix the crash when a file is saved with no name, slug: fix-save, brief: Guard the save., base: main, gaps: []}

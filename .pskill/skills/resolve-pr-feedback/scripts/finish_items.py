@@ -4,10 +4,12 @@
 # ///
 """Reply to each comment with its verdict, and record the decision of each item.
 
-Usage: uv run finish_items.py, with {"pr", "items", "decisions"} on stdin: the queue of collect_items.py, and one
-{verdict, reason, commit} per item, in the same order. `commit` names the commit of a fix.
-Prints {"decisions": [{kind, reviewer, title, verdict, reason}], "left"}: `left` counts the items at the end of the
-queue that got no decision.
+Usage: uv run finish_items.py, with {"pr", "branch", "items", "decisions"} on stdin: the branch of the pull request,
+the queue of collect_items.py, and one {verdict, reason, commit} per item, in the same order. `commit` names the
+commit of a fix.
+Prints {"decisions": [{kind, reviewer, title, verdict, reason}], "left", "head_sha"}: `left` counts the items at the
+end of the queue that got no decision, and `head_sha` is the head of the branch on GitHub after every push of the
+task, so a caller compares heads to know whether the task pushed. It is read first: a failed read posts no reply.
 
 A reply ends with the marker `<!-- resolve-pr-feedback-reply: <id> -->`, so collect_items.py never lists the comment
 or the reply again. An inline comment gets its reply in its thread, through the thread's first comment: GitHub
@@ -68,8 +70,14 @@ def finish(pr_number: str, item: dict[str, Any], decision: dict[str, Any]) -> di
     }
 
 
+def remote_head(branch: str) -> str:
+    """The head commit of the branch on origin."""
+    return run(["git", "ls-remote", "origin", f"refs/heads/{branch}"]).split()[0]
+
+
 def main() -> None:
     script_input = json.load(sys.stdin)
+    head_sha = remote_head(str(script_input["branch"]))
     items: list[dict[str, Any]] = script_input["items"]
     decisions: list[dict[str, Any]] = script_input["decisions"][: len(items)]
     # The items past the last decision get no reply: they are left for a later run.
@@ -77,7 +85,7 @@ def main() -> None:
     records = [
         finish(str(script_input["pr"]), item, decision) for item, decision in zip(answered, decisions, strict=True)
     ]
-    print(json.dumps({"decisions": records, "left": len(items) - len(records)}))
+    print(json.dumps({"decisions": records, "left": len(items) - len(records), "head_sha": head_sha}))
 
 
 if __name__ == "__main__":

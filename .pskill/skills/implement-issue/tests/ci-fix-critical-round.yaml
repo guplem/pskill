@@ -1,8 +1,8 @@
-name: a CI fix gets a critical round, then CI runs again on the reviewed head
+name: a CI fix gets a critical round, and CI does not wait again on the head where it already passed
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": []}'}
+    - {exit_code: 0, stdout: '{"limits": [], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-
@@ -25,10 +25,9 @@ calls:
     - {status: succeeded, outputs: {findings: [], reviewed_sha: h2}}
   get_ci_green:
     - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h2, fixes: 1}}
-    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h2, fixes: 0}}
   answer_comments:
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: h2}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: h2}}
 answers:
   understand:
     - {title: Fix the crash when a file is saved with no name, slug: fix-save, brief: Guard the save., base: main, gaps: []}
@@ -46,6 +45,6 @@ answers:
   finish:
     - {labels: [], reasons: "A small bug fix with a test."}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, critical, ready, get_ci_green, answer_comments, critical, ready, get_ci_green, answer_comments, limits, finish, done]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, critical, ready, get_ci_green, answer_comments, critical, ready, answer_comments, limits, finish, done]
   status: succeeded
   outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9"}

@@ -2,7 +2,7 @@ name: after the critical cap, a CI fix still gets one critical round, and the fi
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": ["critical"]}'}
+    - {exit_code: 0, stdout: '{"limits": ["critical"], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-
@@ -40,8 +40,8 @@ calls:
     - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h2, fixes: 1}}
     - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h3, fixes: 0}}
   answer_comments:
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: h2}}
+    - {status: succeeded, outputs: {decisions: [], fixed: 0, head_sha: h3}}
 answers:
   understand:
     - {title: Fix the crash when a file is saved with no name, slug: fix-save, brief: Guard the save., base: main, gaps: []}

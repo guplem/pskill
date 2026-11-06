@@ -1,8 +1,8 @@
-name: each CI run pushes a fix that gets a critical round, so CI runs 7 times, the CI cap goes to finish, and the run ends capped
+name: each CI wait is followed by a comment fix that gets a critical round, so CI runs 7 times, the CI cap goes to finish, and the run ends capped
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": ["get_ci_green"]}'}
+    - {exit_code: 0, stdout: '{"limits": ["get_ci_green"], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-
@@ -36,21 +36,21 @@ calls:
     - {status: succeeded, outputs: {findings: [], reviewed_sha: h7}}
     - {status: succeeded, outputs: {findings: [], reviewed_sha: h8}}
   get_ci_green:
-    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h2, fixes: 1}}
-    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h3, fixes: 1}}
-    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h4, fixes: 1}}
-    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h5, fixes: 1}}
-    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h6, fixes: 1}}
-    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h7, fixes: 1}}
-    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h8, fixes: 1}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h1, fixes: 0}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h2, fixes: 0}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h3, fixes: 0}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h4, fixes: 0}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h5, fixes: 0}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h6, fixes: 0}}
+    - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h7, fixes: 0}}
   answer_comments:
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
-    - {status: succeeded, outputs: {decisions: [], fixed: 0}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: h2}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: h3}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: h4}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: h5}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: h6}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: h7}}
+    - {status: succeeded, outputs: {decisions: [{kind: comment, title: Rename the flag, verdict: fixed, reason: Renamed it.}], fixed: 1, head_sha: h8}}
 answers:
   understand:
     - {title: Fix the crash when a file is saved with no name, slug: fix-save, brief: Guard the save., base: main, gaps: []}
