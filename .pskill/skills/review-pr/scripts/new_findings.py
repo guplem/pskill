@@ -8,8 +8,9 @@ Usage: uv run new_findings.py, with {"findings", "reported"} on stdin: the findi
 findings of every earlier round of the run.
 Prints {"new", "required"}: the new findings, and how many of them are required.
 
-A finding repeats an earlier one when it has its title, or its file and line. A round whose findings all repeat
-earlier ones counts as clean, so the review moves on.
+A finding repeats an earlier one only when it is at the same file and line and has the same title or the same
+reviewer: another reviewer's finding with another title at that line is a different problem, such as a bug at the line
+of a docs finding. A round whose findings all repeat earlier ones counts as clean, so the review moves on.
 """
 
 import json
@@ -17,12 +18,14 @@ import sys
 from typing import Any
 
 
+def repeats(finding: dict[str, Any], earlier: dict[str, Any]) -> bool:
+    same_place: bool = earlier["file"] == finding["file"] and earlier["line"] == finding["line"]
+    same_problem: bool = earlier["title"] == finding["title"] or earlier["reviewer"] == finding["reviewer"]
+    return same_place and same_problem
+
+
 def is_repeat(finding: dict[str, Any], reported: list[dict[str, Any]]) -> bool:
-    return any(
-        earlier["title"] == finding["title"]
-        or (earlier["file"] == finding["file"] and earlier["line"] == finding["line"])
-        for earlier in reported
-    )
+    return any(repeats(finding, earlier) for earlier in reported)
 
 
 def new_findings(findings: list[dict[str, Any]], reported: list[dict[str, Any]]) -> list[dict[str, Any]]:

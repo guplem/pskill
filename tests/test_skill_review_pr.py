@@ -100,18 +100,24 @@ class TestNewFindings:
 
     @pytest.mark.parametrize(
         "repeat",
-        [finding("A", file="b.py", line=9), finding("Other title", file="a.py", line=2)],
-        ids=["same title", "same file and line"],
+        [{**finding("A"), "reviewer": "other"}, finding("Other title")],
+        ids=["same place and title", "same place and reviewer"],
     )
-    def test_a_finding_with_the_title_or_the_place_of_an_earlier_one_is_a_repeat(self, repeat: dict[str, Any]) -> None:
+    def test_a_finding_at_the_place_of_an_earlier_one_with_its_title_or_its_reviewer_is_a_repeat(
+        self, repeat: dict[str, Any]
+    ) -> None:
         assert new_findings.new_findings([repeat], [finding("A")]) == []
 
     @pytest.mark.parametrize(
         "other",
-        [finding("B", file="a.py", line=3), finding("B", file="b.py", line=2)],
-        ids=["same file, other line", "same line, other file"],
+        [
+            finding("A", line=3),
+            finding("A", file="b.py"),
+            {**finding("B"), "reviewer": "other"},
+        ],
+        ids=["same title, other line", "same title and line, other file", "same place, other title and reviewer"],
     )
-    def test_a_finding_at_another_place_with_another_title_is_new(self, other: dict[str, Any]) -> None:
+    def test_a_finding_at_another_place_or_with_another_title_and_reviewer_is_new(self, other: dict[str, Any]) -> None:
         assert new_findings.new_findings([other], [finding("A")]) == [other]
 
     def test_the_script_prints_the_new_findings_and_counts_the_required_ones(
@@ -119,7 +125,7 @@ class TestNewFindings:
     ) -> None:
         suggestion = finding("S", line=3, severity="suggestion")
         required = finding("R", line=4)
-        script_input = {"findings": [finding("A", line=8), suggestion, required], "reported": [finding("A")]}
+        script_input = {"findings": [finding("A again"), suggestion, required], "reported": [finding("A")]}
 
         printed = run_main(monkeypatch, capsys, new_findings, script_input)
 

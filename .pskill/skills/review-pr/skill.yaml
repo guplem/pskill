@@ -79,8 +79,8 @@ blocks:
         to: check_head_before_critical
       - to: new_in_review
 
-  # A round counts only its new findings: one with the title, or the file and line, of an earlier finding of the run
-  # repeats it. So a round whose findings all repeat earlier ones is clean.
+  # A round counts only its new findings: one at the file and line of an earlier finding of the run, with its title
+  # or its reviewer, repeats it. So a round whose findings all repeat earlier ones is clean.
   new_in_review:
     type: script
     description: Keep the findings of the review round that repeat no earlier finding of the run

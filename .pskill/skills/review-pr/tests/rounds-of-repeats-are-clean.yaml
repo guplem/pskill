@@ -10,12 +10,12 @@ calls:
     - {status: succeeded, outputs: {action: continue, head_sha: d4}}
   review:
     - {status: succeeded, inputs: {round: 1}, outputs: {reviewed_sha: d4, findings: [{reviewer: docs, file: a.md, line: 1, severity: required, title: A, summary: S, quote: q}]}}
-    # The place of A, under another title.
-    - {status: succeeded, inputs: {round: 2}, outputs: {reviewed_sha: d4, findings: [{reviewer: correctness, file: a.md, line: 1, severity: required, title: A again, summary: S, quote: q}]}}
+    # The place and the reviewer of A, under another title: a repeat. (A correctness finding at that line would be new.)
+    - {status: succeeded, inputs: {round: 2}, outputs: {reviewed_sha: d4, findings: [{reviewer: docs, file: a.md, line: 1, severity: required, title: A again, summary: S, quote: q}]}}
   critical:
     - {status: succeeded, outputs: {reviewed_sha: d4, findings: [{reviewer: critical-bugs, file: a.py, line: 7, severity: required, title: C1, summary: S, quote: q}]}}
-    # The title of C1, at another line.
-    - {status: succeeded, outputs: {reviewed_sha: d4, findings: [{reviewer: critical-bugs, file: a.py, line: 9, severity: required, title: C1, summary: S, quote: q}]}}
+    # The place and the title of C1: a repeat. (The title of C1 at another line would be new.)
+    - {status: succeeded, outputs: {reviewed_sha: d4, findings: [{reviewer: critical-bugs, file: a.py, line: 7, severity: required, title: C1, summary: S, quote: q}]}}
 scripts:
   read_earlier:
     - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
