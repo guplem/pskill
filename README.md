@@ -118,7 +118,7 @@ The skills read your project's rules from its own files, so they work in most re
 - **Protect the default branch:** require the CI checks and one approval. The skills never merge, so a person always does.
 - **Record your decisions** in `adr/` or `docs/adr/` (one file per decision). The skills check a change against them.
 - **Work in a clean checkout.** The skills stop when the checkout has uncommitted changes, because those changes are yours. They expect the GitHub remote to be named `origin`.
-- **Add your own reviewers.** Each reviewer is one row in the `review` block of `review-round` (the one round that `review-pr` and `implement-issue` run). Its `when` gives its last round (`inputs.round <= 3`, for example) and any other condition, for example a database reviewer when the change touches your migrations.
+- **Add your own reviewers.** Each reviewer is one row in the `review` block of `review-round` (the one round that `review-pr` and `implement-issue` run). A new row's `when` is `not inputs.critical and inputs.round <= N`, with N its last round, plus any other condition, for example a database reviewer when the change touches your migrations.
 
 **The conventions a team overrides**, each in one place, after a copy of the skills:
 

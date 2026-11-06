@@ -186,6 +186,31 @@ def test_the_table_comment_lists_the_last_round_of_every_reviewer() -> None:
     assert table == {**{name: str(last) for name, last in LAST_ROUNDS.items()}, "critical-bugs": "critical"}
 
 
+def test_every_reviewer_but_critical_bugs_stays_out_of_the_critical_rounds_by_its_when() -> None:
+    _, rows = reviewer_rows()
+
+    assert [name for name, row in rows.items() if "not inputs.critical" not in row["when"]] == ["critical-bugs"]
+
+
+NEW_ROW_WHEN = "`not inputs.critical and inputs.round <= N`"
+
+
+@pytest.mark.parametrize("path", [".pskill/skills/review-round/skill.yaml", "README.md"])
+def test_the_texts_on_a_new_reviewer_give_the_when_of_its_row(path: str) -> None:
+    text = " ".join((SKILLS_FOLDER.parent.parent / path).read_text(encoding="utf-8").replace("#", " ").split())
+
+    assert NEW_ROW_WHEN in text
+
+
+def test_the_rows_say_that_markdown_that_drives_behavior_counts_as_code_in_read_pr() -> None:
+    text = " ".join((SKILLS_FOLDER / SKILL / "skill.yaml").read_text(encoding="utf-8").replace("#", " ").split())
+
+    assert (
+        "A project whose prompts or instructions are code (Markdown that drives behavior) should count those files"
+        " as code in `read_pr.py`, or `correctness` and `critical-bugs` skip them." in text
+    )
+
+
 @pytest.mark.parametrize("round_number", [1, 2, 3, 4, 5])
 def test_a_critical_round_runs_only_critical_bugs_whatever_its_number(round_number: int) -> None:
     _, rows = reviewer_rows()

@@ -115,7 +115,10 @@ blocks:
     # | conventions   | 2          | always                  |
     # | critical-bugs | critical   | the change touches code |
     # Add a row for an angle that your project needs, for example a database reviewer with a condition on the changed
-    # paths, and give it a last round.
+    # paths. A new row's `when` is `not inputs.critical and inputs.round <= N`, with N its last round, plus any
+    # condition of its own.
+    # A project whose prompts or instructions are code (Markdown that drives behavior) should count those files as
+    # code in `read_pr.py`, or `correctness` and `critical-bugs` skip them.
     for_each:
       - name: correctness
         tier: deep
