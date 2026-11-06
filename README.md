@@ -88,8 +88,8 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 
 | Skill | What it does |
 |---|---|
-| `implement-issue` | From an issue (or a described change) to a pull request that is ready to merge. It understands the issue, asks you only what the code cannot answer, and shows you a plan. Then it opens a draft pull request and builds the change test-first. Fresh reviewers check it, round after round, until a round finds nothing to fix. Then it marks the pull request ready, gets CI green, answers late comments, and gives each later fix a short review for real problems only. It never merges. |
-| `review-pr` | A deep review of a pull request. Five reviewers (correctness, tests, completeness, conventions, and docs) read it round after round, each round looking for new problems. A triage checks every finding against the code, merges repeats, and asks you only about the findings in real doubt. Then it shows you one GitHub review, with a verdict, and posts it when you confirm. A second run skips what earlier reviews posted. |
+| `implement-issue` | From an issue (or a described change) to a pull request that is ready to merge. It understands the issue, asks you only what the code cannot answer, and shows you a plan. Then it opens a draft pull request and builds the change test-first. Fresh reviewers check the whole pull request in up to 4 rounds, each with fewer reviewers and a stricter bar, and it fixes what they find. Then critical rounds look only for what the new code breaks, until one finds nothing (at most 6). Then it marks the pull request ready, gets CI green, answers late comments, and gives each later push a critical round. It never merges. |
+| `review-pr` | A deep review of a pull request. Five reviewers (correctness, tests, completeness, conventions, and docs) read the whole pull request in up to 4 rounds, each with fewer reviewers and a stricter bar, until a round finds no new required problem. Then critical rounds of a sixth reviewer, critical-bugs, look only for what the new code breaks, until one finds nothing new. `max_rounds` (10 by default) caps both phases together. A triage checks every finding against the code, merges repeats, and asks you only about the findings in real doubt. Then it shows you one GitHub review, with a verdict, and posts it when you confirm. A second run reviews the whole pull request again and skips what earlier reviews posted. |
 | `resolve-pr-feedback` | Answers each open comment and required finding of a pull request in one task: it fixes the code or explains why not, and replies. |
 | `fix-ci` | Waits for the CI checks of a pull request, and fixes the failures that the pull request causes. |
 | `create-issue` | Writes a clear issue with you, after a check for duplicates. It files the issue in the current repository, or in the one that you name. |
@@ -118,7 +118,7 @@ The skills read your project's rules from its own files, so they work in most re
 - **Protect the default branch:** require the CI checks and one approval. The skills never merge, so a person always does.
 - **Record your decisions** in `adr/` or `docs/adr/` (one file per decision). The skills check a change against them.
 - **Work in a clean checkout.** The skills stop when the checkout has uncommitted changes, because those changes are yours. They expect the GitHub remote to be named `origin`.
-- **Add your own reviewers.** Each reviewer is one row in the `review` block of `review-round` (the one round that `review-pr` and `implement-issue` run), with an optional `when`, for example a database reviewer when the change touches your migrations.
+- **Add your own reviewers.** Each reviewer is one row in the `review` block of `review-round` (the one round that `review-pr` and `implement-issue` run). A new row's `when` is `not inputs.critical and inputs.round <= N`, with N its last round, plus any other condition, for example a database reviewer when the change touches your migrations.
 
 **The conventions a team overrides**, each in one place, after a copy of the skills:
 
@@ -127,7 +127,7 @@ The skills read your project's rules from its own files, so they work in most re
 | The label names `waiting-for-human-review` and `waiting-for-human-check` | `implement-issue/instructions/finish.md` and its `done` end; `create-issue/skill.yaml` (`label_issue`) |
 | The rules files that the skills read (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, the README, decision records) | `.pskill/agents/reviewer.md` and `.pskill/agents/adr-checker.md` |
 | The reviewers and their tiers | The rows of the `review` block of `review-round` |
-| The round caps | The `max_rounds` input of `review-pr`, and the edges of the review loop of `implement-issue` |
+| The round caps | `review-pr`: its `max_rounds` input (10), and the edges of `new_in_review` (4 review rounds) and `new_in_critical` (6 critical rounds), with the safety `max_visits` of `review` and `critical`. `implement-issue`: the edge from `resolve` (4 review rounds) and the safety `max_visits` of `review`; the edge from `critical_resolve` (6 critical rounds) and `CRITICAL_ROUNDS` in `scripts/list_limits.py`; the safety `max_visits` of `critical` (13) and `CRITICAL_VISITS` there. The `finish.md` and `report.md` texts read the counts from the run |
 
 This repository follows the same setup, with two differences: it requires no approval (it has one maintainer), and its decisions live in `SPEC.md` section 3, which `AGENTS.md` names.
 

@@ -1,0 +1,25 @@
+name: round 3 runs only correctness, completeness, and docs, and returns their findings
+inputs:
+  pr: 9
+  round: 3
+  reported: [{reviewer: tests, file: src/app.py, line: 3, severity: required, title: No test, summary: S, quote: return a - b}]
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: r3, plan_file: ""}}
+scripts:
+  read_pr:
+    - {exit_code: 0, stdout: '{"paths": ["src/app.py"], "code_paths": ["src/app.py"]}'}
+  collect_findings:
+    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "docs", "file": "README.md", "line": 4, "severity": "required", "title": "README says add", "summary": "S.", "quote": "add(a, b)"}], "count": 1, "dropped": []}'}
+answers:
+  review:
+    - {reviewer: correctness, findings: []}
+    - {reviewer: completeness, findings: []}
+    - reviewer: docs
+      findings: [{file: README.md, line: 4, severity: required, title: README says add, summary: S., quote: "add(a, b)"}]
+expect:
+  path: [checkout, read_pr, review, collect_findings, reviewed]
+  status: succeeded
+  outputs:
+    reviewed_sha: r3
+    findings: [{reviewer: docs, file: README.md, line: 4, severity: required, title: README says add, summary: S., quote: "add(a, b)"}]

@@ -1,0 +1,65 @@
+name: critical rounds run until one finds nothing new, each with every finding of the run so far, and each head check and the post use the commit of the last round
+inputs: {pr: 700}
+calls:
+  check_head_before_critical:
+    - {status: succeeded, inputs: {reviewed_sha: a1}, outputs: {action: continue, head_sha: a1}}
+    # A small push between critical rounds: the next round reviews the new head.
+    - {status: succeeded, inputs: {reviewed_sha: a1}, outputs: {action: continue, head_sha: a2}}
+    - {status: succeeded, inputs: {reviewed_sha: a2}, outputs: {action: continue, head_sha: a2}}
+  check_head_before_post:
+    - {status: succeeded, inputs: {reviewed_sha: a2}, outputs: {action: continue, head_sha: a2}}
+  review:
+    - status: succeeded
+      inputs: {round: 1}
+      outputs:
+        reviewed_sha: a1
+        findings: [{reviewer: conventions, file: a.py, line: 1, severity: suggestion, title: S1, summary: S, quote: q}]
+  critical:
+    - status: succeeded
+      inputs:
+        critical: true
+        reported: [{reviewer: conventions, file: a.py, line: 1, severity: suggestion, title: S1, summary: S, quote: q}]
+      outputs:
+        reviewed_sha: a1
+        findings: [{reviewer: critical-bugs, file: a.py, line: 7, severity: required, title: C1, summary: S, quote: q}]
+    - status: succeeded
+      inputs:
+        critical: true
+        reported:
+          - {reviewer: conventions, file: a.py, line: 1, severity: suggestion, title: S1, summary: S, quote: q}
+          - {reviewer: critical-bugs, file: a.py, line: 7, severity: required, title: C1, summary: S, quote: q}
+      outputs:
+        reviewed_sha: a2
+        findings: [{reviewer: critical-bugs, file: a.py, line: 8, severity: required, title: C2, summary: S, quote: q}]
+    - status: succeeded
+      inputs:
+        critical: true
+        reported:
+          - {reviewer: conventions, file: a.py, line: 1, severity: suggestion, title: S1, summary: S, quote: q}
+          - {reviewer: critical-bugs, file: a.py, line: 7, severity: required, title: C1, summary: S, quote: q}
+          - {reviewer: critical-bugs, file: a.py, line: 8, severity: required, title: C2, summary: S, quote: q}
+      outputs: {reviewed_sha: a2, findings: []}
+scripts:
+  read_earlier:
+    - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  new_in_review:
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "conventions", "file": "a.py", "line": 1, "severity": "suggestion", "title": "S1", "summary": "S", "quote": "q"}], "required": 0}'}
+  new_in_critical:
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "a.py", "line": 7, "severity": "required", "title": "C1", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "a.py", "line": 8, "severity": "required", "title": "C2", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
+  final:
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": true, "cut_short": false}'}
+  post:
+    - {exit_code: 0, stdout: '{"result": "changes_requested", "review_url": "u", "inline": 3, "in_body": 0, "fallback": false}'}
+answers:
+  triage:
+    - {findings: [], dropped: [], still_open: [], doubts: []}
+  draft:
+    - {body: "Changes requested."}
+  confirm:
+    - {choice: post, rationale: The user picked it., $answered_by: human}
+expect:
+  path: [read_earlier, review, new_in_review, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, triage, final, draft, confirm, check_head_before_post, post, reviewed]
+  status: succeeded
+  outputs: {result: changes_requested, review_url: u}

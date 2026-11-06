@@ -1,24 +1,50 @@
-name: the loop stops after 4 rounds by default, also when each round still finds new required problems
+name: by default the review stops after 4 review rounds and 6 critical rounds, also when each round still finds a new problem
 inputs: {pr: 700}
 calls:
   check_head_before_round:
-    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
-    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
-    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+    - &go_on {status: succeeded, outputs: {action: continue, head_sha: c3}}
+    - *go_on
+    - *go_on
+  check_head_before_critical:
+    - *go_on
+    - *go_on
+    - *go_on
+    - *go_on
+    - *go_on
+    - *go_on
   check_head_before_post:
-    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+    - *go_on
   review:
-    - {status: succeeded, outputs: {reviewed_sha: c3, scope_sha: c3, findings: [{reviewer: completeness, file: sdk/a.py, line: 1, severity: required, title: A, summary: S, quote: q}]}}
-    - {status: succeeded, outputs: {reviewed_sha: c3, scope_sha: c3, findings: [{reviewer: completeness, file: sdk/a.py, line: 2, severity: required, title: B, summary: S, quote: q}]}}
-    - {status: succeeded, outputs: {reviewed_sha: c3, scope_sha: c3, findings: [{reviewer: completeness, file: sdk/a.py, line: 3, severity: required, title: C, summary: S, quote: q}]}}
-    - {status: succeeded, outputs: {reviewed_sha: c3, scope_sha: c3, findings: [{reviewer: completeness, file: sdk/a.py, line: 4, severity: required, title: D, summary: S, quote: q}]}}
+    - {status: succeeded, inputs: {round: 1}, outputs: {reviewed_sha: c3, findings: [{reviewer: completeness, file: sdk/a.py, line: 1, severity: required, title: R1, summary: S, quote: q}]}}
+    - {status: succeeded, inputs: {round: 2}, outputs: {reviewed_sha: c3, findings: [{reviewer: completeness, file: sdk/a.py, line: 2, severity: required, title: R2, summary: S, quote: q}]}}
+    - {status: succeeded, inputs: {round: 3}, outputs: {reviewed_sha: c3, findings: [{reviewer: completeness, file: sdk/a.py, line: 3, severity: required, title: R3, summary: S, quote: q}]}}
+    - {status: succeeded, inputs: {round: 4}, outputs: {reviewed_sha: c3, findings: [{reviewer: completeness, file: sdk/a.py, line: 4, severity: required, title: R4, summary: S, quote: q}]}}
+  critical:
+    - {status: succeeded, inputs: {critical: true}, outputs: {reviewed_sha: c3, findings: [{reviewer: critical-bugs, file: sdk/a.py, line: 11, severity: required, title: C1, summary: S, quote: q}]}}
+    - {status: succeeded, inputs: {critical: true}, outputs: {reviewed_sha: c3, findings: [{reviewer: critical-bugs, file: sdk/a.py, line: 12, severity: required, title: C2, summary: S, quote: q}]}}
+    - {status: succeeded, inputs: {critical: true}, outputs: {reviewed_sha: c3, findings: [{reviewer: critical-bugs, file: sdk/a.py, line: 13, severity: required, title: C3, summary: S, quote: q}]}}
+    - {status: succeeded, inputs: {critical: true}, outputs: {reviewed_sha: c3, findings: [{reviewer: critical-bugs, file: sdk/a.py, line: 14, severity: required, title: C4, summary: S, quote: q}]}}
+    - {status: succeeded, inputs: {critical: true}, outputs: {reviewed_sha: c3, findings: [{reviewer: critical-bugs, file: sdk/a.py, line: 15, severity: required, title: C5, summary: S, quote: q}]}}
+    - {status: succeeded, inputs: {critical: true}, outputs: {reviewed_sha: c3, findings: [{reviewer: critical-bugs, file: sdk/a.py, line: 16, severity: required, title: C6, summary: S, quote: q}]}}
 scripts:
   read_earlier:
     - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  new_in_review:
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "completeness", "file": "sdk/a.py", "line": 1, "severity": "required", "title": "R1", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "completeness", "file": "sdk/a.py", "line": 2, "severity": "required", "title": "R2", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "completeness", "file": "sdk/a.py", "line": 3, "severity": "required", "title": "R3", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "completeness", "file": "sdk/a.py", "line": 4, "severity": "required", "title": "R4", "summary": "S", "quote": "q"}], "required": 1}'}
+  new_in_critical:
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 11, "severity": "required", "title": "C1", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 12, "severity": "required", "title": "C2", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 13, "severity": "required", "title": "C3", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 14, "severity": "required", "title": "C4", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 15, "severity": "required", "title": "C5", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 16, "severity": "required", "title": "C6", "summary": "S", "quote": "q"}], "required": 1}'}
   final:
-    - {exit_code: 0, stdout: '{"findings": [], "has_required": true}'}
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": true, "cut_short": true}'}
   post:
-    - {exit_code: 0, stdout: '{"result": "changes_requested", "review_url": "u", "inline": 2, "in_body": 0, "fallback": false}'}
+    - {exit_code: 0, stdout: '{"result": "changes_requested", "review_url": "u", "inline": 10, "in_body": 0, "fallback": false}'}
 answers:
   triage:
     - {findings: [], dropped: [], still_open: [], doubts: []}
@@ -27,5 +53,5 @@ answers:
   confirm:
     - {choice: post, rationale: The user picked it., $answered_by: human}
 expect:
-  path: [read_earlier, review, check_head_before_round, review, check_head_before_round, review, check_head_before_round, review, triage, final, draft, confirm, check_head_before_post, post, reviewed]
+  path: [read_earlier, review, new_in_review, check_head_before_round, review, new_in_review, check_head_before_round, review, new_in_review, check_head_before_round, review, new_in_review, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, triage, final, draft, confirm, check_head_before_post, post, reviewed]
   status: succeeded

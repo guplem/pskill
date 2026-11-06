@@ -1,0 +1,24 @@
+name: a critical round runs only critical-bugs, whatever its round number, and returns its findings
+inputs:
+  pr: 9
+  round: 2
+  critical: true
+  dismissed: [{reviewer: correctness, title: Null role, reason: The route checks it.}]
+calls:
+  checkout:
+    - {status: succeeded, outputs: {branch: 42-fix-save, base: main, head_sha: c1, plan_file: ""}}
+scripts:
+  read_pr:
+    - {exit_code: 0, stdout: '{"paths": ["src/app.py", "README.md"], "code_paths": ["src/app.py"]}'}
+  collect_findings:
+    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "critical-bugs", "file": "src/app.py", "line": 12, "severity": "required", "title": "Null role answers 500", "summary": "S.", "quote": "role.name"}], "count": 1, "dropped": []}'}
+answers:
+  review:
+    - reviewer: critical-bugs
+      findings: [{file: src/app.py, line: 12, severity: required, title: Null role answers 500, summary: S., quote: role.name}]
+expect:
+  path: [checkout, read_pr, review, collect_findings, reviewed]
+  status: succeeded
+  outputs:
+    reviewed_sha: c1
+    findings: [{reviewer: critical-bugs, file: src/app.py, line: 12, severity: required, title: Null role answers 500, summary: S., quote: role.name}]
