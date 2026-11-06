@@ -20,7 +20,7 @@ scripts:
   new_in_critical:
     - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
-    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "conventions", "file": "src/app.py", "line": 5, "severity": "required", "title": "Breaks recorded decision 4", "summary": "S", "quote": "q"}], "has_required": true}'}
+    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "conventions", "file": "src/app.py", "line": 5, "severity": "required", "title": "Breaks recorded decision 4", "summary": "S", "quote": "q"}], "has_required": true, "cut_short": false}'}
 answers:
   triage:
     - findings: []

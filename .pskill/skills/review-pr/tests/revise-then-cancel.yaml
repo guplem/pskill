@@ -15,7 +15,7 @@ scripts:
   new_in_critical:
     - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
-    - {exit_code: 0, stdout: '{"findings": [], "has_required": false}'}
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": false, "cut_short": false}'}
 answers:
   triage:
     - {findings: [], dropped: [], still_open: [], doubts: []}

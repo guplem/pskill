@@ -83,7 +83,12 @@ class TestFinalFindings:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         still_open = [{"title": "Earlier", "severity": "required", "location": "a.py:2"}]
-        script_input = {"findings": [finding("new", severity="suggestion")], "doubts": [], "verdicts": []}
+        script_input = {
+            "findings": [finding("new", severity="suggestion")],
+            "doubts": [],
+            "verdicts": [],
+            "cut_short": False,
+        }
         printed: list[dict[str, Any]] = []
         for open_findings in (still_open, []):
             monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({**script_input, "still_open": open_findings})))
@@ -538,14 +543,15 @@ def test_the_new_findings_script_gets_the_last_round_and_every_earlier_round_of_
     }
 
 
-def test_a_review_round_below_round_4_and_below_max_rounds_counts_its_new_findings() -> None:
-    assert next_block("review", review=3, critical=0) == "new_in_review"
+@pytest.mark.parametrize("block", ["review", "critical"])
+def test_every_round_counts_its_new_findings_also_at_a_cap(block: str) -> None:
+    assert BLOCKS[block]["next"] == f"new_in_{block}"
 
 
 def test_round_4_goes_to_the_critical_rounds_and_max_rounds_to_the_triage() -> None:
-    assert next_block("review", review=4, critical=0) == "check_head_before_critical"
-    assert next_block("review", review=4, critical=0, max_rounds=4) == "triage"
-    assert next_block("review", review=1, critical=0, max_rounds=1) == "triage"
+    assert next_block("new_in_review", review=4, critical=0, required=1) == "check_head_before_critical"
+    assert next_block("new_in_review", review=4, critical=0, max_rounds=4, required=0) == "triage"
+    assert next_block("new_in_review", review=1, critical=0, max_rounds=1, required=1) == "triage"
 
 
 def test_a_review_round_with_a_new_required_finding_goes_on_and_one_without_ends_the_phase() -> None:
@@ -553,20 +559,66 @@ def test_a_review_round_with_a_new_required_finding_goes_on_and_one_without_ends
     assert next_block("new_in_review", review=1, critical=0, required=0) == "check_head_before_critical"
 
 
-def test_a_critical_round_below_its_caps_counts_its_new_findings() -> None:
-    assert next_block("critical", review=1, critical=5) == "new_in_critical"
-
-
 @pytest.mark.parametrize(
     ("review", "critical", "max_rounds"), [(1, 6, 10), (4, 6, 10), (2, 3, 5)], ids=["6 critical rounds", "10", "5"]
 )
-def test_a_critical_round_at_a_cap_goes_to_the_triage(review: int, critical: int, max_rounds: int) -> None:
-    assert next_block("critical", review=review, critical=critical, max_rounds=max_rounds) == "triage"
+def test_a_critical_round_at_a_cap_goes_to_the_triage_also_with_a_new_finding(
+    review: int, critical: int, max_rounds: int
+) -> None:
+    next_one = next_block(
+        "new_in_critical", review=review, critical=critical, max_rounds=max_rounds, new=[finding("C")]
+    )
+
+    assert next_one == "triage"
 
 
 def test_a_critical_round_with_a_new_finding_goes_on_and_one_without_ends_the_review() -> None:
     assert next_block("new_in_critical", review=1, critical=1, new=[finding("C")]) == "check_head_before_critical"
     assert next_block("new_in_critical", review=1, critical=1, new=[]) == "triage"
+
+
+def cut_short(review: int, critical: int, required: int, new: list[dict[str, Any]]) -> bool:
+    """The flag that the `final` block passes on: the review stopped at a cap before it was done."""
+    steps: dict[str, Any] = {"new_in_review": {"json": {"required": required}}}
+    if critical:
+        steps["new_in_critical"] = {"json": {"new": new}}
+    context = rounds_context([round_with()] * review, [round_with()] * critical, **steps)
+    return bool(compute(BLOCKS["final"]["input"]["cut_short"], context))
+
+
+@pytest.mark.parametrize(
+    ("review", "critical", "required", "new", "expected"),
+    [
+        (2, 0, 1, [], True),
+        (2, 0, 0, [], True),
+        (4, 1, 1, [], True),
+        (2, 6, 0, [finding("C")], True),
+        (4, 1, 0, [], False),
+        (1, 2, 0, [], False),
+    ],
+    ids=[
+        "max_rounds left no critical round",
+        "max_rounds left no critical round after a clean review round",
+        "round 4 still found a new required finding",
+        "the critical cap with a new finding",
+        "round 4 and the critical round clean",
+        "a clean critical round",
+    ],
+)
+def test_the_review_is_cut_short_when_a_cap_stopped_a_phase_that_still_found_something_new(
+    review: int, critical: int, required: int, new: list[dict[str, Any]], expected: bool
+) -> None:
+    assert cut_short(review, critical, required, new) is expected
+
+
+def test_the_final_script_passes_the_cut_short_flag_on(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script_input = {"findings": [], "still_open": [], "doubts": [], "verdicts": [], "cut_short": True}
+
+    printed = run_main(monkeypatch, capsys, final_findings, script_input)
+
+    assert printed == {"findings": [], "has_required": False, "cut_short": True}
 
 
 @pytest.mark.parametrize(("critical", "expected"), [([], "r1"), ([round_with(reviewed_sha="c2")], "c2")])
@@ -608,6 +660,24 @@ def test_the_reports_count_the_rounds_of_both_phases(name: str) -> None:
     )
 
     assert "after 2 review rounds and 3 critical rounds" in instruction_text(name, context)
+
+
+CUT_SHORT_LINE = "the review stopped at a round cap before it was done"
+
+
+@pytest.mark.parametrize("name", ["draft", "report_reviewed", "report_not_posted"])
+@pytest.mark.parametrize("flag", [True, False])
+def test_the_draft_and_the_reports_say_in_one_line_when_a_cap_cut_the_review_short(name: str, flag: bool) -> None:
+    context = rounds_context([round_with()], [round_with()])
+    context["run"] = {"mode": "interactive"}
+    context["steps"].update(
+        post={"json": {"review_url": "u", "result": "approved", "inline": 0, "in_body": 0, "fallback": False}},
+        draft={"body": "B"},
+        final={"json": {"findings": [], "cut_short": flag}},
+        triage={"still_open": [], "dropped": []},
+    )
+
+    assert (CUT_SHORT_LINE in instruction_text(name, context)) is flag
 
 
 @pytest.mark.parametrize("name", ["report_restarted", "report_stopped"])

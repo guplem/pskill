@@ -17,7 +17,7 @@ scripts:
   new_in_critical:
     - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
-    - {exit_code: 0, stdout: '{"findings": [], "has_required": false}'}
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": false, "cut_short": false}'}
   post:
     - {exit_code: 1, stdout: '', stderr: 'The review could not be posted: HTTP 403'}
 answers:

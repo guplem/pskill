@@ -11,7 +11,7 @@ Goal: One review on the pull request that the user confirmed: it holds every new
 
 1. Map the request to the inputs:
    - `pr` (integer): Number of the pull request.
-   - `max_rounds` (integer, optional, default: 10): The most rounds to run, review rounds and critical rounds together: up to 4 review rounds, then up to 6 critical rounds, so a value above 10 changes nothing. A small value cuts the review short: the critical rounds get only the rounds that the review rounds leave, and with 4 or less, the review rounds can use them all, so no critical round runs.
+   - `max_rounds` (integer, optional, default: 10): The most rounds to run, review rounds and critical rounds together: up to 4 review rounds, then up to 6 critical rounds, so a value above 10 changes nothing. A small value cuts the review short: the critical rounds get only the rounds that the review rounds leave, and with 4 or less, the review rounds can use them all, so no critical round runs. The draft and the report then say that a cap cut the review short.
    Ask the user for each required input that the request does not give, before you run `start`.
 2. Run: `uv run .pskill/pskill.py start review-pr --harness auto --model <your model id> --input pr=<value>`
    Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.

@@ -12,5 +12,6 @@ The changes that the user asked for in your earlier drafts:
 {% endfor %}{% endif %}
 - **The first line is the verdict**: changes are needed (at least one new or still-open finding is `required`), or the pull request is OK to merge, with the suggestions as optional improvements.
 - **Then one short bullet per theme** of the required findings, when there are any, so the author knows what blocks the merge. Name each still-open required finding of an earlier review by its title.
-- **150 words at most.** The body stands alone: no chat history, no tutorial, no list of the review rounds.
+{% if steps.final.json.cut_short %}- **Say in one line that the review stopped at a round cap before it was done** (a round still found something new, or no critical round ran), so it may have missed problems.
+{% endif %}- **150 words at most.** The body stands alone: no chat history, no tutorial, no list of the review rounds.
 - Follow the writing rules of the repository (`AGENTS.md`, `CLAUDE.md`, or `CONTRIBUTING.md`) when it has any.

@@ -17,7 +17,7 @@ scripts:
   new_in_critical:
     - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
-    - {exit_code: 0, stdout: '{"findings": [], "has_required": false}'}
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": false, "cut_short": false}'}
   post:
     - {exit_code: 0, stdout: '{"result": "commented", "review_url": "u5", "inline": 0, "in_body": 1, "fallback": true}'}
 answers:

@@ -36,7 +36,7 @@ inputs:
       The most rounds to run, review rounds and critical rounds together: up to 4 review rounds, then up to 6 critical
       rounds, so a value above 10 changes nothing. A small value cuts the review short: the critical rounds get only
       the rounds that the review rounds leave, and with 4 or less, the review rounds can use them all, so no critical
-      round runs.
+      round runs. The draft and the report then say that a cap cut the review short.
 outputs:
   result:
     type: string
@@ -68,19 +68,15 @@ blocks:
       reported: "{{ history.review | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) }}"
       # A follow-up review reviews the whole pull request too: the findings of earlier reviews are only skipped.
       dismissed: "{{ steps.read_earlier.json.dismissed }}"
-    # The arrows below already stop at round 4. This cap is only a safety net, so it never asks.
+    # The arrows of new_in_review already stop at round 4. This cap is only a safety net, so it never asks.
     max_visits: 10
     on_max_visits: triage
     ask_on_max_visits: false
-    next:
-      - when: "{{ (history.review | length) >= inputs.max_rounds }}"
-        to: triage
-      - when: "{{ (history.review | length) >= 4 }}"
-        to: check_head_before_critical
-      - to: new_in_review
+    next: new_in_review
 
   # A round counts only its new findings: one at the file and line of an earlier finding of the run, with its title
-  # or its reviewer, repeats it. So a round whose findings all repeat earlier ones is clean.
+  # or its reviewer, repeats it. So a round whose findings all repeat earlier ones is clean. The last round of a phase
+  # counts them too, so that the review knows if a cap cut it short.
   new_in_review:
     type: script
     description: Keep the findings of the review round that repeat no earlier finding of the run
@@ -94,8 +90,10 @@ blocks:
     on_max_visits: triage
     ask_on_max_visits: false
     next:
-      # Another review round, while this one found a new required finding.
-      - when: "{{ steps.new_in_review.json.required }}"
+      - when: "{{ (history.review | length) >= inputs.max_rounds }}"
+        to: triage
+      # Another review round, while this one found a new required finding, up to round 4.
+      - when: "{{ steps.new_in_review.json.required and (history.review | length) < 4 }}"
         to: check_head_before_round
       - to: check_head_before_critical
 
@@ -141,16 +139,11 @@ blocks:
       critical: true
       reported: "{{ (history.review + history.critical) | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) }}"
       dismissed: "{{ steps.read_earlier.json.dismissed }}"
-    # The arrow below already stops at 6 critical rounds. This cap is only a safety net, so it never asks.
+    # The arrows of new_in_critical already stop at 6 critical rounds. This cap is only a safety net, so it never asks.
     max_visits: 10
     on_max_visits: triage
     ask_on_max_visits: false
-    next:
-      - when: >-
-          {{ (history.critical | length) >= 6
-          or ((history.review | length) + (history.critical | length)) >= inputs.max_rounds }}
-        to: triage
-      - to: new_in_critical
+    next: new_in_critical
 
   new_in_critical:
     type: script
@@ -165,6 +158,10 @@ blocks:
     on_max_visits: triage
     ask_on_max_visits: false
     next:
+      - when: >-
+          {{ (history.critical | length) >= 6
+          or ((history.review | length) + (history.critical | length)) >= inputs.max_rounds }}
+        to: triage
       # Another critical round, while this one found a new problem.
       - when: "{{ steps.new_in_critical.json.new }}"
         to: check_head_before_critical
@@ -236,6 +233,12 @@ blocks:
       still_open: "{{ steps.triage.still_open }}"
       doubts: "{{ steps.triage.doubts }}"
       verdicts: "{{ history.settle_doubt | map(attribute='outputs') | list }}"
+      # A cap cut the review short: max_rounds left no critical round, round 4 still found a new required finding, or
+      # the last critical round still found something new (it goes to the triage with a new finding only at a cap).
+      cut_short: >-
+        {{ not history.critical
+        or ((history.review | length) >= 4 and steps.new_in_review.json.required > 0)
+        or (steps.new_in_critical.json.new | length) > 0 }}
     parse: json
     next: draft
 

@@ -26,7 +26,7 @@ scripts:
     - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "a.py", "line": 7, "severity": "required", "title": "C1", "summary": "S", "quote": "q"}], "required": 1}'}
     - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
-    - {exit_code: 0, stdout: '{"findings": [], "has_required": true}'}
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": true, "cut_short": false}'}
   post:
     - {exit_code: 0, stdout: '{"result": "changes_requested", "review_url": "u", "inline": 2, "in_body": 0, "fallback": false}'}
 answers:

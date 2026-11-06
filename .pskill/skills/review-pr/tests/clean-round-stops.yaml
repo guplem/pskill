@@ -30,7 +30,7 @@ scripts:
   new_in_critical:
     - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
-    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Retry has no cap", "summary": "S", "quote": "q"}], "has_required": true}'}
+    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Retry has no cap", "summary": "S", "quote": "q"}], "has_required": true, "cut_short": false}'}
   post:
     - {exit_code: 0, stdout: '{"result": "changes_requested", "review_url": "u1", "inline": 1, "in_body": 0, "fallback": false}'}
 answers:

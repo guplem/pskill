@@ -33,14 +33,16 @@ scripts:
     - {exit_code: 0, stdout: '{"new": [{"reviewer": "completeness", "file": "sdk/a.py", "line": 1, "severity": "required", "title": "R1", "summary": "S", "quote": "q"}], "required": 1}'}
     - {exit_code: 0, stdout: '{"new": [{"reviewer": "completeness", "file": "sdk/a.py", "line": 2, "severity": "required", "title": "R2", "summary": "S", "quote": "q"}], "required": 1}'}
     - {exit_code: 0, stdout: '{"new": [{"reviewer": "completeness", "file": "sdk/a.py", "line": 3, "severity": "required", "title": "R3", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "completeness", "file": "sdk/a.py", "line": 4, "severity": "required", "title": "R4", "summary": "S", "quote": "q"}], "required": 1}'}
   new_in_critical:
     - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 11, "severity": "required", "title": "C1", "summary": "S", "quote": "q"}], "required": 1}'}
     - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 12, "severity": "required", "title": "C2", "summary": "S", "quote": "q"}], "required": 1}'}
     - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 13, "severity": "required", "title": "C3", "summary": "S", "quote": "q"}], "required": 1}'}
     - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 14, "severity": "required", "title": "C4", "summary": "S", "quote": "q"}], "required": 1}'}
     - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 15, "severity": "required", "title": "C5", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "critical-bugs", "file": "sdk/a.py", "line": 16, "severity": "required", "title": "C6", "summary": "S", "quote": "q"}], "required": 1}'}
   final:
-    - {exit_code: 0, stdout: '{"findings": [], "has_required": true}'}
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": true, "cut_short": true}'}
   post:
     - {exit_code: 0, stdout: '{"result": "changes_requested", "review_url": "u", "inline": 10, "in_body": 0, "fallback": false}'}
 answers:
@@ -51,5 +53,5 @@ answers:
   confirm:
     - {choice: post, rationale: The user picked it., $answered_by: human}
 expect:
-  path: [read_earlier, review, new_in_review, check_head_before_round, review, new_in_review, check_head_before_round, review, new_in_review, check_head_before_round, review, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, triage, final, draft, confirm, check_head_before_post, post, reviewed]
+  path: [read_earlier, review, new_in_review, check_head_before_round, review, new_in_review, check_head_before_round, review, new_in_review, check_head_before_round, review, new_in_review, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, check_head_before_critical, critical, new_in_critical, triage, final, draft, confirm, check_head_before_post, post, reviewed]
   status: succeeded

@@ -24,7 +24,7 @@ scripts:
   new_in_critical:
     - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
-    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "conventions", "file": "src/app.py", "line": 5, "severity": "suggestion", "title": "Breaks recorded decision 4", "summary": "S", "quote": "q"}], "has_required": false}'}
+    - {exit_code: 0, stdout: '{"findings": [{"reviewer": "conventions", "file": "src/app.py", "line": 5, "severity": "suggestion", "title": "Breaks recorded decision 4", "summary": "S", "quote": "q"}], "has_required": false, "cut_short": false}'}
   post:
     - {exit_code: 0, stdout: '{"result": "approved", "review_url": "u2", "inline": 1, "in_body": 0, "fallback": false}'}
 answers:

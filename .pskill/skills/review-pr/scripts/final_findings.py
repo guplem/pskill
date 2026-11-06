@@ -4,9 +4,10 @@
 # ///
 """Build the final list of findings that the review posts: the triage findings, plus each doubt that is kept.
 
-Usage: uv run final_findings.py, with {"findings", "still_open", "doubts", "verdicts"} on stdin: the triage output and
-the verdict of each settled doubt, in the order of the doubts.
-Prints {"findings", "has_required"}.
+Usage: uv run final_findings.py, with {"findings", "still_open", "doubts", "verdicts", "cut_short"} on stdin: the
+triage output, the verdict of each settled doubt, in the order of the doubts, and whether a round cap cut the review
+short.
+Prints {"findings", "has_required", "cut_short"}: cut_short passes on as it came, for the draft and the reports.
 
 A doubt takes its verdict as its severity, and the verdict "drop" leaves it out. A doubt with no verdict (an
 autonomous run asks no doubt, and the safety cap can stop the questions) takes the recommendation of the triage.
@@ -34,7 +35,8 @@ def main() -> None:
     script_input: dict[str, Any] = json.load(sys.stdin)
     findings = final_findings(script_input["findings"], script_input["doubts"], script_input["verdicts"])
     has_required = any(finding["severity"] == "required" for finding in [*findings, *script_input["still_open"]])
-    print(json.dumps({"findings": findings, "has_required": has_required}))
+    cut_short = bool(script_input["cut_short"])
+    print(json.dumps({"findings": findings, "has_required": has_required, "cut_short": cut_short}))
 
 
 if __name__ == "__main__":
