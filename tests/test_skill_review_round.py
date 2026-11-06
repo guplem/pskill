@@ -218,7 +218,15 @@ def review_text(round_number: int = 1, **inputs: Any) -> str:
     """The instruction of the review block, as a reviewer of a round gets it."""
     template = (SKILLS_FOLDER / SKILL / "instructions" / "review.md").read_text(encoding="utf-8")
     context = {
-        "inputs": {"pr": 9, "round": round_number, "critical": False, "dismissed": [], "reported": [], **inputs},
+        "inputs": {
+            "pr": 9,
+            "round": round_number,
+            "critical": False,
+            "scope_sha": "",
+            "dismissed": [],
+            "reported": [],
+            **inputs,
+        },
         "item": {"name": "correctness", "focus": "Correctness."},
         "steps": {"checkout": {"outputs": {"head_sha": "abc", "base": "main", "plan_file": ""}}},
         "skill": {"dir": ".pskill/skills/review-round"},
@@ -233,6 +241,7 @@ def test_every_round_reviews_the_whole_pull_request_at_the_head_commit(round_num
     assert "Review the whole pull request" in text
     assert "`git diff origin/main...abc`" in text
     assert "the scope commit is `abc`, the head commit" in text
+    assert "own fixes" not in text
 
 
 ROUND_2_BAR = "**Only required findings:**"
@@ -314,8 +323,21 @@ def test_in_a_review_round_a_dismissal_stands_against_a_different_opinion() -> N
     assert NEW_EVIDENCE not in text
 
 
-def test_the_round_has_no_delta_or_scope_commit() -> None:
+def test_the_round_has_no_delta_commit_and_an_optional_scope_commit() -> None:
     skill = yaml.safe_load((SKILLS_FOLDER / "review-round" / "skill.yaml").read_text(encoding="utf-8"))
 
-    assert not {"scope_sha", "since_sha"} & set(skill["inputs"])
+    assert "since_sha" not in skill["inputs"]
+    assert (skill["inputs"]["scope_sha"]["optional"], skill["inputs"]["scope_sha"]["default"]) == (True, "")
     assert "scope_sha" not in skill["outputs"]
+
+
+@pytest.mark.parametrize("critical", [False, True])
+def test_a_pinned_scope_commit_ends_the_acceptance_scope_but_the_round_reviews_the_whole_diff(critical: bool) -> None:
+    text = review_text(3, critical=critical, scope_sha="s1")
+
+    assert "`git diff origin/main...abc`" in text
+    assert "the scope commit is `s1`, the head of the first review round" in text
+    assert (
+        "The commits after `s1` are the pull request's own fixes: their lines are in scope, but an older function"
+        " that they touch does not bring its older problems into scope." in text
+    )

@@ -31,6 +31,7 @@ x-reviewed-finding: &reviewed_finding
     quote: {type: string}
 inputs:
   pr: {type: integer, description: "Number of the pull request."}
+  scope_sha: {type: string, optional: true, default: "", description: "The commit that ends the acceptance scope of finding-acceptance.md (the head of the first review round); empty means the head. The round still reviews the whole diff."}
   round:
     type: integer
     optional: true
