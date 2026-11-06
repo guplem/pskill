@@ -3,9 +3,9 @@ id: review-round
 description: >-
   One review round of a pull request: fresh reviewer subagents read the whole pull request in parallel, each from one
   angle (correctness, tests, completeness, conventions, docs), and report the real problems, each backed by a quote
-  from the code. Each reviewer runs up to its last round, and each round has a stricter bar. It posts nothing, changes
-  no file, and answers no comment: review-pr turns its findings into a GitHub review, and resolve-pr-feedback fixes
-  them.
+  from the code. Each reviewer runs up to its last round, and each round has a stricter bar; a critical round runs only
+  critical-bugs. It posts nothing, changes no file, and answers no comment: review-pr turns its findings into a GitHub
+  review, and resolve-pr-feedback fixes them.
 goal: >-
   Every new real problem of the pull request, reported once by the reviewer whose angle covers it, with the exact line
   as proof.
@@ -39,7 +39,14 @@ inputs:
       The number of this round in the review phase, 1 to 4. Each reviewer runs up to its last round (the table above
       the rows of the review block). Round 1 reports required findings and suggestions, round 2 required findings
       only, round 3 only broken code and texts that the change makes false, and round 4 only broken code, with the
-      critical bar.
+      critical bar. A critical round ignores it.
+  critical:
+    type: boolean
+    optional: true
+    default: false
+    description: >-
+      A critical round: only critical-bugs runs, and it reports only what the new code of the pull request breaks
+      (the critical bar), each finding required.
   scope_sha: {type: string, optional: true, default: "", description: "Ignored: kept until the callers move to `round` and `critical` (#195)."}
   since_sha: {type: string, optional: true, default: "", description: "Ignored: kept until the callers move to `round` and `critical` (#195)."}
   dismissed:
@@ -93,23 +100,27 @@ blocks:
     type: task
     description: Review with fresh subagents, one per angle
     context: fresh
-    # Reviewers only read. A row with a tier checks the change against written rules or a clear brief, on a cheaper
-    # model; a row with no tier hunts bugs or judges intent on the session model.
+    # Reviewers only read. A row on the standard tier checks the change against written rules or a clear brief, on a
+    # cheaper model; a row on the deep tier hunts bugs, which needs judgment; a row with no tier judges intent on the
+    # session model.
     tools: read
     tier: "{{ item.tier | default('') }}"
     # One row per reviewer. A row runs only when its `when` is true. Each reviewer runs from round 1 to its last
-    # round, so the review narrows as the bar of each round gets stricter (the instruction holds the bars):
-    # | Reviewer     | Last round | Runs when                    |
-    # | correctness  | 4          | the change touches code      |
-    # | completeness | 3          | always                       |
-    # | docs         | 3          | always                       |
-    # | tests        | 2          | the change touches code      |
-    # | conventions  | 2          | always                       |
+    # round, so the review narrows as the bar of each round gets stricter (the instruction holds the bars). A critical
+    # round runs only critical-bugs:
+    # | Reviewer      | Last round | Runs when               |
+    # | correctness   | 4          | the change touches code |
+    # | completeness  | 3          | always                  |
+    # | docs          | 3          | always                  |
+    # | tests         | 2          | the change touches code |
+    # | conventions   | 2          | always                  |
+    # | critical-bugs | critical   | the change touches code |
     # Add a row for an angle that your project needs, for example a database reviewer with a condition on the changed
     # paths, and give it a last round.
     for_each:
       - name: correctness
-        when: "{{ inputs.round <= 4 and steps.read_pr.json.code_paths }}"
+        tier: deep
+        when: "{{ not inputs.critical and inputs.round <= 4 and steps.read_pr.json.code_paths }}"
         focus: >-
           Correctness and safety: wrong results, unhandled errors and edge cases, broken contracts between callers and
           the changed code, security holes (unchecked input, injection, leaked secrets, missing permission checks),
@@ -117,31 +128,43 @@ blocks:
           way through.
       - name: tests
         tier: standard
-        when: "{{ inputs.round <= 2 and steps.read_pr.json.code_paths }}"
+        when: "{{ not inputs.critical and inputs.round <= 2 and steps.read_pr.json.code_paths }}"
         focus: >-
           Tests: each changed behavior has a test that fails without the change, the tests check outcomes and not
           implementation details, they follow the test conventions of the repository, and no test was weakened or
           deleted to pass.
       - name: completeness
-        when: "{{ inputs.round <= 3 }}"
+        when: "{{ not inputs.critical and inputs.round <= 3 }}"
         focus: >-
           Completeness: the change does everything that the issue, the plan, and the pull request description promise,
           and nothing that they rule out. The description matches the code. Every caller, setting, migration, and
           generated file that the change needs is updated.
       - name: conventions
         tier: standard
-        when: "{{ inputs.round <= 2 }}"
+        when: "{{ not inputs.critical and inputs.round <= 2 }}"
         focus: >-
           Conventions and architecture: the change follows the rules of the AGENTS.md, CLAUDE.md, and CONTRIBUTING.md
           files, the recorded decisions of the repository, and the patterns of the closest existing code. A broken written rule
           is a finding. So is new code that duplicates code that already exists.
       - name: docs
         tier: standard
-        when: "{{ inputs.round <= 3 }}"
+        when: "{{ not inputs.critical and inputs.round <= 3 }}"
         focus: >-
           Docs: every doc that the change makes false or leaves out: README files, the docs folder, AGENTS.md and
           CLAUDE.md, the comments and docstrings near the change, API descriptions, and the changelog when the
           repository keeps one.
+      # A critical round: the critical bar of the instruction, on the deep tier.
+      - name: critical-bugs
+        tier: deep
+        when: "{{ inputs.critical and steps.read_pr.json.code_paths }}"
+        focus: >-
+          Critical bugs: only what the new code of this pull request breaks, by the critical bar below. Earlier rounds
+          checked the tests, the texts, the style, and the patterns. For each changed function, route, query, export,
+          or stored shape, find its callers and readers with `git grep` at the head commit, also outside the diff:
+          a caller that relies on the old behavior is where a broken contract shows. Follow each input through the new
+          code to its writes, its output, and its answer. Look hardest at permission checks and their order, partial
+          failures and swallowed errors, null and empty inputs, time zones and periods, changed status codes and
+          stored shapes. Before you report a bug, search for its sibling sites.
     agent: reviewer
     task_name: "{{ item.name }}"
     instruction: instructions/review.md

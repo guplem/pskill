@@ -123,16 +123,17 @@ def test_every_reviewer_only_reads() -> None:
     assert block["tools"] == "read"
 
 
-def test_the_rule_reviewers_run_on_the_standard_tier_and_correctness_keeps_the_session_model() -> None:
+def test_the_rule_reviewers_run_on_the_standard_tier_and_the_bug_hunters_on_the_deep_tier() -> None:
     block, rows = reviewer_rows()
 
     assert block["tier"] == "{{ item.tier | default('') }}"
     assert {name: row.get("tier") for name, row in rows.items()} == {
-        "correctness": None,
+        "correctness": "deep",
         "tests": "standard",
         "completeness": None,
         "conventions": "standard",
         "docs": "standard",
+        "critical-bugs": "deep",
     }
 
 
@@ -140,11 +141,11 @@ LAST_ROUNDS = {"correctness": 4, "completeness": 3, "docs": 3, "tests": 2, "conv
 TABLE_ROW = re.compile(r"^ *# \| (?P<name>[a-z-]+) +\| (?P<last>\d+|critical) +\|", re.MULTILINE)
 
 
-def runs(name: str, round_number: int = 1, code_paths: list[str] | None = None) -> bool:
+def runs(name: str, round_number: int = 1, code_paths: list[str] | None = None, critical: bool = False) -> bool:
     """Whether the row of a reviewer runs in a round, by its `when` as the runner computes it."""
     _, rows = reviewer_rows()
     context = {
-        "inputs": {"round": round_number, "critical": False},
+        "inputs": {"round": round_number, "critical": critical},
         "steps": {"read_pr": {"json": {"code_paths": ["src/app.py"] if code_paths is None else code_paths}}},
     }
     return bool(compute(rows[name]["when"], context))
@@ -160,12 +161,35 @@ def test_the_table_comment_lists_the_last_round_of_every_reviewer() -> None:
 
     table = {match["name"]: match["last"] for match in TABLE_ROW.finditer(text)}
 
-    assert table == {name: str(last) for name, last in LAST_ROUNDS.items()}
+    assert table == {**{name: str(last) for name, last in LAST_ROUNDS.items()}, "critical-bugs": "critical"}
 
 
-@pytest.mark.parametrize("name", ["correctness", "tests"])
+@pytest.mark.parametrize("round_number", [1, 2, 3, 4, 5])
+def test_a_critical_round_runs_only_critical_bugs_whatever_its_number(round_number: int) -> None:
+    _, rows = reviewer_rows()
+
+    assert [name for name in rows if runs(name, round_number, critical=True)] == ["critical-bugs"]
+
+
+def test_critical_bugs_runs_in_no_other_round() -> None:
+    assert not any(runs("critical-bugs", round_number) for round_number in range(1, 6))
+
+
+@pytest.mark.parametrize("name", ["correctness", "tests", "critical-bugs"])
 def test_a_change_of_docs_only_skips_the_code_reviewers_in_every_round(name: str) -> None:
-    assert not any(runs(name, round_number, code_paths=[]) for round_number in range(1, 5))
+    assert not any(
+        runs(name, round_number, code_paths=[], critical=critical)
+        for round_number in range(1, 5)
+        for critical in (False, True)
+    )
+
+
+def test_the_focus_of_critical_bugs_is_the_critical_bar() -> None:
+    _, rows = reviewer_rows()
+
+    assert rows["critical-bugs"]["focus"].startswith(
+        "Critical bugs: only what the new code of this pull request breaks"
+    )
 
 
 def review_text(round_number: int = 1, **inputs: Any) -> str:
@@ -195,10 +219,19 @@ CRITICAL_BAR = "**The critical bar:**"
 
 
 @pytest.mark.parametrize(
-    ("round_number", "bar"), [(1, None), (2, ROUND_2_BAR), (3, ROUND_3_BAR), (4, CRITICAL_BAR), (5, CRITICAL_BAR)]
+    ("round_number", "critical", "bar"),
+    [
+        (1, False, None),
+        (2, False, ROUND_2_BAR),
+        (3, False, ROUND_3_BAR),
+        (4, False, CRITICAL_BAR),
+        (5, False, CRITICAL_BAR),
+        (1, True, CRITICAL_BAR),
+        (3, True, CRITICAL_BAR),
+    ],
 )
-def test_each_round_gets_its_own_bar(round_number: int, bar: str | None) -> None:
-    text = review_text(round_number)
+def test_each_round_gets_its_own_bar(round_number: int, critical: bool, bar: str | None) -> None:
+    text = review_text(round_number, critical=critical)
 
     assert [name for name in (ROUND_2_BAR, ROUND_3_BAR, CRITICAL_BAR) if name in text] == ([bar] if bar else [])
 
@@ -240,3 +273,20 @@ def test_earlier_findings_are_listed_only_so_that_the_reviewers_skip_them(inputs
     assert "the lists below name earlier findings only so that you skip them" in text
     assert "every changed function of the whole diff, not the last fix commits" in text
     assert "a test, text, or convention finding at a line does not cover a bug at that line" in text
+
+
+DISMISSED = [{"reviewer": "correctness", "title": "Null role", "reason": "The route checks it."}]
+NEW_EVIDENCE = (
+    "a concrete failure path (its input and its wrong outcome) that the reason does not answer is new evidence"
+)
+
+
+def test_in_a_critical_round_a_failure_path_that_a_dismissal_does_not_answer_is_new_evidence() -> None:
+    assert NEW_EVIDENCE in review_text(1, critical=True, dismissed=DISMISSED)
+
+
+def test_in_a_review_round_a_dismissal_stands_against_a_different_opinion() -> None:
+    text = review_text(4, dismissed=DISMISSED)
+
+    assert "A different opinion on a dismissal reason is not new evidence." in text
+    assert NEW_EVIDENCE not in text
