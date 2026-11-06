@@ -14,6 +14,7 @@ from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_sk
 
 SKILL = "review-pr"
 final_findings = load_skill_script(SKILL, "final_findings")
+new_findings = load_skill_script(SKILL, "new_findings")
 post_review = load_skill_script(SKILL, "post_review")
 read_earlier_reviews = load_skill_script(SKILL, "read_earlier_reviews")
 ACCEPTANCE_READERS = ["review-round", "review-pr", "review-doubt", "resolve-pr-feedback"]
@@ -81,6 +82,37 @@ class TestFinalFindings:
             printed.append(json.loads(output.getvalue()))
         assert [item["has_required"] for item in printed] == [True, False]
         assert [item["title"] for item in printed[0]["findings"]] == ["new"]
+
+
+class TestNewFindings:
+    """A round counts only its new findings, so a round whose findings all repeat earlier ones is clean."""
+
+    @pytest.mark.parametrize(
+        "repeat",
+        [finding("A", file="b.py", line=9), finding("Other title", file="a.py", line=2)],
+        ids=["same title", "same file and line"],
+    )
+    def test_a_finding_with_the_title_or_the_place_of_an_earlier_one_is_a_repeat(self, repeat: dict[str, Any]) -> None:
+        assert new_findings.new_findings([repeat], [finding("A")]) == []
+
+    @pytest.mark.parametrize(
+        "other",
+        [finding("B", file="a.py", line=3), finding("B", file="b.py", line=2)],
+        ids=["same file, other line", "same line, other file"],
+    )
+    def test_a_finding_at_another_place_with_another_title_is_new(self, other: dict[str, Any]) -> None:
+        assert new_findings.new_findings([other], [finding("A")]) == [other]
+
+    def test_the_script_prints_the_new_findings_and_counts_the_required_ones(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        suggestion = finding("S", line=3, severity="suggestion")
+        required = finding("R", line=4)
+        script_input = {"findings": [finding("A", line=8), suggestion, required], "reported": [finding("A")]}
+
+        printed = run_main(monkeypatch, capsys, new_findings, script_input)
+
+        assert printed == {"new": [suggestion, required], "required": 1}
 
 
 class TestPlacement:
