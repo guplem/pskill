@@ -319,10 +319,9 @@ blocks:
       scope_sha: *scope_sha
       findings: "{{ [] if history.answer_comments | default([]) else (history.review | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) | selectattr('severity', 'equalto', 'suggestion') | list) }}"
     next:
-      # Any pushed commit gets a critical round, then CI again, also after the 6th round. A CI fix moves the head away
-      # from the one that ready pushed. A fixed item that only changed the description pushed nothing, but the output
-      # does not say so: it costs one more round.
-      - when: "{{ steps.get_ci_green.outputs.head_sha != steps.ready.json.head_sha or steps.answer_comments.outputs.fixed > 0 }}"
+      # Any pushed commit gets a critical round, then CI again, also after the 6th round: a CI fix or a comment fix
+      # moves the head away from the one that ready pushed. A fix of the description only pushes nothing.
+      - when: "{{ steps.answer_comments.outputs.head_sha != steps.ready.json.head_sha }}"
         to: critical
       - to: limits
 

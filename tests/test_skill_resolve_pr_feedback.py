@@ -176,6 +176,9 @@ def test_claim_items_adds_the_eyes_reaction_to_each_comment_that_can_take_one(
 INLINE = {"kind": "comment", "id": 7, "comment_kind": "inline", "author": "ana", "thread_id": 1, "body": "Rename it."}
 
 
+READ_HEAD = "git ls-remote origin refs/heads/42-fix-save"
+
+
 def finish(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -183,8 +186,9 @@ def finish(
     decisions: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], FakeShell]:
     script = load_skill_script(SKILL, "finish_items")
-    shell = install_shell(monkeypatch, script, FakeShell())
-    printed = run_main(monkeypatch, capsys, script, {"pr": 9, "items": items, "decisions": decisions})
+    shell = install_shell(monkeypatch, script, FakeShell({READ_HEAD: "def456\trefs/heads/42-fix-save"}))
+    script_input = {"pr": 9, "branch": "42-fix-save", "items": items, "decisions": decisions}
+    printed = run_main(monkeypatch, capsys, script, script_input)
     return printed, shell
 
 
@@ -200,10 +204,12 @@ def test_finish_items_replies_in_the_thread_of_an_inline_comment_with_the_commit
             {"kind": "comment", "reviewer": "", "title": "Rename it.", "verdict": "fixed", "reason": "Renamed."}
         ],
         "left": 0,
+        "head_sha": "def456",
     }
     assert shell.commands == [
+        READ_HEAD,
         "gh api repos/{owner}/{repo}/pulls/9/comments/1/replies "
-        "-f body=**Fixed** in abc. Renamed.\n\n<!-- resolve-pr-feedback-reply: 7 -->"
+        "-f body=**Fixed** in abc. Renamed.\n\n<!-- resolve-pr-feedback-reply: 7 -->",
     ]
 
 
@@ -216,8 +222,9 @@ def test_finish_items_quotes_a_review_comment_in_a_new_conversation_comment(
 
     assert printed["decisions"][0]["title"] == "Nice."
     assert shell.commands == [
+        READ_HEAD,
         "gh api repos/{owner}/{repo}/issues/9/comments "
-        "-f body=> Nice.\n\n**Dismissed**. Thanks!\n\n<!-- resolve-pr-feedback-reply: 2 -->"
+        "-f body=> Nice.\n\n**Dismissed**. Thanks!\n\n<!-- resolve-pr-feedback-reply: 2 -->",
     ]
 
 
@@ -245,5 +252,7 @@ def test_finish_items_only_records_a_finding_and_counts_the_items_with_no_decisi
             {"kind": "finding", "reviewer": "tests", "title": "No test", "verdict": "fixed", "reason": "Added."}
         ],
         "left": 1,
+        "head_sha": "def456",
     }
-    assert shell.commands == []
+    # The head is read before any reply: a failed read posts nothing, and the block has no retries.
+    assert shell.commands == [READ_HEAD]

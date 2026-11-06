@@ -16,5 +16,5 @@ scripts:
 expect:
   path: [checkout, collect_items, post_suggestions, resolved]
   status: succeeded
-  outputs: {fixed: 0, left: 0, decisions: []}
+  outputs: {fixed: 0, left: 0, decisions: [], head_sha: aaa}
   pending: ""

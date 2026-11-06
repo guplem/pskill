@@ -41,6 +41,7 @@ outputs:
         reason: {type: string}
   fixed: {type: integer, description: "How many items were fixed."}
   left: {type: integer, description: "How many items have no verdict, because the skill stopped at its cap. 0 when every item has one."}
+  head_sha: {type: string, description: "The head commit of the branch at the end, after every push of the skill. A caller compares it with an earlier head to know whether the skill pushed."}
 entry: checkout
 
 blocks:
@@ -108,6 +109,7 @@ blocks:
     run: [uv, run, "{{ skill.dir }}/scripts/finish_items.py"]
     input:
       pr: "{{ inputs.pr }}"
+      branch: "{{ steps.checkout.outputs.branch }}"
       items: "{{ steps.collect_items.json.queue }}"
       decisions: "{{ steps.resolve_items.decisions }}"
     parse: json
@@ -127,6 +129,8 @@ blocks:
       decisions: &decisions "{{ steps.finish_items.json.decisions | default([]) }}"
       fixed: &fixed "{{ steps.finish_items.json.decisions | default([]) | selectattr('verdict', 'equalto', 'fixed') | list | length }}"
       left: 0
+      # With nothing resolved, nothing was pushed: the head is the one that checkout found.
+      head_sha: &head_sha "{{ steps.finish_items.json.head_sha | default(steps.checkout.outputs.head_sha) }}"
     report: >-
       Tell the user how each item of pull request #{{ inputs.pr }} was resolved, one line per item:
       {% for decision in steps.finish_items.json.decisions | default([]) %}{{ decision.verdict }}
@@ -144,6 +148,7 @@ blocks:
       decisions: *decisions
       fixed: *fixed
       left: "{{ steps.finish_items.json.left }}"
+      head_sha: *head_sha
     report: >-
       Tell the user that the task stopped before the end of the list: {{ steps.finish_items.json.left }} of the
       {{ steps.collect_items.json.count }} items of pull request #{{ inputs.pr }} have no verdict and no reply yet. The
