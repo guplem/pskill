@@ -1,4 +1,4 @@
-Tell the user that the review of pull request #{{ inputs.pr }} is not posted, after {{ history.review | length }} review rounds.{% if run.mode == 'autonomous' %} Say that an autonomous run never posts a review: an interactive run posts it after the user confirms it.{% endif %}
+Tell the user that the review of pull request #{{ inputs.pr }} is not posted, after {{ history.review | length }} review rounds and {{ history.critical | length }} critical rounds.{% if run.mode == 'autonomous' %} Say that an autonomous run never posts a review: an interactive run posts it after the user confirms it.{% endif %}
 
 Show the drafted body, word for word:
 

@@ -2,18 +2,27 @@ name: two findings in doubt make two calls of the doubt skill, before the final 
 inputs: {pr: 700}
 calls:
   check_head_before_round:
-    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+    - {status: succeeded, outputs: {action: continue, head_sha: b2}}
+  check_head_before_critical:
+    - {status: succeeded, outputs: {action: continue, head_sha: b2}}
   check_head_before_post:
-    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+    - {status: succeeded, outputs: {action: continue, head_sha: b2}}
   review:
-    - {status: succeeded, outputs: {reviewed_sha: b2, scope_sha: b2, findings: [{reviewer: conventions, file: src/app.py, line: 5, severity: required, title: Breaks recorded decision 4, summary: S, quote: q}]}}
-    - {status: succeeded, outputs: {reviewed_sha: b2, scope_sha: b2, findings: []}}
+    - {status: succeeded, outputs: {reviewed_sha: b2, findings: [{reviewer: conventions, file: src/app.py, line: 5, severity: required, title: Breaks recorded decision 4, summary: S, quote: q}]}}
+    - {status: succeeded, outputs: {reviewed_sha: b2, findings: []}}
+  critical:
+    - {status: succeeded, outputs: {reviewed_sha: b2, findings: []}}
   settle_doubt:
     - {status: succeeded, outputs: {verdict: drop, reason: The caller caps it.}}
     - {status: succeeded, outputs: {verdict: suggestion, reason: The recorded decision allows it for scripts.}}
 scripts:
   read_earlier:
     - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  new_in_review:
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "conventions", "file": "src/app.py", "line": 5, "severity": "required", "title": "Breaks recorded decision 4", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
+  new_in_critical:
+    - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
     - {exit_code: 0, stdout: '{"findings": [{"reviewer": "conventions", "file": "src/app.py", "line": 5, "severity": "suggestion", "title": "Breaks recorded decision 4", "summary": "S", "quote": "q"}], "has_required": false}'}
   post:
@@ -31,6 +40,6 @@ answers:
   confirm:
     - {choice: post, rationale: The user picked it., $answered_by: human}
 expect:
-  path: [read_earlier, review, check_head_before_round, review, triage, settle_doubt, settle_doubt, final, draft, confirm, check_head_before_post, post, reviewed]
+  path: [read_earlier, review, new_in_review, check_head_before_round, review, new_in_review, check_head_before_critical, critical, new_in_critical, triage, settle_doubt, settle_doubt, final, draft, confirm, check_head_before_post, post, reviewed]
   status: succeeded
   outputs: {result: approved, review_url: u2}

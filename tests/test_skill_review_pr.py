@@ -1,4 +1,4 @@
-"""Tests for the review-pr skill: its scripts, and the copies of the finding acceptance rules."""
+"""Tests for the review-pr skill: its scripts, its edges and texts, and the copies of the finding acceptance rules."""
 
 import io
 import json
@@ -6,7 +6,9 @@ import subprocess
 from typing import Any
 
 import pytest
+import yaml
 
+from pskill_runner.computed_values import compute, is_true, render_text
 from pskill_runner.skill_loader import load_skill
 from pskill_runner.skill_model import TaskBlock
 from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
@@ -439,3 +441,165 @@ def test_authoring_points_to_the_examples_of_a_fresh_context() -> None:
 
     assert "The example skills show `context: fresh`" in text
     assert "`review-pr` `triage`" in text
+
+
+SKILL_YAML = yaml.safe_load((SKILLS_FOLDER / SKILL / "skill.yaml").read_text(encoding="utf-8"))
+BLOCKS = SKILL_YAML["blocks"]
+
+
+def round_with(*findings: dict[str, Any], reviewed_sha: str = "h1") -> dict[str, Any]:
+    return {"outputs": {"findings": list(findings), "reviewed_sha": reviewed_sha}}
+
+
+def rounds_context(review: list[dict[str, Any]], critical: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+    """The context of the runner after these review and critical rounds: `steps` holds the last visit of each."""
+    steps: dict[str, Any] = {"read_earlier": {"json": {"dismissed": []}}}
+    if review:
+        steps["review"] = review[-1]
+    if critical:
+        steps["critical"] = critical[-1]
+    return {
+        "inputs": {"pr": 7, "max_rounds": extra.pop("max_rounds", 10)},
+        "history": {"review": review, "critical": critical},
+        "steps": {**steps, **extra},
+        "skill": {"dir": "skill"},
+    }
+
+
+def rendered_inputs(block: str, field: str, context: dict[str, Any]) -> dict[str, Any]:
+    return {key: compute(value, context) for key, value in BLOCKS[block][field].items()}
+
+
+def next_block(block: str, review: int, critical: int, max_rounds: int = 10, **script_json: Any) -> str:
+    """The block that the first true edge of `block` leads to, as the runner picks it."""
+    script_steps = {name: {"json": script_json} for name in ("new_in_review", "new_in_critical")}
+    context = rounds_context([round_with()] * review, [round_with()] * critical, max_rounds=max_rounds, **script_steps)
+    return str(
+        next(edge["to"] for edge in BLOCKS[block]["next"] if "when" not in edge or is_true(edge["when"], context))
+    )
+
+
+def test_max_rounds_counts_both_phases_and_says_what_a_small_value_does() -> None:
+    max_rounds = SKILL_YAML["inputs"]["max_rounds"]
+
+    assert max_rounds["default"] == 10
+    assert "review rounds and critical rounds together" in max_rounds["description"]
+    assert "with 4 or less" in max_rounds["description"]
+
+
+def test_a_review_round_gets_its_number_and_every_earlier_finding_of_the_run_to_skip() -> None:
+    context = rounds_context([round_with(finding("R1")), round_with(finding("R2", line=3))], [])
+
+    assert rendered_inputs("review", "inputs", context) == {
+        "pr": 7,
+        "round": 3,
+        "reported": [finding("R1"), finding("R2", line=3)],
+        "dismissed": [],
+    }
+
+
+def test_a_critical_round_gets_every_finding_of_both_phases_to_skip() -> None:
+    context = rounds_context([round_with(finding("R1"))], [round_with(finding("C1", line=3))])
+
+    assert rendered_inputs("critical", "inputs", context) == {
+        "pr": 7,
+        "critical": True,
+        "reported": [finding("R1"), finding("C1", line=3)],
+        "dismissed": [],
+    }
+
+
+@pytest.mark.parametrize(("block", "critical_rounds"), [("new_in_review", 0), ("new_in_critical", 2)])
+def test_the_new_findings_script_gets_the_last_round_and_every_earlier_round_of_the_run(
+    block: str, critical_rounds: int
+) -> None:
+    rounds = [round_with(finding(f"F{index}", line=index)) for index in range(4)]
+    review, critical = rounds[: 4 - critical_rounds], rounds[4 - critical_rounds :]
+
+    assert rendered_inputs(block, "input", rounds_context(review, critical)) == {
+        "findings": [finding("F3", line=3)],
+        "reported": [finding("F0", line=0), finding("F1", line=1), finding("F2", line=2)],
+    }
+
+
+def test_a_review_round_below_round_4_and_below_max_rounds_counts_its_new_findings() -> None:
+    assert next_block("review", review=3, critical=0) == "new_in_review"
+
+
+def test_round_4_goes_to_the_critical_rounds_and_max_rounds_to_the_triage() -> None:
+    assert next_block("review", review=4, critical=0) == "check_head_before_critical"
+    assert next_block("review", review=4, critical=0, max_rounds=4) == "triage"
+    assert next_block("review", review=1, critical=0, max_rounds=1) == "triage"
+
+
+def test_a_review_round_with_a_new_required_finding_goes_on_and_one_without_ends_the_phase() -> None:
+    assert next_block("new_in_review", review=1, critical=0, required=1) == "check_head_before_round"
+    assert next_block("new_in_review", review=1, critical=0, required=0) == "check_head_before_critical"
+
+
+def test_a_critical_round_below_its_caps_counts_its_new_findings() -> None:
+    assert next_block("critical", review=1, critical=5) == "new_in_critical"
+
+
+@pytest.mark.parametrize(
+    ("review", "critical", "max_rounds"), [(1, 6, 10), (4, 6, 10), (2, 3, 5)], ids=["6 critical rounds", "10", "5"]
+)
+def test_a_critical_round_at_a_cap_goes_to_the_triage(review: int, critical: int, max_rounds: int) -> None:
+    assert next_block("critical", review=review, critical=critical, max_rounds=max_rounds) == "triage"
+
+
+def test_a_critical_round_with_a_new_finding_goes_on_and_one_without_ends_the_review() -> None:
+    assert next_block("new_in_critical", review=1, critical=1, new=[finding("C")]) == "check_head_before_critical"
+    assert next_block("new_in_critical", review=1, critical=1, new=[]) == "triage"
+
+
+@pytest.mark.parametrize(("critical", "expected"), [([], "r1"), ([round_with(reviewed_sha="c2")], "c2")])
+def test_the_post_and_its_head_check_use_the_commit_of_the_last_round(
+    critical: list[dict[str, Any]], expected: str
+) -> None:
+    context = rounds_context([round_with(reviewed_sha="r1")], critical, draft={"body": "B"})
+    context["steps"]["final"] = {"json": {"findings": [], "has_required": False}}
+
+    assert rendered_inputs("post", "input", context)["commit"] == expected
+    assert rendered_inputs("check_head_before_post", "inputs", context)["reviewed_sha"] == expected
+
+
+def instruction_text(name: str, context: dict[str, Any]) -> str:
+    template = (SKILLS_FOLDER / SKILL / "instructions" / f"{name}.md").read_text(encoding="utf-8")
+    return render_text(template, context)
+
+
+def test_the_triage_gets_the_findings_of_both_phases_and_keeps_a_critical_finding_required() -> None:
+    context = rounds_context([round_with(finding("R1"))], [round_with(finding("C1"), reviewed_sha="c2")])
+
+    text = instruction_text("triage", context)
+
+    assert "1 review rounds and the 1 critical rounds" in text and "The head commit is `c2`" in text
+    assert '"R1"' in text and '"C1"' in text
+    assert "the scope commit is the head commit `c2`" in text
+    assert "a finding of a critical round is `required`: keep it `required` or drop it" in text
+
+
+@pytest.mark.parametrize("name", ["report_reviewed", "report_not_posted"])
+def test_the_reports_count_the_rounds_of_both_phases(name: str) -> None:
+    context = rounds_context([round_with()] * 2, [round_with()] * 3)
+    context["run"] = {"mode": "interactive"}
+    context["steps"].update(
+        post={"json": {"review_url": "u", "result": "approved", "inline": 0, "in_body": 0, "fallback": False}},
+        draft={"body": "B"},
+        final={"json": {"findings": []}},
+        triage={"still_open": [], "dropped": []},
+    )
+
+    assert "after 2 review rounds and 3 critical rounds" in instruction_text(name, context)
+
+
+@pytest.mark.parametrize("name", ["report_restarted", "report_stopped"])
+def test_the_head_reports_name_the_head_of_the_check_that_stopped_the_review(name: str) -> None:
+    checks = {
+        "check_head_before_round": {"outputs": {"head_sha": "old"}},
+        "check_head_before_critical": {"outputs": {"head_sha": "new"}},
+    }
+    context = rounds_context([round_with()], [], **checks)
+
+    assert "`new`" in instruction_text(name, context) and "`old`" not in instruction_text(name, context)

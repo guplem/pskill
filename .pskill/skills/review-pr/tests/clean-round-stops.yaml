@@ -1,21 +1,34 @@
-name: a round with no new finding ends the loop, and the review posts after the user confirms it
+name: a review round and then a critical round with no new finding end the two phases, and the review posts after the user confirms it
 inputs: {pr: 700}
 calls:
   check_head_before_round:
-    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+    - {status: succeeded, inputs: {reviewed_sha: a1}, outputs: {action: continue, head_sha: a1}}
+  check_head_before_critical:
+    - {status: succeeded, inputs: {reviewed_sha: a1}, outputs: {action: continue, head_sha: a1}}
   check_head_before_post:
-    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
+    - {status: succeeded, inputs: {reviewed_sha: a1}, outputs: {action: continue, head_sha: a1}}
   review:
     - status: succeeded
+      inputs: {round: 1, reported: []}
       outputs:
         reviewed_sha: a1
-        scope_sha: a1
         findings:
           - {reviewer: correctness, file: src/app.py, line: 3, severity: required, title: Retry has no cap, summary: S, quote: q}
-    - {status: succeeded, outputs: {reviewed_sha: a1, scope_sha: a1, findings: []}}
+    - status: succeeded
+      inputs: {round: 2, reported: [{reviewer: correctness, file: src/app.py, line: 3, severity: required, title: Retry has no cap, summary: S, quote: q}]}
+      outputs: {reviewed_sha: a1, findings: []}
+  critical:
+    - status: succeeded
+      inputs: {critical: true, reported: [{reviewer: correctness, file: src/app.py, line: 3, severity: required, title: Retry has no cap, summary: S, quote: q}]}
+      outputs: {reviewed_sha: a1, findings: []}
 scripts:
   read_earlier:
     - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  new_in_review:
+    - {exit_code: 0, stdout: '{"new": [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Retry has no cap", "summary": "S", "quote": "q"}], "required": 1}'}
+    - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
+  new_in_critical:
+    - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
     - {exit_code: 0, stdout: '{"findings": [{"reviewer": "correctness", "file": "src/app.py", "line": 3, "severity": "required", "title": "Retry has no cap", "summary": "S", "quote": "q"}], "has_required": true}'}
   post:
@@ -31,7 +44,7 @@ answers:
   confirm:
     - {choice: post, rationale: The user picked it., $answered_by: human}
 expect:
-  path: [read_earlier, review, check_head_before_round, review, triage, final, draft, confirm, check_head_before_post, post, reviewed]
+  path: [read_earlier, review, new_in_review, check_head_before_round, review, new_in_review, check_head_before_critical, critical, new_in_critical, triage, final, draft, confirm, check_head_before_post, post, reviewed]
   status: succeeded
   outputs: {result: changes_requested, review_url: u1}
   pending: "The author of pull request #700 answers the open findings of the review."

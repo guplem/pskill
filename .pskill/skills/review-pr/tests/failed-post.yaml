@@ -4,10 +4,18 @@ calls:
   check_head_before_post:
     - {status: succeeded, outputs: {action: continue, head_sha: h1}}
   review:
-    - {status: succeeded, outputs: {reviewed_sha: f6, scope_sha: f6, findings: []}}
+    - {status: succeeded, outputs: {reviewed_sha: f6, findings: []}}
+  critical:
+    - {status: succeeded, outputs: {reviewed_sha: f6, findings: []}}
+  check_head_before_critical:
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
 scripts:
   read_earlier:
     - {exit_code: 0, stdout: '{"dismissed": [], "count": 0}'}
+  new_in_review:
+    - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
+  new_in_critical:
+    - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
     - {exit_code: 0, stdout: '{"findings": [], "has_required": false}'}
   post:
@@ -20,5 +28,5 @@ answers:
   confirm:
     - {choice: post, rationale: The user picked it., $answered_by: human}
 expect:
-  path: [read_earlier, review, triage, final, draft, confirm, check_head_before_post, post]
+  path: [read_earlier, review, new_in_review, check_head_before_critical, critical, new_in_critical, triage, final, draft, confirm, check_head_before_post, post]
   status: paused
