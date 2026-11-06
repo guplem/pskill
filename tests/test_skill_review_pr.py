@@ -30,6 +30,16 @@ def test_every_reader_has_the_same_finding_acceptance_rules() -> None:
     assert len(set(copies.values())) == 1, f"The copies differ: {sorted(copies)}. Change all four together."
 
 
+def test_out_of_scope_never_hides_a_failure_that_a_line_of_the_pull_request_causes() -> None:
+    text = " ".join(
+        (SKILLS_FOLDER / SKILL / "references" / "finding-acceptance.md").read_text(encoding="utf-8").split()
+    )
+
+    assert "**A failure that a line of the pull request causes always belongs to it**" in text
+    assert "a wrong result, a crash, data loss, a security hole, or a broken contract" in text
+    assert 'The "Out of scope" section of the issue or the plan only excludes requests for more work.' in text
+
+
 def finding(
     title: str, severity: str = "required", file: str = "a.py", line: int = 2, quote: str = "b"
 ) -> dict[str, Any]:
