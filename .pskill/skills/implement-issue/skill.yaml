@@ -23,6 +23,9 @@ outputs:
 x-reported: &reported "{{ ((history.review | default([])) + (history.critical | default([]))) | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) | list }}"
 # The findings that a resolution of this run dismissed.
 x-dismissed: &dismissed "{{ ((history.resolve | default([])) + (history.critical_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
+# The commit that ends the acceptance scope of finding-acceptance.md: the head that the first review round reviewed.
+# The fix commits after it are in scope, but an older function that they touch does not bring its older problems in.
+x-scope-sha: &scope_sha "{{ history.review[0].outputs.reviewed_sha if history.review | default([]) else '' }}"
 entry:
   - when: "{{ inputs.request is matches('^ *#?[0-9]+ *$|^ *https://github[.]com/[^ ]+/issues/[0-9]+ *$') }}"
     to: read_issue
@@ -211,6 +214,7 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       round: "{{ (history.review | default([]) | length) + 1 }}"
+      scope_sha: *scope_sha
       reported: *reported
       dismissed: *dismissed
     # The arrow from resolve already limits the phase to 4 rounds. This cap is only a safety net, so it never asks.
@@ -230,6 +234,7 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       findings: "{{ steps.review.outputs.findings | selectattr('severity', 'equalto', 'required') | list }}"
+      scope_sha: *scope_sha
     next:
       # A round with a required finding gets the next round, up to round 4.
       - when: "{{ (history.review | length) < 4 }}"
@@ -245,6 +250,7 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       critical: true
+      scope_sha: *scope_sha
       reported: *reported
       dismissed: *dismissed
     # The arrow from critical_resolve stops the loop at 6 rounds. After that, each push of CI or of a comment gets one
@@ -270,6 +276,7 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       findings: "{{ steps.critical.outputs.findings }}"
+      scope_sha: *scope_sha
     next:
       - when: "{{ (history.critical | length) < 6 }}"
         to: critical
@@ -309,6 +316,7 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       # The first round after CI lists the suggestions of the review rounds in one comment, for a person.
+      scope_sha: *scope_sha
       findings: "{{ [] if history.answer_comments | default([]) else (history.review | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) | selectattr('severity', 'equalto', 'suggestion') | list) }}"
     next:
       # Any pushed commit gets a critical round, then CI again, also after the 6th round. A CI fix moves the head away

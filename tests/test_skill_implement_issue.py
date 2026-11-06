@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from pskill_runner.computed_values import render_text
+from pskill_runner.computed_values import compute, render_text
 from pskill_runner.skill_loader import load_skill
 from pskill_runner.skill_model import CallBlock, EndBlock, TaskBlock
 from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
@@ -623,3 +623,17 @@ def test_no_critical_limit_names_no_unreviewed_commit(name: str) -> None:
 
 def test_the_report_counts_the_review_and_the_critical_rounds() -> None:
     assert "- Review rounds: 2, then 6 critical rounds." in rendered_instruction("report.md", [])
+
+
+SCOPED_CALLS = ["review", "resolve", "critical", "critical_resolve", "answer_comments"]
+
+
+@pytest.mark.parametrize("name", SCOPED_CALLS)
+def test_every_review_and_resolution_pins_the_scope_to_the_head_of_the_first_review_round(name: str) -> None:
+    block = load_skill(SKILLS_FOLDER / SKILL).blocks[name]
+    assert isinstance(block, CallBlock)
+    first_round = {"outputs": {"findings": [], "reviewed_sha": "r1"}}
+    later_round = {"outputs": {"findings": [], "reviewed_sha": "r2"}}
+
+    assert compute(block.inputs["scope_sha"], {"history": {}}) == ""
+    assert compute(block.inputs["scope_sha"], {"history": {"review": [first_round, later_round]}}) == "r1"

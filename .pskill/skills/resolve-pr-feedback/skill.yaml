@@ -26,7 +26,7 @@ inputs:
     type: string
     optional: true
     default: ""
-    description: "The commit that ends the scope, as review-round gives it. Empty means the head commit."
+    description: "The commit that ends the acceptance scope (the head of the first review round); empty means the head."
 outputs:
   decisions:
     type: array
