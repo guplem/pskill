@@ -39,8 +39,8 @@ inputs:
     description: >-
       The number of this round in the review phase, 1 to 4. Each reviewer runs up to its last round (the table above
       the rows of the review block). Round 1 reports required findings and suggestions, round 2 required findings
-      only, round 3 only broken code and texts that the change makes false, and round 4 only broken code, with the
-      critical bar. A critical round ignores it.
+      only, round 3 only broken code, texts that the change makes false, and missing deliverables, and round 4 only
+      broken code, with the critical bar. A critical round ignores it.
   critical:
     type: boolean
     optional: true

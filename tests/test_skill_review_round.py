@@ -267,24 +267,41 @@ def test_each_round_gets_its_own_bar(round_number: int, critical: bool, bar: str
     assert [name for name in (ROUND_2_BAR, ROUND_3_BAR, CRITICAL_BAR) if name in text] == ([bar] if bar else [])
 
 
-def test_the_round_3_bar_keeps_broken_code_and_false_texts_only() -> None:
+def test_the_round_3_bar_keeps_broken_code_false_texts_and_missing_deliverables_only() -> None:
     text = review_text(3)
 
     assert (
         "only these: a wrong result, a crash, data loss, a security hole, a broken contract for a caller, a type"
-        " error, or a text (doc, comment, ADR, message) that the change makes false." in text
+        " error, a text (doc, comment, ADR, message) that the change makes false, or a deliverable that the issue or"
+        " the plan asks for and the pull request does not build." in text
     )
     assert "Skip style, pattern, convention, and test findings." in text
 
 
-def test_the_critical_bar_asks_for_a_failure_path_and_every_sibling_site() -> None:
+def test_the_critical_bar_asks_for_every_failure_path_with_its_input() -> None:
     text = review_text(4)
 
     assert "Report only what the new code of this pull request breaks" in text
     assert "Each finding names the input or call that reaches the line and the wrong outcome" in text
-    assert "list every sibling site of the same bug" in text
+    assert "Report every failure path that you find in this one report." in text
     assert "Every finding is `required`." in text
     assert "Out of scope: only a failure that the base branch already shows through the same entry point." in text
+
+
+@pytest.mark.parametrize("round_number", [2, 3])
+def test_in_rounds_2_and_3_a_wrong_outcome_is_never_a_suggestion(round_number: int) -> None:
+    assert "A wrong outcome is never a suggestion." in review_text(round_number)
+
+
+SIBLING_RULE = (
+    "List every sibling site of the same problem (the same route, the same input shape, the same helper) in the same"
+    " finding; keep none back for a later round."
+)
+
+
+@pytest.mark.parametrize(("round_number", "critical"), [(1, False), (2, False), (3, False), (4, False), (1, True)])
+def test_every_round_lists_every_sibling_site_in_the_same_finding(round_number: int, critical: bool) -> None:
+    assert review_text(round_number, critical=critical).count(SIBLING_RULE) == 1
 
 
 def test_a_round_with_no_earlier_finding_has_no_earlier_findings_text() -> None:
