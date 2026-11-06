@@ -1,10 +1,12 @@
 """Tests for the review-round skill's scripts."""
 
+import re
 from typing import Any
 
 import pytest
 import yaml
 
+from pskill_runner.computed_values import compute, render_text
 from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
 
 SKILL = "review-round"
@@ -134,13 +136,107 @@ def test_the_rule_reviewers_run_on_the_standard_tier_and_correctness_keeps_the_s
     }
 
 
-def test_a_round_since_a_commit_raises_only_broken_code() -> None:
-    text = (SKILLS_FOLDER / SKILL / "instructions" / "review.md").read_text(encoding="utf-8")
-    since_sha = text[text.index("{% if inputs.since_sha %}") :]
-    since_sha = since_sha[: since_sha.index("{% endif %}")]
+LAST_ROUNDS = {"correctness": 4, "completeness": 3, "docs": 3, "tests": 2, "conventions": 2}
+TABLE_ROW = re.compile(r"^ *# \| (?P<name>[a-z-]+) +\| (?P<last>\d+|critical) +\|", re.MULTILINE)
+
+
+def runs(name: str, round_number: int = 1, code_paths: list[str] | None = None) -> bool:
+    """Whether the row of a reviewer runs in a round, by its `when` as the runner computes it."""
+    _, rows = reviewer_rows()
+    context = {
+        "inputs": {"round": round_number, "critical": False},
+        "steps": {"read_pr": {"json": {"code_paths": ["src/app.py"] if code_paths is None else code_paths}}},
+    }
+    return bool(compute(rows[name]["when"], context))
+
+
+@pytest.mark.parametrize(("name", "last"), LAST_ROUNDS.items())
+def test_each_reviewer_runs_from_round_1_to_its_last_round(name: str, last: int) -> None:
+    assert [round_number for round_number in range(1, 6) if runs(name, round_number)] == list(range(1, last + 1))
+
+
+def test_the_table_comment_lists_the_last_round_of_every_reviewer() -> None:
+    text = (SKILLS_FOLDER / SKILL / "skill.yaml").read_text(encoding="utf-8")
+
+    table = {match["name"]: match["last"] for match in TABLE_ROW.finditer(text)}
+
+    assert table == {name: str(last) for name, last in LAST_ROUNDS.items()}
+
+
+@pytest.mark.parametrize("name", ["correctness", "tests"])
+def test_a_change_of_docs_only_skips_the_code_reviewers_in_every_round(name: str) -> None:
+    assert not any(runs(name, round_number, code_paths=[]) for round_number in range(1, 5))
+
+
+def review_text(round_number: int = 1, **inputs: Any) -> str:
+    """The instruction of the review block, as a reviewer of a round gets it."""
+    template = (SKILLS_FOLDER / SKILL / "instructions" / "review.md").read_text(encoding="utf-8")
+    context = {
+        "inputs": {"pr": 9, "round": round_number, "critical": False, "dismissed": [], "reported": [], **inputs},
+        "item": {"name": "correctness", "focus": "Correctness."},
+        "steps": {"checkout": {"outputs": {"head_sha": "abc", "base": "main", "plan_file": ""}}},
+        "skill": {"dir": ".pskill/skills/review-round"},
+    }
+    return render_text(template, context)
+
+
+@pytest.mark.parametrize("round_number", [1, 2, 3, 4])
+def test_every_round_reviews_the_whole_pull_request_at_the_head_commit(round_number: int) -> None:
+    text = review_text(round_number)
+
+    assert "Review the whole pull request" in text
+    assert "`git diff origin/main...abc`" in text
+    assert "the scope commit is `abc`, the head commit" in text
+
+
+ROUND_2_BAR = "**Only required findings:**"
+ROUND_3_BAR = "**The round 3 bar:**"
+CRITICAL_BAR = "**The critical bar:**"
+
+
+@pytest.mark.parametrize(
+    ("round_number", "bar"), [(1, None), (2, ROUND_2_BAR), (3, ROUND_3_BAR), (4, CRITICAL_BAR), (5, CRITICAL_BAR)]
+)
+def test_each_round_gets_its_own_bar(round_number: int, bar: str | None) -> None:
+    text = review_text(round_number)
+
+    assert [name for name in (ROUND_2_BAR, ROUND_3_BAR, CRITICAL_BAR) if name in text] == ([bar] if bar else [])
+
+
+def test_the_round_3_bar_keeps_broken_code_and_false_texts_only() -> None:
+    text = review_text(3)
 
     assert (
-        "`required` here is only broken code: wrong output, a security hole, a missing or broken test for new behavior,"
-        " a type error, or text that the new code makes false." in since_sha
+        "only these: a wrong result, a crash, data loss, a security hole, a broken contract for a caller, a type"
+        " error, or a text (doc, comment, ADR, message) that the change makes false." in text
     )
-    assert "A finding that only breaks a style rule or a project pattern is a `suggestion`" in since_sha
+    assert "Skip style, pattern, convention, and test findings." in text
+
+
+def test_the_critical_bar_asks_for_a_failure_path_and_every_sibling_site() -> None:
+    text = review_text(4)
+
+    assert "Report only what the new code of this pull request breaks" in text
+    assert "Each finding names the input or call that reaches the line and the wrong outcome" in text
+    assert "list every sibling site of the same bug" in text
+    assert "Every finding is `required`." in text
+    assert "Out of scope: only a failure that the base branch already shows through the same entry point." in text
+
+
+def test_a_round_with_no_earlier_finding_has_no_earlier_findings_text() -> None:
+    assert "**Earlier findings:**" not in review_text(2)
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    [
+        {"dismissed": [{"reviewer": "docs", "title": "Stale", "reason": "Not stale."}]},
+        {"reported": [{"reviewer": "tests", "file": "a.py", "line": 3, "title": "No test", "severity": "required"}]},
+    ],
+)
+def test_earlier_findings_are_listed_only_so_that_the_reviewers_skip_them(inputs: dict[str, Any]) -> None:
+    text = review_text(2, **inputs)
+
+    assert "the lists below name earlier findings only so that you skip them" in text
+    assert "every changed function of the whole diff, not the last fix commits" in text
+    assert "a test, text, or convention finding at a line does not cover a bug at that line" in text
