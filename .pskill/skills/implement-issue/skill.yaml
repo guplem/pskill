@@ -261,12 +261,6 @@ blocks:
     next:
       - when: "{{ steps.critical.outputs.findings }}"
         to: critical_resolve
-      # CI ended failed on the head that this round reviewed: nothing was pushed since CI ran. Another CI call would
-      # only restart its fix budget, so only a fix of a critical round or of a comment starts CI again.
-      - when: >-
-          {{ steps.get_ci_green is defined and steps.get_ci_green.outputs.state == 'failed'
-          and steps.critical.outputs.reviewed_sha == steps.get_ci_green.outputs.head_sha }}
-        to: limits
       - to: ready
 
   critical_resolve:
@@ -281,11 +275,7 @@ blocks:
       - when: "{{ (history.critical | length) < 6 }}"
         to: critical
       # At the cap, and after the one round of a later push, the fix goes to CI with no review, and finish names its
-      # commits. A resolution that fixed nothing leaves the head on which CI failed: as for a clean round, finish.
-      - when: >-
-          {{ steps.critical_resolve.outputs.fixed == 0 and steps.get_ci_green is defined
-          and steps.get_ci_green.outputs.state == 'failed' and steps.critical.outputs.reviewed_sha == steps.get_ci_green.outputs.head_sha }}
-        to: limits
+      # commits. A resolution that fixed nothing leaves the head where CI may have run already: ready checks it.
       - to: ready
 
   # Phase 3: CI on a ready pull request, then the comments that arrived during it.
@@ -295,7 +285,16 @@ blocks:
     run: [uv, run, "{{ skill.dir }}/scripts/mark_ready.py"]
     input: {pr: "{{ steps.open_draft_pr.json.pr_number }}", branch: "{{ steps.checkout_base.json.branch }}", plan_file: "{{ steps.checkout_base.json.plan_file }}"}
     parse: json
-    next: get_ci_green
+    next:
+      # CI already ran on this exact head: nothing was pushed since it ran. It does not wait again, so a failed CI
+      # never restarts its fix budget: failed finishes, and passed goes on to the comments.
+      - when: >-
+          {{ steps.get_ci_green is defined and steps.get_ci_green.outputs.head_sha == steps.ready.json.head_sha
+          and steps.get_ci_green.outputs.state == 'failed' }}
+        to: limits
+      - when: "{{ steps.get_ci_green is defined and steps.get_ci_green.outputs.head_sha == steps.ready.json.head_sha }}"
+        to: answer_comments
+      - to: get_ci_green
 
   get_ci_green:
     type: call
