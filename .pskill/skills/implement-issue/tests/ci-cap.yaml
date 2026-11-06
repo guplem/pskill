@@ -2,7 +2,7 @@ name: each CI run pushes a fix that gets a critical round, so CI runs 7 times, t
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": ["get_ci_green"]}'}
+    - {exit_code: 0, stdout: '{"limits": ["get_ci_green"], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-

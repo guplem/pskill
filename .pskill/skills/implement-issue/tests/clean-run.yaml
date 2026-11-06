@@ -2,7 +2,7 @@ name: an issue with no gap gets a plan, one red-green cycle, a clean review roun
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": []}'}
+    - {exit_code: 0, stdout: '{"limits": [], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-

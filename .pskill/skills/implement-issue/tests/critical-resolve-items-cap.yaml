@@ -2,7 +2,7 @@ name: a critical fix round that stops before the end of its list ends the run ca
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": ["resolve_items"]}'}
+    - {exit_code: 0, stdout: '{"limits": ["resolve_items"], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-

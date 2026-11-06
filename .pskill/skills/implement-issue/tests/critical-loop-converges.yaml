@@ -2,7 +2,7 @@ name: a critical finding gets fixed, the next critical round gets every earlier 
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": []}'}
+    - {exit_code: 0, stdout: '{"limits": [], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-

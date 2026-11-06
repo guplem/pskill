@@ -2,7 +2,7 @@ name: the 6th critical round's findings get fixed with no review, CI runs on tha
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": ["critical"]}'}
+    - {exit_code: 0, stdout: '{"limits": ["critical"], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-

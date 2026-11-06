@@ -254,9 +254,9 @@ blocks:
       reported: *reported
       dismissed: *dismissed
     # The arrow from critical_resolve stops the loop at 6 rounds. After that, each push of CI or of a comment gets one
-    # round, so the CI cap bounds them: this cap is only a safety net, so it never asks.
+    # round. This cap is only a safety net, so it never asks: list_limits.py names a push that it stops.
     max_visits: 13
-    on_max_visits: ready
+    on_max_visits: limits
     ask_on_max_visits: false
     next:
       - when: "{{ steps.critical.outputs.findings }}"
@@ -335,7 +335,7 @@ blocks:
       ci_runs: "{{ history.get_ci_green | default([]) | length }}"
       critical_rounds: "{{ history.critical | default([]) | length }}"
       last_critical_findings: "{{ steps.critical.outputs.findings | length }}"
-      last_critical_fixed: "{{ steps.critical_resolve.outputs.fixed if steps.critical_resolve is defined else 0 }}"
+      pushed_since_ready: "{{ steps.answer_comments is defined and steps.answer_comments.outputs.head_sha != steps.ready.json.head_sha }}"
       items_left: "{{ (history.resolve + history.critical_resolve + history.answer_comments) | map(attribute='outputs') | selectattr('left') | list | length }}"
     parse: json
     next: finish

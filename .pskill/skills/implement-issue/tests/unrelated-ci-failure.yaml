@@ -2,7 +2,7 @@ name: a CI failure that the pull request did not cause ends the run with the hum
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": []}'}
+    - {exit_code: 0, stdout: '{"limits": [], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-

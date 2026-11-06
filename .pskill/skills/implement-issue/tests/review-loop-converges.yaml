@@ -2,7 +2,7 @@ name: a round with a required finding gets a fix and the next round, also when t
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": []}'}
+    - {exit_code: 0, stdout: '{"limits": [], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-

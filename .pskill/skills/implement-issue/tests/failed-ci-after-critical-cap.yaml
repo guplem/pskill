@@ -1,8 +1,8 @@
-name: after the critical cap, a round on the head of a failed CI whose finding is dismissed finishes the run
+name: after the critical cap, a round on the head of a failed CI whose finding is dismissed finishes the run, capped by the critical limit
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": []}'}
+    - {exit_code: 0, stdout: '{"limits": ["critical"], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-
@@ -56,6 +56,6 @@ answers:
   finish:
     - {labels: [waiting-for-human-review], reasons: CI is not green.}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, critical, critical_resolve, critical, critical_resolve, critical, critical_resolve, critical, critical_resolve, critical, critical_resolve, critical, critical_resolve, ready, get_ci_green, answer_comments, critical, critical_resolve, limits, finish, done]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, critical, critical_resolve, critical, critical_resolve, critical, critical_resolve, critical, critical_resolve, critical, critical_resolve, critical, critical_resolve, ready, get_ci_green, answer_comments, critical, critical_resolve, limits, finish, capped]
   status: succeeded
-  outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9"}
+  outputs: {result: capped, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9", limits: [critical]}

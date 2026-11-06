@@ -2,7 +2,7 @@ name: a CI fix gets a critical round, then CI runs again on the reviewed head
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": []}'}
+    - {exit_code: 0, stdout: '{"limits": [], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-

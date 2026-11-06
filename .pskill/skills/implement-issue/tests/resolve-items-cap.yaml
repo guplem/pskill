@@ -2,7 +2,7 @@ name: a feedback round that stops before the end of its list lets the run go on,
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": ["resolve_items"]}'}
+    - {exit_code: 0, stdout: '{"limits": ["resolve_items"], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-

@@ -2,7 +2,7 @@ name: after the critical cap, a CI fix still gets one critical round, and the fi
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": ["critical"]}'}
+    - {exit_code: 0, stdout: '{"limits": ["critical"], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-

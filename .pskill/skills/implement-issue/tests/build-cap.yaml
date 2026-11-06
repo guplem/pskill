@@ -2,7 +2,7 @@ name: the build stops at its cap of 40 red-green cycles, the run still reviews a
 inputs: {request: "#42"}
 scripts:
   limits:
-    - {exit_code: 0, stdout: '{"limits": ["implement_step"]}'}
+    - {exit_code: 0, stdout: '{"limits": ["implement_step"], "unreviewed_push": false}'}
   read_issue:
     - exit_code: 0
       stdout: >-
