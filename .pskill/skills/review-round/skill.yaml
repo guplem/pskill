@@ -59,13 +59,14 @@ inputs:
       properties:
         reviewer: {type: string, description: "The reviewer that reported it."}
         title: {type: string, description: "The title of the finding."}
+        severity: {type: string, enum: [required, suggestion], optional: true, description: "Its severity, when known."}
         reason: {type: string, description: "What became of it, and why."}
   reported:
     type: array
     optional: true
     description: >-
-      Findings that earlier rounds of the same review reported. The reviewers get them only to skip them: they review
-      the code that no earlier finding names. The findings output gives this shape.
+      Findings that earlier rounds of the same review reported. The reviewers get them only to skip these exact
+      problems: they still review every changed function of the whole diff. The findings output gives this shape.
     items: *reviewed_finding
 outputs:
   findings:

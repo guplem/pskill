@@ -302,8 +302,32 @@ def test_earlier_findings_are_listed_only_so_that_the_reviewers_skip_them(inputs
     text = review_text(2, **inputs)
 
     assert "the lists below name earlier findings only so that you skip them" in text
-    assert "every changed function of the whole diff, not the last fix commits" in text
+    assert (
+        "Review every changed function of the whole diff, the fix commits included, as for the first time;"
+        " skip only the exact problems listed." in text
+    )
+    assert "not the last fix commits" not in text
+    assert "The same finding means the same wrong outcome at the same place" in text
     assert "a test, text, or convention finding at a line does not cover a bug at that line" in text
+    assert (
+        "A listed suggestion was never fixed, and it never covers a wrong outcome: when its problem is a wrong"
+        " outcome under the bar of this round, report it as `required`." in text
+    )
+
+
+def test_each_earlier_finding_is_listed_with_its_severity_and_its_reviewer() -> None:
+    text = review_text(
+        2,
+        reported=[{"reviewer": "tests", "file": "a.py", "line": 3, "title": "No test", "severity": "suggestion"}],
+        dismissed=[
+            {"reviewer": "docs", "title": "Stale", "severity": "required", "reason": "Not stale."},
+            {"reviewer": "correctness", "title": "Null role", "reason": "The route checks it."},
+        ],
+    )
+
+    assert '- [suggestion] "No test" at `a.py:3` (tests reviewer)' in text
+    assert '- [required] "Stale" (docs reviewer): Not stale.' in text
+    assert '- "Null role" (correctness reviewer): The route checks it.' in text
 
 
 DISMISSED = [{"reviewer": "correctness", "title": "Null role", "reason": "The route checks it."}]
