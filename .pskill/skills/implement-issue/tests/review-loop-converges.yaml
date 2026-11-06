@@ -1,4 +1,4 @@
-name: a fixed finding gets a second review round, and a round that fixes nothing ends the loop
+name: a round with a required finding gets a fix and the next round, also when the fix dismissed it, and the first round with none ends the review rounds
 inputs: {request: "#42"}
 scripts:
   limits:
@@ -16,15 +16,16 @@ scripts:
     - {exit_code: 0, stdout: '{"pr_number": 9, "pr_url": "https://github.com/example-org/app/pull/9"}'}
   ready:
     - {exit_code: 0, stdout: '{"head_sha": "h1"}'}
-  check_unreviewed:
-    - {exit_code: 0, stdout: '{"unreviewed": false, "commits": [], "head_sha": "h1"}'}
 calls:
   review:
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r1, scope_sha: r1}, inputs: {pr: 9, scope_sha: "", dismissed: []}}
-    - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r2, scope_sha: r1}, inputs: {scope_sha: r1}}
+    - {status: succeeded, inputs: {pr: 9, round: 1, reported: [], dismissed: []}, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r1}}
+    - {status: succeeded, inputs: {round: 2, reported: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}]}, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}], reviewed_sha: r2}}
+    - {status: succeeded, inputs: {round: 3, dismissed: [{kind: finding, reviewer: tests, title: No test for the guard, verdict: dismissed, reason: The test exists.}]}, outputs: {findings: [], reviewed_sha: r2}}
   resolve:
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test for the guard, verdict: fixed, reason: Added it.}], fixed: 1}}
+    - {status: succeeded, inputs: {pr: 9, findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: No test for the guard, summary: S, quote: q}]}, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test for the guard, verdict: fixed, reason: Added it.}], fixed: 1}}
     - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: No test for the guard, verdict: dismissed, reason: The test exists.}], fixed: 0}}
+  critical:
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: r2}}
   get_ci_green:
     - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h1, fixes: 0}}
   answer_comments:
@@ -44,8 +45,8 @@ answers:
   write_description:
     - {summary: Saving a file with no name shows an error instead of crashing.}
   finish:
-    - {labels: [], reasons: A small bug fix with a test.}
+    - {labels: [], reasons: "A small bug fix with a test."}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, resolve, ready, get_ci_green, answer_comments, check_unreviewed, limits, finish, done]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, resolve, review, resolve, review, critical, ready, get_ci_green, answer_comments, limits, finish, done]
   status: succeeded
   outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9"}
