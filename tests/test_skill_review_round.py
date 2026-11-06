@@ -37,16 +37,19 @@ def finding(quote: str, file: str = "calc.py") -> dict[str, Any]:
 
 
 def collect(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], findings: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    findings: list[dict[str, Any]],
+    round_number: int = 1,
+    critical: bool = False,
 ) -> dict[str, Any]:
     script = load_skill_script(SKILL, "collect_findings")
     shell = FakeShell({"git show abc:calc.py": APP_AT_HEAD, "git show origin/main:gone.py": "x = 1\n"})
     shell.failing = ["git show abc:gone.py", "git show abc:missing.py", "git show origin/main:missing.py"]
     install_shell(monkeypatch, script, shell)
     results = [{"reviewer": "correctness", "findings": findings}, {"reviewer": "tests", "findings": []}]
-    printed: dict[str, Any] = run_main(
-        monkeypatch, capsys, script, {"results": results, "head_sha": "abc", "base": "main"}
-    )
+    script_input = {"results": results, "head_sha": "abc", "base": "main", "round": round_number, "critical": critical}
+    printed: dict[str, Any] = run_main(monkeypatch, capsys, script, script_input)
     return printed
 
 
@@ -104,10 +107,29 @@ def test_collect_findings_sorts_the_findings_by_file_and_line_so_that_copies_com
         },
     ]
 
-    printed = run_main(monkeypatch, capsys, script, {"results": results, "head_sha": "abc", "base": "main"})
+    script_input = {"results": results, "head_sha": "abc", "base": "main", "round": 1, "critical": False}
+    printed = run_main(monkeypatch, capsys, script, script_input)
 
     order = [(item["file"], item["line"], item["reviewer"]) for item in printed["findings"]]
     assert order == [("a.py", 1, "tests"), ("a.py", 9, "correctness"), ("b.py", 2, "correctness"), ("b.py", 2, "tests")]
+
+
+SUGGESTION = {**finding("return a - b"), "severity": "suggestion", "title": "Name it subtract"}
+
+
+def test_round_1_keeps_the_suggestions(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    printed = collect(monkeypatch, capsys, [finding("return a - b"), SUGGESTION])
+
+    assert [item["severity"] for item in printed["findings"]] == ["required", "suggestion"]
+
+
+@pytest.mark.parametrize(("round_number", "critical"), [(2, False), (3, False), (4, False), (1, True)])
+def test_from_round_2_on_and_in_a_critical_round_every_suggestion_is_left_out(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], round_number: int, critical: bool
+) -> None:
+    printed = collect(monkeypatch, capsys, [finding("return a - b"), SUGGESTION], round_number, critical)
+
+    assert printed == {"findings": [{"reviewer": "correctness", **finding("return a - b")}], "count": 1, "dropped": []}
 
 
 def reviewer_rows() -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:

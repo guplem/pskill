@@ -175,12 +175,14 @@ blocks:
 
   collect_findings:
     type: script
-    description: Join the findings, and keep the ones with a real quote
+    description: Join the findings, and keep the ones with a real quote (from round 2 on, only the required ones)
     run: [uv, run, "{{ skill.dir }}/scripts/collect_findings.py"]
     input:
       results: "{{ steps.review.results }}"
       head_sha: "{{ steps.checkout.outputs.head_sha }}"
       base: "{{ steps.checkout.outputs.base }}"
+      round: "{{ inputs.round }}"
+      critical: "{{ inputs.critical }}"
     parse: json
     next: reviewed
 
