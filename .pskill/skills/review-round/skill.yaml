@@ -158,12 +158,13 @@ blocks:
         when: "{{ inputs.critical and steps.read_pr.json.code_paths }}"
         focus: >-
           Critical bugs: only what the new code of this pull request breaks, by the critical bar below. Earlier rounds
-          checked the tests, the texts, the style, and the patterns. For each changed function, route, query, export,
-          or stored shape, find its callers and readers with `git grep` at the head commit, also outside the diff:
-          a caller that relies on the old behavior is where a broken contract shows. Follow each input through the new
-          code to its writes, its output, and its answer. Look hardest at permission checks and their order, partial
-          failures and swallowed errors, null and empty inputs, time zones and periods, changed status codes and
-          stored shapes. Before you report a bug, search for its sibling sites.
+          checked the tests, the texts, the style, and the patterns. For each changed entry point (a route, a command,
+          a public function), query, export, or stored shape, find its callers and readers with `git grep` at the
+          head commit, also outside the diff: a caller that relies on the old behavior is where a broken contract
+          shows. Follow each input through the new code to its writes, its output, and its answer. Look hardest at
+          permission checks and their order, partial failures and swallowed errors, null and empty inputs, dates and
+          time zones, changed exit or status codes, and stored shapes. Before you report a bug, search for its
+          sibling sites.
     agent: reviewer
     task_name: "{{ item.name }}"
     instruction: instructions/review.md

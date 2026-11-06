@@ -214,6 +214,21 @@ def test_the_focus_of_critical_bugs_is_the_critical_bar() -> None:
     )
 
 
+FOCUS_TERMS = [
+    "each changed entry point (a route, a command, a public function), query, export, or stored shape",
+    "dates and time zones",
+    "changed exit or status codes",
+]
+
+
+def test_the_focus_of_critical_bugs_names_generic_entry_points_and_failures() -> None:
+    _, rows = reviewer_rows()
+    focus = " ".join(rows["critical-bugs"]["focus"].split())
+
+    assert [term for term in FOCUS_TERMS if term not in focus] == []
+    assert "5xx" not in focus
+
+
 def review_text(round_number: int = 1, **inputs: Any) -> str:
     """The instruction of the review block, as a reviewer of a round gets it."""
     template = (SKILLS_FOLDER / SKILL / "instructions" / "review.md").read_text(encoding="utf-8")
@@ -288,14 +303,22 @@ def test_the_critical_bar_asks_for_every_failure_path_with_its_input() -> None:
     assert "Out of scope: only a failure that the base branch already shows through the same entry point." in text
 
 
+def test_the_critical_bar_names_generic_failures() -> None:
+    text = review_text(4)
+
+    assert "a crash or an error answer" in text
+    assert "a broken contract for an existing caller of each changed entry point (a route, a command, a public" in text
+    assert "5xx" not in text
+
+
 @pytest.mark.parametrize("round_number", [2, 3])
 def test_in_rounds_2_and_3_a_wrong_outcome_is_never_a_suggestion(round_number: int) -> None:
     assert "A wrong outcome is never a suggestion." in review_text(round_number)
 
 
 SIBLING_RULE = (
-    "List every sibling site of the same problem (the same route, the same input shape, the same helper) in the same"
-    " finding; keep none back for a later round."
+    "List every sibling site of the same problem (the same entry point, the same input shape, the same helper) in"
+    " the same finding; keep none back for a later round."
 )
 
 
