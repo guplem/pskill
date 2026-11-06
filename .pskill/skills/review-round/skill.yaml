@@ -47,8 +47,6 @@ inputs:
     description: >-
       A critical round: only critical-bugs runs, and it reports only what the new code of the pull request breaks
       (the critical bar), each finding required.
-  scope_sha: {type: string, optional: true, default: "", description: "Ignored: kept until the callers move to `round` and `critical` (#195)."}
-  since_sha: {type: string, optional: true, default: "", description: "Ignored: kept until the callers move to `round` and `critical` (#195)."}
   dismissed:
     type: array
     optional: true
@@ -74,7 +72,6 @@ outputs:
     description: "Every finding of the round with a real quote, each with the reviewer that reported it."
     items: *reviewed_finding
   reviewed_sha: {type: string, description: "The head commit that the round reviewed."}
-  scope_sha: {type: string, description: "The head commit. Ignored: kept until the callers move to `round` and `critical` (#195)."}
 entry: checkout
 
 blocks:
@@ -193,7 +190,6 @@ blocks:
     outputs:
       findings: "{{ steps.collect_findings.json.findings }}"
       reviewed_sha: "{{ steps.checkout.outputs.head_sha }}"
-      scope_sha: "{{ steps.checkout.outputs.head_sha }}"
     report: >-
       Tell the user the findings of the review round of pull request #{{ inputs.pr }}, one line each, with its
       severity, file, and line:

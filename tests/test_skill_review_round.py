@@ -312,3 +312,10 @@ def test_in_a_review_round_a_dismissal_stands_against_a_different_opinion() -> N
 
     assert "A different opinion on a dismissal reason is not new evidence." in text
     assert NEW_EVIDENCE not in text
+
+
+def test_the_round_has_no_delta_or_scope_commit() -> None:
+    skill = yaml.safe_load((SKILLS_FOLDER / "review-round" / "skill.yaml").read_text(encoding="utf-8"))
+
+    assert not {"scope_sha", "since_sha"} & set(skill["inputs"])
+    assert "scope_sha" not in skill["outputs"]
