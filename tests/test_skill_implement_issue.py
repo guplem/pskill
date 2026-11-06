@@ -9,11 +9,11 @@ import pytest
 
 from pskill_runner.computed_values import render_text
 from pskill_runner.skill_loader import load_skill
-from pskill_runner.skill_model import EndBlock, TaskBlock
+from pskill_runner.skill_model import CallBlock, EndBlock, TaskBlock
 from tests.skill_scripts import SKILLS_FOLDER, FakeShell, install_shell, load_skill_script, run_main
 
 SKILL = "implement-issue"
-LIMITS = ["implement_step", "review", "get_ci_green", "final_review", "resolve_items"]
+LIMITS = ["implement_step", "get_ci_green", "critical", "resolve_items"]
 
 
 def issue(**changes: Any) -> dict[str, Any]:
@@ -313,100 +313,6 @@ def test_mark_ready_a_second_time_only_pushes(
     assert shell.ran("git push --quiet origin HEAD:42-fix-save")
 
 
-def unreviewed_shell(commits: str, merged_tree: str = "t3") -> FakeShell:
-    """A branch whose commits after the review are a code fix (c1), the plan removal (c2), and a merge (c3).
-
-    The merge is clean when git's own merge of its parents gives its tree, t3.
-    """
-    return FakeShell(
-        {
-            "gh api GET repos/{owner}/{repo}/pulls/9": json.dumps(
-                {"head": {"ref": "42-saving-crash", "sha": "c3full"}}
-            ),
-            "git rev-list --reverse --first-parent r1..c3full": commits,
-            "git rev-list --parents -n 1 c3": "c3 c2 m1",
-            "git rev-list --parents -n 1": "c0 p0",
-            "git diff-tree --no-commit-id --name-status -r c1": "M\tsrc/save.py",
-            "git diff-tree --no-commit-id --name-status -r c2": "D\timplementation-plan-42.md",
-            "git diff-tree --no-commit-id --name-status -r c3": "M\tsrc/other.py",
-            "git merge-tree --write-tree c2 m1": merged_tree,
-            "git rev-parse c3^{tree}": "t3",
-        }
-    )
-
-
-def test_check_unreviewed_skips_the_plan_removal_and_a_clean_merge(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    script = load_skill_script(SKILL, "check_unreviewed")
-    shell = install_shell(monkeypatch, script, unreviewed_shell("c1\nc2\nc3"))
-
-    printed = run_main(
-        monkeypatch, capsys, script, {"pr": 9, "last_reviewed": "r1", "plan_file": "implementation-plan-42.md"}
-    )
-
-    assert printed == {"unreviewed": True, "commits": ["c1"], "head_sha": "c3full"}
-    assert shell.ran("git fetch --quiet origin 42-saving-crash")
-
-
-def test_check_unreviewed_counts_a_merge_with_a_conflict_resolution(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    script = load_skill_script(SKILL, "check_unreviewed")
-    install_shell(monkeypatch, script, unreviewed_shell("c2\nc3", merged_tree="t4"))
-
-    printed = run_main(
-        monkeypatch, capsys, script, {"pr": 9, "last_reviewed": "r1", "plan_file": "implementation-plan-42.md"}
-    )
-
-    assert printed == {"unreviewed": True, "commits": ["c3"], "head_sha": "c3full"}
-
-
-def test_check_unreviewed_finds_nothing_when_no_commit_follows_the_review(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    script = load_skill_script(SKILL, "check_unreviewed")
-    install_shell(monkeypatch, script, unreviewed_shell(""))
-
-    printed = run_main(
-        monkeypatch, capsys, script, {"pr": 9, "last_reviewed": "r1", "plan_file": "implementation-plan-42.md"}
-    )
-
-    assert printed == {"unreviewed": False, "commits": [], "head_sha": "c3full"}
-
-
-def test_check_unreviewed_lists_a_conflict_merge_that_takes_the_base_side(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`git show --cc` prints nothing for this merge, yet it drops the change of the pull request."""
-    monkeypatch.chdir(tmp_path)
-
-    def git(*arguments: str) -> str:
-        completed = subprocess.run(["git", *arguments], capture_output=True, text=True, encoding="utf-8", check=False)
-        return completed.stdout.strip()
-
-    def commit_file(text: str) -> str:
-        Path("feature.txt").write_text(text, encoding="utf-8")
-        git("add", "feature.txt")
-        git("commit", "--quiet", "-m", "change")
-        return git("rev-parse", "HEAD")
-
-    git("init", "--quiet", "--initial-branch=main")
-    git("config", "user.email", "test@example.com")
-    git("config", "user.name", "Test")
-    commit_file("base\n")
-    git("checkout", "--quiet", "-b", "feature")
-    reviewed = commit_file("feature\n")
-    git("checkout", "--quiet", "main")
-    commit_file("base version\n")
-    git("checkout", "--quiet", "feature")
-    git("merge", "--quiet", "main")
-    head = commit_file("base version\n")
-    script = load_skill_script(SKILL, "check_unreviewed")
-
-    assert script.unreviewed_commits(reviewed, head, "implementation-plan-42.md") == [head[:10]]
-
-
 def test_the_report_and_the_label_reasons_read_the_limits_of_the_script() -> None:
     skill = load_skill(SKILLS_FOLDER / SKILL)
     capped = skill.blocks["capped"]
@@ -602,11 +508,11 @@ def test_post_comment_run_twice_for_the_same_pause_posts_once(
 
 NO_LIMIT_INPUT: dict[str, Any] = {
     "build_done": True,
-    "resolve_rounds": 1,
-    "last_fixed": 1,
     "ready_runs": 1,
     "ci_runs": 1,
-    "unreviewed": False,
+    "critical_rounds": 1,
+    "last_critical_findings": 0,
+    "last_critical_fixed": 0,
     "items_left": 0,
 }
 
@@ -616,10 +522,12 @@ NO_LIMIT_INPUT: dict[str, Any] = {
     [
         ({}, []),
         ({"build_done": False}, ["implement_step"]),
-        ({"resolve_rounds": 3, "last_fixed": 2}, ["review"]),
-        ({"resolve_rounds": 3, "last_fixed": 0}, []),
         ({"ready_runs": 2}, ["get_ci_green"]),
-        ({"unreviewed": True}, ["final_review"]),
+        ({"critical_rounds": 6, "last_critical_findings": 1, "last_critical_fixed": 1}, ["critical"]),
+        ({"critical_rounds": 7, "last_critical_findings": 2, "last_critical_fixed": 1}, ["critical"]),
+        ({"critical_rounds": 6, "last_critical_findings": 1, "last_critical_fixed": 0}, []),
+        ({"critical_rounds": 6, "last_critical_findings": 0, "last_critical_fixed": 1}, []),
+        ({"critical_rounds": 5, "last_critical_findings": 1, "last_critical_fixed": 1}, []),
         ({"items_left": 1}, ["resolve_items"]),
         ({"build_done": False, "items_left": 2}, ["implement_step", "resolve_items"]),
     ],
@@ -632,6 +540,16 @@ def test_list_limits_names_each_limit_that_cut_work_short(
     printed = run_main(monkeypatch, capsys, script, {**NO_LIMIT_INPUT, **changes})
 
     assert printed == {"limits": limits}
+
+
+def test_list_limits_counts_the_critical_rounds_of_the_skill() -> None:
+    skill = load_skill(SKILLS_FOLDER / SKILL)
+    critical_resolve = skill.blocks["critical_resolve"]
+    script = load_skill_script(SKILL, "list_limits")
+    assert isinstance(critical_resolve, CallBlock)
+
+    assert critical_resolve.next[0].when == "{{ (history.critical | length) < 6 }}"
+    assert script.CRITICAL_ROUNDS == 6
 
 
 def test_the_finish_note_lists_the_decisions_and_asks_only_what_can_change_the_pull_request() -> None:
@@ -664,25 +582,26 @@ def test_the_build_proves_each_test_can_fail_and_ticks_the_lists_before_the_revi
     assert "tick each line of the three **Lists** of the plan against the diff" in text
 
 
-def rendered_instruction(name: str, limits: list[str], unreviewed_commits: list[str]) -> str:
-    fixed = {"outputs": {"decisions": [{"verdict": "fixed", "title": "No test"}], "left": 0}}
+def rendered_instruction(name: str, limits: list[str]) -> str:
+    finding = {"reviewer": "correctness", "title": "Missing guard"}
+    fixed = {"outputs": {"decisions": [{**finding, "verdict": "fixed", "reason": "Added it."}], "fixed": 1, "left": 0}}
     context = {
         "steps": {
             "limits": {"json": {"limits": limits}},
             "open_draft_pr": {"json": {"pr_number": 9, "pr_url": "https://x/9"}},
-            "check_unreviewed": {"json": {"unreviewed": True, "commits": unreviewed_commits, "head_sha": "h5"}},
-            "final_review": {"outputs": {"findings": [{"severity": "required", "title": "No test"}]}},
+            "critical": {"outputs": {"findings": [finding], "reviewed_sha": "c6c6c6c6c6c6c6"}},
+            "critical_resolve": fixed,
             "get_ci_green": {"outputs": {"state": "passed", "failed_checks": [], "head_sha": "h5", "fixes": 0}},
             "write_description": {"summary": "S"},
             "finish": {"labels": [], "reasons": "R"},
         },
         "history": {
             "implement_step": [{}],
-            "review": [{}],
+            "review": [{}, {}],
             "resolve": [],
             "answer_comments": [],
-            "final_review": [{}, {}, {}, {}],
-            "final_resolve": [fixed, fixed, fixed, fixed],
+            "critical": [{}] * 6,
+            "critical_resolve": [fixed] * 6,
             "get_ci_green": [{"outputs": {"fixes": 0}}],
         },
         "skill": {"id": SKILL, "dir": "skill"},
@@ -691,16 +610,16 @@ def rendered_instruction(name: str, limits: list[str], unreviewed_commits: list[
 
 
 @pytest.mark.parametrize("name", ["finish.md", "report.md"])
-def test_the_final_review_limit_names_the_commits_that_no_review_saw(name: str) -> None:
-    text = rendered_instruction(name, ["final_review"], ["c4", "c5"])
+def test_the_critical_limit_names_the_fixes_that_no_review_saw(name: str) -> None:
+    text = rendered_instruction(name, ["critical"])
 
-    assert (
-        "the required-only review rounds used their 4 rounds, so no review saw these commits: c4, c5." in text.lower()
-    )
-    assert "stay open" not in text
-    assert "No test" not in text
+    assert 'used their 6 rounds, so no review saw the commits after c6c6c6c6c6, which fix: "Missing guard".' in text
 
 
 @pytest.mark.parametrize("name", ["finish.md", "report.md"])
-def test_no_final_review_limit_names_no_unreviewed_commit(name: str) -> None:
-    assert "c5" not in rendered_instruction(name, [], ["c5"])
+def test_no_critical_limit_names_no_unreviewed_commit(name: str) -> None:
+    assert "c6c6c6c6c6" not in rendered_instruction(name, [])
+
+
+def test_the_report_counts_the_review_and_the_critical_rounds() -> None:
+    assert "- Review rounds: 2, then 6 critical rounds." in rendered_instruction("report.md", [])
