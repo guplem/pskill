@@ -1,4 +1,4 @@
-name: a dismissed critical finding reaches the next critical round as dismissed, and the run ends done with no limit
+name: a critical round whose findings the resolution only dismisses pushes nothing, so the critical phase ends and CI runs, and the run ends done with no limit
 inputs: {request: "#42"}
 scripts:
   limits:
@@ -21,9 +21,8 @@ calls:
     - {status: succeeded, outputs: {findings: [], reviewed_sha: r1}}
   critical:
     - {status: succeeded, outputs: {findings: [{reviewer: tests, file: files.py, line: 3, severity: required, title: Missing guard, summary: S, quote: q}], reviewed_sha: r1}}
-    - {status: succeeded, inputs: {dismissed: [{kind: finding, reviewer: tests, title: Missing guard, verdict: dismissed, reason: The caller checks it.}]}, outputs: {findings: [], reviewed_sha: r1}}
   critical_resolve:
-    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: Missing guard, verdict: dismissed, reason: The caller checks it.}], fixed: 0}}
+    - {status: succeeded, outputs: {decisions: [{kind: finding, reviewer: tests, title: Missing guard, verdict: dismissed, reason: The caller checks it.}], fixed: 0, head_sha: r1}}
   get_ci_green:
     - {status: succeeded, outputs: {state: passed, failed_checks: [], head_sha: h1, fixes: 0}}
   answer_comments:
@@ -45,6 +44,6 @@ answers:
   finish:
     - {labels: [waiting-for-human-review], reasons: "A human confirms the dismissed finding."}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, critical, critical_resolve, critical, ready, get_ci_green, answer_comments, limits, finish, done]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, critical, critical_resolve, ready, get_ci_green, answer_comments, limits, finish, done]
   status: succeeded
   outputs: {result: implemented, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9"}

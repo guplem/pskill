@@ -241,7 +241,7 @@ blocks:
         to: review
       - to: critical
 
-  # Phase 2: critical rounds, for what the new code breaks, until one finds nothing. After CI, each pushed commit
+  # Phase 2: critical rounds, for what the new code breaks, until one finds nothing or a resolution pushes nothing. After CI, each pushed commit
   # comes back here.
   critical:
     type: call
@@ -272,7 +272,9 @@ blocks:
       findings: "{{ steps.critical.outputs.findings }}"
       scope_sha: *scope_sha
     next:
-      - when: "{{ (history.critical | length) < 6 }}"
+      # A resolution that pushed nothing (it dismissed every finding) leaves the code that the round reviewed: another
+      # round would review it again, so the critical phase ends. The report lists the dismissed findings.
+      - when: "{{ (history.critical | length) < 6 and (steps.critical_resolve.outputs.head_sha | default('')) != steps.critical.outputs.reviewed_sha }}"
         to: critical
       # At the cap, and after the one round of a later push, the fix goes to CI with no review, and finish names its
       # commits. A resolution that fixed nothing leaves the head where CI may have run already: ready checks it.

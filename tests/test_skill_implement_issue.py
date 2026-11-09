@@ -568,7 +568,7 @@ def test_list_limits_counts_the_critical_rounds_of_the_skill() -> None:
     script = load_skill_script(SKILL, "list_limits")
     assert isinstance(critical_resolve, CallBlock)
 
-    assert critical_resolve.next[0].when == "{{ (history.critical | length) < 6 }}"
+    assert (critical_resolve.next[0].when or "").startswith("{{ (history.critical | length) < 6 and ")
     assert script.CRITICAL_ROUNDS == 6
 
 
