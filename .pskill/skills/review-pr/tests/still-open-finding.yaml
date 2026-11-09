@@ -1,15 +1,23 @@
-name: a follow-up review reviews only the code changed since the earlier review, and a required finding of that review that is still open stays pending for the author
+name: a follow-up review gets the findings of the earlier review to skip, and a required finding of that review that is still open stays pending for the author
 inputs: {pr: 700}
 calls:
   check_head_before_post:
     - {status: succeeded, outputs: {action: continue, head_sha: h1}}
   review:
-    - {status: succeeded, inputs: {since_sha: e1}, outputs: {reviewed_sha: e5, scope_sha: e5, findings: []}}
+    - {status: succeeded, inputs: {dismissed: [{reviewer: earlier review, title: Old, severity: suggestion, reason: Posted.}]}, outputs: {reviewed_sha: e5, findings: []}}
+  critical:
+    - {status: succeeded, inputs: {dismissed: [{reviewer: earlier review, title: Old, severity: suggestion, reason: Posted.}]}, outputs: {reviewed_sha: e5, findings: []}}
+  check_head_before_critical:
+    - {status: succeeded, outputs: {action: continue, head_sha: h1}}
 scripts:
   read_earlier:
-    - {exit_code: 0, stdout: '{"dismissed": [{"reviewer": "earlier review", "title": "Old", "severity": "suggestion", "reason": "Posted."}], "count": 1, "since_sha": "e1", "full_review_reason": ""}'}
+    - {exit_code: 0, stdout: '{"dismissed": [{"reviewer": "earlier review", "title": "Old", "severity": "suggestion", "reason": "Posted."}], "count": 1}'}
+  new_in_review:
+    - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
+  new_in_critical:
+    - {exit_code: 0, stdout: '{"new": [], "required": 0}'}
   final:
-    - {exit_code: 0, stdout: '{"findings": [], "has_required": true}'}
+    - {exit_code: 0, stdout: '{"findings": [], "has_required": true, "cut_short": false}'}
   post:
     - {exit_code: 0, stdout: '{"result": "changes_requested", "review_url": "u5", "inline": 0, "in_body": 1, "fallback": true}'}
 answers:
@@ -20,7 +28,7 @@ answers:
   confirm:
     - {choice: post, rationale: The user picked it., $answered_by: human}
 expect:
-  path: [read_earlier, review, triage, final, draft, confirm, check_head_before_post, post, reviewed]
+  path: [read_earlier, review, new_in_review, check_head_before_critical, critical, new_in_critical, triage, final, draft, confirm, check_head_before_post, post, reviewed]
   status: succeeded
   outputs: {result: changes_requested, review_url: u5}
   pending: "The author of pull request #700 answers the open findings of the review and of earlier reviews."

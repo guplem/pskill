@@ -16,7 +16,9 @@ scripts:
     - {exit_code: 0, stdout: '{"head_sha": "h1"}'}
 calls:
   review:
-    - {status: succeeded, outputs: {findings: [], reviewed_sha: r1, scope_sha: r1}}
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: r1}}
+  critical:
+    - {status: succeeded, outputs: {findings: [], reviewed_sha: r1}}
   get_ci_green:
     - {status: succeeded, outputs: {state: closed, failed_checks: [], head_sha: h1, fixes: 0}}
 answers:
@@ -34,7 +36,7 @@ answers:
   write_description:
     - {summary: Saving a file with no name shows an error instead of crashing.}
 expect:
-  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, ready, get_ci_green, closed]
+  path: [read_issue, checkout_default, understand, checkout_base, research_code, research_gaps, write_plan, approve_plan, open_draft_pr, implement_step, write_description, review, critical, ready, get_ci_green, closed]
   status: succeeded
   outputs: {result: closed, pr_number: 9, pr_url: "https://github.com/example-org/app/pull/9"}
   pending: ""

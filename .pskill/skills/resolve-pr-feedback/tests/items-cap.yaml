@@ -12,7 +12,7 @@ scripts:
     - exit_code: 0
       stdout: >-
         {"decisions": [{"kind": "finding", "reviewer": "tests", "title": "Gap 1", "verdict": "fixed", "reason": "Fixed."},
-        {"kind": "finding", "reviewer": "tests", "title": "Gap 2", "verdict": "dismissed", "reason": "No gap."}], "left": 1}
+        {"kind": "finding", "reviewer": "tests", "title": "Gap 2", "verdict": "dismissed", "reason": "No gap."}], "left": 1, "head_sha": "bbb"}
 answers:
   resolve_items:
     - decisions:
@@ -24,6 +24,7 @@ expect:
   outputs:
     fixed: 1
     left: 1
+    head_sha: bbb
     decisions:
       - {kind: finding, reviewer: tests, title: Gap 1, verdict: fixed, reason: Fixed.}
       - {kind: finding, reviewer: tests, title: Gap 2, verdict: dismissed, reason: No gap.}

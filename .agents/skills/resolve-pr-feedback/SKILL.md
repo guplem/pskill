@@ -11,7 +11,7 @@ Goal: Every given finding and every unaddressed comment has a verdict (fixed or 
 1. Map the request to the inputs:
    - `pr` (integer): Number of the pull request.
    - `findings` (array, optional): Findings to resolve, for example from review-round.
-   - `scope_sha` (string, optional, default: ""): The commit that ends the scope, as review-round gives it. Empty means the head commit.
+   - `scope_sha` (string, optional, default: ""): The commit that ends the acceptance scope (the head of the first review round); empty means the head.
    Ask the user for each required input that the request does not give, before you run `start`.
 2. Run: `uv run .pskill/pskill.py start resolve-pr-feedback --harness auto --model <your model id> --input pr=<value>`
    Replace `<your model id>` with the id of the model that you are, for example `claude-opus-5-5`.

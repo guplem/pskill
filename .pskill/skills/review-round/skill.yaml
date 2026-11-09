@@ -1,10 +1,11 @@
 schema: pskill/v1
 id: review-round
 description: >-
-  One review round of a pull request: fresh reviewer subagents read it in parallel, each from one angle (correctness,
-  tests, completeness, conventions, docs), and report the real problems, each backed by a quote from the code. It
-  posts nothing, changes no file, and answers no comment: review-pr turns its findings into a GitHub review, and
-  resolve-pr-feedback fixes them.
+  One review round of a pull request: fresh reviewer subagents read the whole pull request in parallel, each from one
+  angle (correctness, tests, completeness, conventions, docs), and report the real problems, each backed by a quote
+  from the code. Each reviewer runs up to its last round, and each round has a stricter bar; a critical round runs only
+  critical-bugs. It posts nothing, changes no file, and answers no comment: review-pr turns its findings into a GitHub
+  review, and resolve-pr-feedback fixes them.
 goal: >-
   Every new real problem of the pull request, reported once by the reviewer whose angle covers it, with the exact line
   as proof.
@@ -18,24 +19,35 @@ x-finding: &finding
     title: {type: string, description: "One line."}
     summary: {type: string, description: "The problem, why it matters, and the fix."}
     quote: {type: string, description: "The exact line from the code. No quote, no finding."}
+x-reviewed-finding: &reviewed_finding
+  type: object
+  properties:
+    reviewer: {type: string}
+    file: {type: string}
+    line: {type: integer}
+    severity: {type: string, enum: [required, suggestion]}
+    title: {type: string}
+    summary: {type: string}
+    quote: {type: string}
 inputs:
   pr: {type: integer, description: "Number of the pull request."}
-  scope_sha:
-    type: string
+  scope_sha: {type: string, optional: true, default: "", description: "The commit that ends the acceptance scope of finding-acceptance.md (the head of the first review round); empty means the head. The round still reviews the whole diff."}
+  round:
+    type: integer
     optional: true
-    default: ""
+    default: 1
     description: >-
-      The commit that ends the scope of the review: the scope is the code that the diff from the base to this commit
-      changes. Later commits are review fixes: only their own lines are reviewed. Empty means the head commit.
-  since_sha:
-    type: string
+      The number of this round in the review phase, 1 to 4. Each reviewer runs up to its last round (the table above
+      the rows of the review block). Round 1 reports required findings and suggestions, round 2 required findings
+      only, round 3 only broken code, texts that the change makes false, and missing deliverables, and round 4 only
+      broken code, with the critical bar. A critical round ignores it.
+  critical:
+    type: boolean
     optional: true
-    default: ""
+    default: false
     description: >-
-      Review only the lines that the commits after this commit add or change, and report only required findings,
-      with a narrower bar: only broken code (wrong output, a security hole, a missing or broken test for new
-      behavior, a type error, or text that the new code makes false), not a broken style rule or project pattern.
-      Empty reviews the whole pull request.
+      A critical round: only critical-bugs runs, and it reports only what the new code of the pull request breaks
+      (the critical bar), each finding required.
   dismissed:
     type: array
     optional: true
@@ -47,28 +59,21 @@ inputs:
       properties:
         reviewer: {type: string, description: "The reviewer that reported it."}
         title: {type: string, description: "The title of the finding."}
+        severity: {type: string, enum: [required, suggestion], optional: true, description: "Its severity, when known."}
         reason: {type: string, description: "What became of it, and why."}
   reported:
     type: array
     optional: true
-    description: "Findings that earlier rounds of the same review reported. The reviewers look for other problems."
-    items: *finding
+    description: >-
+      Findings that earlier rounds of the same review reported. The reviewers get them only to skip these exact
+      problems: they still review every changed function of the whole diff. The findings output gives this shape.
+    items: *reviewed_finding
 outputs:
   findings:
     type: array
     description: "Every finding of the round with a real quote, each with the reviewer that reported it."
-    items:
-      type: object
-      properties:
-        reviewer: {type: string}
-        file: {type: string}
-        line: {type: integer}
-        severity: {type: string, enum: [required, suggestion]}
-        title: {type: string}
-        summary: {type: string}
-        quote: {type: string}
+    items: *reviewed_finding
   reviewed_sha: {type: string, description: "The head commit that the round reviewed."}
-  scope_sha: {type: string, description: "The commit that ended the scope of the round."}
 entry: checkout
 
 blocks:
@@ -94,15 +99,30 @@ blocks:
     type: task
     description: Review with fresh subagents, one per angle
     context: fresh
-    # Reviewers only read. A row with a tier checks the change against written rules or a clear brief, on a cheaper
-    # model; a row with no tier hunts bugs or judges intent on the session model.
+    # Reviewers only read. A row on the standard tier checks the change against written rules or a clear brief, on a
+    # cheaper model; a row on the deep tier hunts bugs, which needs judgment; a row with no tier judges intent on the
+    # session model.
     tools: read
     tier: "{{ item.tier | default('') }}"
-    # One row per reviewer. A row with a `when` runs only when its condition is true. Add a row for an angle that
-    # your project needs, for example a database reviewer with a condition on the changed paths.
+    # One row per reviewer. A row runs only when its `when` is true. Each reviewer runs from round 1 to its last
+    # round, so the review narrows as the bar of each round gets stricter (the instruction holds the bars). A critical
+    # round runs only critical-bugs:
+    # | Reviewer      | Last round | Runs when               |
+    # | correctness   | 4          | the change touches code |
+    # | completeness  | 3          | always                  |
+    # | docs          | 3          | always                  |
+    # | tests         | 2          | the change touches code |
+    # | conventions   | 2          | always                  |
+    # | critical-bugs | critical   | the change touches code |
+    # Add a row for an angle that your project needs, for example a database reviewer with a condition on the changed
+    # paths. A new row's `when` is `not inputs.critical and inputs.round <= N`, with N its last round, plus any
+    # condition of its own.
+    # A project whose prompts or instructions are code (Markdown that drives behavior) should count those files as
+    # code in `read_pr.py`, or `correctness` and `critical-bugs` skip them.
     for_each:
       - name: correctness
-        when: "{{ steps.read_pr.json.code_paths }}"
+        tier: deep
+        when: "{{ not inputs.critical and inputs.round <= 4 and steps.read_pr.json.code_paths }}"
         focus: >-
           Correctness and safety: wrong results, unhandled errors and edge cases, broken contracts between callers and
           the changed code, security holes (unchecked input, injection, leaked secrets, missing permission checks),
@@ -110,28 +130,44 @@ blocks:
           way through.
       - name: tests
         tier: standard
-        when: "{{ steps.read_pr.json.code_paths }}"
+        when: "{{ not inputs.critical and inputs.round <= 2 and steps.read_pr.json.code_paths }}"
         focus: >-
           Tests: each changed behavior has a test that fails without the change, the tests check outcomes and not
           implementation details, they follow the test conventions of the repository, and no test was weakened or
           deleted to pass.
       - name: completeness
+        when: "{{ not inputs.critical and inputs.round <= 3 }}"
         focus: >-
           Completeness: the change does everything that the issue, the plan, and the pull request description promise,
           and nothing that they rule out. The description matches the code. Every caller, setting, migration, and
           generated file that the change needs is updated.
       - name: conventions
         tier: standard
+        when: "{{ not inputs.critical and inputs.round <= 2 }}"
         focus: >-
           Conventions and architecture: the change follows the rules of the AGENTS.md, CLAUDE.md, and CONTRIBUTING.md
           files, the recorded decisions of the repository, and the patterns of the closest existing code. A broken written rule
           is a finding. So is new code that duplicates code that already exists.
       - name: docs
         tier: standard
+        when: "{{ not inputs.critical and inputs.round <= 3 }}"
         focus: >-
           Docs: every doc that the change makes false or leaves out: README files, the docs folder, AGENTS.md and
           CLAUDE.md, the comments and docstrings near the change, API descriptions, and the changelog when the
           repository keeps one.
+      # A critical round: the critical bar of the instruction, on the deep tier.
+      - name: critical-bugs
+        tier: deep
+        when: "{{ inputs.critical and steps.read_pr.json.code_paths }}"
+        focus: >-
+          Critical bugs: only what the new code of this pull request breaks, by the critical bar below. Earlier rounds
+          checked the tests, the texts, the style, and the patterns. For each changed entry point (a route, a command,
+          a public function), query, export, or stored shape, find its callers and readers with `git grep` at the
+          head commit, also outside the diff: a caller that relies on the old behavior is where a broken contract
+          shows. Follow each input through the new code to its writes, its output, and its answer. Look hardest at
+          permission checks and their order, partial failures and swallowed errors, null and empty inputs, dates and
+          time zones, changed exit or status codes, and stored shapes. Before you report a bug, search for its
+          sibling sites.
     agent: reviewer
     task_name: "{{ item.name }}"
     instruction: instructions/review.md
@@ -142,12 +178,14 @@ blocks:
 
   collect_findings:
     type: script
-    description: Join the findings, and keep the ones with a real quote
+    description: Join the findings, and keep the ones with a real quote (from round 2 on, only the required ones)
     run: [uv, run, "{{ skill.dir }}/scripts/collect_findings.py"]
     input:
       results: "{{ steps.review.results }}"
       head_sha: "{{ steps.checkout.outputs.head_sha }}"
       base: "{{ steps.checkout.outputs.base }}"
+      round: "{{ inputs.round }}"
+      critical: "{{ inputs.critical }}"
     parse: json
     next: reviewed
 
@@ -158,7 +196,6 @@ blocks:
     outputs:
       findings: "{{ steps.collect_findings.json.findings }}"
       reviewed_sha: "{{ steps.checkout.outputs.head_sha }}"
-      scope_sha: "{{ inputs.scope_sha or steps.checkout.outputs.head_sha }}"
     report: >-
       Tell the user the findings of the review round of pull request #{{ inputs.pr }}, one line each, with its
       severity, file, and line:

@@ -1,13 +1,16 @@
-Check and merge the findings of the {{ history.review | length }} review rounds of pull request #{{ inputs.pr }}. The head commit is `{{ steps.review.outputs.reviewed_sha }}`.
+{% set head_sha = (steps.critical if steps.critical is defined else steps.review).outputs.reviewed_sha %}Check and merge the findings of the {{ history.review | length }} review rounds and the {{ history.critical | length }} critical rounds of pull request #{{ inputs.pr }}. The head commit is `{{ head_sha }}`.
 
-{% for round in history.review %}Round {{ loop.index }}:
+{% for round in history.review %}Review round {{ loop.index }}:
+{% for finding in round.outputs.findings %}- [{{ finding.severity }}] "{{ finding.title }}" at `{{ finding.file }}:{{ finding.line }}` ({{ finding.reviewer }} reviewer): {{ finding.summary }} Quote: `{{ finding.quote }}`
+{% else %}- No new finding.
+{% endfor %}{% endfor %}{% for round in history.critical %}Critical round {{ loop.index }}, which reports only what the new code breaks:
 {% for finding in round.outputs.findings %}- [{{ finding.severity }}] "{{ finding.title }}" at `{{ finding.file }}:{{ finding.line }}` ({{ finding.reviewer }} reviewer): {{ finding.summary }} Quote: `{{ finding.quote }}`
 {% else %}- No new finding.
 {% endfor %}{% endfor %}{% if steps.read_earlier.json.dismissed %}
 Earlier reviews of this pull request already posted these findings:
 {% for posted in steps.read_earlier.json.dismissed %}- [{{ posted.severity }}] "{{ posted.title }}": {{ posted.reason }}
 {% endfor %}{% endif %}
-- **Check each finding** with `{{ skill.dir }}/references/finding-acceptance.md`. The base branch is the base branch of the pull request, and the scope commit is `{{ steps.review.outputs.scope_sha }}`. Drop each finding that it rejects, and give the reason. Fix the severity when the reviewer picked the wrong one.
+- **Check each finding** with `{{ skill.dir }}/references/finding-acceptance.md`. The base branch is the base branch of the pull request, and the scope commit is the head commit `{{ head_sha }}`. Drop each finding that it rejects, and give the reason. Fix the severity when the reviewer picked the wrong one; but a finding of a critical round is `required`: keep it `required` or drop it.
 - **Merge the findings that describe the same problem** into one, and drop the others as repeats. Drop a finding that an earlier review already posted, too: its comment thread is still on the pull request.
 - **Check each finding of an earlier review** at the head commit, and read the replies under it. Leave it out when the head fixes it. When the head does not fix it:
   - **A serious finding** is a security hole or a loss of data. A reply that declines it settles it only when the code at the head confirms its reason.

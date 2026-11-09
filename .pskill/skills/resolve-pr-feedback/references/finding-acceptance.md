@@ -32,10 +32,13 @@ These limits apply to every case:
 
 - **A line that only renames or moves code brings in no older problem around it.** A renamed call does not make
   its caller's old shape part of the pull request.
-- **The "Out of scope" section of the issue or the plan wins.** A finding that asks for work it excludes does not
-  belong to the pull request.
+- **The "Out of scope" section of the issue or the plan only excludes requests for more work.** A finding that asks
+  for work it excludes does not belong to the pull request.
 - **A decision that the issue or the plan leaves open for a named person is not a finding.** That person settles
   it in the issue.
+
+**A failure that a line of the pull request causes always belongs to it**, whatever these limits say: a wrong
+result, a crash, data loss, a security hole, or a broken contract.
 
 ## 2. Severity
 

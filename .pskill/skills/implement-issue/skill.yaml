@@ -3,11 +3,11 @@ id: implement-issue
 description: >-
   Implement a GitHub issue, or a described change, end to end. Settle its open questions (ask the user only what the
   code cannot answer), agree on a plan, open a draft pull request with it, and build it in red-green commits. Then
-  review it with fresh subagents and resolve the findings and comments, round after round. Then mark it ready, get CI
-  green, give each later fix a review for required findings only, and label it when a human must look. It never
-  merges. Use when the user asks to implement, fix, or work on an issue or a change. Starting it authorizes the issue
-  assignment, the branch, the commits and pushes, the pull request, the replies to its comments, and, when an
-  autonomous run pauses, one comment on the pull request or the issue.
+  review it with fresh subagents and resolve the findings and comments: review rounds that narrow, then critical rounds
+  for what the new code breaks. Then mark it ready, get CI green, give each later push a critical round, and label it
+  when a human must look. It never merges. Use when the user asks to implement, fix, or work on an issue or a change.
+  Starting it authorizes the issue assignment, the branch, the commits and pushes, the pull request, the replies to
+  its comments, and, when an autonomous run pauses, one comment on the pull request or the issue.
 goal: >-
   A pull request that is ready to merge as it is: every CI check green, every review finding fixed or dismissed, no
   plan file, and the waiting-for-human-review label only when a human must look before the merge.
@@ -19,6 +19,13 @@ outputs:
   pr_number: {type: integer, optional: true, description: "Number of the pull request, when one exists."}
   pr_url: {type: string, optional: true, description: "URL of the pull request, when one exists."}
   limits: {type: array, items: {type: string}, optional: true, description: "The limits that cut work short, for the capped result. The report and the PR description say what each one skipped."}
+# Every finding of the earlier review and critical rounds: a round gets them only to skip them.
+x-reported: &reported "{{ ((history.review | default([])) + (history.critical | default([]))) | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) | list }}"
+# The findings that a resolution of this run dismissed.
+x-dismissed: &dismissed "{{ ((history.resolve | default([])) + (history.critical_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
+# The commit that ends the acceptance scope of finding-acceptance.md: the head that the first review round reviewed.
+# The fix commits after it are in scope, but an older function that they touch does not bring its older problems in.
+x-scope-sha: &scope_sha "{{ history.review[0].outputs.reviewed_sha if history.review | default([]) else '' }}"
 entry:
   - when: "{{ inputs.request is matches('^ *#?[0-9]+ *$|^ *https://github[.]com/[^ ]+/issues/[0-9]+ *$') }}"
     to: read_issue
@@ -198,24 +205,27 @@ blocks:
       summary: {type: string, description: "What the pull request does, in one line."}
     next: review
 
+  # Phase 1: review rounds that narrow. Each round reviews the whole pull request, with a stricter bar and fewer
+  # reviewers than the one before, and the required findings get fixed before the next round.
   review:
     type: call
     description: Run one review round
     skill: review-round
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
-      # The commit of the first round (the code that the build left) ends the scope of every round.
-      scope_sha: "{{ (history.review | default([]) | map(attribute='outputs') | map(attribute='scope_sha') | first) | default('', true) }}"
-      dismissed: "{{ history.resolve | default([]) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
-    # The arrow from resolve already limits the loop to 3 rounds. This cap is only a safety net, so it never asks.
-    max_visits: 3
-    on_max_visits: ready
+      round: "{{ (history.review | default([]) | length) + 1 }}"
+      scope_sha: *scope_sha
+      reported: *reported
+      dismissed: *dismissed
+    # The arrow from resolve already limits the phase to 4 rounds. This cap is only a safety net, so it never asks.
+    max_visits: 4
+    on_max_visits: critical
     ask_on_max_visits: false
     next:
-      # Only required findings are fixed: a round with none ends the loop. Its suggestions wait for answer_comments.
+      # Only required findings are fixed: a round with none ends the phase. Its suggestions wait for answer_comments.
       - when: "{{ steps.review.outputs.findings | selectattr('severity', 'equalto', 'required') | list }}"
         to: resolve
-      - to: ready
+      - to: critical
 
   resolve:
     type: call
@@ -224,20 +234,69 @@ blocks:
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
       findings: "{{ steps.review.outputs.findings | selectattr('severity', 'equalto', 'required') | list }}"
-      scope_sha: "{{ steps.review.outputs.scope_sha }}"
+      scope_sha: *scope_sha
     next:
-      # Review the fixes again, for at most 3 rounds.
-      - when: "{{ steps.resolve.outputs.fixed > 0 and (history.review | length) < 3 }}"
+      # A round with a required finding gets the next round, up to round 4.
+      - when: "{{ (history.review | length) < 4 }}"
         to: review
+      - to: critical
+
+  # Phase 2: critical rounds, for what the new code breaks, until one finds nothing or a resolution pushes nothing. After CI, each pushed commit
+  # comes back here.
+  critical:
+    type: call
+    description: Run one critical review round, for what the new code breaks
+    skill: review-round
+    inputs:
+      pr: "{{ steps.open_draft_pr.json.pr_number }}"
+      critical: true
+      scope_sha: *scope_sha
+      reported: *reported
+      dismissed: *dismissed
+    # The arrow from critical_resolve stops the loop at 6 rounds. After that, each push of CI or of a comment gets one
+    # round. This cap is only a safety net, so it never asks: list_limits.py names a push that it stops.
+    max_visits: 13
+    on_max_visits: limits
+    ask_on_max_visits: false
+    next:
+      - when: "{{ steps.critical.outputs.findings }}"
+        to: critical_resolve
       - to: ready
 
+  critical_resolve:
+    type: call
+    description: Fix the findings of the critical round
+    skill: resolve-pr-feedback
+    inputs:
+      pr: "{{ steps.open_draft_pr.json.pr_number }}"
+      findings: "{{ steps.critical.outputs.findings }}"
+      scope_sha: *scope_sha
+    next:
+      # A resolution that pushed nothing (it dismissed every finding) leaves the code that the round reviewed: another
+      # round would review it again, so the critical phase ends. The report lists the dismissed findings.
+      - when: "{{ (history.critical | length) < 6 and (steps.critical_resolve.outputs.head_sha | default('')) != steps.critical.outputs.reviewed_sha }}"
+        to: critical
+      # At the cap, and after the one round of a later push, the fix goes to CI with no review, and finish names its
+      # commits. A resolution that fixed nothing leaves the head where CI may have run already: ready checks it.
+      - to: ready
+
+  # Phase 3: CI on a ready pull request, then the comments that arrived during it.
   ready:
     type: script
     description: Mark the pull request ready, then remove the plan and push
     run: [uv, run, "{{ skill.dir }}/scripts/mark_ready.py"]
     input: {pr: "{{ steps.open_draft_pr.json.pr_number }}", branch: "{{ steps.checkout_base.json.branch }}", plan_file: "{{ steps.checkout_base.json.plan_file }}"}
     parse: json
-    next: get_ci_green
+    next:
+      # CI already ran on this exact head: nothing was pushed since it ran. It does not wait again, so a failed CI
+      # never restarts its fix budget: failed finishes, and passed goes on to the comments.
+      - when: >-
+          {{ steps.get_ci_green is defined and steps.get_ci_green.outputs.head_sha == steps.ready.json.head_sha
+          and steps.get_ci_green.outputs.state == 'failed' }}
+        to: limits
+      - when: "{{ steps.get_ci_green is defined and steps.get_ci_green.outputs.head_sha == steps.ready.json.head_sha }}"
+        to: answer_comments
+      - to: get_ci_green
 
   get_ci_green:
     type: call
@@ -257,58 +316,15 @@ blocks:
     skill: resolve-pr-feedback
     inputs:
       pr: "{{ steps.open_draft_pr.json.pr_number }}"
-      scope_sha: "{{ steps.review.outputs.scope_sha }}"
-      # The first round after CI lists the suggestions of the review loop in one comment, for a person.
+      # The first round after CI lists the suggestions of the review rounds in one comment, for a person.
+      scope_sha: *scope_sha
       findings: "{{ [] if history.answer_comments | default([]) else (history.review | map(attribute='outputs') | map(attribute='findings') | sum(start=[]) | selectattr('severity', 'equalto', 'suggestion') | list) }}"
-    next: check_unreviewed
-
-  check_unreviewed:
-    type: script
-    description: Find the code that no review saw yet
-    run: [uv, run, "{{ skill.dir }}/scripts/check_unreviewed.py"]
-    input:
-      pr: "{{ steps.open_draft_pr.json.pr_number }}"
-      last_reviewed: "{{ steps.final_review.outputs.reviewed_sha if steps.final_review is defined else steps.review.outputs.reviewed_sha }}"
-      plan_file: "{{ steps.checkout_base.json.plan_file }}"
-    parse: json
     next:
-      - when: "{{ steps.check_unreviewed.json.unreviewed and (history.final_review | default([]) | length) < 4 }}"
-        to: final_review
-      # Finish once CI ran on the head commit: nothing is unreviewed, or the 4 extra rounds are used and finish names
-      # the commits that no review saw. Otherwise CI runs again, on the last fix too.
-      - when: "{{ steps.check_unreviewed.json.head_sha == steps.get_ci_green.outputs.head_sha }}"
-        to: limits
-      - to: ready
-
-  final_review:
-    type: call
-    description: Review the code that no review saw, for required findings only
-    skill: review-round
-    inputs:
-      pr: "{{ steps.open_draft_pr.json.pr_number }}"
-      scope_sha: "{{ steps.review.outputs.scope_sha }}"
-      since_sha: "{{ steps.final_review.outputs.reviewed_sha if steps.final_review is defined else steps.review.outputs.reviewed_sha }}"
-      dismissed: "{{ (history.resolve + (history.final_resolve | default([]))) | map(attribute='outputs') | map(attribute='decisions') | sum(start=[]) | selectattr('verdict', 'equalto', 'dismissed') | selectattr('reviewer') | list }}"
-    # The arrow from check_unreviewed already limits these rounds to 4. This cap is only a safety net, so it never
-    # asks.
-    max_visits: 4
-    on_max_visits: limits
-    ask_on_max_visits: false
-    next:
-      # The 4th round's findings get fixed too, with no review after them, and finish names the unreviewed commits.
-      - when: "{{ steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list }}"
-        to: final_resolve
-      - to: check_unreviewed
-
-  final_resolve:
-    type: call
-    description: Fix the required findings of the extra round
-    skill: resolve-pr-feedback
-    inputs:
-      pr: "{{ steps.open_draft_pr.json.pr_number }}"
-      findings: "{{ steps.final_review.outputs.findings | selectattr('severity', 'equalto', 'required') | list }}"
-      scope_sha: "{{ steps.review.outputs.scope_sha }}"
-    next: check_unreviewed
+      # Any pushed commit gets a critical round, then CI again, also after the 6th round: a CI fix or a comment fix
+      # moves the head away from the one that ready pushed. A fix of the description only pushes nothing.
+      - when: "{{ steps.answer_comments.outputs.head_sha != steps.ready.json.head_sha }}"
+        to: critical
+      - to: limits
 
   limits:
     type: script
@@ -316,12 +332,12 @@ blocks:
     run: [uv, run, "{{ skill.dir }}/scripts/list_limits.py"]
     input:
       build_done: "{{ steps.implement_step.done }}"
-      resolve_rounds: "{{ history.resolve | default([]) | length }}"
-      last_fixed: "{{ steps.resolve.outputs.fixed if steps.resolve is defined else 0 }}"
       ready_runs: "{{ history.ready | default([]) | length }}"
       ci_runs: "{{ history.get_ci_green | default([]) | length }}"
-      unreviewed: "{{ steps.check_unreviewed.json.unreviewed if steps.check_unreviewed is defined else false }}"
-      items_left: "{{ (history.resolve + history.answer_comments + history.final_resolve) | map(attribute='outputs') | selectattr('left') | list | length }}"
+      critical_rounds: "{{ history.critical | default([]) | length }}"
+      last_critical_findings: "{{ steps.critical.outputs.findings | length }}"
+      pushed_since_ready: "{{ steps.answer_comments is defined and steps.answer_comments.outputs.head_sha != steps.ready.json.head_sha }}"
+      items_left: "{{ (history.resolve + history.critical_resolve + history.answer_comments) | map(attribute='outputs') | selectattr('left') | list | length }}"
     parse: json
     next: finish
 
