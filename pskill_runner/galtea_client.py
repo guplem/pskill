@@ -8,6 +8,8 @@ Verified against the Galtea monorepo (api/src) on 2026-10-15:
 - `GET /sessions` and `GET /products` filter by `customIds` and `versionIds`, or by `names`, and return a list.
 - `POST /inferenceResults` has no metadata and no timestamp. The client may set `index`.
 - `POST /traces/batch`: a span `id` is a global key, so it must be unique (a UUID). The body may hold 20 MB.
+- `GET /auth/user` (operation `getCurrentUser`) returns the user that the key acts as, with its `organizationId`.
+  `GET /organizations/{id}` proves nothing: a user with a platform role may read every organization.
 - Every other body may hold 512 KB. `POST /versions/get-or-create` allows 10 calls a minute per user.
 """
 
@@ -45,6 +47,9 @@ class GalteaClient:
 
     def __init__(self, send: Sender) -> None:
         self.send = send
+
+    def current_user(self) -> dict[str, Any]:
+        return dict(self.send("GET", "/auth/user", None))
 
     def find_product(self, name: str) -> dict[str, Any] | None:
         products = self.send("GET", f"/products?names={urllib.parse.quote(name)}", None)

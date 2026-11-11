@@ -35,6 +35,7 @@ class Config:
     viewer_port: int = 7777
     worktree_folder: str = ".pskill/worktrees"  # where `start --worktree` puts the run's git worktree, from the root
     worktree_setup: list[str] = field(default_factory=list)  # the command that prepares a new worktree, as argv
+    galtea_organization_id: str | None = None  # the only Galtea organization that runs upload to (SPEC.md 10.4)
     # The project's tier rows, per harness and tier. Each replaces the adapter's default row (adapters.py).
     tiers: Mapping[str, Mapping[str, TierRow]] = field(default_factory=dict)
 
@@ -93,6 +94,9 @@ def load_config(path: Path) -> Config:
         )
     if "worktree_setup" in raw and not is_list_of_texts(raw["worktree_setup"]):
         raise ProjectError(f"{path}: 'worktree_setup' must be a list of non-empty texts, such as '[npm, ci]'")
+    organization = raw.get("galtea_organization_id")
+    if organization is not None and not is_text(organization):
+        raise ProjectError(f"{path}: 'galtea_organization_id' must be a non-empty text, such as 'org_abc123'")
     return Config(**{**raw, "tiers": load_tiers(path, raw.get("tiers"))})
 
 
@@ -104,8 +108,12 @@ def is_relative_folder(value: Any) -> bool:
     return bool(folder.parts) and not folder.anchor and ".." not in folder.parts
 
 
+def is_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
 def is_list_of_texts(value: Any) -> bool:
-    return isinstance(value, list) and all(isinstance(item, str) and item.strip() for item in value)
+    return isinstance(value, list) and all(is_text(item) for item in value)
 
 
 def load_tiers(path: Path, raw: Any) -> dict[str, dict[str, TierRow]]:

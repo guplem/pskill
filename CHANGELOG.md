@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 (2026-11-11)
+
+A project can name the Galtea organization that its runs belong to, so a key of another organization never writes there (#197).
+
+- **`galtea_organization_id` in `.pskill/config.yaml`:** optional, a non-empty text such as `org_abc123`. With no value, or when no skill of the run names a product, the upload works as before: no extra call, no extra output.
+- **The check:** with the setting and a key, each command of a run that uploads (a run with a skill copy that names `x-galtea.product`) first asks Galtea `GET /auth/user` for the organization of the key. Only the same organization uploads. Another organization, or an HTTP error such as `401`, sends nothing and keeps the upload's place, so a later command with a right key uploads the whole run. A network error stays silent, as before.
+- **One notice per run:** a refused key prints one line to stderr on the run's first such command. It names where the key came from (`.pskill/galtea.env` or the environment variable) and both organizations, or the HTTP status, never the key. stdout and the exit code never change.
+
 ## 1.1.0 (2026-11-05)
 
 A `script` block can run in the background for up to hours, and the agent only starts it and ends its turn, so a long wait (CI) costs no agent turn per poll (#190).

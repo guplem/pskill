@@ -7,13 +7,15 @@ After each run command, `upload_run` reads the new events of the run and sends t
 - the tokens of the model calls made while each block ran, from the Claude Code transcripts.
 
 The upload is best effort. With no key it does nothing. Any error is swallowed, and the command
-prints and returns what it would print and return without Galtea.
+prints and returns what it would print and return without Galtea. With `galtea_organization_id` set,
+a key of another organization uploads nothing, and the run's first such command prints one notice to stderr.
 """
 
 import contextlib
 import json
 import os
 import re
+import sys
 import urllib.error
 import uuid
 from bisect import bisect_right
@@ -21,12 +23,12 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, NamedTuple, TypedDict, cast
 
 from pskill_runner.adapters import adapter_for, tier_row
 from pskill_runner.computed_values import ComputedValueError, render_text
 from pskill_runner.galtea_client import GalteaClient, urllib_sender
-from pskill_runner.project import Project
+from pskill_runner.project import PSKILL_FOLDER_NAME, Project
 from pskill_runner.run_records import RunInfo, RunState, child_call_id, frame_context, one_job_prompt
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, read_json, timestamp, write_json_atomic
 from pskill_runner.token_usage import (
@@ -82,6 +84,14 @@ class UploadState(TypedDict):
     products: dict[str, str]  # product name -> product id
     versions: dict[str, str]  # product id and facts (JSON) -> version id; Galtea allows 10 a minute
     sessions: dict[str, SessionRecord]  # call id -> its session ("" is the root skill)
+    organization_notice_shown: bool  # the notice of a key of another organization was printed; absent before 1.2.0
+
+
+class ApiKey(NamedTuple):
+    """A Galtea key, and where it came from, for the notice (never the key itself)."""
+
+    value: str
+    source: str
 
 
 ClientFactory = Callable[[str], GalteaClient]
@@ -106,21 +116,26 @@ def upload_run(
         api_key = read_api_key(project, environment)
         if api_key is not None:
             transcripts = projects_folder or default_projects_folder()
-            upload = RunUpload(project, project.runs_folder / run_id, make_client(api_key), transcripts)
-            upload.upload_new_events()
+            upload = RunUpload(project, project.runs_folder / run_id, make_client(api_key.value), transcripts)
+            refusal = upload.organization_refusal(api_key.source)
+            if refusal is None:
+                upload.upload_new_events()
+            else:
+                upload.show_notice_once(refusal)
     except Exception:  # an upload must never break a command, so every failure ends quietly
         return
 
 
-def read_api_key(project: Project, environment: Mapping[str, str]) -> str | None:
+def read_api_key(project: Project, environment: Mapping[str, str]) -> ApiKey | None:
     """The key in `.pskill/galtea.env` (one `GALTEA_API_KEY=...` line), else the environment variable."""
     key_file = project.pskill_folder / KEY_FILE_NAME
     if key_file.is_file():
         for line in key_file.read_text(encoding="utf-8").splitlines():
             name, separator, value = line.partition("=")
             if separator and name.strip() == KEY_VARIABLE and value.strip():
-                return value.strip().strip("\"'")
-    return environment.get(KEY_VARIABLE) or None
+                return ApiKey(value.strip().strip("\"'"), f"from {PSKILL_FOLDER_NAME}/{KEY_FILE_NAME}")
+    environment_key = environment.get(KEY_VARIABLE)
+    return ApiKey(environment_key, f"from the environment variable {KEY_VARIABLE}") if environment_key else None
 
 
 def galtea_settings(skill_folder: Path) -> dict[str, Any]:
@@ -157,7 +172,7 @@ class RunUpload:
         self.client = client
         self.info = cast(RunInfo, read_json(folder / "run.json"))
         state_path = folder / STATE_FILE_NAME
-        empty = UploadState(last_seq=0, products={}, versions={}, sessions={})
+        empty = UploadState(last_seq=0, products={}, versions={}, sessions={}, organization_notice_shown=False)
         self.state = cast(UploadState, read_json(state_path)) if state_path.is_file() else empty
         self.events: list[dict[str, Any]] = []
 
@@ -180,6 +195,39 @@ class RunUpload:
             self.save()
         if reachable:
             self.update_metadata()
+        self.save()
+
+    def organization_refusal(self, key_source: str) -> str | None:
+        """Why the key must not upload to the project's organization, or None when it may.
+
+        With no `galtea_organization_id`, or no skill copy that names a product, there is no check: nothing
+        would upload. A network error raises, and the upload stays silent.
+        """
+        expected = self.project.config.galtea_organization_id
+        if expected is None or not self.names_a_product():
+            return None
+        try:
+            organization = self.client.current_user().get("organizationId")
+        except urllib.error.HTTPError as error:
+            return (
+                f"Galtea refused the API key ({key_source}) with HTTP {error.code}, "
+                f"so it is not checked against organization {expected}"
+            )
+        if organization == expected:
+            return None
+        return f"the API key ({key_source}) belongs to organization {organization}, not {expected}"
+
+    def names_a_product(self) -> bool:
+        """Whether any skill copy of the run names `x-galtea.product`."""
+        copies = (self.folder / "skills").glob("*/skill.yaml")
+        return any(galtea_settings(copy.parent).get("product") for copy in copies)
+
+    def show_notice_once(self, refusal: str) -> None:
+        """Print the refusal to stderr on the first refused command of the run. `last_seq` stays where it was."""
+        if self.state.get("organization_notice_shown", False):
+            return
+        print(f"pskill: Galtea upload off for this run: {refusal}.", file=sys.stderr)
+        self.state["organization_notice_shown"] = True
         self.save()
 
     def save(self) -> None:
