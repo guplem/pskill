@@ -137,6 +137,7 @@ pskill can send each run of a skill to [Galtea](https://galtea.ai) as production
 
 1. Add `x-galtea: {product: <product name>}` to the skill's `skill.yaml` (see `AUTHORING.md`).
 2. Put your key in `.pskill/galtea.env` as `GALTEA_API_KEY=<key>`. Git ignores this file. The environment variable `GALTEA_API_KEY` works too.
+3. Set `galtea_organization_id: <your organization id>` in `.pskill/config.yaml`. We recommend it for every project that uploads: the Galtea SDK and CLI read the same environment variable, so your shell can hold a key of another organization. With the setting, a key of another organization uploads nothing, and the run goes on with one notice on stderr.
 
 Each run becomes a Galtea session, with one turn per block. An upload error never breaks a run. The agent passes its model with `pskill start --model`, so each Galtea version names the model too.
 

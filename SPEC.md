@@ -81,7 +81,7 @@ These rules decide every open question. When a feature conflicts with them, drop
 | D26 | Example skills: `implement-issue` (one pull request, built red-green, then reviewed and resolved round after round until CI is green), `review-pr` (a deep review that posts one GitHub review), `resolve-pr-feedback`, `fix-ci`, `create-issue`, and the internal `checkout-pr`, `review-round`, `review-head-check`, and `review-doubt` (section 13). They are a base that most software projects on GitHub can copy, so they read the project's rules from its own files and hard-code no project detail. Together they must exercise every feature (section 13.3). Changed after 0.23.1: before, three proof skills ported from the setup-guplem-standard templates. Changed after 0.32.0: before, `review-pr` was one round that posted loose comments. | Real runs of the first version showed what a useful base needs: a plan in a draft pull request, separate find and fix steps, replies to comments, and a CI wait. Stacked pull requests and worktree subagents can come later. |
 | D27 | `pskill test` runs skill tests with a scripted fake agent. | Test graph paths with no LLM, no cost, in CI. |
 | D28 | `pskill sync` adds one narrow allow rule to each harness's project settings: the runner command. | Without it, the user gets a permission prompt on every block. Every other agent action still asks as usual. |
-| D29 | A skill that names `x-galtea.product` uploads each of its runs to Galtea as production usage, live, after each run command (section 10.4). Only with a Galtea key; best effort, outside the run lock. | One place to watch, debug, and evaluate real skill runs. With no key there is no network call, no output, and no file, so D20 (no network after the install) still holds for everyone else. |
+| D29 | A skill that names `x-galtea.product` uploads each of its runs to Galtea as production usage, live, after each run command (section 10.4). Only with a Galtea key; best effort, outside the run lock. | One place to watch, debug, and evaluate real skill runs. With no key there is no network call, no output, and no file, so D20 (no network after the install) still holds for everyone else. A project can bind its uploads to one organization (`galtea_organization_id`), so a key of another organization never writes there. |
 
 ### 3.1 Known limitations (accepted)
 
@@ -773,6 +773,7 @@ The runner itself lives in the user's cache: `PSKILL_CACHE_DIR` when set, else `
 - **`permissions`** are app names, because each app keeps its rules in its own format, in a fixed place: Claude Code in `permissions.allow` of `.claude/settings.json`, Codex in `.codex/rules/pskill.rules`. An app in this list is one that pskill sets up, so `claude-code` here also gets the profile agents in `.claude/agents/` (9.3).
 - The old setting `harnesses` stops with an error that names these two settings.
 - **`worktree_folder`** is where a worktree run (7.8) gets its worktree: a folder relative to the project root, with no `..`. The default `.pskill/worktrees` keeps it inside `.pskill/` (D23). **`worktree_setup`** is the command that prepares a new worktree, run in its project folder, as a list of non-empty texts (no shell), such as `[npm, ci]`; empty by default. Anything else stops with an error. Added in 0.42.0.
+- **`galtea_organization_id`** is the only Galtea organization that the project's runs upload to (10.4), such as `org_abc123`: a non-empty text. With no value (the default), any key uploads. Anything else stops with an error. Added in 1.2.0.
 - **`tiers`** changes rows of the tier table (section 6.1): a harness (`claude-code` or `codex`), a tier, and a row with `model` and `effort`, each optional. A row replaces the default row of its harness and tier; every other row keeps its default. An unknown harness, tier, or key, or a value that is not a non-empty text, stops with an error.
 
 ```yaml
@@ -789,6 +790,7 @@ max_wait_minutes: 120                                    # the waits of one bloc
 viewer_port: 7777
 worktree_folder: .pskill/worktrees                       # where `start --worktree` makes the run's worktree (7.8)
 worktree_setup: []                                       # the command that prepares a new worktree, such as [npm, ci]
+galtea_organization_id: org_abc123                       # optional: the upload goes only to this Galtea organization (10.4)
 tiers:                                                   # rows that replace the default tier rows (6.1)
   codex:
     fast: {model: gpt-6-luna, effort: low}
@@ -804,7 +806,7 @@ runs/<run-id>/
 ├── skills/        # copies of every skill that this run can reach through calls
 ├── agents/        # copies of every pskill agent in `.pskill/agents/`
 ├── answers/       # the files for long answers, one per block or task (section 7.3)
-└── galtea.json    # the upload to Galtea: the last uploaded event, the product and session ids (10.4)
+└── galtea.json    # the upload to Galtea: the last uploaded event, the product and session ids, the organization notice (10.4)
 ```
 
 `run.json` fields:
@@ -846,8 +848,9 @@ x-galtea:
 ```
 
 - **Key:** the line `GALTEA_API_KEY=<key>` in `.pskill/galtea.env`, else the environment variable `GALTEA_API_KEY`. With no key, nothing happens.
+- **Organization:** a key acts as its user, of one organization, and the environment variable is shared with the Galtea SDK and CLI, so it can hold a key of another organization. With `galtea_organization_id` set (10.1), each command first asks `GET /auth/user` (the user of the key, whatever its role; `GET /organizations/{id}` proves nothing, since a platform role reads every organization). Only a `200` with the same `organizationId` uploads. Another organization, or an HTTP error such as `401`, sends nothing else and keeps `last_seq`, so a later command with a right key uploads the whole run. A network error on the check is silent, as for any call. With no setting there is no check.
 - **When:** `start`, `current`, `task`, `submit`, `pause`, `resume`, and `cancel` print their packet, then send the run's new events. The hooks and `pskill test` never upload.
-- **Best effort:** one short timeout per call. Any error is swallowed: the command's output and exit code never change. A failed event is not sent again, and nothing records the failure. A refused event (an HTTP error) skips only that event. A network error (no reply) stops the upload for the rest of the command: its other new events are never sent.
+- **Best effort:** one short timeout per call. Any error is swallowed: the command's output and exit code never change. The one exception is a key refused by the organization check: the first such command of the run prints one line to stderr that names the key's source and the two organizations (or the HTTP status), never the key, and gives no order (the flag `organization_notice_shown` in `galtea.json`). stdout and the exit code still never change. A failed event is not sent again, and nothing records the failure. A refused event (an HTTP error) skips only that event. A network error (no reply) stops the upload for the rest of the command: its other new events are never sent.
 - **Product:** found by its exact name, or created. pskill sets its description to the skill's description, its auto-close to 7 days (a run can pause for days), and the policy for a turn that reaches a closed session to "reopen".
 - **Version:** Galtea's get-or-create by facts: `skill` (the hash of the skill copy), `runner`, `harness`, `llm` (from `start --model`, else `unknown`), and `tiers` (the model of each tier, only for a skill with a task that sets a `tier`).
 - **Session:** one per execution of a skill with a product: the root skill, or one call of a child skill. Its custom id is `<skill id>@<run id>`, plus `/<call id>` for a child. Its metadata holds the run facts (`run_id`, `repo_commit`, `harness`, `llm`, ...), the parent session of a child, the `x-galtea.metadata` values once they render, and the final status.
