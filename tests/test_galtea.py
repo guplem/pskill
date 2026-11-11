@@ -215,6 +215,20 @@ def test_a_network_error_on_the_check_stays_silent(tmp_path: Path, capsys: pytes
     assert capsys.readouterr().err == ""
 
 
+def test_a_run_with_no_product_skips_the_organization_check_and_the_notice(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, {"scripted": SCRIPT_SKILL})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    project = with_organization(project)
+    fake = FakeGaltea(organization_id="org_xyz789")
+
+    upload(project, run_id, fake)
+
+    assert fake.calls == []
+    assert capsys.readouterr().err == ""
+
+
 # --- one skill --------------------------------------------------------------------------------------
 
 

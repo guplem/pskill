@@ -200,10 +200,11 @@ class RunUpload:
     def organization_refusal(self, key_source: str) -> str | None:
         """Why the key must not upload to the project's organization, or None when it may.
 
-        With no `galtea_organization_id` there is no check. A network error raises, and the upload stays silent.
+        With no `galtea_organization_id`, or no skill copy that names a product, there is no check: nothing
+        would upload. A network error raises, and the upload stays silent.
         """
         expected = self.project.config.galtea_organization_id
-        if expected is None:
+        if expected is None or not self.names_a_product():
             return None
         try:
             organization = self.client.current_user().get("organizationId")
@@ -215,6 +216,11 @@ class RunUpload:
         if organization == expected:
             return None
         return f"the API key ({key_source}) belongs to organization {organization}, not {expected}"
+
+    def names_a_product(self) -> bool:
+        """Whether any skill copy of the run names `x-galtea.product`."""
+        copies = (self.folder / "skills").glob("*/skill.yaml")
+        return any(galtea_settings(copy.parent).get("product") for copy in copies)
 
     def show_notice_once(self, refusal: str) -> None:
         """Print the refusal to stderr on the first refused command of the run. `last_seq` stays where it was."""

@@ -1169,7 +1169,8 @@ def test_a_failing_hook_reports_on_stderr_and_still_exits_with_code_0(
 def test_a_skipped_upload_keeps_the_output_and_exit_code(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    project = make_project(tmp_path, monkeypatch)
+    with_product = PLAN_SKILL.replace("schema: pskill/v1\n", "schema: pskill/v1\nx-galtea:\n  product: plans\n", 1)
+    project = make_project(tmp_path, monkeypatch, with_product)
     (project.pskill_folder / "config.yaml").write_text("galtea_organization_id: org_abc123\n", encoding="utf-8")
     project = find_project(project.root)
     run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x")
