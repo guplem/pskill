@@ -94,9 +94,11 @@ def test_the_key_file_in_pskill_wins_over_the_environment(tmp_path: Path) -> Non
     project = make_project(tmp_path, {})
     (project.pskill_folder / "galtea.env").write_text("# comment\nOTHER=1\nGALTEA_API_KEY = 'gsk_file'\n")
 
-    assert galtea.read_api_key(project, {"GALTEA_API_KEY": "gsk_env"}) == "gsk_file"
+    from_file = galtea.ApiKey("gsk_file", "from .pskill/galtea.env")
+    assert galtea.read_api_key(project, {"GALTEA_API_KEY": "gsk_env"}) == from_file
     (project.pskill_folder / "galtea.env").write_text("GALTEA_API_KEY=\n")
-    assert galtea.read_api_key(project, {"GALTEA_API_KEY": "gsk_env"}) == "gsk_env"
+    from_environment = galtea.ApiKey("gsk_env", "from the environment variable GALTEA_API_KEY")
+    assert galtea.read_api_key(project, {"GALTEA_API_KEY": "gsk_env"}) == from_environment
     assert galtea.read_api_key(project, {}) is None
 
 

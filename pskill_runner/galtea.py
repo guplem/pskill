@@ -21,12 +21,12 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, NamedTuple, TypedDict, cast
 
 from pskill_runner.adapters import adapter_for, tier_row
 from pskill_runner.computed_values import ComputedValueError, render_text
 from pskill_runner.galtea_client import GalteaClient, urllib_sender
-from pskill_runner.project import Project
+from pskill_runner.project import PSKILL_FOLDER_NAME, Project
 from pskill_runner.run_records import RunInfo, RunState, child_call_id, frame_context, one_job_prompt
 from pskill_runner.run_store import folder_hash, parse_timestamp, read_events, read_json, timestamp, write_json_atomic
 from pskill_runner.token_usage import (
@@ -84,6 +84,13 @@ class UploadState(TypedDict):
     sessions: dict[str, SessionRecord]  # call id -> its session ("" is the root skill)
 
 
+class ApiKey(NamedTuple):
+    """A Galtea key, and where it came from, for the notice (never the key itself)."""
+
+    value: str
+    source: str
+
+
 ClientFactory = Callable[[str], GalteaClient]
 
 
@@ -106,21 +113,22 @@ def upload_run(
         api_key = read_api_key(project, environment)
         if api_key is not None:
             transcripts = projects_folder or default_projects_folder()
-            upload = RunUpload(project, project.runs_folder / run_id, make_client(api_key), transcripts)
+            upload = RunUpload(project, project.runs_folder / run_id, make_client(api_key.value), transcripts)
             upload.upload_new_events()
     except Exception:  # an upload must never break a command, so every failure ends quietly
         return
 
 
-def read_api_key(project: Project, environment: Mapping[str, str]) -> str | None:
+def read_api_key(project: Project, environment: Mapping[str, str]) -> ApiKey | None:
     """The key in `.pskill/galtea.env` (one `GALTEA_API_KEY=...` line), else the environment variable."""
     key_file = project.pskill_folder / KEY_FILE_NAME
     if key_file.is_file():
         for line in key_file.read_text(encoding="utf-8").splitlines():
             name, separator, value = line.partition("=")
             if separator and name.strip() == KEY_VARIABLE and value.strip():
-                return value.strip().strip("\"'")
-    return environment.get(KEY_VARIABLE) or None
+                return ApiKey(value.strip().strip("\"'"), f"from {PSKILL_FOLDER_NAME}/{KEY_FILE_NAME}")
+    value = environment.get(KEY_VARIABLE)
+    return ApiKey(value, f"from the environment variable {KEY_VARIABLE}") if value else None
 
 
 def galtea_settings(skill_folder: Path) -> dict[str, Any]:
