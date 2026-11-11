@@ -24,14 +24,14 @@ Acceptance:
 - The flag is `organization_notice_shown` in `galtea.json`, a plain `UploadState` key read with `.get(..., False)`.
 - Notice texts:
   - "pskill: Galtea upload off for this run: the API key (from ...) belongs to organization org_x, not org_y."
-  - "pskill: Galtea upload off for this run: Galtea refused the API key (from ...) with HTTP 401, so its organization is unknown, not checked against org_y."
+  - "pskill: Galtea upload off for this run: Galtea refused the API key (from ...) with HTTP 401, so it is not checked against organization org_y."
 - Version 1.2.0.
 
 ## Approach
 
 - `pskill_runner/project.py`: field on `Config`; guard in `load_config` like `worktree_folder`; predicate `is_text`.
 - `pskill_runner/galtea_client.py`: `current_user()` like `find_product`; docstring line for `GET /auth/user`.
-- `pskill_runner/galtea.py`: `ApiKey`, `read_api_key`, `RunUpload.refusal(source)` and `show_notice`, `upload_run`.
+- `pskill_runner/galtea.py`: `ApiKey`, `read_api_key`, `RunUpload.organization_refusal(source)` and `show_notice_once`, `upload_run`.
 - Docs: SPEC 10.1, 10.2 (`galtea.json`), 10.4 Key and Best effort, D29; README; CHANGELOG 1.2.0; version bump.
 
 ## Steps
