@@ -127,8 +127,8 @@ def read_api_key(project: Project, environment: Mapping[str, str]) -> ApiKey | N
             name, separator, value = line.partition("=")
             if separator and name.strip() == KEY_VARIABLE and value.strip():
                 return ApiKey(value.strip().strip("\"'"), f"from {PSKILL_FOLDER_NAME}/{KEY_FILE_NAME}")
-    value = environment.get(KEY_VARIABLE)
-    return ApiKey(value, f"from the environment variable {KEY_VARIABLE}") if value else None
+    environment_key = environment.get(KEY_VARIABLE)
+    return ApiKey(environment_key, f"from the environment variable {KEY_VARIABLE}") if environment_key else None
 
 
 def galtea_settings(skill_folder: Path) -> dict[str, Any]:
