@@ -117,6 +117,24 @@ def test_a_wrong_worktree_setting_is_an_error(tmp_path: Path, setting_yaml: str,
         find_project(make_project(tmp_path, setting_yaml + "\n"))
 
 
+def test_the_galtea_organization_is_none_by_default(tmp_path: Path) -> None:
+    assert find_project(make_project(tmp_path)).config.galtea_organization_id is None
+
+
+@pytest.mark.parametrize(("setting_yaml", "expected"), [("org_abc123", "org_abc123"), ("", None), ("null", None)])
+def test_a_galtea_organization_setting_is_kept(tmp_path: Path, setting_yaml: str, expected: str | None) -> None:
+    config = find_project(make_project(tmp_path, f"galtea_organization_id: {setting_yaml}\n")).config
+
+    assert config.galtea_organization_id == expected
+
+
+@pytest.mark.parametrize("value", ["''", "'  '", "3", "[org_abc123]"])
+def test_a_wrong_galtea_organization_setting_is_an_error(tmp_path: Path, value: str) -> None:
+    message = r"'galtea_organization_id' must be a non-empty text, such as 'org_abc123'"
+    with pytest.raises(ProjectError, match=message):
+        find_project(make_project(tmp_path, f"galtea_organization_id: {value}\n"))
+
+
 def test_the_project_tier_rows_are_read_per_harness_and_tier(tmp_path: Path) -> None:
     config_yaml = (
         "tiers:\n"
