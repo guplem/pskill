@@ -36,6 +36,15 @@ def test_find_product_returns_none_when_no_product_has_the_name() -> None:
     assert GalteaClient(RecordingSender([])).find_product("missing") is None
 
 
+def test_current_user_asks_for_the_user_of_the_key() -> None:
+    sender = RecordingSender({"id": "user_1", "organizationId": "org_abc123"})
+
+    user = GalteaClient(sender).current_user()
+
+    assert user == {"id": "user_1", "organizationId": "org_abc123"}
+    assert sender.calls == [("GET", "/auth/user", None)]
+
+
 def test_each_call_uses_its_galtea_route() -> None:
     sender = RecordingSender(
         {"id": "prod_1"}, None, {"id": "ver_1"}, {"id": "ses_1"}, None, None, {"id": "inf_1"}, None
