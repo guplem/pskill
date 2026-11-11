@@ -7,13 +7,15 @@ After each run command, `upload_run` reads the new events of the run and sends t
 - the tokens of the model calls made while each block ran, from the Claude Code transcripts.
 
 The upload is best effort. With no key it does nothing. Any error is swallowed, and the command
-prints and returns what it would print and return without Galtea.
+prints and returns what it would print and return without Galtea. With `galtea_organization_id` set,
+a key of another organization uploads nothing, and the run's first such command prints one notice to stderr.
 """
 
 import contextlib
 import json
 import os
 import re
+import sys
 import urllib.error
 import uuid
 from bisect import bisect_right
@@ -82,6 +84,7 @@ class UploadState(TypedDict):
     products: dict[str, str]  # product name -> product id
     versions: dict[str, str]  # product id and facts (JSON) -> version id; Galtea allows 10 a minute
     sessions: dict[str, SessionRecord]  # call id -> its session ("" is the root skill)
+    organization_notice_shown: bool  # the notice of a key of another organization was printed; absent before 1.2.0
 
 
 class ApiKey(NamedTuple):
@@ -114,7 +117,11 @@ def upload_run(
         if api_key is not None:
             transcripts = projects_folder or default_projects_folder()
             upload = RunUpload(project, project.runs_folder / run_id, make_client(api_key.value), transcripts)
-            upload.upload_new_events()
+            refusal = upload.organization_refusal(api_key.source)
+            if refusal is None:
+                upload.upload_new_events()
+            else:
+                upload.show_notice_once(refusal)
     except Exception:  # an upload must never break a command, so every failure ends quietly
         return
 
@@ -165,7 +172,7 @@ class RunUpload:
         self.client = client
         self.info = cast(RunInfo, read_json(folder / "run.json"))
         state_path = folder / STATE_FILE_NAME
-        empty = UploadState(last_seq=0, products={}, versions={}, sessions={})
+        empty = UploadState(last_seq=0, products={}, versions={}, sessions={}, organization_notice_shown=False)
         self.state = cast(UploadState, read_json(state_path)) if state_path.is_file() else empty
         self.events: list[dict[str, Any]] = []
 
@@ -188,6 +195,33 @@ class RunUpload:
             self.save()
         if reachable:
             self.update_metadata()
+        self.save()
+
+    def organization_refusal(self, key_source: str) -> str | None:
+        """Why the key must not upload to the project's organization, or None when it may.
+
+        With no `galtea_organization_id` there is no check. A network error raises, and the upload stays silent.
+        """
+        expected = self.project.config.galtea_organization_id
+        if expected is None:
+            return None
+        try:
+            organization = self.client.current_user().get("organizationId")
+        except urllib.error.HTTPError as error:
+            return (
+                f"Galtea refused the API key ({key_source}) with HTTP {error.code}, "
+                f"so it is not checked against organization {expected}"
+            )
+        if organization == expected:
+            return None
+        return f"the API key ({key_source}) belongs to organization {organization}, not {expected}"
+
+    def show_notice_once(self, refusal: str) -> None:
+        """Print the refusal to stderr on the first refused command of the run. `last_seq` stays where it was."""
+        if self.state.get("organization_notice_shown", False):
+            return
+        print(f"pskill: Galtea upload off for this run: {refusal}.", file=sys.stderr)
+        self.state["organization_notice_shown"] = True
         self.save()
 
     def save(self) -> None:

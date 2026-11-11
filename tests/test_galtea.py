@@ -28,12 +28,14 @@ class FakeGaltea:
         fail_on: str | None = None,
         sessions: list[dict[str, Any]] | None = None,
         error: Exception | None = None,
+        organization_id: str = "org_abc123",
     ) -> None:
         self.calls: list[tuple[str, str, Any]] = []
         self.products = products or []
         self.sessions = sessions or []
         self.error = error or OSError("Galtea is down")
         self.fail_on = fail_on
+        self.organization_id = organization_id
         self.count = 0
 
     def send(self, method: str, path: str, body: Any) -> Any:
@@ -41,6 +43,8 @@ class FakeGaltea:
         if self.fail_on is not None and self.fail_on in path:
             raise self.error
         self.count += 1
+        if path == "/auth/user":
+            return {"id": "user_1", "organizationId": self.organization_id}
         if method == "GET":
             return self.sessions if path.startswith("/sessions") else self.products
         replies = {
@@ -100,6 +104,115 @@ def test_the_key_file_in_pskill_wins_over_the_environment(tmp_path: Path) -> Non
     from_environment = galtea.ApiKey("gsk_env", "from the environment variable GALTEA_API_KEY")
     assert galtea.read_api_key(project, {"GALTEA_API_KEY": "gsk_env"}) == from_environment
     assert galtea.read_api_key(project, {}) is None
+
+
+# --- the organization -------------------------------------------------------------------------------
+
+AUTH_CALL = ("GET", "/auth/user", None)
+FROM_ENVIRONMENT = "from the environment variable GALTEA_API_KEY"
+
+
+def with_organization(project: Project, organization_id: str = "org_abc123") -> Project:
+    (project.pskill_folder / "config.yaml").write_text(f"galtea_organization_id: {organization_id}\n")
+    return find_project(project.root)
+
+
+def scripted_run(tmp_path: Path) -> tuple[Project, str]:
+    project = make_project(tmp_path, {"scripted": with_product(SCRIPT_SKILL, "s")})
+    run_id, _ = start_run(project, "scripted", {}, mode="interactive", harness="generic")
+    return project, run_id
+
+
+def last_seq(project: Project, run_id: str) -> int:
+    path = project.runs_folder / run_id / "galtea.json"
+    return int(read_json(path)["last_seq"]) if path.is_file() else 0
+
+
+def test_with_no_organization_setting_the_key_is_not_checked(tmp_path: Path) -> None:
+    project, run_id = scripted_run(tmp_path)
+    fake = FakeGaltea()
+
+    upload(project, run_id, fake)
+
+    assert AUTH_CALL not in fake.calls
+    assert fake.bodies("POST", "/sessions") != []
+
+
+def test_a_key_of_the_project_organization_uploads(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    project, run_id = scripted_run(tmp_path)
+    project = with_organization(project)
+    fake = FakeGaltea()
+
+    upload(project, run_id, fake)
+
+    assert fake.calls[0] == AUTH_CALL
+    assert fake.calls.count(AUTH_CALL) == 1
+    assert fake.bodies("POST", "/sessions") != []
+    assert capsys.readouterr().err == ""
+
+
+def test_a_key_of_another_organization_sends_nothing_and_says_so_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project, run_id = scripted_run(tmp_path)
+    project = with_organization(project)
+    fake = FakeGaltea(organization_id="org_xyz789")
+
+    upload(project, run_id, fake)
+    first_notice = capsys.readouterr().err
+    upload(project, run_id, fake)
+
+    assert fake.calls == [AUTH_CALL, AUTH_CALL]  # checked again on each command, nothing else
+    assert last_seq(project, run_id) == 0
+    assert first_notice == (
+        f"pskill: Galtea upload off for this run: the API key ({FROM_ENVIRONMENT}) "
+        "belongs to organization org_xyz789, not org_abc123.\n"
+    )
+    assert "gsk_test" not in first_notice
+    assert capsys.readouterr().err == ""  # once per run
+
+
+def test_a_refused_key_sends_nothing_and_names_the_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    project, run_id = scripted_run(tmp_path)
+    project = with_organization(project)
+    (project.pskill_folder / "galtea.env").write_text("GALTEA_API_KEY=gsk_test\n")
+    refused = urllib.error.HTTPError("https://api.galtea.ai/auth/user", 401, "Unauthorized", Message(), None)
+    fake = FakeGaltea(fail_on="/auth/user", error=refused)
+
+    upload(project, run_id, fake, environment={})
+
+    notice = capsys.readouterr().err
+    assert fake.calls == [AUTH_CALL]
+    assert last_seq(project, run_id) == 0
+    assert notice == (
+        "pskill: Galtea upload off for this run: Galtea refused the API key (from .pskill/galtea.env) "
+        "with HTTP 401, so it is not checked against organization org_abc123.\n"
+    )
+    assert "gsk_test" not in notice
+
+
+def test_a_correct_key_after_a_refused_one_uploads_the_whole_run(tmp_path: Path) -> None:
+    project, run_id = scripted_run(tmp_path)
+    project = with_organization(project)
+    upload(project, run_id, FakeGaltea(organization_id="org_xyz789"))
+    fake = FakeGaltea()
+
+    upload(project, run_id, fake)
+
+    assert last_seq(project, run_id) == len(read_events(project.runs_folder / run_id))
+    assert len(fake.bodies("POST", "/inferenceResults")) == 2  # both blocks, from the first event
+
+
+def test_a_network_error_on_the_check_stays_silent(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    project, run_id = scripted_run(tmp_path)
+    project = with_organization(project)
+    fake = FakeGaltea(fail_on="/auth/user")
+
+    upload(project, run_id, fake)
+
+    assert fake.calls == [AUTH_CALL]
+    assert last_seq(project, run_id) == 0
+    assert capsys.readouterr().err == ""
 
 
 # --- one skill --------------------------------------------------------------------------------------
