@@ -1792,6 +1792,15 @@ def test_current_on_another_harness_does_not_run_a_script_that_already_runs_in_t
     assert len(ran) == 1
 
 
+def test_current_gives_the_background_command_again_with_rules_that_carry_the_key(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    key = read_run_info(project, run_id)["key"]
+
+    packet = current_packet(project, run_id, harness="claude-code")
+
+    assert f"If the user asks to stop, run: uv run .pskill/pskill.py pause {run_id} --key {key}" in packet
+
+
 def test_the_result_is_dropped_when_the_run_changed_while_the_script_ran(tmp_path: Path) -> None:
     project, run_id = start_background(tmp_path)
 
