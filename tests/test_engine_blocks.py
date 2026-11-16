@@ -22,6 +22,7 @@ from pskill_runner.engine import (
     run_background_script,
     start_run,
     submit_answer,
+    submit_answer_with_refusal,
     task_packet,
 )
 from pskill_runner.inline_executor import CallResult, ScriptResult
@@ -2128,3 +2129,38 @@ def test_an_answer_that_misses_its_pattern_is_refused_at_submit_and_not_recorded
     frame = read_run_state(project, run_id)["frames"][0]
     assert "implement" not in frame["steps"]
     assert "check" not in frame["steps"]
+
+
+def test_a_submit_that_a_script_sends_back_gives_the_refusal_reason(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"checked": CHECKED_SKILL})
+    run_id, _ = start_run(project, "checked", {}, mode="interactive", harness="generic")
+
+    _, refusal = submit_answer_with_refusal(project, run_id, "commit: see git log\n")
+    _, no_refusal = submit_answer_with_refusal(project, run_id, "commit: good\n")
+
+    assert refusal == "the script `check` sent the run back to the block `implement`"
+    assert no_refusal is None
+
+
+def test_a_fresh_task_that_a_script_sends_back_gives_its_subagent_no_refusal(tmp_path: Path) -> None:
+    skill_yaml = CHECKED_SKILL.replace("    max_visits: 5\n", "    context: fresh\n    max_visits: 5\n", 1)
+    project = make_project(tmp_path, {"checked": skill_yaml})
+    run_id, _ = start_run(project, "checked", {}, mode="interactive", harness="subagents-for-tests")
+
+    text, refusal = submit_answer_with_refusal(project, run_id, "commit: see git log\n", task=0)
+
+    assert "Your work is done" in text
+    assert refusal is None
+    assert current_packet(project, run_id).splitlines()[0] == "## pskill · checked · implement (visit 2) · REFUSED"
+
+
+def test_a_task_answer_rejected_while_stop_attempts_pause_the_run_gives_the_refusal_reason(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(
+        project, "fanout", {"files": ["a.md", "b.md"]}, mode="interactive", harness="subagents-for-tests"
+    )
+    stop_until_paused(project, run_id)
+
+    _, refusal = submit_answer_with_refusal(project, run_id, "wrong: not a list\n", task=0)
+
+    assert refusal == "wrong: must be a list ('- item' lines)"

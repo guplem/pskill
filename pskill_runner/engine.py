@@ -240,10 +240,29 @@ def submit_answer(
     session_id: str | None = None,
     answer_file: Path | None = None,
 ) -> str:
-    """Take an answer. With `answer_file` (`submit --file`), delete that file once the run records the answer.
+    """Take an answer, and return the text to print. See `submit_answer_with_refusal`."""
+    text, _ = submit_answer_with_refusal(
+        project, run_id, answer_text, task, executor, runs_folder, harness, session_id, answer_file
+    )
+    return text
 
-    A later visit of the block then never sends the old answer again. A rejected answer keeps its file, so
-    the agent fixes only the wrong fields.
+
+def submit_answer_with_refusal(
+    project: Project,
+    run_id: str,
+    answer_text: str,
+    task: int | None = None,
+    executor: InlineExecutor | None = None,
+    runs_folder: Path | None = None,
+    harness: str | None = None,
+    session_id: str | None = None,
+    answer_file: Path | None = None,
+) -> tuple[str, str | None]:
+    """Take an answer. Return the text to print, and why the answer was refused (None when it was not).
+
+    With `answer_file` (`submit --file`), delete that file once the run records the answer. A later visit of
+    the block then never sends the old answer again. A rejected answer keeps its file, so the agent fixes only
+    the wrong fields.
     """
     folder = run_folder(project, run_id, runs_folder)
     with run_lock(folder):
@@ -255,7 +274,7 @@ def submit_answer(
         run.save()
     if answer_file is not None and run.answer_recorded:
         delete_answer_file(answer_file, folder / "answers")
-    return text
+    return text, run.refusal
 
 
 def run_background_script(
@@ -591,6 +610,11 @@ def stdin_text_of(script_input: Any) -> str:
     return script_input if isinstance(script_input, str) else json.dumps(script_input)
 
 
+def refusal_line(errors: list[str]) -> str:
+    """The problems of a refused answer on one line, for the `REFUSED:` line of `submit` on stderr."""
+    return " ".join("; ".join(errors).split())
+
+
 def task_not_recorded(task: int, errors: list[str]) -> str:
     """The reply to a task answer that fails its checks: the subagent fixes it and submits again."""
     listed = "\n".join(f"- {error}" for error in errors)
@@ -657,6 +681,7 @@ class Run:
         self.skills: dict[str, Skill] = {}
         self.adapter = adapter_for(info["harness"])
         self.answer_recorded = False  # set by `submit` when it keeps the answer, not when it rejects it
+        self.refusal: str | None = None  # why `submit` refused the answer, on one line, for its stderr line
 
     @classmethod
     def load(
@@ -1427,6 +1452,15 @@ class Run:
             refused=self.sent_back_by_script(block),
         )
 
+    def script_refusal(self) -> str | None:
+        """After an accepted answer: why the run is back at the same block, when a script sent it back."""
+        if self.info["status"] not in ACTIVE_STATUSES:
+            return None
+        block = self.current_block()
+        if not isinstance(block, TaskBlock | DecisionBlock) or not self.sent_back_by_script(block):
+            return None
+        return f"the script `{self.frame['arrived_from']}` sent the run back to the block `{block.id}`"
+
     def sent_back_by_script(self, block: AgentBlock) -> bool:
         """Whether a script sent the run back to this block, with no other block between its last answer and now.
 
@@ -1665,7 +1699,9 @@ class Run:
         decided_by = self.decided_by(block, answered_by)
         duration_ms = elapsed_ms_since(self.info["packet_issued_at"])
         self.answer_recorded = True
-        return self.guarded(lambda: self.accept(block, answer, decided_by, duration_ms))
+        text = self.guarded(lambda: self.accept(block, answer, decided_by, duration_ms))
+        self.refusal = self.script_refusal()
+        return text
 
     def submit_job(self, block: TaskBlock, answer_text: str, task: int | None) -> str:
         """The answer of one job. Only a one-job task in the main context takes no `--task`."""
@@ -1683,6 +1719,8 @@ class Run:
             return self.task_reply(index, fresh, recorded=False, text=self.reject(errors, answer_text, counted_task))
         self.answer_recorded = True
         text = self.guarded(lambda: self.accept_job(block, index, answer))
+        if not fresh:  # a subagent's reply never shows the next block, so its refusal is the main agent's to see
+            self.refusal = self.script_refusal()
         return self.task_reply(index, fresh, recorded=True, text=text)
 
     def job_at_is_fresh(self, index: int) -> bool:
@@ -1723,6 +1761,7 @@ class Run:
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
         answer, _, errors = self.read_answer(answer_text, block)
         if errors:
+            self.refusal = refusal_line(errors)
             return task_not_recorded(task, errors)
         self.record_job(block, task, answer)
         self.answer_recorded = True
@@ -1771,6 +1810,7 @@ class Run:
             self.info["attempts"] += 1
             attempts = self.info["attempts"]
         self.log("submission_rejected", block=self.frame["current_block"], task=task, errors=errors, raw=answer_text)
+        self.refusal = refusal_line(errors)
         if attempts > self.retries_of(self.current_block()):
             return self.pause("block_failed", "\n".join(errors))
         if task is not None and (self.job_at_is_fresh(task) or self.open_job_indexes("fresh")):
