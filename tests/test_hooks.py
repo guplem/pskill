@@ -1,11 +1,13 @@
-"""Tests for pskill_runner.hooks: the Stop and session-start hook logic, independent of any harness."""
+"""Tests for pskill_runner.hooks: the Stop, session-start, and git-block hook logic, independent of any harness."""
 
 import json
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
+
 from pskill_runner.engine import current_packet, pause_run, read_run_info, run_folder, start_run, submit_answer
-from pskill_runner.hooks import session_start_text, stop_hook_reason
+from pskill_runner.hooks import git_block_reason, session_start_text, stop_hook_reason
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import new_run_id, read_events, utc_now
 from pskill_runner.run_waits import start_wait
@@ -405,3 +407,72 @@ def test_the_stop_is_allowed_while_a_background_script_is_open(tmp_path: Path) -
 
     assert stop_hook_reason(project, "claude-code") is None
     assert read_run_info(project, run_id)["stop_blocks"] == 0
+
+
+def bash_input(command: str, agent_id: str | None = "a1", agent_type: str | None = "pskill-read") -> dict[str, object]:
+    hook_input: dict[str, object] = {"tool_name": "Bash", "tool_input": {"command": command}}
+    if agent_id is not None:
+        hook_input["agent_id"] = agent_id
+    if agent_type is not None:
+        hook_input["agent_type"] = agent_type
+    return hook_input
+
+
+@pytest.mark.parametrize(
+    "subcommand", ["commit", "push", "checkout", "switch", "reset", "branch", "merge", "rebase", "tag"]
+)
+def test_a_read_subagent_is_refused_each_changing_git_command(subcommand: str) -> None:
+    reason = git_block_reason(bash_input(f"git {subcommand} x"))
+    assert reason is not None
+    assert "end your turn" in reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git -C other commit -m x",
+        "git -c user.name=x push",
+        "git --git-dir=.git checkout main",
+        "git --no-pager reset --hard",
+        "ls && git push",
+        "ls; git commit -m x",
+        "cat x | git tag v1",
+        "false || git switch main",
+        "  git   commit",
+    ],
+)
+def test_options_and_chains_do_not_hide_a_changing_git_command(command: str) -> None:
+    assert git_block_reason(bash_input(command)) is not None
+
+
+@pytest.mark.parametrize(
+    "command", ["git status", "git diff HEAD", "git log --oneline", "git show abc", "git", "ls -la", "echo git commit"]
+)
+def test_read_only_commands_pass(command: str) -> None:
+    assert git_block_reason(bash_input(command)) is None
+
+
+def test_the_main_agent_is_never_refused() -> None:
+    assert git_block_reason(bash_input("git push", agent_id=None, agent_type=None)) is None
+
+
+def test_a_main_session_started_with_an_agent_is_never_refused() -> None:
+    assert git_block_reason(bash_input("git push", agent_id=None)) is None
+
+
+def test_another_subagent_type_is_not_refused() -> None:
+    assert git_block_reason(bash_input("git push", agent_type="general-purpose")) is None
+
+
+@pytest.mark.parametrize(
+    "hook_input",
+    [
+        {},
+        {"agent_id": "a1", "agent_type": "pskill-read"},
+        {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": "git push"},
+        {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": {"command": 5}},
+        {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": {"command": "git commit 'unclosed"}},
+    ],
+)
+def test_an_unknown_input_shape_or_command_is_allowed(hook_input: dict[str, object]) -> None:
+    assert git_block_reason(hook_input) is None

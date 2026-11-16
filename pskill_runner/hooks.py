@@ -1,4 +1,4 @@
-"""The logic of the two harness hooks (SPEC.md section 9.2), independent of any harness format.
+"""The logic of the harness hooks (SPEC.md section 9.2), independent of any harness format.
 
 - Stop: while a run of this session has an open block, keep the agent working, at most
   `stop_hook_max_blocks` times in a row. Then pause the run and allow the stop, so a stuck agent never
@@ -9,7 +9,11 @@
   message and no count.
 - Session start: refresh stale skill stubs. It lists no runs: a run of another live session would invite
   the new session to take it over. `pskill runs --open` lists them.
+- Git block (Claude Code only): refuse a git command that changes the repository when a `pskill-read`
+  subagent runs it. Best effort: it reads the command text only.
 """
+
+import shlex
 
 from pskill_runner.adapters import adapter_for
 from pskill_runner.engine import list_runs, register_stop_attempt, unshown_pause_packet
@@ -119,3 +123,71 @@ def stub_refresh_lines(project: Project) -> list[str]:
         names = ", ".join(sorted({change.skill for change in changes}))
         lines.append(f"pskill: updated {len(changes)} stubs ({names}).")
     return lines
+
+
+READ_AGENT_TYPE = "pskill-read"
+BLOCKED_GIT_SUBCOMMANDS = frozenset(
+    {"commit", "push", "checkout", "switch", "reset", "branch", "merge", "rebase", "tag"}
+)
+# The git options before the subcommand that take the next word as their value.
+GIT_OPTIONS_WITH_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
+# The tokens that end one shell command and start another.
+SHELL_SEPARATORS = frozenset({";", "&&", "||", "|", "&", "(", ")"})
+GIT_BLOCK_REASON = (
+    "A read-only task must not change the repository: `git {subcommand}` is refused. "
+    "Do not retry it. Submit your answer if you have it, then end your turn."
+)
+
+
+def git_block_reason(hook_input: dict[str, object]) -> str | None:
+    """Why this Bash call is refused, or None to allow it.
+
+    Only a call inside a `pskill-read` subagent can be refused: the main agent has no `agent_id`. An input
+    that has an unknown shape, or a command that cannot be split into words, is allowed.
+    """
+    if not hook_input.get("agent_id") or hook_input.get("agent_type") != READ_AGENT_TYPE:
+        return None
+    tool_input = hook_input.get("tool_input")
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    if not isinstance(command, str):
+        return None
+    for subcommand in git_subcommands(command):
+        if subcommand in BLOCKED_GIT_SUBCOMMANDS:
+            return GIT_BLOCK_REASON.format(subcommand=subcommand)
+    return None
+
+
+def git_subcommands(command: str) -> list[str]:
+    """The git subcommand of each `git` call in a shell command line, in order."""
+    try:
+        words = split_shell_words(command)
+    except ValueError:  # an unclosed quote
+        return []
+    return [sub for sub in (git_subcommand(call) for call in split_calls(words)) if sub is not None]
+
+
+def split_shell_words(command: str) -> list[str]:
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    return list(lexer)
+
+
+def split_calls(words: list[str]) -> list[list[str]]:
+    """Cut the words at the shell separators."""
+    calls: list[list[str]] = [[]]
+    for word in words:
+        if word in SHELL_SEPARATORS:
+            calls.append([])
+        else:
+            calls[-1].append(word)
+    return calls
+
+
+def git_subcommand(call: list[str]) -> str | None:
+    """The subcommand of one call that starts with `git`, after its options. None for another program."""
+    if not call or call[0] != "git":
+        return None
+    position = 1
+    while position < len(call) and call[position].startswith("-"):
+        position += 2 if call[position] in GIT_OPTIONS_WITH_VALUE else 1
+    return call[position] if position < len(call) else None
