@@ -131,8 +131,10 @@ BLOCKED_GIT_SUBCOMMANDS = frozenset(
 )
 # The git options before the subcommand that take the next word as their value.
 GIT_OPTIONS_WITH_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
-# The characters of the tokens that end one shell command and start another (a newline ends a command too).
-SEPARATOR_CHARACTERS = frozenset(";&|()\n")
+# The characters of the tokens that end one shell command and start another (newline and backtick too).
+SEPARATOR_CHARACTERS = frozenset(";&|()\n`")
+# The words that can stand before a command in a compound command: `git` after them is still a git call.
+LEADING_RESERVED_WORDS = frozenset({"if", "then", "else", "elif", "do", "while", "until", "{", "!", "time"})
 GIT_BLOCK_REASON = (
     "A read-only task must not change the repository: `git {subcommand}` is refused. "
     "Do not retry it. Submit your answer if you have it, then end your turn."
@@ -167,7 +169,8 @@ def git_subcommands(command: str) -> list[str]:
 
 
 def split_shell_words(command: str) -> list[str]:
-    lexer = shlex.shlex(command, posix=True, punctuation_chars="();<>|&\n")
+    lexer = shlex.shlex(command, posix=True, punctuation_chars="();<>|&\n`")
+    lexer.commenters = ""  # bash starts a comment only at a word start, and its words are plain words here
     lexer.whitespace = " \t\r"  # no newline: it is a separator, and a quoted one stays inside its word
     lexer.whitespace_split = True
     return list(lexer)
@@ -186,9 +189,12 @@ def split_calls(words: list[str]) -> list[list[str]]:
 
 def git_subcommand(call: list[str]) -> str | None:
     """The subcommand of one call that starts with `git`, after its options. None for another program."""
-    if not call or call[0] != "git":
+    start = 0
+    while start < len(call) and call[start] in LEADING_RESERVED_WORDS:
+        start += 1
+    if start == len(call) or call[start] != "git":
         return None
-    position = 1
+    position = start + 1
     while position < len(call) and call[position].startswith("-"):
         position += 2 if call[position] in GIT_OPTIONS_WITH_VALUE else 1
     return call[position] if position < len(call) else None

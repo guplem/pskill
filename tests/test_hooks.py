@@ -446,6 +446,16 @@ def test_a_read_subagent_is_refused_each_changing_git_command(subcommand: str) -
         "ls&&(git commit)",
         "x |&git push",
         "ls &&\ngit push",
+        "git add . # stage\ngit commit -m x",
+        "git log --format=%h#x && git push",
+        "echo a#b; git push",
+        "if git diff --quiet; then echo clean; else git commit -am wip; fi",
+        "git diff --quiet || { git commit -am wip; }",
+        "! git commit",
+        "time git commit",
+        "while true; do git push; done",
+        "if ! git diff --quiet; then git push; fi",
+        "echo `git commit`",
     ],
 )
 def test_options_and_chains_do_not_hide_a_changing_git_command(command: str) -> None:
