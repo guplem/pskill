@@ -210,6 +210,23 @@ def test_each_run_command_uploads_its_run_to_galtea_after_it_prints(
     assert all(f"Run {run_id}" in printed for _, printed in uploads)  # the packet comes first
 
 
+def test_current_with_no_run_id_resolves_the_run_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_project(tmp_path, monkeypatch)
+    first_run = start_plan(monkeypatch, capsys)
+    second_run = start_plan(monkeypatch, capsys)
+    answers = iter([first_run, second_run])  # another session makes the second run the newest after the first call
+    monkeypatch.setattr(cli, "resolve_run_id", lambda project, run_id: run_id or next(answers))
+    uploads: list[str] = []
+    monkeypatch.setattr(galtea, "upload_run", lambda project, run_id: uploads.append(run_id))
+
+    run_cli(monkeypatch, "current", *key_option(first_run))
+
+    assert f"Run {first_run}" in capsys.readouterr().out
+    assert uploads == [first_run]
+
+
 def test_start_reads_the_inputs_from_stdin_as_yaml(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

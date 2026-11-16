@@ -218,6 +218,8 @@ def run_command(options: argparse.Namespace) -> int:
         check_run_is_here(project, options.run_id)
     if command == "current" and options.run_id is None:
         check_newest_run_is_here(project)
+    if command == "current":
+        options.run_id = resolve_run_id(project, options.run_id)  # once: a later change cannot swap the run
     if needs_the_key(options):
         check_run_key(project, resolve_run_id(project, options.run_id), options.key)
     if command == "start":
@@ -225,7 +227,7 @@ def run_command(options: argparse.Namespace) -> int:
         return print_and_upload(run_project, run_id, packet)
     if command == "current":
         packet = current_packet(project, options.run_id, harness, session_id)
-        return print_and_upload(project, resolve_run_id(project, options.run_id), packet)
+        return print_and_upload(project, options.run_id, packet)
     if command == "task":
         return print_and_upload(project, options.run_id, task_packet(project, options.run_id, options.index))
     if command == "submit":
