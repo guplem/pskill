@@ -411,7 +411,9 @@ def check_run_key(project: Project, run_id: str, key: str | None) -> None:
 
     A run from before 1.3.0 has no key and needs none.
     """
-    run_key = read_run_info(project, run_id).get("key")
+    # Under the run lock: on Windows a read during another command's os.replace fails.
+    with run_lock(run_folder(project, run_id)):
+        run_key = read_run_info(project, run_id).get("key")
     if run_key is None or key == run_key:
         return
     raise RunError(

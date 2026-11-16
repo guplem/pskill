@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from pskill_runner import engine
 from pskill_runner.engine import (
     CANCELLED_PENDING,
     RunError,
@@ -26,7 +27,7 @@ from pskill_runner.engine import (
     task_packet,
 )
 from pskill_runner.project import Project, find_project
-from pskill_runner.run_store import read_events
+from pskill_runner.run_store import LOCK_FILE_NAME, read_events
 from tests.skill_files import PER_ITEM_SKILL, PLAN_SKILL, PLAN_SKILL_FILES, write_skill
 
 FINISHED_PLAN = "status: finished\nplan: |\n  1. Build the form.\n  2. Add the tests.\n"
@@ -1292,6 +1293,38 @@ def test_the_runs_key_passes_the_key_check(tmp_path: Path) -> None:
     run_id = start(project)
 
     check_run_key(project, run_id, key_of(project, run_id))
+
+
+def test_the_key_check_reads_the_run_under_the_run_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    lock_file = project.runs_folder / run_id / LOCK_FILE_NAME
+    lock_held_during_read: list[bool] = []
+    original_read = engine.read_run_info
+
+    def read_and_note_the_lock(*args: Any, **kwargs: Any) -> Any:
+        lock_held_during_read.append(lock_file.exists())
+        return original_read(*args, **kwargs)
+
+    monkeypatch.setattr(engine, "read_run_info", read_and_note_the_lock)
+
+    check_run_key(project, run_id, key_of(project, run_id))
+
+    assert lock_held_during_read == [True]
+    assert not lock_file.exists()
+
+
+def test_a_refused_key_check_writes_nothing_and_logs_no_event(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    folder = project.runs_folder / run_id
+    files_before = {path.name: path.read_bytes() for path in folder.iterdir() if path.is_file()}
+
+    with pytest.raises(RunError):
+        check_run_key(project, run_id, "wrong")
+
+    files_after = {path.name: path.read_bytes() for path in folder.iterdir() if path.is_file()}
+    assert files_after == files_before
 
 
 @pytest.mark.parametrize("key", [None, "wrong"])
