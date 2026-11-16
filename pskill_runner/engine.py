@@ -405,6 +405,21 @@ def list_runs(project: Project) -> list[RunInfo]:
     return sorted(runs, key=lambda info: info["updated_at"], reverse=True)
 
 
+def check_run_key(project: Project, run_id: str, key: str | None) -> None:
+    """Refuse a main-agent command without the run's key, so a task subagent cannot drive its run by mistake.
+
+    A run from before 1.3.0 has no key and needs none.
+    """
+    run_key = read_run_info(project, run_id).get("key")
+    if run_key is None or key == run_key:
+        return
+    raise RunError(
+        "This command is the main agent's and needs the run's key: `--key <key>`. If you are a task subagent, "
+        "your work ended with your submit: end your turn now. The main agent finds the key in its last step, "
+        "and a human in `pskill runs`."
+    )
+
+
 def resolve_run_id(project: Project, run_id: str | None) -> str:
     """Use the given run id, or the newest unfinished run."""
     if run_id is not None:

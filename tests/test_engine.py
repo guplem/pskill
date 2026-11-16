@@ -12,6 +12,7 @@ from pskill_runner.engine import (
     CANCELLED_PENDING,
     RunError,
     cancel_run,
+    check_run_key,
     current_packet,
     delete_run,
     pause_run,
@@ -1279,3 +1280,45 @@ def test_the_pause_packet_gives_a_card_that_says_how_to_go_on(tmp_path: Path) ->
         f"| Pending | Resume the run with `{command} resume {run_id}`, or stop it with `{command} cancel {run_id}`. |"
         in packet
     )
+
+
+def key_of(project: Project, run_id: str) -> str:
+    return read_run_info(project, run_id)["key"] or ""
+
+
+def test_the_runs_key_passes_the_key_check(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    check_run_key(project, run_id, key_of(project, run_id))
+
+
+@pytest.mark.parametrize("key", [None, "wrong"])
+def test_a_missing_or_wrong_key_is_refused(tmp_path: Path, key: str | None) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    with pytest.raises(RunError) as refusal:
+        check_run_key(project, run_id, key)
+
+    assert "needs the run's key" in str(refusal.value)
+    assert "If you are a task subagent, your work ended with your submit: end your turn now." in str(refusal.value)
+    assert key_of(project, run_id) not in str(refusal.value)
+
+
+def test_a_run_from_before_the_key_needs_none(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    info_file = project.runs_folder / run_id / "run.json"
+    info = json.loads(info_file.read_text(encoding="utf-8"))
+    del info["key"]
+    info_file.write_text(json.dumps(info), encoding="utf-8")
+
+    check_run_key(project, run_id, None)
+
+
+def test_the_key_check_of_an_unknown_run_says_there_is_no_such_run(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    with pytest.raises(RunError, match="There is no run 'r-unknown'"):
+        check_run_key(project, "r-unknown", None)
