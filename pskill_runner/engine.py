@@ -775,6 +775,16 @@ class Run:
         if status not in allowed:
             raise RunError(f"Run {self.info['run_id']} is {status}, so it cannot {action}.")
 
+    def require_active_for_subagent(self) -> None:
+        """Refuse a task subagent on a run that is not active. The text names no command: the main agent's
+        commands need the run's key, which a subagent never gets."""
+        status = self.info["status"]
+        if status not in ACTIVE_STATUSES:
+            raise RunError(
+                f"Run {self.info['run_id']} is {status}. Your work is done: end your turn now, "
+                f"and tell the main agent that the run is {status}."
+            )
+
     # --- moving through the graph ------------------------------------------------------------
 
     def guarded(self, step: Callable[[], str]) -> str:
@@ -1595,7 +1605,7 @@ class Run:
     def task_text(self, index: int) -> str:
         """The full prompt of one open task. A run paused by stop attempts still serves it."""
         if not self.paused_by_stop_attempts():
-            self.require_status(ACTIVE_STATUSES, "give a task (run `pskill resume` first)")
+            self.require_active_for_subagent()
         block = self.current_block()
         if not isinstance(block, TaskBlock) or self.frame["tasks"] is None:
             raise RunError(f"The block {block.id!r} has no tasks.")
@@ -1617,7 +1627,11 @@ class Run:
     def submit(self, answer_text: str, task: int | None) -> str:
         if task is not None and self.paused_by_stop_attempts():
             return self.record_task_while_paused(answer_text, task)
-        self.require_status(ACTIVE_STATUSES, "take an answer (run `pskill resume` first)")
+        if task is not None:
+            self.require_active_for_subagent()
+        else:
+            resume = f"{runner_command(self.project)} resume {self.info['run_id']}{self.key_option()}"
+            self.require_status(ACTIVE_STATUSES, f"take an answer (run `{resume}` first)")
         block = self.current_block()
         if not isinstance(block, TaskBlock | DecisionBlock):  # an active run waits elsewhere only on its script
             raise RunError(
@@ -1687,7 +1701,7 @@ class Run:
         self.answer_recorded = True
         tasks = self.frame["tasks"] or []
         done = len(tasks) - len(self.open_task_indexes())
-        return f"Task {task} is recorded while the run is paused. {done} of {len(tasks)} tasks are done.\n"
+        return subagent_done(f"Task {task} is recorded while the run is paused. {done} of {len(tasks)} tasks are done.")
 
     def read_answer(self, answer_text: str, block: AgentBlock) -> tuple[dict[str, Any], str | None, list[str]]:
         """Parse and check an answer. Return the typed answer, who answered, and the problems."""

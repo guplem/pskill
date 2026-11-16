@@ -646,6 +646,7 @@ def test_a_run_paused_by_stop_attempts_still_records_task_answers(tmp_path: Path
     last = submit_answer(project, run_id, "wrong: []\n", task=0)
 
     assert "Task 1 is recorded" in first and "Task 0 is recorded" in last
+    assert first.endswith(" Your work is done: end your turn now.\n")  # a subagent stops after its accepted submit
     assert not answer_file.exists()  # a task answer recorded while paused loses its file too
     assert read_run_info(project, run_id)["status"] == "paused"  # only resume advances
     assert "finished with status succeeded" in resume_run(project, run_id)
@@ -657,8 +658,30 @@ def test_a_run_paused_by_the_user_takes_no_task_answer(tmp_path: Path) -> None:
     run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
     pause_run(project, run_id)
 
-    with pytest.raises(RunError, match="resume"):
+    with pytest.raises(RunError, match=r"paused\. Your work is done: end your turn now") as refusal:
         submit_answer(project, run_id, "wrong: []\n", task=0)
+    assert "resume" not in str(refusal.value)  # a subagent runs no main-agent command
+
+
+def test_a_run_paused_by_the_user_gives_no_task_to_a_subagent(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
+    pause_run(project, run_id)
+
+    with pytest.raises(RunError, match=r"is paused\. Your work is done: end your turn now") as refusal:
+        task_packet(project, run_id, 0)
+    assert "resume" not in str(refusal.value)
+
+
+def test_a_plain_submit_on_a_paused_run_names_the_resume_command_with_the_key(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
+    pause_run(project, run_id)
+    key = read_run_info(project, run_id)["key"]
+
+    with pytest.raises(RunError, match="cannot take an answer") as refusal:
+        submit_answer(project, run_id, "wrong: []\n")
+    assert f"run `uv run .pskill/pskill.py resume {run_id} --key {key}` first" in str(refusal.value)
 
 
 def test_a_text_script_keeps_its_output_as_text(tmp_path: Path) -> None:

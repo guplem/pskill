@@ -6,7 +6,7 @@ A task subagent can no longer drive its parent run by mistake: the main agent's 
 
 - **The run key:** each new run gets a key in `run.json`. `current`, `resume`, `pause`, and a `submit` without `--task` need `--key <key>`, or they exit with code 1 and change nothing. Every command that the runner prints for the main agent carries it; a task prompt and a reply to a subagent never do. `submit --task`, `cancel`, `delete`, `wait`, `run-script`, and `task` need no key. A run from before 1.3.0 has none and needs none.
 - **`runs`** shows each run's key, so a human, or a session after `/clear`, can resume a run by hand. The key stops a subagent that drifts; it is not a secret.
-- **The stop text:** the task prompt says that the work ends when the runner accepts the submit, and each reply to an accepted fresh task adds "Your work is done: end your turn now." The reply to a task whose answer paused the run, and the `task` refusal of a main job, name no command.
+- **The stop text:** the task prompt says that the work ends when the runner accepts the submit, and each reply to an accepted fresh task adds "Your work is done: end your turn now." The reply to a task whose answer paused the run, the reply to a task recorded while stop attempts paused the run, the `task` refusal of a main job, and the refusals of `task` and `submit --task` on a paused run, name no command. A `submit` without `--task` on a paused run names `resume <run> --key <key>`.
 - **The `read` profile agent** adds one line: "Do not run git commands that change the repository, such as commit, push, checkout, or reset." Run `sync` (`update` runs it) to write it: until then `validate` reports `pskill-read.md` as stale.
 - **The stubs** give the key with the run id; run `sync` to update them.
 
