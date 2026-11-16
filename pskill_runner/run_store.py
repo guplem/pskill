@@ -43,6 +43,11 @@ def new_run_id(moment: datetime) -> str:
     return f"r-{moment.astimezone(UTC):%Y%m%d-%H%M}-{secrets.token_hex(2)}"
 
 
+def new_run_key() -> str:
+    """The key of a run's main-agent commands: it keeps a task subagent from running them by mistake."""
+    return secrets.token_hex(3)
+
+
 def write_json_atomic(path: Path, data: Any) -> None:
     """Write to a temp file first, then replace the target, so a reader never sees half a file."""
     temp_path = path.with_name(f".{path.name}.tmp")

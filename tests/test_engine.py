@@ -1,6 +1,7 @@
 """Tests for pskill_runner.engine: running a skill block by block."""
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -66,6 +67,14 @@ def start(project: Project, skill_id: str = "plan-work", mode: str = "interactiv
 
 def event_types(project: Project, run_id: str) -> list[str]:
     return [event["type"] for event in read_events(project.runs_folder / run_id)]
+
+
+def test_a_new_run_records_a_key(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    run_id = start(project)
+
+    assert re.fullmatch(r"[0-9a-f]{6}", read_run_info(project, run_id)["key"] or "")
 
 
 def test_start_prints_the_first_block_and_records_the_run(tmp_path: Path) -> None:
