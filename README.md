@@ -52,7 +52,7 @@ uv run .pskill/pskill.py update
   - When the agent tries to stop while a step is still open, the hook tells it to continue. After 3 tries, it lets the agent stop and pauses the run. In Claude Code, an agent that waits on background work runs `wait` first: then the hook lets it stop, and the run stays open.
   - When you open a session, the hook updates the small skill files.
 - **One permission rule**, so your agent app does not ask you each time the agent talks to the runner. It allows only `uv run .pskill/pskill.py ...`.
-- **One small agent file per tool profile** that your skills use (`.claude/agents/pskill-read.md`, for a block with `tools: read`). Each lists a few tools and nothing else, so a subagent that only reads code starts with a smaller context. Claude Code sees a new `.claude/agents/` folder only after you open a new session.
+- **One small agent file per tool profile** that your skills use (`.claude/agents/pskill-read.md`, for a block with `tools: read`). Each lists a few tools (the `read` one also says not to run git commands that change the repository), so a subagent that only reads code starts with a smaller context. Claude Code sees a new `.claude/agents/` folder only after you open a new session.
 
 Claude Code and Codex use the hooks only after you trust the project folder. Codex also asks you once to approve each hook (type `/hooks`). If your project builds its settings files with its own script, set `hook_files` in `.pskill/config.yaml`.
 
