@@ -111,4 +111,21 @@ def test_every_hook_has_a_timeout(hooks: dict[str, dict[str, object]], harness: 
     """A hung download or install must not hold a turn. The first session start may download the runner."""
     timeouts = {event: group["hooks"][0]["timeout"] for event, group in hooks.items()}  # type: ignore[index]
 
-    assert timeouts == {"Stop": 30, "SessionStart": 120}
+    expected = {"Stop": 30, "SessionStart": 120}
+    if harness == "claude-code":
+        expected["PreToolUse"] = 10
+    assert timeouts == expected
+
+
+def test_only_claude_code_blocks_git_commands() -> None:
+    """Codex and the shared hooks only ask (SPEC.md principle 4): they get no PreToolUse hook."""
+    assert "PreToolUse" in claude_code.PSKILL_HOOKS
+    assert "PreToolUse" not in codex.PSKILL_HOOKS
+    assert "PreToolUse" not in SHARED_HOOKS
+
+
+def test_the_git_block_hook_runs_on_bash_calls_only() -> None:
+    group = claude_code.PSKILL_HOOKS["PreToolUse"]
+
+    assert group["matcher"] == "Bash"
+    assert "'hook', 'pre-tool-use', '--harness', 'claude-code'" in command_of(claude_code.PSKILL_HOOKS, "PreToolUse")

@@ -72,7 +72,7 @@ PROFILE_TOOLS = {
 PROFILE_AGENT_DESCRIPTION = "Only for pskill tasks. Never choose it on your own."
 # Claude Code sets CLAUDE_PROJECT_DIR for its hooks, so a hook works from any folder of the project.
 PROJECT_ROOT_CODE = "os.environ.get('CLAUDE_PROJECT_DIR', '')"
-PSKILL_HOOKS: dict[str, dict[str, Any]] = pskill_hooks(PROJECT_ROOT_CODE, "claude-code")
+PSKILL_HOOKS: dict[str, dict[str, Any]] = pskill_hooks(PROJECT_ROOT_CODE, "claude-code", block_git=True)
 
 
 def sync_claude_permission(project_root: Path, check_only: bool) -> bool:
