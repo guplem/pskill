@@ -13,6 +13,7 @@
   subagent runs it. Best effort: it reads the command text only.
 """
 
+import re
 import shlex
 
 from pskill_runner.adapters import adapter_for
@@ -130,11 +131,15 @@ BLOCKED_GIT_SUBCOMMANDS = frozenset(
     {"commit", "push", "checkout", "switch", "reset", "branch", "merge", "rebase", "tag"}
 )
 # The git options before the subcommand that take the next word as their value.
-GIT_OPTIONS_WITH_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
+GIT_OPTIONS_WITH_VALUE = frozenset(
+    {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--attr-source"}
+)
 # The characters of the tokens that end one shell command and start another (newline and backtick too).
 SEPARATOR_CHARACTERS = frozenset(";&|()\n`")
 # The words that can stand before a command in a compound command: `git` after them is still a git call.
 LEADING_RESERVED_WORDS = frozenset({"if", "then", "else", "elif", "do", "while", "until", "{", "!", "time"})
+# What follows `<<` that opens a heredoc: an optional `-`, then its delimiter, plain or quoted.
+HEREDOC_START = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(?:'([^']*)'|\"([^\"]*)\"|\\?([\w.-]+))")
 GIT_BLOCK_REASON = (
     "A read-only task must not change the repository: `git {subcommand}` is refused. "
     "Do not retry it. Submit your answer if you have it, then end your turn."
@@ -162,10 +167,69 @@ def git_block_reason(hook_input: dict[str, object]) -> str | None:
 def git_subcommands(command: str) -> list[str]:
     """The git subcommand of each `git` call in a shell command line, in order."""
     try:
-        words = split_shell_words(command)
+        words = split_shell_words(remove_inert_text(command))
     except ValueError:  # an unclosed quote
         return []
     return [sub for sub in (git_subcommand(call) for call in split_calls(words)) if sub is not None]
+
+
+def remove_inert_text(command: str) -> str:
+    """The command without the text that bash never runs as a command.
+
+    It drops the heredoc bodies, the comments (from an unquoted `#` at a word start to the end of its line),
+    and each backslash-newline outside single quotes, as bash does. Quotes may span lines.
+    """
+    kept: list[str] = []
+    quote = ""
+    heredocs: list[tuple[str, bool]] = []  # the pending (delimiter, tabs stripped) of the current line
+    position = 0
+    while position < len(command):
+        char = command[position]
+        if char == "\\" and quote != "'":
+            if command[position + 1 : position + 2] != "\n":
+                kept.append(command[position : position + 2])
+            position += 2
+            continue
+        position += 1
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in "'\"":
+            quote = char
+        elif char == "#" and is_word_start(kept):
+            line_end = command.find("\n", position)
+            position = len(command) if line_end == -1 else line_end
+            continue
+        elif char == "<":
+            match = HEREDOC_START.match(command, position - 1)
+            if match:
+                delimiter = match.group(2) or match.group(3) or match.group(4)
+                heredocs.append((delimiter, match.group(1) == "-"))
+                kept.append(match.group(0))
+                position = match.end()
+                continue
+        elif char == "\n" and heredocs:
+            position = end_of_heredoc_bodies(command, position, heredocs)
+            heredocs = []
+        kept.append(char)
+    return "".join(kept)
+
+
+def is_word_start(kept: list[str]) -> bool:
+    return not kept or kept[-1] in " \t\r" or kept[-1] in SEPARATOR_CHARACTERS
+
+
+def end_of_heredoc_bodies(command: str, position: int, heredocs: list[tuple[str, bool]]) -> int:
+    """The position after the bodies that start at `position`, each one up to the line that is its delimiter."""
+    lines = command[position:].split("\n")
+    used = 0
+    for delimiter, tabs_stripped in heredocs:
+        while used < len(lines):
+            line = lines[used].lstrip("\t") if tabs_stripped else lines[used]
+            used += 1
+            if line == delimiter:
+                break
+    return position + sum(len(line) + 1 for line in lines[:used])
 
 
 def split_shell_words(command: str) -> list[str]:

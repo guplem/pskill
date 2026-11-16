@@ -456,10 +456,30 @@ def test_a_read_subagent_is_refused_each_changing_git_command(subcommand: str) -
         "while true; do git push; done",
         "if ! git diff --quiet; then git push; fi",
         "echo `git commit`",
+        "git --config-env x=Y commit -m x",
+        "git --attr-source HEAD push",
+        "# don't do this\ngit commit -m x",
+        "git status # what's up\ngit push",
+        "git commit -F - <<'EOF'\nDon't break\nEOF",
+        "cat <<EOF > f\nit's\nEOF\ngit push",
+        "cat <<-EOF\n\tbody\n\tEOF\ngit push",
+        "cat <<A <<B\none\nA\ntwo\nB\ngit push",
+        "git \\\ncommit -m x",
+        "git -C repo \\\npush",
+        'echo "a \\\ngit" ; git \\\npush',
+        "echo '\\'\ngit push",
+        "echo a \\\\\ngit push",
+        "echo $# ; git push",
     ],
 )
 def test_options_and_chains_do_not_hide_a_changing_git_command(command: str) -> None:
     assert git_block_reason(bash_input(command)) is not None
+
+
+SUBMIT_WITH_GIT_IN_ANSWER = (
+    "uv run .pskill/pskill.py submit r --task 0 <<'PSKILL'\n"
+    'findings:\n  - text: "`git commit` is refused"\ngit push\nPSKILL'
+)
 
 
 @pytest.mark.parametrize(
@@ -473,6 +493,14 @@ def test_options_and_chains_do_not_hide_a_changing_git_command(command: str) -> 
         "ls -la",
         "echo git commit",
         "echo 'a\ngit commit'",
+        "# git commit",
+        "git status # git push",
+        SUBMIT_WITH_GIT_IN_ANSWER,
+        "cat <<EOF\ngit push",
+        "cat > notes.md <<'EOF'\ngit commit -m x\nEOF",
+        "cat <<EOF",
+        "git log <<< x",
+        "echo 'a\\\ngit push'",
     ],
 )
 def test_read_only_commands_pass(command: str) -> None:
