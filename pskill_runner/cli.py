@@ -342,12 +342,12 @@ def runs_table(project: Project, only_open: bool) -> str:
         return "No runs."
     now = utc_now()
     rows = [
-        f"{info['run_id']}  {info['skill_id']}  {info['status']}  {info['current_block'] or '-'}  {info['updated_at']}"
+        f"{info['run_id']}  {info.get('key') or '-'}  {info['skill_id']}  {info['status']}  {info['current_block'] or '-'}  {info['updated_at']}"
         + wait_note(info, now)
         + place
         for info, place in runs
     ]
-    return "\n".join(["run  skill  status  block  updated", *rows])
+    return "\n".join(["run  key  skill  status  block  updated", *rows])
 
 
 def wait_note(info: RunInfo, now: datetime) -> str:

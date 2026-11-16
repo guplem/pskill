@@ -710,7 +710,7 @@ def test_runs_says_when_there_are_no_runs(
 def test_runs_lists_every_run_and_open_lists_only_the_unfinished_ones(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    make_project(tmp_path, monkeypatch)
+    project = make_project(tmp_path, monkeypatch)
     open_run = start_plan(monkeypatch, capsys)
     finished_run = start_plan(monkeypatch, capsys)
     run_cli(monkeypatch, "submit", finished_run, *key_option(finished_run), stdin="status: finished\nplan: Done.\n")
@@ -728,9 +728,9 @@ def test_runs_lists_every_run_and_open_lists_only_the_unfinished_ones(
     run_cli(monkeypatch, "runs", "--open")
     open_runs = capsys.readouterr().out
 
-    assert every_run.startswith("run  skill  status  block  updated\n")
-    assert f"{open_run}  plan-work  active  create_plan  " in every_run
-    assert f"{finished_run}  plan-work  cancelled  stopped  " in every_run
+    assert every_run.startswith("run  key  skill  status  block  updated\n")
+    assert f"{open_run}  {key_of(project, open_run)}  plan-work  active  create_plan  " in every_run
+    assert f"{finished_run}  {key_of(project, finished_run)}  plan-work  cancelled  stopped  " in every_run
     assert open_run in open_runs
     assert finished_run not in open_runs
 
@@ -1315,3 +1315,22 @@ def test_current_with_the_key_works_while_subagents_run(
 
     assert exit_code == cli.EXIT_OK
     assert "### Subagent tasks" in capsys.readouterr().out
+
+
+def test_runs_shows_each_runs_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, monkeypatch)
+    keyed_run = start_plan(monkeypatch, capsys)
+    old_run = start_plan(monkeypatch, capsys)
+    info_file = project.runs_folder / old_run / "run.json"
+    info = json.loads(info_file.read_text(encoding="utf-8"))
+    del info["key"]
+    info_file.write_text(json.dumps(info), encoding="utf-8")
+
+    run_cli(monkeypatch, "runs")
+
+    table = capsys.readouterr().out
+    assert table.startswith("run  key  skill  status  block  updated\n")
+    assert f"{keyed_run}  {key_of(project, keyed_run)}  plan-work  active  create_plan  " in table
+    assert f"{old_run}  -  plan-work  active  create_plan  " in table
