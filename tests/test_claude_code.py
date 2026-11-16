@@ -142,3 +142,10 @@ def test_the_read_agent_names_only_the_shell_read_and_search_tools_and_no_model(
 
 def test_the_web_agent_adds_fetching_and_searching_the_web() -> None:
     assert "tools: Bash, Read, Grep, Glob, Write, WebFetch, WebSearch\n" in profile_agent_text("web")
+
+
+def test_the_read_agent_forbids_git_commands_that_change_the_repository() -> None:
+    line = "Do not run git commands that change the repository, such as commit, push, checkout, or reset."
+
+    assert profile_agent_text("read").endswith(f"{GENERATED_MARKER}\n{line}\n")
+    assert line not in profile_agent_text("web")

@@ -98,7 +98,7 @@ def test_a_stub_holds_the_goal_and_the_loop_rules_once(tmp_path: Path) -> None:
     assert "Do only that step, then run the submit command at its end." in stub
     assert "never stop before the end" in stub
     assert "`$cannot_complete: <reason>`" in stub
-    assert "uv run .pskill/pskill.py pause <run-id>" in stub
+    assert "uv run .pskill/pskill.py pause <run-id> --key <key>`. Each step names its run id and key." in stub
 
 
 def test_a_manual_skill_stub_forbids_model_invocation(tmp_path: Path) -> None:
@@ -291,3 +291,13 @@ def test_the_pskill_stub_says_where_a_worktree_run_lives() -> None:
         "A worktree run (`start --worktree`) lives in its own worktree folder, which `runs` names: "
         "run the other commands from that folder." in render_pskill_stub()
     )
+
+
+def test_the_pskill_stub_gives_the_key_to_the_main_agents_commands() -> None:
+    stub = render_pskill_stub()
+
+    assert "- List the unfinished runs, with each run's key: `uv run .pskill/pskill.py runs --open`" in stub
+    assert "`uv run .pskill/pskill.py current <run-id> --key <key>`" in stub
+    assert "`uv run .pskill/pskill.py resume <run-id> --key <key>`" in stub
+    assert "`uv run .pskill/pskill.py pause <run-id> --key <key>`" in stub
+    assert "`uv run .pskill/pskill.py cancel <run-id>`" in stub

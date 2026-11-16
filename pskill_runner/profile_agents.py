@@ -1,8 +1,8 @@
 """Profile agents: the harness agents that `pskill sync` writes for the tool profiles that skills use.
 
-A profile agent holds tools only: no prompt and no model (SPEC.md 6.1). Only Claude Code gets them; a Codex
-agent file cannot limit the sandbox or the MCP servers. `sync` never touches a file without the generated
-marker, the same rule as for stubs.
+A profile agent holds its tools and no model; only the `read` profile adds one fixed rule (SPEC.md 6.1).
+Only Claude Code gets them; a Codex agent file cannot limit the sandbox or the MCP servers. `sync` never
+touches a file without the generated marker, the same rule as for stubs.
 """
 
 from pathlib import Path

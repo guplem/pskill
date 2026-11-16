@@ -21,4 +21,4 @@ Goal: Every CI check on the head commit of the pull request passed, or each chec
    The runner checks your answer and prints the next step.
 4. Repeat step 3 until the runner says the run is finished. Never skip a step, and never stop before the end.
    If you cannot do a step, submit only the line `$cannot_complete: <reason>`.
-5. If the user asks to stop, run: `uv run .pskill/pskill.py pause <run-id>`. Each step names its run id.
+5. If the user asks to stop, run: `uv run .pskill/pskill.py pause <run-id> --key <key>`. Each step names its run id and key.
