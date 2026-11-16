@@ -138,8 +138,8 @@ GIT_OPTIONS_WITH_VALUE = frozenset(
 SEPARATOR_CHARACTERS = frozenset(";&|()\n`")
 # The words that can stand before a command in a compound command: `git` after them is still a git call.
 LEADING_RESERVED_WORDS = frozenset({"if", "then", "else", "elif", "do", "while", "until", "{", "!", "time"})
-# What follows `<<` that opens a heredoc: an optional `-`, then its delimiter, plain or quoted.
-HEREDOC_START = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(?:'([^']*)'|\"([^\"]*)\"|\\?([\w.-]+))")
+# What follows `<<` that opens a heredoc: an optional `-`, then its delimiter word (parts may be quoted).
+HEREDOC_START = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*((?:'[^']*'|\"[^\"]*\"|\\.|[^\s;&|()<>'\"\\])+)")
 GIT_BLOCK_REASON = (
     "A read-only task must not change the repository: `git {subcommand}` is refused. "
     "Do not retry it. Submit your answer if you have it, then end your turn."
@@ -174,37 +174,57 @@ def git_subcommands(command: str) -> list[str]:
 
 
 def remove_inert_text(command: str) -> str:
-    """The command without the text that bash never runs as a command.
+    """The command without the text that bash never runs as a command, written so that shlex reads it as bash does.
 
     It drops the heredoc bodies, the comments (from an unquoted `#` at a word start to the end of its line),
-    and each backslash-newline outside single quotes, as bash does. Quotes may span lines.
+    and each backslash-newline outside single quotes, as bash does. Quotes may span lines. A `$'...'` string
+    keeps its escaped quotes out of the text, and a `$(...)` inside double quotes is cut out of them: its text
+    is checked as a command of its own, after the rest. A heredoc never starts inside `((...))` arithmetic,
+    where `<<` is a shift, nor with a delimiter of only digits.
     """
     kept: list[str] = []
     quote = ""
     heredocs: list[tuple[str, bool]] = []  # the pending (delimiter, tabs stripped) of the current line
+    substitutions: list[str] = []
+    arithmetic_depth = 0
     position = 0
     while position < len(command):
         char = command[position]
         if char == "\\" and quote != "'":
-            if command[position + 1 : position + 2] != "\n":
-                kept.append(command[position : position + 2])
+            pair = command[position : position + 2]
+            if pair == "\\'" and quote == "$'":
+                kept.append("_")
+            elif pair[1:] != "\n":
+                kept.append(pair)
             position += 2
             continue
         position += 1
         if quote:
-            if char == quote:
+            if char == quote[-1]:
                 quote = ""
+            elif quote == '"' and char == "(" and kept[-1:] == ["$"]:
+                end = end_of_substitution(command, position)
+                kept[-1] = "_"
+                substitutions.append(command[position : end - 1])
+                position = end
+                continue
         elif char in "'\"":
-            quote = char
+            quote = "$'" if char == "'" and kept[-1:] == ["$"] else char
         elif char == "#" and is_word_start(kept):
             line_end = command.find("\n", position)
             position = len(command) if line_end == -1 else line_end
             continue
-        elif char == "<":
+        elif char == "(":
+            if arithmetic_depth:
+                arithmetic_depth += 1
+            elif kept[-1:] == ["("]:
+                arithmetic_depth = 2
+        elif char == ")" and arithmetic_depth:
+            arithmetic_depth -= 1
+        elif char == "<" and not arithmetic_depth:
             match = HEREDOC_START.match(command, position - 1)
-            if match:
-                delimiter = match.group(2) or match.group(3) or match.group(4)
-                heredocs.append((delimiter, match.group(1) == "-"))
+            if match and not match.group(2).isdigit():
+                heredocs.append((split_shell_words(match.group(2))[0], match.group(1) == "-"))
                 kept.append(match.group(0))
                 position = match.end()
                 continue
@@ -212,7 +232,45 @@ def remove_inert_text(command: str) -> str:
             position = end_of_heredoc_bodies(command, position, heredocs)
             heredocs = []
         kept.append(char)
+    kept.extend("\n" + remove_inert_text(inner) for inner in substitutions)
     return "".join(kept)
+
+
+def end_of_substitution(command: str, position: int) -> int:
+    """The position after the `)` that closes a `$(` whose text starts at `position`. Quotes inside nest."""
+    depth = 1
+    while position < len(command):
+        char = command[position]
+        if char == "\\":
+            position += 2
+            continue
+        position += 1
+        if char in "'\"":
+            position = end_of_quote(command, position, char)
+        elif char == "$" and command[position : position + 1] == "'":
+            position = end_of_quote(command, position + 1, "$'")
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return position
+    return position
+
+
+def end_of_quote(command: str, position: int, quote: str) -> int:
+    """The position after the quote that closes the one (`'`, `$'`, or `"`) opened just before `position`."""
+    while position < len(command):
+        char = command[position]
+        if char == "\\" and quote != "'":
+            position += 2
+            continue
+        position += 1
+        if char == quote[-1]:
+            return position
+        if quote == '"' and char == "$" and command[position : position + 1] == "(":
+            position = end_of_substitution(command, position + 1)
+    return position
 
 
 def is_word_start(kept: list[str]) -> bool:

@@ -470,6 +470,22 @@ def test_a_read_subagent_is_refused_each_changing_git_command(subcommand: str) -
         "echo '\\'\ngit push",
         "echo a \\\\\ngit push",
         "echo $# ; git push",
+        "x=$((1<<2))\ngit push",
+        "(( m = 1 << 3 ))\ngit commit -am x",
+        "x=$((1<<(2)))\ngit push",
+        "let x=1<<2\ngit push",
+        'cat <<E"OF"\nbody\nEOF\ngit commit -m x',
+        "cat <<\\EOF\nbody\nEOF\ngit push",
+        "echo $'it\\'s'; git push",
+        "echo $'a\\\\'; git push",
+        'echo "$(printf \'%s\' "it\'s")"; git push',
+        'echo "$(echo "it\'s")"\ngit commit -m x',
+        'echo "$(echo \\")"; git push',
+        "echo \"$(echo $'it\\'s')\"; git push",
+        'echo "$(git push)"',
+        'echo "$(echo "$(git push)")"',
+        'git push; echo "$(echo "x',
+        'echo "$( (ls) )"; git push',
     ],
 )
 def test_options_and_chains_do_not_hide_a_changing_git_command(command: str) -> None:
@@ -501,6 +517,10 @@ SUBMIT_WITH_GIT_IN_ANSWER = (
         "cat <<EOF",
         "git log <<< x",
         "echo 'a\\\ngit push'",
+        "x=$((1<<2)); git status",
+        'cat <<E"OF"\ngit push\nEOF',
+        "echo $'it\\'s git push'",
+        'echo "$(echo "it\'s" git push)" | git status',
     ],
 )
 def test_read_only_commands_pass(command: str) -> None:
@@ -527,6 +547,8 @@ def test_another_subagent_type_is_not_refused() -> None:
         {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": "git push"},
         {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": {"command": 5}},
         {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": {"command": "git commit 'unclosed"}},
+        {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": {"command": 'git push; echo "$(echo'}},
+        {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": {"command": "git push; echo \"$(echo 'x"}},
     ],
 )
 def test_an_unknown_input_shape_or_command_is_allowed(hook_input: dict[str, object]) -> None:
