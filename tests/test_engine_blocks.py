@@ -1197,8 +1197,8 @@ def test_a_task_answer_that_pauses_the_run_gives_the_subagent_no_pause_steps(tmp
     reply = submit_answer(project, run_id, "$cannot_complete: no access\n", task=0)
 
     assert reply == (
-        f"Task 0 is not recorded, and the run is paused. Stop here, and tell the main agent: it reads the pause "
-        f"with `uv run .pskill/pskill.py current {run_id}`.\n"
+        "Task 0 is not recorded, and the run is paused. Your work is done: end your turn now, and tell the main "
+        "agent that the run is paused.\n"
     )
     assert read_run_info(project, run_id)["status"] == "paused"
     assert "### Pause steps of fanout\nPost one comment." in current_packet(project, run_id)
@@ -1214,7 +1214,7 @@ def test_a_last_task_whose_join_pauses_the_run_gives_the_subagent_no_pause_steps
     reply = submit_answer(project, run_id, "wrong: []\n", task=0)
 
     assert "Pause steps" not in reply
-    assert reply.startswith("Task 0 is recorded, and the run is paused. Stop here, and tell the main agent")
+    assert reply.startswith("Task 0 is recorded, and the run is paused. Your work is done: end your turn now")
     assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
 
 
@@ -1507,7 +1507,7 @@ def test_a_rejected_main_job_while_subagents_work_gets_its_errors_and_then_the_p
     assert first.startswith("Task 1 is not recorded. Fix these problems and submit again:")
     assert "Spawn one subagent" not in first
     assert read_run_info(project, run_id)["status"] == "paused"
-    assert "Stop here, and tell the main agent" not in last
+    assert "and the run is paused" not in last
     assert "is paused at block check" in last
 
 
@@ -1785,6 +1785,8 @@ def test_current_on_another_harness_does_not_run_a_script_that_already_runs_in_t
 
     assert executor.calls == 1
     assert "runs in the background" in seen[0]
+    key = read_run_info(project, run_id)["key"]
+    assert f"pause {run_id} --key {key}`, then `uv run .pskill/pskill.py resume {run_id} --key {key}`" in seen[0]
     assert read_run_info(project, run_id)["status"] == "succeeded"
     ran = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
     assert len(ran) == 1
@@ -1796,7 +1798,7 @@ def test_the_result_is_dropped_when_the_run_changed_while_the_script_ran(tmp_pat
     text = run_background_script(project, run_id, ScriptWithSideEffect(lambda: pause_run(project, run_id)))
 
     assert "its result is dropped" in text
-    assert f"uv run .pskill/pskill.py current {run_id}" in text
+    assert f"uv run .pskill/pskill.py current {run_id} --key {read_run_info(project, run_id)['key']}" in text
     info = read_run_info(project, run_id)
     assert info["status"] == "paused" and info["current_block"] == "list_files"
     assert not [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
@@ -1810,6 +1812,7 @@ def test_the_background_command_needs_a_background_script_that_waits_for_it(tmp_
         run_background_script(project, run_id)
 
     assert "does not run a script in the background" in str(raised.value)
+    assert f"current {run_id} --key {read_run_info(project, run_id)['key']}`" in str(raised.value)
 
 
 def test_a_background_command_that_cannot_compute_its_command_pauses_the_run(tmp_path: Path) -> None:

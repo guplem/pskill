@@ -1002,7 +1002,7 @@ def test_the_task_command_refuses_a_job_that_the_main_agent_does_itself(tmp_path
     project = make_project(tmp_path)
     run_id = start(project)
 
-    with pytest.raises(RunError, match="Task 0 of 'create_plan' runs in the main context: do it yourself"):
+    with pytest.raises(RunError, match="Task 0 of 'create_plan' runs in the main context: the main agent does it"):
         task_packet(project, run_id, 0)
 
 
@@ -1273,12 +1273,13 @@ def test_the_pause_packet_gives_a_card_that_says_how_to_go_on(tmp_path: Path) ->
     packet = pause_run(project, run_id)
 
     command = runner_command(project)
+    key = key_of(project, run_id)
     assert "| ⏸️ PAUSED | plan-work · paused |" in packet
     assert "| Result | Paused at block `create_plan` (paused_by_user). |" in packet
     assert "| Outputs | None |" in packet
     assert (
-        f"| Pending | Resume the run with `{command} resume {run_id}`, or stop it with `{command} cancel {run_id}`. |"
-        in packet
+        f"| Pending | Resume the run with `{command} resume {run_id} --key {key}`, or stop it with "
+        f"`{command} cancel {run_id}`. |" in packet
     )
 
 

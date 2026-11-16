@@ -30,6 +30,7 @@ from pskill_runner.packets import (
     PauseSteps,
     SummaryCard,
     TaskPrompt,
+    key_option,
     render_agent_packet,
     render_background_script_packet,
     render_final_packet,
@@ -1044,11 +1045,11 @@ class Run:
         if marker is None or marker["state"] == "issued":
             return self.background_script_packet(block, reentry=True)
         command = runner_command(self.project)
-        run_id = self.info["run_id"]
+        run = f"{self.info['run_id']}{self.key_option()}"
         return (
             f"The script {block.id!r} runs in the background, since {marker['since']}. End your turn: its end "
             "wakes you with the next step. If its command no longer runs (for example, the session ended), run "
-            f"`{command} pause {run_id}`, then `{command} resume {run_id}`: that gives the command again.\n"
+            f"`{command} pause {run}`, then `{command} resume {run}`: that gives the command again.\n"
         )
 
     def background_script_packet(self, block: ScriptBlock, reentry: bool) -> str:
@@ -1137,7 +1138,7 @@ class Run:
         if not isinstance(block, ScriptBlock) or marker is None:
             raise RunError(
                 f"The block {block.id!r} does not run a script in the background. Continue the run: run "
-                f"`{runner_command(self.project)} current {self.info['run_id']}`."
+                f"`{runner_command(self.project)} current {self.info['run_id']}{self.key_option()}`."
             )
         if marker["state"] == "running":
             raise RunError(
@@ -1162,7 +1163,7 @@ class Run:
             return (
                 f"The script {script.block_id!r} ended, but the run changed while it ran (it is {self.info['status']}, "
                 f"at the block {block.id!r}), so its result is dropped. Continue the run: run "
-                f"`{runner_command(self.project)} current {self.info['run_id']}`.\n"
+                f"`{runner_command(self.project)} current {self.info['run_id']}{self.key_option()}`.\n"
             )
         assert isinstance(block, ScriptBlock)
         self.info["stop_blocks"] = 0
@@ -1463,6 +1464,10 @@ class Run:
             pending=self.info["final_pending"] if recorded else PENDING_NOT_RECORDED,
         )
 
+    def key_option(self) -> str:
+        """The `--key` option of the main agent's commands on this run, or "" for a run with no key."""
+        return key_option(self.info.get("key"))
+
     def paused_card(self, block_id: str, reason: str, command: str) -> SummaryCard:
         """The card of a pause: it says how to go on."""
         run_id = self.info["run_id"]
@@ -1475,7 +1480,8 @@ class Run:
             mode=self.info["mode"],
             duration_ms=run_duration_ms(self.info),
             outputs={},
-            pending=f"Resume the run with `{command} resume {run_id}`, or stop it with `{command} cancel {run_id}`.",
+            pending=f"Resume the run with `{command} resume {run_id}{self.key_option()}`, or stop it with "
+            f"`{command} cancel {run_id}`.",
         )
 
     # --- pause and resume ----------------------------------------------------------------------
@@ -1596,8 +1602,8 @@ class Run:
         self.check_open_task(block, index)
         if not self.job_at_is_fresh(index):
             raise RunError(
-                f"Task {index} of {block.id!r} runs in the main context: do it yourself, from the packet of "
-                f"`{runner_command(self.project)} current {self.info['run_id']}`."
+                f"Task {index} of {block.id!r} runs in the main context: the main agent does it from its own step. "
+                "If you are a task subagent, end your turn now."
             )
         return task_prompt_text(self.base_packet(block, []), self.task_prompt(block, index))
 
@@ -1656,14 +1662,17 @@ class Run:
         return 0 <= index < len(jobs) and self.job_is_fresh(jobs[index])
 
     def task_reply(self, task: int, fresh: bool, recorded: bool, text: str) -> str:
-        """The reply to a subagent. A pause and its pause steps are the main agent's work, read with `current`."""
+        """The reply to a subagent. A pause and its pause steps are the main agent's work, read with `current`.
+
+        It names no command: the main agent's commands need the run's key, which a subagent never gets.
+        """
         if self.info["status"] != "paused" or not fresh:
             return text
         self.pause_steps_not_shown()
         state = "recorded" if recorded else "not recorded"
         return (
-            f"Task {task} is {state}, and the run is paused. Stop here, and tell the main agent: it reads the pause "
-            f"with `{runner_command(self.project)} current {self.info['run_id']}`.\n"
+            f"Task {task} is {state}, and the run is paused. Your work is done: end your turn now, and tell the main "
+            "agent that the run is paused.\n"
         )
 
     def record_task_while_paused(self, answer_text: str, task: int) -> str:
