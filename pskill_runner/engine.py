@@ -1625,13 +1625,13 @@ class Run:
             raise RunError(f"Task {index} of {block.id!r} already has an answer.")
 
     def submit(self, answer_text: str, task: int | None) -> str:
+        by_subagent = task is not None and self.job_at_is_fresh(task)  # a main job is the main agent's
         if task is not None and self.paused_by_stop_attempts():
-            return self.record_task_while_paused(answer_text, task)
-        if task is not None:
+            return self.record_task_while_paused(answer_text, task, by_subagent)
+        if by_subagent:
             self.require_active_for_subagent()
         else:
-            resume = f"{runner_command(self.project)} resume {self.info['run_id']}{self.key_option()}"
-            self.require_status(ACTIVE_STATUSES, f"take an answer (run `{resume}` first)")
+            self.require_status(ACTIVE_STATUSES, f"take an answer (run `{self.resume_command()}` first)")
         block = self.current_block()
         if not isinstance(block, TaskBlock | DecisionBlock):  # an active run waits elsewhere only on its script
             raise RunError(
@@ -1689,8 +1689,15 @@ class Run:
             "agent that the run is paused.\n"
         )
 
-    def record_task_while_paused(self, answer_text: str, task: int) -> str:
-        """Keep a subagent's answer when the main agent's stop attempts paused the run. Only `resume` advances."""
+    def resume_command(self) -> str:
+        """The main agent's command that resumes this run, with its key."""
+        return f"{runner_command(self.project)} resume {self.info['run_id']}{self.key_option()}"
+
+    def record_task_while_paused(self, answer_text: str, task: int, by_subagent: bool) -> str:
+        """Keep a job's answer when the main agent's stop attempts paused the run. Only `resume` advances.
+
+        A subagent's turn ends here. The main agent, who submits its own main jobs, is told the resume command.
+        """
         block = self.current_block()
         if not isinstance(block, TaskBlock):
             raise RunError(f"The block {block.id!r} has no tasks, so `--task` does not apply.")
@@ -1701,7 +1708,10 @@ class Run:
         self.answer_recorded = True
         tasks = self.frame["tasks"] or []
         done = len(tasks) - len(self.open_task_indexes())
-        return subagent_done(f"Task {task} is recorded while the run is paused. {done} of {len(tasks)} tasks are done.")
+        recorded = f"Task {task} is recorded while the run is paused. {done} of {len(tasks)} tasks are done."
+        if by_subagent:
+            return subagent_done(recorded)
+        return f"{recorded} Run `{self.resume_command()}` to go on.\n"
 
     def read_answer(self, answer_text: str, block: AgentBlock) -> tuple[dict[str, Any], str | None, list[str]]:
         """Parse and check an answer. Return the typed answer, who answered, and the problems."""

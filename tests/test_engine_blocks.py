@@ -612,6 +612,31 @@ def test_the_task_command_gives_the_full_prompt_of_one_open_task(tmp_path: Path)
     assert f"submit {run_id} --task 1" in prompt
 
 
+def test_a_main_job_submitted_on_a_paused_run_names_the_resume_command(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"mixed": MIXED_SKILL})
+    run_id, _ = start_run(project, "mixed", {}, mode="interactive", harness="subagents-for-tests")
+    pause_run(project, run_id)
+    key = read_run_info(project, run_id)["key"]
+
+    with pytest.raises(RunError, match="cannot take an answer") as refusal:
+        submit_answer(project, run_id, "note: b is fine\n", task=1)
+    assert f"resume {run_id} --key {key}" in str(refusal.value)
+    assert "end your turn" not in str(refusal.value)
+
+
+def test_a_main_job_recorded_while_stop_attempts_paused_the_run_names_the_resume_command(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"mixed": MIXED_SKILL})
+    run_id, _ = start_run(project, "mixed", {}, mode="interactive", harness="subagents-for-tests")
+    stop_until_paused(project, run_id)
+    key = read_run_info(project, run_id)["key"]
+
+    reply = submit_answer(project, run_id, "note: b is fine\n", task=1)
+
+    assert reply.startswith("Task 1 is recorded while the run is paused. 1 of 3 tasks are done.")
+    assert f"resume {run_id} --key {key}" in reply
+    assert "end your turn" not in reply
+
+
 def test_the_task_command_refuses_a_task_that_already_has_an_answer(tmp_path: Path) -> None:
     project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
     run_id, _ = start_run(
