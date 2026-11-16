@@ -131,8 +131,8 @@ BLOCKED_GIT_SUBCOMMANDS = frozenset(
 )
 # The git options before the subcommand that take the next word as their value.
 GIT_OPTIONS_WITH_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
-# The tokens that end one shell command and start another.
-SHELL_SEPARATORS = frozenset({";", "&&", "||", "|", "&", "(", ")"})
+# The characters of the tokens that end one shell command and start another (a newline ends a command too).
+SEPARATOR_CHARACTERS = frozenset(";&|()\n")
 GIT_BLOCK_REASON = (
     "A read-only task must not change the repository: `git {subcommand}` is refused. "
     "Do not retry it. Submit your answer if you have it, then end your turn."
@@ -167,16 +167,17 @@ def git_subcommands(command: str) -> list[str]:
 
 
 def split_shell_words(command: str) -> list[str]:
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer = shlex.shlex(command, posix=True, punctuation_chars="();<>|&\n")
+    lexer.whitespace = " \t\r"  # no newline: it is a separator, and a quoted one stays inside its word
     lexer.whitespace_split = True
     return list(lexer)
 
 
 def split_calls(words: list[str]) -> list[list[str]]:
-    """Cut the words at the shell separators."""
+    """Cut the words at the shell separators: any token made only of separator characters, such as `&&\\n`."""
     calls: list[list[str]] = [[]]
     for word in words:
-        if word in SHELL_SEPARATORS:
+        if set(word) <= SEPARATOR_CHARACTERS:
             calls.append([])
         else:
             calls[-1].append(word)

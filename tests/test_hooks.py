@@ -439,6 +439,13 @@ def test_a_read_subagent_is_refused_each_changing_git_command(subcommand: str) -
         "cat x | git tag v1",
         "false || git switch main",
         "  git   commit",
+        "git status\ngit commit -m x",
+        "cd /x\ngit push",
+        "git status\n\ngit reset --hard",
+        "ls;(git push)",
+        "ls&&(git commit)",
+        "x |&git push",
+        "ls &&\ngit push",
     ],
 )
 def test_options_and_chains_do_not_hide_a_changing_git_command(command: str) -> None:
@@ -446,7 +453,17 @@ def test_options_and_chains_do_not_hide_a_changing_git_command(command: str) -> 
 
 
 @pytest.mark.parametrize(
-    "command", ["git status", "git diff HEAD", "git log --oneline", "git show abc", "git", "ls -la", "echo git commit"]
+    "command",
+    [
+        "git status",
+        "git diff HEAD",
+        "git log --oneline",
+        "git show abc",
+        "git",
+        "ls -la",
+        "echo git commit",
+        "echo 'a\ngit commit'",
+    ],
 )
 def test_read_only_commands_pass(command: str) -> None:
     assert git_block_reason(bash_input(command)) is None
