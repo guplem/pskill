@@ -1332,6 +1332,7 @@ def test_the_main_agents_packets_carry_the_key(tmp_path: Path) -> None:
 
     paused = pause_run(project, run_id)
 
-    assert f"submit {run_id} --key {key} <<'PSKILL'" in first_packet
+    submit_lines = [line for line in first_packet.splitlines() if f"submit {run_id} --key {key}" in line]
+    assert any("--file" not in line for line in submit_lines)  # the stdin form, in the shell of the platform
     assert f"resume {run_id} --key {key}" in paused
     assert f"current {run_id} --key {key}" in current_packet(project, run_id)
