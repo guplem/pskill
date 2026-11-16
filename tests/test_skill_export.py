@@ -121,6 +121,7 @@ def test_a_field_with_a_pattern_names_it(tmp_path: Path) -> None:
 
     assert "- `plan` (text, matching `^1\\. `): The plan so far." in skill_markdown(project, "plan-work")
 
+
 def test_a_cap_with_no_target_tells_the_agent_to_stop(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     uncapped = PLAN_SKILL.replace("    on_max_visits: stopped\n", "")
