@@ -48,6 +48,15 @@ def test_by_default_each_app_file_gets_its_own_hooks_and_permission_rule(tmp_pat
     assert (tmp_path / CODEX_RULES).is_file()
 
 
+def test_only_the_claude_settings_get_the_git_block_hook(tmp_path: Path) -> None:
+    sync_project(make_project(tmp_path), check_only=False)
+
+    claude_settings = read_json(tmp_path / CLAUDE_SETTINGS)
+    assert hook_commands(claude_settings, "PreToolUse") == [first_command(claude_code.PSKILL_HOOKS, "PreToolUse")]
+    assert claude_settings["hooks"]["PreToolUse"][0]["matcher"] == "Bash"
+    assert "PreToolUse" not in read_json(tmp_path / CODEX_HOOKS)["hooks"]
+
+
 def test_a_listed_hook_file_gets_the_shared_hooks_and_the_app_files_lose_theirs(tmp_path: Path) -> None:
     sync_project(make_project(tmp_path), check_only=False)
     project = make_project(tmp_path, "hook_files: [.agents/hooks/hooks.json]\n")
