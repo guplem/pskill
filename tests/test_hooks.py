@@ -42,7 +42,9 @@ def test_the_stop_is_blocked_while_a_block_is_open(tmp_path: Path) -> None:
 
     assert reason is not None
     assert f"pskill run {run_id} has an open block" in reason
-    assert f"current {run_id}" in reason
+    key = read_run_info(project, run_id)["key"]
+    assert f"current {run_id} --key {key}` and follow" in reason
+    assert f"pause {run_id} --key {key}` instead" in reason
     assert read_run_info(project, run_id)["stop_blocks"] == 1
 
 
@@ -337,7 +339,7 @@ def test_a_worktree_run_holds_the_stop_of_its_session_in_the_checkout(tmp_path: 
         f"pskill run {run_id} has an open block. It works in the folder `{tree_project.root.as_posix()}`: run "
         "these commands from that folder. Continue it:"
     ) in reason
-    assert f"current {run_id}" in reason
+    assert f"current {run_id} --key {read_run_info(tree_project, run_id)['key']}`" in reason
     assert read_run_info(tree_project, run_id)["stop_blocks"] == 1
 
 

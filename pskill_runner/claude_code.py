@@ -86,9 +86,17 @@ def stop_response(reason: str | None) -> tuple[str, int]:
     return json.dumps(feedback), 0
 
 
+READ_PROFILE_RULE = "Do not run git commands that change the repository, such as commit, push, checkout, or reset."
+
+
 def profile_agent_text(profile: str) -> str:
-    """The agent file of a tool profile: tools only. No prompt, and no model, so the tier still sets it."""
+    """The agent file of a tool profile: its tools, and no model, so the tier still sets it.
+
+    The skill's prompt never goes here. The `read` profile gets one fixed rule: its subagent works in the main
+    checkout, so a git command that changes the repository would change the main agent's work.
+    """
+    rule = f"{READ_PROFILE_RULE}\n" if profile == "read" else ""
     return (
         f"---\nname: pskill-{profile}\ndescription: {PROFILE_AGENT_DESCRIPTION}\n"
-        f"tools: {PROFILE_TOOLS[profile]}\n---\n{GENERATED_MARKER}\n"
+        f"tools: {PROFILE_TOOLS[profile]}\n---\n{GENERATED_MARKER}\n{rule}"
     )

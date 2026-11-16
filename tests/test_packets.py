@@ -7,10 +7,12 @@ import pytest
 from pskill_runner.field_types import parse_field_map
 from pskill_runner.packets import (
     AgentPacket,
+    BackgroundScriptPacket,
     PauseSteps,
     SummaryCard,
     TaskPrompt,
     render_agent_packet,
+    render_background_script_packet,
     render_final_packet,
     render_pause_packet,
     render_subagent_packet,
@@ -598,4 +600,83 @@ def test_the_pause_packet_gives_its_card_after_the_header() -> None:
         "## pskill · review-pr · paused\nRun r-1 is paused at block create_plan (block_failed).\n\n"
         + render_summary_card(card)
         + "\n### Error\nplan: required\n"
+    )
+
+
+KEYED_PACKET = replace(PLAN_PACKET, run_key="c0ffee", show_rules=True)
+
+
+def test_the_main_submit_command_and_its_file_line_carry_the_key() -> None:
+    text = render_agent_packet(KEYED_PACKET)
+
+    assert "uv run .pskill/pskill.py submit r-20260927-1432-ab12 --key c0ffee <<'PSKILL'" in text
+    assert "`uv run .pskill/pskill.py submit r-20260927-1432-ab12 --key c0ffee --file " in text
+    assert "- If the user asks to stop, run: uv run .pskill/pskill.py pause r-20260927-1432-ab12 --key c0ffee" in text
+
+
+def test_a_main_job_with_a_task_number_submits_without_the_key() -> None:
+    text = render_agent_packet(replace(KEYED_PACKET, task_index=3))
+
+    assert "submit r-20260927-1432-ab12 --task 3 <<'PSKILL'" in text
+    assert "submit r-20260927-1432-ab12 --task 3 --file " in text
+
+
+def test_the_subagent_packet_gives_the_key_only_to_the_main_agents_current() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    tasks = [TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)]
+
+    text = render_subagent_packet(KEYED_PACKET, tasks, total_tasks=1)
+
+    assert (
+        "When every subagent has finished, run: uv run .pskill/pskill.py current r-20260927-1432-ab12 --key c0ffee"
+        in text
+    )
+    assert text.count("c0ffee") == 1
+
+
+def test_a_task_prompt_never_carries_the_key() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
+
+    assert "c0ffee" not in task_prompt_text(KEYED_PACKET, task)
+
+
+def test_the_pause_packet_carries_the_key_except_for_cancel() -> None:
+    text = render_pause_packet(
+        "r-1", "plan-work", "create_plan", "block_failed", None, "uv run pskill.py", card=PAUSE_CARD, run_key="c0ffee"
+    )
+
+    assert "- To try the block again: uv run pskill.py resume r-1 --key c0ffee" in text
+    assert "- To stop the run: uv run pskill.py cancel r-1\n" in text
+    assert "- To see the current block: uv run pskill.py current r-1 --key c0ffee" in text
+
+
+def test_the_background_script_rules_carry_the_key() -> None:
+    packet = BackgroundScriptPacket(
+        run_id="r-1",
+        chain=["ci"],
+        block_id="wait_ci",
+        visit=1,
+        mode="interactive",
+        goal="Green CI.",
+        runner_command="uv run pskill.py",
+        start_wording="",
+        show_rules=True,
+        run_key="c0ffee",
+    )
+
+    assert "- If the user asks to stop, run: uv run pskill.py pause r-1 --key c0ffee" in (
+        render_background_script_packet(packet)
+    )
+
+
+def test_a_task_prompt_says_the_work_ends_with_its_accepted_submit() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
+
+    text = task_prompt_text(PLAN_PACKET, task)
+
+    assert text.startswith(
+        "You are a subagent of a pskill run. Do only this task, then submit its answer. Your work ends when the "
+        "runner accepts your submit: then end your turn, and run no other pskill command."
     )

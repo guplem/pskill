@@ -1,6 +1,7 @@
 """Tests for pskill_runner.engine: running a skill block by block."""
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ from pskill_runner.engine import (
     CANCELLED_PENDING,
     RunError,
     cancel_run,
+    check_run_key,
     current_packet,
     delete_run,
     pause_run,
@@ -66,6 +68,14 @@ def start(project: Project, skill_id: str = "plan-work", mode: str = "interactiv
 
 def event_types(project: Project, run_id: str) -> list[str]:
     return [event["type"] for event in read_events(project.runs_folder / run_id)]
+
+
+def test_a_new_run_records_a_key(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    run_id = start(project)
+
+    assert re.fullmatch(r"[0-9a-f]{6}", read_run_info(project, run_id)["key"] or "")
 
 
 def test_start_prints_the_first_block_and_records_the_run(tmp_path: Path) -> None:
@@ -854,7 +864,7 @@ def test_a_worktree_run_names_its_answer_file_by_its_absolute_path(tmp_path: Pat
 
     answer_file = (project.runs_folder / run_id / "answers" / "greet.yaml").as_posix()
     assert f"write it to the file `{answer_file}` instead" in packet
-    assert f'submit {run_id} --file "{answer_file}"`' in packet
+    assert f'submit {run_id} --key {key_of(project, run_id)} --file "{answer_file}"`' in packet
 
 
 def test_a_run_in_the_checkout_records_no_worktree_and_names_no_folder(tmp_path: Path) -> None:
@@ -992,7 +1002,7 @@ def test_the_task_command_refuses_a_job_that_the_main_agent_does_itself(tmp_path
     project = make_project(tmp_path)
     run_id = start(project)
 
-    with pytest.raises(RunError, match="Task 0 of 'create_plan' runs in the main context: do it yourself"):
+    with pytest.raises(RunError, match="Task 0 of 'create_plan' runs in the main context: the main agent does it"):
         task_packet(project, run_id, 0)
 
 
@@ -1263,10 +1273,66 @@ def test_the_pause_packet_gives_a_card_that_says_how_to_go_on(tmp_path: Path) ->
     packet = pause_run(project, run_id)
 
     command = runner_command(project)
+    key = key_of(project, run_id)
     assert "| ⏸️ PAUSED | plan-work · paused |" in packet
     assert "| Result | Paused at block `create_plan` (paused_by_user). |" in packet
     assert "| Outputs | None |" in packet
     assert (
-        f"| Pending | Resume the run with `{command} resume {run_id}`, or stop it with `{command} cancel {run_id}`. |"
-        in packet
+        f"| Pending | Resume the run with `{command} resume {run_id} --key {key}`, or stop it with "
+        f"`{command} cancel {run_id}`. |" in packet
     )
+
+
+def key_of(project: Project, run_id: str) -> str:
+    return read_run_info(project, run_id)["key"] or ""
+
+
+def test_the_runs_key_passes_the_key_check(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    check_run_key(project, run_id, key_of(project, run_id))
+
+
+@pytest.mark.parametrize("key", [None, "wrong"])
+def test_a_missing_or_wrong_key_is_refused(tmp_path: Path, key: str | None) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+
+    with pytest.raises(RunError) as refusal:
+        check_run_key(project, run_id, key)
+
+    assert "needs the run's key" in str(refusal.value)
+    assert "If you are a task subagent, your work ended with your submit: end your turn now." in str(refusal.value)
+    assert key_of(project, run_id) not in str(refusal.value)
+
+
+def test_a_run_from_before_the_key_needs_none(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id = start(project)
+    info_file = project.runs_folder / run_id / "run.json"
+    info = json.loads(info_file.read_text(encoding="utf-8"))
+    del info["key"]
+    info_file.write_text(json.dumps(info), encoding="utf-8")
+
+    check_run_key(project, run_id, None)
+
+
+def test_the_key_check_of_an_unknown_run_says_there_is_no_such_run(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+
+    with pytest.raises(RunError, match="There is no run 'r-unknown'"):
+        check_run_key(project, "r-unknown", None)
+
+
+def test_the_main_agents_packets_carry_the_key(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, first_packet = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+    key = key_of(project, run_id)
+
+    paused = pause_run(project, run_id)
+
+    submit_lines = [line for line in first_packet.splitlines() if f"submit {run_id} --key {key}" in line]
+    assert any("--file" not in line for line in submit_lines)  # the stdin form, in the shell of the platform
+    assert f"resume {run_id} --key {key}" in paused
+    assert f"current {run_id} --key {key}" in current_packet(project, run_id)

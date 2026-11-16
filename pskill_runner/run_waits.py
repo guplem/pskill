@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import cast
 
 from pskill_runner.engine import Run, RunError, run_folder, runner_command
+from pskill_runner.packets import key_option
 from pskill_runner.project import Project
 from pskill_runner.run_records import RunInfo
 from pskill_runner.run_store import RunLockTimeout, parse_timestamp, read_json, run_lock, timestamp, utc_now
@@ -43,7 +44,7 @@ def wait_for_run_change(
         if remaining <= 0:
             return (
                 f"{project.config.wait_minutes} minutes passed and nothing changed. If you still wait on {reason}, "
-                f"run the wait again. Else continue the run: run `{runner_command(project)} current {run_id}`.\n"
+                f"run the wait again. Else continue the run: run {current_command(project, saved)}.\n"
             )
         sleep(min(POLL_SECONDS, remaining))
 
@@ -76,7 +77,12 @@ def change_text(project: Project, info: RunInfo) -> str:
         return f"Run {run_id} is now {info['status']}.\n"
     if info.get("wait_until") is not None:  # a submit or a resume clears the alarm; only a newer wait sets one
         return "A newer wait replaced this one. End your turn: the newer wait wakes you.\n"
-    return f"Run {run_id} changed. Continue it: run `{runner_command(project)} current {run_id}`.\n"
+    return f"Run {run_id} changed. Continue it: run {current_command(project, info)}.\n"
+
+
+def current_command(project: Project, info: RunInfo) -> str:
+    """The main agent's `current` command for the run, with its key."""
+    return f"`{runner_command(project)} current {info['run_id']}{key_option(info.get('key'))}`"
 
 
 def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> RunInfo:
@@ -92,8 +98,8 @@ def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> Run
         if not run.adapter.wakes_after_background_command:
             raise RunError(
                 f"Run {run_id} runs in {run.info['harness']}, and {run.info['harness']} does not wake the agent when "
-                f"a background command ends, so nothing would wake you after a wait. Continue the run: run "
-                f"`{runner_command(project)} current {run_id}`."
+                "a background command ends, so nothing would wake you after a wait. Continue the run: run "
+                f"{current_command(project, run.info)}."
             )
         script = run.current_block()
         if run.frame.get("background_script") is not None:
@@ -110,8 +116,8 @@ def start_wait(project: Project, run_id: str, reason: str, now: datetime) -> Run
         if waits_since is not None and now - parse_timestamp(waits_since) >= max_wait:
             raise RunError(
                 f"The waits of run {run_id} lasted {project.config.max_wait_minutes} minutes with nothing new, so "
-                f"no new wait starts. Check the background work, then continue the run: run "
-                f"`{runner_command(project)} current {run_id}`."
+                "no new wait starts. Check the background work, then continue the run: run "
+                f"{current_command(project, run.info)}."
             )
         run.info["wait_reason"] = reason
         run.info["wait_started_at"] = timestamp(now)

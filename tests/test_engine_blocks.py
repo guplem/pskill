@@ -362,7 +362,7 @@ def test_parallel_with_subagents_lists_every_task_and_waits_for_all(tmp_path: Pa
     assert read_run_info(project, run_id)["status"] == "active"
 
     last_task = submit_answer(project, run_id, "wrong: []\n", task=0)
-    assert last_task == "Task 0 is recorded. All 2 tasks are done.\n"
+    assert last_task == "Task 0 is recorded. All 2 tasks are done. Your work is done: end your turn now.\n"
     assert "finished with status succeeded" in current_packet(project, run_id)
     assert read_run_info(project, run_id)["outputs"] == {"wrong_count": 1}
     results = read_run_state(project, run_id)["frames"][0]["steps"]["check"]["results"]
@@ -612,6 +612,54 @@ def test_the_task_command_gives_the_full_prompt_of_one_open_task(tmp_path: Path)
     assert f"submit {run_id} --task 1" in prompt
 
 
+def test_a_main_job_submitted_on_a_paused_run_names_the_resume_command(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"mixed": MIXED_SKILL})
+    run_id, _ = start_run(project, "mixed", {}, mode="interactive", harness="subagents-for-tests")
+    pause_run(project, run_id)
+    key = read_run_info(project, run_id)["key"]
+
+    with pytest.raises(RunError, match="cannot take an answer") as refusal:
+        submit_answer(project, run_id, "note: b is fine\n", task=1)
+    assert f"resume {run_id} --key {key}" in str(refusal.value)
+    assert "end your turn" not in str(refusal.value)
+
+
+def test_a_repeated_task_submit_on_a_finished_run_never_shows_the_key(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts carefully."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+    key = str(read_run_info(project, run_id)["key"])
+
+    with pytest.raises(RunError) as refusal:
+        submit_answer(project, run_id, "wrong: []\n", task=0)
+    assert key not in str(refusal.value)
+    assert "resume" not in str(refusal.value)
+
+
+def test_an_out_of_range_task_submit_on_a_paused_run_never_shows_the_key(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts carefully."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+    pause_run(project, run_id)
+    key = str(read_run_info(project, run_id)["key"])
+
+    with pytest.raises(RunError, match="is paused") as refusal:
+        submit_answer(project, run_id, "wrong: []\n", task=5)
+    assert key not in str(refusal.value)
+
+
+def test_a_main_job_recorded_while_stop_attempts_paused_the_run_names_the_resume_command(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"mixed": MIXED_SKILL})
+    run_id, _ = start_run(project, "mixed", {}, mode="interactive", harness="subagents-for-tests")
+    stop_until_paused(project, run_id)
+    key = read_run_info(project, run_id)["key"]
+
+    reply = submit_answer(project, run_id, "note: b is fine\n", task=1)
+
+    assert reply.startswith("Task 1 is recorded while the run is paused. 1 of 3 tasks are done.")
+    assert f"resume {run_id} --key {key}" in reply
+    assert "end your turn" not in reply
+
+
 def test_the_task_command_refuses_a_task_that_already_has_an_answer(tmp_path: Path) -> None:
     project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
     run_id, _ = start_run(
@@ -646,6 +694,7 @@ def test_a_run_paused_by_stop_attempts_still_records_task_answers(tmp_path: Path
     last = submit_answer(project, run_id, "wrong: []\n", task=0)
 
     assert "Task 1 is recorded" in first and "Task 0 is recorded" in last
+    assert first.endswith(" Your work is done: end your turn now.\n")  # a subagent stops after its accepted submit
     assert not answer_file.exists()  # a task answer recorded while paused loses its file too
     assert read_run_info(project, run_id)["status"] == "paused"  # only resume advances
     assert "finished with status succeeded" in resume_run(project, run_id)
@@ -657,8 +706,30 @@ def test_a_run_paused_by_the_user_takes_no_task_answer(tmp_path: Path) -> None:
     run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
     pause_run(project, run_id)
 
-    with pytest.raises(RunError, match="resume"):
+    with pytest.raises(RunError, match=r"paused\. Your work is done: end your turn now") as refusal:
         submit_answer(project, run_id, "wrong: []\n", task=0)
+    assert "resume" not in str(refusal.value)  # a subagent runs no main-agent command
+
+
+def test_a_run_paused_by_the_user_gives_no_task_to_a_subagent(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
+    pause_run(project, run_id)
+
+    with pytest.raises(RunError, match=r"is paused\. Your work is done: end your turn now") as refusal:
+        task_packet(project, run_id, 0)
+    assert "resume" not in str(refusal.value)
+
+
+def test_a_plain_submit_on_a_paused_run_names_the_resume_command_with_the_key(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="subagents-for-tests")
+    pause_run(project, run_id)
+    key = read_run_info(project, run_id)["key"]
+
+    with pytest.raises(RunError, match="cannot take an answer") as refusal:
+        submit_answer(project, run_id, "wrong: []\n")
+    assert f"run `uv run .pskill/pskill.py resume {run_id} --key {key}` first" in str(refusal.value)
 
 
 def test_a_text_script_keeps_its_output_as_text(tmp_path: Path) -> None:
@@ -1197,8 +1268,8 @@ def test_a_task_answer_that_pauses_the_run_gives_the_subagent_no_pause_steps(tmp
     reply = submit_answer(project, run_id, "$cannot_complete: no access\n", task=0)
 
     assert reply == (
-        f"Task 0 is not recorded, and the run is paused. Stop here, and tell the main agent: it reads the pause "
-        f"with `uv run .pskill/pskill.py current {run_id}`.\n"
+        "Task 0 is not recorded, and the run is paused. Your work is done: end your turn now, and tell the main "
+        "agent that the run is paused.\n"
     )
     assert read_run_info(project, run_id)["status"] == "paused"
     assert "### Pause steps of fanout\nPost one comment." in current_packet(project, run_id)
@@ -1214,7 +1285,7 @@ def test_a_last_task_whose_join_pauses_the_run_gives_the_subagent_no_pause_steps
     reply = submit_answer(project, run_id, "wrong: []\n", task=0)
 
     assert "Pause steps" not in reply
-    assert reply.startswith("Task 0 is recorded, and the run is paused. Stop here, and tell the main agent")
+    assert reply.startswith("Task 0 is recorded, and the run is paused. Your work is done: end your turn now")
     assert read_run_info(project, run_id)["pause_reason"] == "runner_error"
 
 
@@ -1352,7 +1423,7 @@ def test_a_one_job_fresh_task_spawns_one_subagent_and_stores_its_output_flat(tmp
 
     assert "### Subagent tasks" in packet
     assert "#### Task 0" in packet
-    assert reply == "Task 0 is recorded. All 1 tasks are done.\n"
+    assert reply == "Task 0 is recorded. All 1 tasks are done. Your work is done: end your turn now.\n"
     assert read_run_state(project, run_id)["frames"][0]["steps"]["judge"] == {"verdict": "fine"}
     assert read_run_info(project, run_id)["outputs"] == {"verdict": "fine"}
 
@@ -1439,8 +1510,8 @@ def test_a_mixed_block_spawns_the_fresh_jobs_then_gives_the_main_jobs(tmp_path: 
     assert "1 more task is yours, in this conversation: run `current` for it when every subagent has finished." in (
         packet
     )
-    assert first_reply == "Task 2 is recorded. 1 of 3 tasks are done.\n"
-    assert last_fresh_reply == "Task 0 is recorded. 2 of 3 tasks are done.\n"
+    assert first_reply == "Task 2 is recorded. 1 of 3 tasks are done. Your work is done: end your turn now.\n"
+    assert last_fresh_reply == "Task 0 is recorded. 2 of 3 tasks are done. Your work is done: end your turn now.\n"
     assert "Check part b." in main_packet
     assert "--task 1" in main_packet
     assert "finished with status succeeded" in final
@@ -1507,7 +1578,7 @@ def test_a_rejected_main_job_while_subagents_work_gets_its_errors_and_then_the_p
     assert first.startswith("Task 1 is not recorded. Fix these problems and submit again:")
     assert "Spawn one subagent" not in first
     assert read_run_info(project, run_id)["status"] == "paused"
-    assert "Stop here, and tell the main agent" not in last
+    assert "and the run is paused" not in last
     assert "is paused at block check" in last
 
 
@@ -1785,9 +1856,20 @@ def test_current_on_another_harness_does_not_run_a_script_that_already_runs_in_t
 
     assert executor.calls == 1
     assert "runs in the background" in seen[0]
+    key = read_run_info(project, run_id)["key"]
+    assert f"pause {run_id} --key {key}`, then `uv run .pskill/pskill.py resume {run_id} --key {key}`" in seen[0]
     assert read_run_info(project, run_id)["status"] == "succeeded"
     ran = [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
     assert len(ran) == 1
+
+
+def test_current_gives_the_background_command_again_with_rules_that_carry_the_key(tmp_path: Path) -> None:
+    project, run_id = start_background(tmp_path)
+    key = read_run_info(project, run_id)["key"]
+
+    packet = current_packet(project, run_id, harness="claude-code")
+
+    assert f"If the user asks to stop, run: uv run .pskill/pskill.py pause {run_id} --key {key}" in packet
 
 
 def test_the_result_is_dropped_when_the_run_changed_while_the_script_ran(tmp_path: Path) -> None:
@@ -1796,7 +1878,7 @@ def test_the_result_is_dropped_when_the_run_changed_while_the_script_ran(tmp_pat
     text = run_background_script(project, run_id, ScriptWithSideEffect(lambda: pause_run(project, run_id)))
 
     assert "its result is dropped" in text
-    assert f"uv run .pskill/pskill.py current {run_id}" in text
+    assert f"uv run .pskill/pskill.py current {run_id} --key {read_run_info(project, run_id)['key']}" in text
     info = read_run_info(project, run_id)
     assert info["status"] == "paused" and info["current_block"] == "list_files"
     assert not [event for event in read_events(project.runs_folder / run_id) if event["type"] == "script_ran"]
@@ -1810,6 +1892,7 @@ def test_the_background_command_needs_a_background_script_that_waits_for_it(tmp_
         run_background_script(project, run_id)
 
     assert "does not run a script in the background" in str(raised.value)
+    assert f"current {run_id} --key {read_run_info(project, run_id)['key']}`" in str(raised.value)
 
 
 def test_a_background_command_that_cannot_compute_its_command_pauses_the_run(tmp_path: Path) -> None:

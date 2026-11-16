@@ -85,7 +85,7 @@ def render_stub(skill: Skill) -> str:
         "   The runner checks your answer and prints the next step.",
         "4. Repeat step 3 until the runner says the run is finished. Never skip a step, and never stop before the end.",
         "   If you cannot do a step, submit only the line `$cannot_complete: <reason>`.",
-        f"5. If the user asks to stop, run: `{RUNNER} pause <run-id>`. Each step names its run id.",
+        f"5. If the user asks to stop, run: `{RUNNER} pause <run-id> --key <key>`. Each step names its run id and key.",
     ]
     return "---\n" + "\n".join(frontmatter) + "\n---\n" + "\n".join(body) + "\n"
 
@@ -101,13 +101,13 @@ def render_pskill_stub() -> str:
             "---",
             GENERATED_MARKER,
             "Commands of the pskill runner:",
-            f"- List the unfinished runs: `{RUNNER} runs --open`",
-            f"- Show the current block of a run again: `{RUNNER} current <run-id>`",
-            f"- Resume a paused run: `{RUNNER} resume <run-id>`",
+            f"- List the unfinished runs, with each run's key: `{RUNNER} runs --open`",
+            f"- Show the current block of a run again: `{RUNNER} current <run-id> --key <key>`",
+            f"- Resume a paused run: `{RUNNER} resume <run-id> --key <key>`",
             "- Wait on background work, in the background (Claude Code only): "
             f'`{RUNNER} wait <run-id> --reason "<what>"`',
             f"- Run a background script, in the background (Claude Code only): `{RUNNER} run-script <run-id>`",
-            f"- Pause a run: `{RUNNER} pause <run-id>`",
+            f"- Pause a run: `{RUNNER} pause <run-id> --key <key>`",
             f"- Stop a run for good: `{RUNNER} cancel <run-id>`",
             f"- Open the run viewer: `{RUNNER} view`",
             "",

@@ -44,6 +44,7 @@ class AgentPacket:
     work_folder: str = ""  # the project root, where every subagent works
     can_wait: bool = False  # the harness wakes the agent after a background command, so `pskill wait` works
     in_worktree: bool = False  # the run works in its own git worktree, so the header names the work folder
+    run_key: str | None = None  # the key of the main agent's commands; None for a run from before 1.3.0
     # The stub gives the goal and the rules once. A packet repeats them only where the agent never saw them.
     show_goal: bool = False  # the first packet of a child skill, and `current` and `resume`
     show_rules: bool = False  # `current` and `resume`: a new session may not have read the stub
@@ -97,6 +98,7 @@ class BackgroundScriptPacket:
     in_worktree: bool = False
     show_goal: bool = False  # `current` and `resume`: a new session may not have read the stub
     show_rules: bool = False
+    run_key: str | None = None
 
 
 def render_background_script_packet(packet: BackgroundScriptPacket) -> str:
@@ -116,6 +118,7 @@ def render_background_script_packet(packet: BackgroundScriptPacket) -> str:
             "### Rules\n"
             "- Do only this block. The runner gives you the next one.\n"
             f"- If the user asks to stop, run: {packet.runner_command} pause {packet.run_id}"
+            f"{key_option(packet.run_key)}"
         )
     return "\n\n".join(sections) + "\n"
 
@@ -164,9 +167,14 @@ def submit_command(packet: AgentPacket, fields: FieldMap, task_index: int | None
 
 
 def plain_submit_command(packet: AgentPacket, task_index: int | None) -> str:
-    """`<runner> submit <run>`, with `--task <n>` for one job of a task block."""
-    task_option = f" --task {task_index}" if task_index is not None else ""
-    return f"{packet.runner_command} submit {packet.run_id}{task_option}"
+    """`<runner> submit <run>`, with `--task <n>` for one job of a task block, or else the run's key."""
+    option = f" --task {task_index}" if task_index is not None else key_option(packet.run_key)
+    return f"{packet.runner_command} submit {packet.run_id}{option}"
+
+
+def key_option(run_key: str | None) -> str:
+    """The `--key` option of the main agent's commands. A run from before 1.3.0 has no key and needs none."""
+    return f" --key {run_key}" if run_key else ""
 
 
 def answer_file_line(packet: AgentPacket, task_index: int | None) -> str:
@@ -218,7 +226,8 @@ def render_subagent_packet(
         "Give each subagent exactly the one-line prompt of its task.",
         *([packet.subagent_wording] if packet.subagent_wording else []),
         f"{len(open_tasks)} of {total_tasks} tasks are still open.",
-        f"When every subagent has finished, run: {packet.runner_command} current {packet.run_id}",
+        f"When every subagent has finished, run: {packet.runner_command} current {packet.run_id}"
+        f"{key_option(packet.run_key)}",
         *([main_tasks_line(main_tasks)] if main_tasks else []),
         *([background_subagent_line(packet)] if packet.can_wait else []),
     ]
@@ -260,7 +269,8 @@ def task_line(packet: AgentPacket, index: int) -> str:
 def task_prompt_text(packet: AgentPacket, task: TaskPrompt) -> str:
     """The full prompt of one task, which `pskill task` prints for its subagent."""
     parts = [
-        "You are a subagent of a pskill run. Do only this task, then submit its answer.",
+        "You are a subagent of a pskill run. Do only this task, then submit its answer. Your work ends when the "
+        "runner accepts your submit: then end your turn, and run no other pskill command.",
         f"Work in the folder `{packet.work_folder}`.",
     ]
     if task.agent_text:
@@ -279,7 +289,7 @@ def rules_section(packet: AgentPacket) -> str:
         "### Rules\n"
         "- Do only this block. The runner gives you the next one.\n"
         "- If you cannot do it, submit only the line `$cannot_complete: <reason>`.\n"
-        f"- If the user asks to stop, run: {packet.runner_command} pause {packet.run_id}"
+        f"- If the user asks to stop, run: {packet.runner_command} pause {packet.run_id}{key_option(packet.run_key)}"
     )
 
 
@@ -481,6 +491,7 @@ def render_pause_packet(
     pause_steps: Sequence[PauseSteps] = (),
     steps_shown_before: bool = False,
     work_folder: str | None = None,
+    run_key: str | None = None,
 ) -> str:
     """The pause packet. The pause steps of each skill on the call stack sit between the error and the commands.
 
@@ -502,9 +513,9 @@ def render_pause_packet(
         "",
         "### Next",
         f"{first_step} why the run paused. Then, when the user decides:",
-        f"- To try the block again: {runner_command} resume {run_id}",
+        f"- To try the block again: {runner_command} resume {run_id}{key_option(run_key)}",
         f"- To stop the run: {runner_command} cancel {run_id}",
-        f"- To see the current block: {runner_command} current {run_id}",
+        f"- To see the current block: {runner_command} current {run_id}{key_option(run_key)}",
     ]
     return "\n".join(lines) + "\n"
 

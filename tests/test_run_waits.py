@@ -105,8 +105,10 @@ def test_a_wait_is_refused_after_max_wait_minutes_with_nothing_new(tmp_path: Pat
     for minutes in range(0, 106, 21):  # each wait starts 1 minute after the one before rings
         start_wait(project, run_id, "the CI checks", START + timedelta(minutes=minutes))
 
-    with pytest.raises(RunError, match="120 minutes with nothing new"):
+    with pytest.raises(RunError, match="120 minutes with nothing new") as refusal:
         start_wait(project, run_id, "the CI checks", START + timedelta(minutes=126))
+
+    assert f"current {run_id} --key {key_of(project, run_id)}`" in str(refusal.value)
 
     info = read_run_info(project, run_id)
     assert info["wait_started_at"] == timestamp(START + timedelta(minutes=105))
@@ -142,7 +144,7 @@ def test_a_wait_with_nothing_new_ends_at_its_alarm_with_one_line(tmp_path: Path)
 
     assert text == (
         "20 minutes passed and nothing changed. If you still wait on the CI checks, run the wait again. "
-        f"Else continue the run: run `uv run .pskill/pskill.py current {run_id}`.\n"
+        f"Else continue the run: run `uv run .pskill/pskill.py current {run_id} --key {key_of(project, run_id)}`.\n"
     )
     assert clock.now == START + timedelta(minutes=20)
     assert max(clock.sleeps) <= 5
@@ -167,7 +169,10 @@ def test_a_submit_ends_the_wait_at_once(tmp_path: Path) -> None:
 
     text = wait_for_run_change(project, run_id, "the CI checks", clock.sleep, clock.time)
 
-    assert text == f"Run {run_id} changed. Continue it: run `uv run .pskill/pskill.py current {run_id}`.\n"
+    assert text == (
+        f"Run {run_id} changed. Continue it: run `uv run .pskill/pskill.py current {run_id} "
+        f"--key {key_of(project, run_id)}`.\n"
+    )
     assert len(clock.sleeps) == 1
 
 
@@ -260,7 +265,10 @@ def test_a_task_result_of_a_parallel_block_ends_the_wait_at_once(tmp_path: Path)
 
     text = wait_for_run_change(project, run_id, "the subagents", clock.sleep, clock.time)
 
-    assert text == f"Run {run_id} changed. Continue it: run `uv run .pskill/pskill.py current {run_id}`.\n"
+    assert text == (
+        f"Run {run_id} changed. Continue it: run `uv run .pskill/pskill.py current {run_id} "
+        f"--key {key_of(project, run_id)}`.\n"
+    )
     assert len(clock.sleeps) == 1
     assert wait_fields(project, run_id) == [None, None, None, None]
 
@@ -329,8 +337,10 @@ def test_a_wait_is_refused_on_a_harness_that_does_not_wake_the_agent(tmp_path: P
     run_id, _ = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="codex")
     register_stop_attempt(project, run_id)
 
-    with pytest.raises(RunError, match="codex does not wake the agent"):
+    with pytest.raises(RunError, match="codex does not wake the agent") as refusal:
         start_wait(project, run_id, "the CI checks", START)
+
+    assert f"current {run_id} --key {key_of(project, run_id)}`" in str(refusal.value)
 
     assert read_run_info(project, run_id)["stop_blocks"] == 1
 
@@ -379,3 +389,7 @@ def test_a_wait_is_refused_while_a_background_script_is_open(tmp_path: Path) -> 
         start_wait(project, run_id, "the CI checks", datetime.now(UTC))
 
     assert "runs the script 'list_files' in the background" in str(raised.value)
+
+
+def key_of(project: Project, run_id: str) -> str:
+    return read_run_info(project, run_id)["key"] or ""
