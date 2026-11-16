@@ -1070,6 +1070,7 @@ class Run:
                 in_worktree=bool(self.info.get("worktree")),
                 show_goal=reentry,
                 show_rules=reentry,
+                run_key=self.info.get("key"),
             )
         )
 
@@ -1407,6 +1408,7 @@ class Run:
             work_folder=self.project.root.as_posix(),
             can_wait=self.adapter.wakes_after_background_command,
             in_worktree=bool(self.info.get("worktree")),
+            run_key=self.info.get("key"),
         )
 
     def answers_folder(self) -> str:
@@ -1505,6 +1507,7 @@ class Run:
             [] if shown_before else steps,
             steps_shown_before=shown_before,
             work_folder=self.project.root.as_posix() if self.info.get("worktree") else None,
+            run_key=self.info.get("key"),
         )
 
     def pause_steps_not_shown(self) -> None:

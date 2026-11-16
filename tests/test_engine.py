@@ -864,7 +864,7 @@ def test_a_worktree_run_names_its_answer_file_by_its_absolute_path(tmp_path: Pat
 
     answer_file = (project.runs_folder / run_id / "answers" / "greet.yaml").as_posix()
     assert f"write it to the file `{answer_file}` instead" in packet
-    assert f'submit {run_id} --file "{answer_file}"`' in packet
+    assert f'submit {run_id} --key {key_of(project, run_id)} --file "{answer_file}"`' in packet
 
 
 def test_a_run_in_the_checkout_records_no_worktree_and_names_no_folder(tmp_path: Path) -> None:
@@ -1322,3 +1322,15 @@ def test_the_key_check_of_an_unknown_run_says_there_is_no_such_run(tmp_path: Pat
 
     with pytest.raises(RunError, match="There is no run 'r-unknown'"):
         check_run_key(project, "r-unknown", None)
+
+
+def test_the_main_agents_packets_carry_the_key(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    run_id, first_packet = start_run(project, "plan-work", {"topic": "x"}, mode="interactive", harness="generic")
+    key = key_of(project, run_id)
+
+    paused = pause_run(project, run_id)
+
+    assert f"submit {run_id} --key {key} <<'PSKILL'" in first_packet
+    assert f"resume {run_id} --key {key}" in paused
+    assert f"current {run_id} --key {key}" in current_packet(project, run_id)
