@@ -1351,3 +1351,56 @@ def test_runs_shows_each_runs_key(
     assert table.startswith("run  key  skill  status  block  updated\n")
     assert f"{keyed_run}  {key_of(project, keyed_run)}  plan-work  active  create_plan  " in table
     assert f"{old_run}  -  plan-work  active  create_plan  " in table
+
+
+def pre_tool_use_input(command: str, agent_id: str | None = "a1") -> str:
+    hook_input: dict[str, object] = {"tool_name": "Bash", "tool_input": {"command": command}}
+    if agent_id:
+        hook_input.update(agent_id=agent_id, agent_type="pskill-read")
+    return json.dumps(hook_input)
+
+
+def test_the_pre_tool_use_hook_denies_a_read_subagents_git_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = run_cli(
+        monkeypatch, "hook", "pre-tool-use", "--harness", "claude-code", stdin=pre_tool_use_input("git commit -m x")
+    )
+
+    decision = json.loads(capsys.readouterr().out)["hookSpecificOutput"]
+    assert exit_code == cli.EXIT_OK
+    assert decision["permissionDecision"] == "deny"
+    assert "end your turn" in decision["permissionDecisionReason"]
+
+
+def test_the_pre_tool_use_hook_never_refuses_the_main_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = run_cli(
+        monkeypatch,
+        "hook",
+        "pre-tool-use",
+        "--harness",
+        "claude-code",
+        stdin=pre_tool_use_input("git push", agent_id=None),
+    )
+
+    assert exit_code == cli.EXIT_OK
+    assert capsys.readouterr().out == ""
+
+
+def test_the_pre_tool_use_hook_only_asks_on_other_harnesses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = run_cli(
+        monkeypatch, "hook", "pre-tool-use", "--harness", "codex", stdin=pre_tool_use_input("git commit -m x")
+    )
+
+    assert exit_code == cli.EXIT_OK
+    assert capsys.readouterr().out == ""
