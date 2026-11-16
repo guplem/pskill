@@ -45,6 +45,7 @@ class AgentPacket:
     can_wait: bool = False  # the harness wakes the agent after a background command, so `pskill wait` works
     in_worktree: bool = False  # the run works in its own git worktree, so the header names the work folder
     run_key: str | None = None  # the key of the main agent's commands; None for a run from before 1.3.0
+    refused: bool = False  # a script sent the run back to this block after its last answer (SPEC.md section 8)
     # The stub gives the goal and the rules once. A packet repeats them only where the agent never saw them.
     show_goal: bool = False  # the first packet of a child skill, and `current` and `resume`
     show_rules: bool = False  # `current` and `resume`: a new session may not have read the stub
@@ -75,8 +76,14 @@ def errors_section(errors: list[str]) -> str:
 
 
 def header(packet: "AgentPacket | BackgroundScriptPacket") -> str:
+    """The first line names a refused answer, so an agent that reads only the start of the output still sees it."""
     chain = " > ".join(packet.chain)
-    lines = [f"## pskill · {chain} · {packet.block_id} (visit {packet.visit})", f"Run {packet.run_id} · {packet.mode}"]
+    refused = isinstance(packet, AgentPacket) and (packet.refused or bool(packet.errors))
+    marker = " · REFUSED" if refused else ""
+    lines = [
+        f"## pskill · {chain} · {packet.block_id} (visit {packet.visit}){marker}",
+        f"Run {packet.run_id} · {packet.mode}",
+    ]
     if packet.in_worktree:
         lines.append(worktree_line(packet.work_folder))
     return "\n".join(lines)

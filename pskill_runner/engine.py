@@ -880,6 +880,8 @@ class Run:
         """Store a block's output, log it, and go to the next block. `tier`: the tier of a one-job task's job."""
         self.frame["steps"][block.id] = value
         self.frame["history"].setdefault(block.id, []).append(value)
+        if not isinstance(block, ScriptBlock):
+            self.frame["answered_block"] = None if decided_by == "runner" else block.id
         self.log_completed(block, value, decided_by, duration_ms, tier)
         self.info["attempts"] = 0
         self.follow_edges(block, value)
@@ -1422,7 +1424,18 @@ class Run:
             can_wait=self.adapter.wakes_after_background_command,
             in_worktree=bool(self.info.get("worktree")),
             run_key=self.info.get("key"),
+            refused=self.sent_back_by_script(block),
         )
+
+    def sent_back_by_script(self, block: AgentBlock) -> bool:
+        """Whether a script sent the run back to this block, with no other block between its last answer and now.
+
+        Only scripts ran after the block's answer, and one of them chose the edge back: it refused the answer.
+        """
+        if self.frame.get("answered_block") != block.id:
+            return False
+        arrived_from = self.skill_of(self.frame).blocks.get(self.frame["arrived_from"] or "")
+        return isinstance(arrived_from, ScriptBlock)
 
     def answers_folder(self) -> str:
         """Create the run's folder for answer files, and return it as the agent writes it.

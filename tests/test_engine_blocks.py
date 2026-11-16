@@ -1980,3 +1980,151 @@ def test_resume_gives_the_background_command_again_and_drops_the_old_run(tmp_pat
     marker = read_run_state(project, run_id)["frames"][-1]["background_script"]
     assert marker is not None and marker["state"] == "issued"
     assert "finished with status succeeded" in run_background_script(project, run_id)
+
+
+CHECKED_SKILL = """\
+schema: pskill/v1
+id: checked
+description: Checks an answer with a script.
+goal: Give a good commit.
+entry: implement
+blocks:
+  implement:
+    type: task
+    instruction: "Push a commit."
+    max_visits: 5
+    on_max_visits: failed
+    output:
+      commit: {type: string, description: "The commit."}
+    next: check
+  check:
+    type: script
+    run: [python, -c, "import json, sys; print(json.dumps({'ok': sys.stdin.read() == 'good'}))"]
+    input: "{{ steps.implement.commit }}"
+    parse: json
+    next:
+      - when: "{{ steps.check.json.ok }}"
+        to: done
+      - to: implement
+  done:
+    type: end
+    status: succeeded
+  failed:
+    type: end
+    status: failed
+"""
+
+
+def test_a_block_that_a_script_sends_back_says_refused_on_the_first_line(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"checked": CHECKED_SKILL})
+    run_id, first = start_run(project, "checked", {}, mode="interactive", harness="generic")
+
+    refused = submit_answer(project, run_id, "commit: see git log\n")
+
+    assert first.splitlines()[0] == "## pskill · checked · implement (visit 1)"
+    assert refused.splitlines()[0] == "## pskill · checked · implement (visit 2) · REFUSED"
+    assert current_packet(project, run_id).splitlines()[0] == "## pskill · checked · implement (visit 2) · REFUSED"
+    assert "finished with status succeeded" in submit_answer(project, run_id, "commit: good\n")
+
+
+LOOP_SKILL = """\
+schema: pskill/v1
+id: looped
+description: Loops through an agent block and a script.
+goal: Do every step.
+entry: step
+blocks:
+  step:
+    type: task
+    instruction: "Do a step."
+    max_visits: 5
+    on_max_visits: done
+    output:
+      done: {type: boolean, description: "Whether every step is done."}
+    next: review
+  review:
+    type: task
+    instruction: "Review the step."
+    max_visits: 5
+    on_max_visits: done
+    output:
+      note: {type: string, description: "The note."}
+    next: count
+  count:
+    type: script
+    run: [python, -c, "print(1)"]
+    next:
+      - when: "{{ steps.step.done }}"
+        to: done
+      - to: step
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_a_block_that_another_agent_block_ran_after_is_not_refused(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"looped": LOOP_SKILL})
+    run_id, _ = start_run(project, "looped", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "done: false\n")
+
+    again = submit_answer(project, run_id, "note: fine\n")
+
+    assert again.splitlines()[0] == "## pskill · looped · step (visit 2)"
+
+
+CALL_BACK_SKILL = """\
+schema: pskill/v1
+id: calls-back
+description: Calls a child, then a script sends the run back.
+goal: Greet twice.
+entry: greet
+blocks:
+  greet:
+    type: task
+    instruction: "Say hello."
+    max_visits: 2
+    on_max_visits: done
+    output:
+      text: {type: string, description: "The greeting."}
+    next: child
+  child:
+    type: call
+    skill: child
+    inputs: {name: Ada}
+    next: check
+  check:
+    type: script
+    run: [python, -c, "print(1)"]
+    next: greet
+  done:
+    type: end
+    status: succeeded
+"""
+
+
+def test_a_block_reached_again_after_a_call_is_not_refused(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"calls-back": CALL_BACK_SKILL, "child": CHILD_SKILL})
+    run_id, _ = start_run(project, "calls-back", {}, mode="interactive", harness="generic")
+    submit_answer(project, run_id, "text: hi\n")
+
+    again = submit_answer(project, run_id, "text: hello Ada\n")
+
+    assert again.splitlines()[0] == "## pskill · calls-back · greet (visit 2)"
+
+
+def test_an_answer_that_misses_its_pattern_is_refused_at_submit_and_not_recorded(tmp_path: Path) -> None:
+    skill_yaml = CHECKED_SKILL.replace(
+        'commit: {type: string, description: "The commit."}',
+        'commit: {type: string, pattern: "^(good|[0-9a-f]{7,40})$", description: "The commit."}',
+    )
+    project = make_project(tmp_path, {"checked": skill_yaml})
+    run_id, _ = start_run(project, "checked", {}, mode="interactive", harness="generic")
+
+    refused = submit_answer(project, run_id, "commit: see git log\n")
+
+    assert refused.splitlines()[0] == "## pskill · checked · implement (visit 1) · REFUSED"
+    assert "- commit: 'see git log' does not match the pattern ^(good|[0-9a-f]{7,40})$\n" in refused
+    frame = read_run_state(project, run_id)["frames"][0]
+    assert "implement" not in frame["steps"]
+    assert "check" not in frame["steps"]
