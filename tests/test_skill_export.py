@@ -111,6 +111,16 @@ def test_a_step_has_its_instruction_its_fields_and_its_edges_in_plain_words(tmp_
     ) in markdown
 
 
+def test_a_field_with_a_pattern_names_it(tmp_path: Path) -> None:
+    project = make_project(tmp_path)
+    skill_yaml = PLAN_SKILL.replace(
+        'plan: {type: string, description: "The plan so far."}',
+        'plan: {type: string, pattern: "^1\\\\. ", description: "The plan so far."}',
+    )
+    write_skill(tmp_path / ".pskill" / "skills", "plan-work", skill_yaml, PLAN_SKILL_FILES)
+
+    assert "- `plan` (text, matching `^1\\. `): The plan so far." in skill_markdown(project, "plan-work")
+
 def test_a_cap_with_no_target_tells_the_agent_to_stop(tmp_path: Path) -> None:
     project = make_project(tmp_path)
     uncapped = PLAN_SKILL.replace("    on_max_visits: stopped\n", "")
