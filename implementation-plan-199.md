@@ -16,11 +16,8 @@ A task subagent cannot drive its parent run after its submit. Acceptance criteri
 
 - **Key:** `secrets.token_hex(3)` (6 hex characters), made in `start_run`, stored as `key` in `run.json`. A child skill shares its run's key (one run).
 - **Old runs:** a run with no `key` (before 1.3.0) needs none. An upgrade never strands an open run.
-- **Where the check runs:** in `cli.run_command`, before the command, like `check_run_is_here`: one engine function `check_run_key(project, run_id, key, task)` reads `run.json` (the key never changes, so no lock is needed). The engine functions stay unchanged, so engine tests, skill tests (`pskill test`), and the viewer need no key.
-- **Refusal:** a `RunError`, so stderr and exit code 1, like other refusals. It runs before the command, so nothing is written, logged, or uploaded. Text, without the key:
-  - with `--task <n>`: "This command is the main agent's. Task <n> is your work, and its submit ended it: end your turn now."
-  - otherwise: "This command needs the run's key: `--key <key>`. A task subagent must not run it: end your turn now. The main agent finds the key in its last step, and a human in `pskill runs`."
-  - a wrong key gets the same text.
+- **Where the check runs:** in `cli.run_command`, before the command, like `check_run_is_here`: one engine function `check_run_key(project, run_id, key)` reads `run.json` (the key never changes, so no lock is needed). The engine functions stay unchanged, so engine tests, skill tests (`pskill test`), and the viewer need no key.
+- **Refusal:** a `RunError`, so stderr and exit code 1, like other refusals. It runs before the command, so nothing is written, logged, or uploaded. One text, without the key, for a missing or wrong key: "This command is the main agent's and needs the run's key: `--key <key>`. If you are a task subagent, your work ended with your submit: end your turn now. The main agent finds the key in its last step, and a human in `pskill runs`." No refused command takes `--task` (`submit --task` is never checked), so the runner cannot name the caller's task: the text speaks to any task subagent instead.
 - **Commands with the key:** `current` (with or without a run id: the resolved run), `submit` without `--task`, `pause`, `resume`. `cancel`, `delete`, `wait`, `run-script`, `task`, and `submit --task` take no key.
 - **Texts with the key** (main agent only): the submit command and its `--file` line when there is no `--task`; the rules sections' pause line; the subagent packet's "When every subagent has finished, run ... current"; the pause packet's resume and current lines; `paused_card`'s resume; the background script texts (pause, resume, current); `run_waits.py` texts; the Stop hook reason.
 - **Texts without the key** (a subagent reads them): the one-line subagent prompt, `pskill task`'s prompt, `task_reply`, `accept_job`'s subagent lines, `record_task_while_paused`, `task_not_recorded`, the `task_text` error. `task_reply` and the `task_text` error lose their `current` command: they tell the subagent to end its turn and to tell the main agent.
@@ -43,7 +40,7 @@ A task subagent cannot drive its parent run after its submit. Acceptance criteri
 ## Steps (one red-green cycle each)
 
 1. A new run has a key in `run.json`.
-2. `check_run_key`: refuses a missing or wrong key, accepts the right one, accepts any call on a run with no key, accepts `submit --task` with no key; the task refusal names the task.
+2. `check_run_key`: refuses a missing or wrong key, accepts the right one, accepts any call on a run with no key.
 3. CLI: `--key` on the four commands; `run_command` calls the check before the command; a refused command changes no file (events, run.json).
 4. `runs` shows the key column.
 5. Packets: the main submit command, `--file` line, rules pause line, subagent packet's current line, and pause packet carry the key; task prompts and the one-line subagent prompt do not.
@@ -56,10 +53,11 @@ A task subagent cannot drive its parent run after its submit. Acceptance criteri
 ## New cases
 
 - New run gets a key: `test_a_new_run_records_a_key`.
-- Each command without a key is refused: `test_current_without_the_key_is_refused`, `test_current_without_a_run_id_needs_the_key_of_the_newest_run`, `test_submit_without_task_and_key_is_refused`, `test_pause_without_the_key_is_refused`, `test_resume_without_the_key_is_refused`.
-- Wrong key refused: `test_a_wrong_key_is_refused`.
+- Each command without a key is refused: `test_the_runs_key_passes_the_key_check`, `test_current_without_the_key_is_refused`, `test_current_without_a_run_id_needs_the_key_of_the_newest_run`, `test_submit_without_task_and_key_is_refused`, `test_pause_without_the_key_is_refused`, `test_resume_without_the_key_is_refused`.
+- Wrong key refused: `test_a_missing_or_wrong_key_is_refused`.
 - Refusal changes nothing: `test_a_refused_command_changes_no_run_file`.
-- `--task` refusal names the task: `test_a_task_subagent_running_current_is_told_to_end_its_turn`.
+- The refusal tells a task subagent to end its turn and never shows the key: `test_a_missing_or_wrong_key_is_refused`.
+- Unknown run: `test_the_key_check_of_an_unknown_run_says_there_is_no_such_run`.
 - `submit --task` needs no key: `test_submit_with_task_needs_no_key`.
 - With the key, works while fresh tasks are open: `test_current_with_the_key_works_while_subagents_run`.
 - Old run needs no key: `test_a_run_from_before_the_key_needs_none`.
