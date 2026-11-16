@@ -23,6 +23,7 @@ class FieldSpec:
     optional: bool = False
     default: Any = None
     enum: tuple[Any, ...] | None = None
+    pattern: str | None = None  # a regular expression that a text value must match (`re.search`)
     items: "FieldSpec | None" = None
     properties: dict[str, "FieldSpec"] = field(default_factory=dict)
 
@@ -40,6 +41,7 @@ def parse_field_spec(raw: dict[str, Any]) -> FieldSpec:
         optional=raw.get("optional", False),
         default=raw.get("default"),
         enum=tuple(enum) if enum is not None else None,
+        pattern=raw.get("pattern"),
         items=parse_field_spec(items) if items is not None else None,
         properties=parse_field_map(raw.get("properties", {})),
     )
@@ -77,7 +79,14 @@ def _check_value(raw: Any, spec: FieldSpec, path: str, errors: list[str]) -> Any
     if spec.enum is not None and value is not None and value not in spec.enum:
         allowed = ", ".join(str(option) for option in spec.enum)
         errors.append(f"{path}: {raw!r} is not one of: {allowed}")
+    _check_pattern(value, spec, path, errors)
     return value
+
+
+def _check_pattern(value: Any, spec: FieldSpec, path: str, errors: list[str]) -> None:
+    """A text must match the field's pattern. `pskill validate` checks that the pattern compiles."""
+    if spec.pattern is not None and isinstance(value, str) and re.search(spec.pattern, value) is None:
+        errors.append(f"{path}: {value!r} does not match the pattern {spec.pattern}")
 
 
 def _convert(raw: Any, spec: FieldSpec, path: str, errors: list[str]) -> Any:
@@ -160,6 +169,7 @@ def _check_typed_value(value: Any, spec: FieldSpec, path: str, errors: list[str]
         return
     if spec.enum is not None and value not in spec.enum:
         errors.append(f"{path}: {value!r} is not one of: {', '.join(str(option) for option in spec.enum)}")
+    _check_pattern(value, spec, path, errors)
     if isinstance(value, list):
         item_spec = spec.items or FieldSpec(type="string")
         for index, item in enumerate(value):

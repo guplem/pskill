@@ -327,6 +327,8 @@ def example_value(spec: FieldSpec) -> str:
 def field_comment(spec: FieldSpec) -> str:
     presence = "optional" if spec.optional else "required"
     kind = " | ".join(str(option) for option in spec.enum) if spec.enum else TYPE_LABELS[spec.type]
+    if spec.pattern is not None:
+        kind += f" matching `{spec.pattern}`"
     description = f": {spec.description.strip()}" if spec.description else ""
     return f"  # {presence}, {kind}{description}"
 

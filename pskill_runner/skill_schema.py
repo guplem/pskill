@@ -21,6 +21,7 @@ FIELD_SPEC_SCHEMA: dict[str, Any] = {
                 "optional": {"type": "boolean"},
                 "default": {},
                 "enum": {"type": "array", "minItems": 1},
+                "pattern": {"type": "string"},
                 "items": {"$ref": "#/$defs/field"},
                 "properties": {"type": "object", "additionalProperties": {"$ref": "#/$defs/field"}},
             },

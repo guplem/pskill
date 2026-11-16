@@ -183,3 +183,45 @@ def test_check_typed_values_checks_the_declared_fields_of_a_group() -> None:
     errors = check_typed_values({"place": {"file": "a.py", "line": "7", "note": 1}}, fields)
 
     assert errors == ["place.line: '7' is not an integer"]
+
+
+COMMIT_FIELDS = parse_field_map(
+    {"commit": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "The short hash."}}
+)
+
+
+def test_parse_field_map_reads_a_pattern() -> None:
+    assert COMMIT_FIELDS["commit"].pattern == "^[0-9a-f]{7,40}$"
+
+
+def test_check_answer_accepts_a_text_that_matches_the_pattern() -> None:
+    assert check_answer({"commit": "3f9c1a2"}, COMMIT_FIELDS) == ({"commit": "3f9c1a2"}, [])
+
+
+def test_check_answer_names_the_field_and_the_pattern_of_a_text_that_does_not_match() -> None:
+    _, errors = check_answer({"commit": "see git log"}, COMMIT_FIELDS)
+
+    assert errors == ["commit: 'see git log' does not match the pattern ^[0-9a-f]{7,40}$"]
+
+
+def test_a_pattern_matches_anywhere_in_the_text_unless_it_is_anchored() -> None:
+    fields = parse_field_map({"note": {"type": "string", "pattern": "[0-9]", "description": "d"}})
+
+    assert check_answer({"note": "step 2 done"}, fields) == ({"note": "step 2 done"}, [])
+
+
+def test_check_answer_checks_the_pattern_of_list_items() -> None:
+    fields = parse_field_map(
+        {"commits": {"type": "array", "items": {"type": "string", "pattern": "^[0-9a-f]+$"}, "description": "d"}}
+    )
+
+    _, errors = check_answer({"commits": ["abc", "nope"]}, fields)
+
+    assert errors == ["commits[1]: 'nope' does not match the pattern ^[0-9a-f]+$"]
+
+
+def test_check_typed_values_checks_the_pattern_of_a_computed_text() -> None:
+    assert check_typed_values({"commit": "3f9c1a2"}, COMMIT_FIELDS) == []
+    assert check_typed_values({"commit": "HEAD"}, COMMIT_FIELDS) == [
+        "commit: 'HEAD' does not match the pattern ^[0-9a-f]{7,40}$"
+    ]
