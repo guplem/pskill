@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 (2026-11-16)
+
+On Claude Code, a `read` profile subagent can no longer change the repository with git (#202).
+
+- **A PreToolUse hook on `Bash`** refuses a git command that changes the repository (`commit`, `push`, `checkout`, `switch`, `reset`, `branch`, `merge`, `rebase`, `tag`) when a `pskill-read` subagent runs it. The reason tells the subagent to end its turn. The main agent's commands are never refused. Run `sync` (`update` runs it) to write the hook into `.claude/settings.json`.
+- **Best effort:** the hook reads the command text, so an alias or `bash -c "git commit"` passes (SPEC L12). Codex and generic apps keep the request in the `read` agent text and only ask.
+
 ## 1.3.0 (2026-11-16)
 
 A task subagent can no longer drive its parent run by mistake: the main agent's commands need the run's key, and a subagent is told to end its turn after its submit (#199).
