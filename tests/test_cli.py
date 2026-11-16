@@ -1,5 +1,6 @@
 """Tests for the command line, run through the real entry script."""
 
+import json
 import os
 import re
 import shutil
@@ -43,6 +44,12 @@ def make_project(root: Path, skill_yaml: str = PLAN_SKILL) -> Path:
     return root
 
 
+def key_option(root: Path, run_id: str) -> tuple[str, str]:
+    """The `--key` option of the main agent's commands on a run."""
+    info = json.loads((root / ".pskill" / "runs" / run_id / "run.json").read_text(encoding="utf-8"))
+    return ("--key", info["key"])
+
+
 def run_id_of(packet: str) -> str:
     match = re.search(r"Run (r-\d{8}-\d{4}-[0-9a-f]{4})", packet)
     assert match is not None, packet
@@ -57,17 +64,35 @@ def test_a_five_block_skill_runs_to_the_end_through_start_and_submit(tmp_path: P
     run_id = run_id_of(started.stdout)
     assert "Write a plan for the login page." in started.stdout
 
-    asked = run_pskill(root, "submit", run_id, stdin="status: question\nplan: Draft.\nquestion: Which database?\n")
+    asked = run_pskill(
+        root,
+        "submit",
+        run_id,
+        *key_option(root, run_id),
+        stdin="status: question\nplan: Draft.\nquestion: Which database?\n",
+    )
     assert "Ask the user: Which database?" in asked.stdout
 
-    replanned = run_pskill(root, "submit", run_id, stdin="answer: Postgres.\n$answered_by: human\n")
+    replanned = run_pskill(
+        root, "submit", run_id, *key_option(root, run_id), stdin="answer: Postgres.\n$answered_by: human\n"
+    )
     assert "· create_plan (visit 2)" in replanned.stdout
 
-    approval = run_pskill(root, "submit", run_id, stdin="status: finished\nplan: |\n  1. Build it.\n  2. Test it.\n")
+    approval = run_pskill(
+        root,
+        "submit",
+        run_id,
+        *key_option(root, run_id),
+        stdin="status: finished\nplan: |\n  1. Build it.\n  2. Test it.\n",
+    )
     assert "Show the plan:\n\n1. Build it.\n2. Test it." in approval.stdout
 
     finished = run_pskill(
-        root, "submit", run_id, stdin="choice: approve\nrationale: Looks good.\n$answered_by: human\n"
+        root,
+        "submit",
+        run_id,
+        *key_option(root, run_id),
+        stdin="choice: approve\nrationale: Looks good.\n$answered_by: human\n",
     )
     assert finished.returncode == 0, finished.stderr
     assert "finished with status succeeded" in finished.stdout
@@ -90,7 +115,7 @@ def test_submit_without_an_answer_fails_quickly(tmp_path: Path) -> None:
     run_id = run_id_of(run_pskill(root, "start", "plan-work", "--input", "topic=x").stdout)
     started = time.monotonic()
 
-    result = run_pskill(root, "submit", run_id)
+    result = run_pskill(root, "submit", run_id, *key_option(root, run_id))
 
     assert result.returncode == 1
     assert "No answer" in result.stderr
@@ -141,9 +166,9 @@ def test_current_and_pause_resume_cancel(tmp_path: Path) -> None:
     root = make_project(tmp_path)
     run_id = run_id_of(run_pskill(root, "start", "plan-work", "--input", "topic=x").stdout)
 
-    assert "· create_plan (visit 1)" in run_pskill(root, "current").stdout
-    assert "is paused" in run_pskill(root, "pause", run_id).stdout
-    assert "· create_plan (visit 1)" in run_pskill(root, "resume", run_id).stdout
+    assert "· create_plan (visit 1)" in run_pskill(root, "current", *key_option(root, run_id)).stdout
+    assert "is paused" in run_pskill(root, "pause", run_id, *key_option(root, run_id)).stdout
+    assert "· create_plan (visit 1)" in run_pskill(root, "resume", run_id, *key_option(root, run_id)).stdout
     assert "cancelled" in run_pskill(root, "cancel", run_id).stdout
     assert "cancelled" in run_pskill(root, "runs").stdout
 

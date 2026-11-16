@@ -85,6 +85,11 @@ def make_project(root: Path, monkeypatch: pytest.MonkeyPatch, skill_yaml: str = 
     return find_project(root)
 
 
+def key_option(run_id: str) -> tuple[str, str]:
+    """The `--key` option of the main agent's commands on a run in the working folder."""
+    return ("--key", read_run_info(find_project(Path.cwd()), run_id)["key"] or "")
+
+
 def run_id_of(packet: str) -> str:
     match = re.search(r"Run (r-\d{8}-\d{4}-[0-9a-f]{4})", packet)
     assert match is not None, packet
@@ -152,10 +157,16 @@ def test_start_and_submit_run_a_skill_to_the_end(
     run_id = run_id_of(started)
     assert "Write a plan for the login page." in started
 
-    run_cli(monkeypatch, "submit", run_id, stdin="status: finished\nplan: Build it.\n")
+    run_cli(monkeypatch, "submit", run_id, *key_option(run_id), stdin="status: finished\nplan: Build it.\n")
     assert "Show the plan:\n\nBuild it." in capsys.readouterr().out
 
-    exit_code = run_cli(monkeypatch, "submit", run_id, stdin="choice: approve\nrationale: Good.\n$answered_by: human\n")
+    exit_code = run_cli(
+        monkeypatch,
+        "submit",
+        run_id,
+        *key_option(run_id),
+        stdin="choice: approve\nrationale: Good.\n$answered_by: human\n",
+    )
 
     assert exit_code == cli.EXIT_OK
     finished = capsys.readouterr().out
@@ -188,10 +199,10 @@ def test_each_run_command_uploads_its_run_to_galtea_after_it_prints(
 
     run_cli(monkeypatch, "start", "plan-work", "--input", "topic=x")
     run_id = uploads[0][0]
-    run_cli(monkeypatch, "current")
-    run_cli(monkeypatch, "submit", run_id, stdin="status: finished\nplan: Build it.\n")
-    run_cli(monkeypatch, "pause", run_id)
-    run_cli(monkeypatch, "resume", run_id)
+    run_cli(monkeypatch, "current", *key_option(run_id))
+    run_cli(monkeypatch, "submit", run_id, *key_option(run_id), stdin="status: finished\nplan: Build it.\n")
+    run_cli(monkeypatch, "pause", run_id, *key_option(run_id))
+    run_cli(monkeypatch, "resume", run_id, *key_option(run_id))
     run_cli(monkeypatch, "cancel", run_id)
     run_cli(monkeypatch, "runs")
 
@@ -266,7 +277,7 @@ def test_submit_without_an_answer_exits_with_code_1(
     make_project(tmp_path, monkeypatch)
     run_id = start_plan(monkeypatch, capsys)
 
-    exit_code = run_cli(monkeypatch, "submit", run_id, stdin="")
+    exit_code = run_cli(monkeypatch, "submit", run_id, *key_option(run_id), stdin="")
 
     assert exit_code == cli.EXIT_USAGE_ERROR
     assert "pskill: No answer on stdin." in capsys.readouterr().err
@@ -283,7 +294,9 @@ def test_submit_with_a_file_records_a_long_answer_with_quotes_backslashes_and_do
     answer_file = tmp_path / answer_path
     answer_file.write_text(f"status: finished\nplan: |\n  {plan}\n", encoding="utf-8")
 
-    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", answer_path)  # no stdin: the file only
+    exit_code = run_cli(
+        monkeypatch, "submit", run_id, *key_option(run_id), "--file", answer_path
+    )  # no stdin: the file only
 
     assert exit_code == cli.EXIT_OK
     assert f"Show the plan:\n\n{plan.strip()}" in capsys.readouterr().out
@@ -307,7 +320,7 @@ def test_submit_with_a_file_keeps_a_rejected_answer_for_the_fix(
     answer_file = tmp_path / answer_path
     answer_file.write_text(answer, encoding="utf-8")
 
-    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", answer_path)
+    exit_code = run_cli(monkeypatch, "submit", run_id, *key_option(run_id), "--file", answer_path)
 
     assert exit_code == cli.EXIT_OK
     packet = capsys.readouterr().out
@@ -346,7 +359,7 @@ def test_submit_with_a_file_outside_the_answers_folder_never_deletes_it(
     own_file = tmp_path / "plan.yaml"  # a file of the user's, maybe tracked in git
     own_file.write_text("status: finished\nplan: Build it.\n", encoding="utf-8")
 
-    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", "plan.yaml")
+    exit_code = run_cli(monkeypatch, "submit", run_id, *key_option(run_id), "--file", "plan.yaml")
 
     assert exit_code == cli.EXIT_OK
     assert own_file.exists()
@@ -358,7 +371,7 @@ def test_submit_with_a_missing_file_exits_with_code_1(
     make_project(tmp_path, monkeypatch)
     run_id = start_plan(monkeypatch, capsys)
 
-    exit_code = run_cli(monkeypatch, "submit", run_id, "--file", "missing.yaml")
+    exit_code = run_cli(monkeypatch, "submit", run_id, *key_option(run_id), "--file", "missing.yaml")
 
     assert exit_code == cli.EXIT_USAGE_ERROR
     assert "pskill: No answer file at missing.yaml." in capsys.readouterr().err
@@ -371,7 +384,7 @@ def test_current_from_a_known_harness_moves_the_run_to_that_harness(
     run_id = start_plan(monkeypatch, capsys, "--harness", "generic")
     monkeypatch.setenv("CODEX_THREAD_ID", "thread-1")
 
-    exit_code = run_cli(monkeypatch, "current")
+    exit_code = run_cli(monkeypatch, "current", *key_option(run_id))
 
     assert exit_code == cli.EXIT_OK
     assert "· create_plan (visit 1)" in capsys.readouterr().out
@@ -384,7 +397,7 @@ def test_current_from_an_unknown_shell_keeps_the_harness_of_the_run(
     project = make_project(tmp_path, monkeypatch)
     run_id = start_plan(monkeypatch, capsys, "--harness", "claude-code")
 
-    exit_code = run_cli(monkeypatch, "current", run_id)
+    exit_code = run_cli(monkeypatch, "current", run_id, *key_option(run_id))
 
     assert exit_code == cli.EXIT_OK
     assert read_run_info(project, run_id)["harness"] == "claude-code"
@@ -419,7 +432,7 @@ def test_task_and_submit_with_a_task_number_drive_a_parallel_block(
     run_cli(monkeypatch, "submit", run_id, "--task", "0", stdin="letter: t\n")
     run_cli(monkeypatch, "submit", run_id, "--task", "1", stdin="letter: e\n")
     assert "All 2 tasks are done." in capsys.readouterr().out
-    run_cli(monkeypatch, "current", run_id)
+    run_cli(monkeypatch, "current", run_id, *key_option(run_id))
     assert "finished with status succeeded" in capsys.readouterr().out
 
 
@@ -429,9 +442,9 @@ def test_pause_resume_and_cancel_change_the_status_of_a_run(
     project = make_project(tmp_path, monkeypatch)
     run_id = start_plan(monkeypatch, capsys)
 
-    assert run_cli(monkeypatch, "pause", run_id) == cli.EXIT_OK
+    assert run_cli(monkeypatch, "pause", run_id, *key_option(run_id)) == cli.EXIT_OK
     assert "is paused" in capsys.readouterr().out
-    assert run_cli(monkeypatch, "resume", run_id) == cli.EXIT_OK
+    assert run_cli(monkeypatch, "resume", run_id, *key_option(run_id)) == cli.EXIT_OK
     assert "· create_plan (visit 1)" in capsys.readouterr().out
     assert run_cli(monkeypatch, "cancel", run_id) == cli.EXIT_OK
     assert "cancelled" in capsys.readouterr().out
@@ -562,7 +575,7 @@ def test_a_run_command_from_the_worktree_finds_its_run(
     tree = tmp_path / ".pskill" / "worktrees" / f"plan-work-{run_id}"
 
     monkeypatch.chdir(tree)
-    assert run_cli(monkeypatch, "current", run_id) == cli.EXIT_OK
+    assert run_cli(monkeypatch, "current", run_id, *key_option(run_id)) == cli.EXIT_OK
     assert f"Run {run_id} · interactive" in capsys.readouterr().out
 
 
@@ -672,7 +685,7 @@ def test_runs_shows_no_wait_for_a_paused_run(
     project = make_project(tmp_path, monkeypatch)
     run_id = start_plan(monkeypatch, capsys, "--harness", "claude-code")
     start_wait(project, run_id, "the CI checks", utc_now())
-    run_cli(monkeypatch, "pause", run_id)
+    run_cli(monkeypatch, "pause", run_id, *key_option(run_id))
     capsys.readouterr()
 
     run_cli(monkeypatch, "runs", "--open")
@@ -700,8 +713,14 @@ def test_runs_lists_every_run_and_open_lists_only_the_unfinished_ones(
     make_project(tmp_path, monkeypatch)
     open_run = start_plan(monkeypatch, capsys)
     finished_run = start_plan(monkeypatch, capsys)
-    run_cli(monkeypatch, "submit", finished_run, stdin="status: finished\nplan: Done.\n")
-    run_cli(monkeypatch, "submit", finished_run, stdin="choice: stop\nrationale: No.\n$answered_by: human\n")
+    run_cli(monkeypatch, "submit", finished_run, *key_option(finished_run), stdin="status: finished\nplan: Done.\n")
+    run_cli(
+        monkeypatch,
+        "submit",
+        finished_run,
+        *key_option(finished_run),
+        stdin="choice: stop\nrationale: No.\n$answered_by: human\n",
+    )
     capsys.readouterr()
 
     run_cli(monkeypatch, "runs")
@@ -1192,3 +1211,107 @@ def test_a_skipped_upload_keeps_the_output_and_exit_code(
     assert (exit_code_with_key, output_with_key.out) == (exit_code_without_key, output_without_key.out)
     assert output_without_key.err == ""
     assert "org_xyz789, not org_abc123" in output_with_key.err
+
+
+def key_of(project: Project, run_id: str) -> str:
+    return read_run_info(project, run_id)["key"] or ""
+
+
+def run_files(project: Project, run_id: str) -> dict[str, str]:
+    folder = project.runs_folder / run_id
+    return {path.name: path.read_text(encoding="utf-8") for path in folder.iterdir() if path.is_file()}
+
+
+@pytest.mark.parametrize(
+    ("command", "with_run_id", "stdin"),
+    [
+        ("current", True, None),
+        ("current", False, None),
+        ("submit", True, "status: finished\nplan: Build it.\n"),
+        ("pause", True, None),
+    ],
+)
+def test_a_main_agent_command_without_the_key_is_refused_and_changes_no_run_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    with_run_id: bool,
+    stdin: str | None,
+) -> None:
+    project = make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "a-subagent-session")
+    before = run_files(project, run_id)
+
+    exit_code = run_cli(monkeypatch, command, *([run_id] if with_run_id else []), stdin=stdin)
+
+    assert exit_code == cli.EXIT_USAGE_ERROR
+    assert "needs the run's key" in capsys.readouterr().err
+    assert run_files(project, run_id) == before
+
+
+def test_resume_without_the_key_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+    run_cli(monkeypatch, "pause", run_id, "--key", key_of(project, run_id))
+    capsys.readouterr()
+
+    exit_code = run_cli(monkeypatch, "resume", run_id, "--key", "wrong")
+
+    assert exit_code == cli.EXIT_USAGE_ERROR
+    assert "needs the run's key" in capsys.readouterr().err
+    assert read_run_info(project, run_id)["status"] == "paused"
+
+
+def test_the_main_agent_commands_work_with_the_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+    key = key_of(project, run_id)
+
+    codes = [
+        run_cli(monkeypatch, "current", "--key", key),
+        run_cli(monkeypatch, "submit", run_id, "--key", key, stdin="status: finished\nplan: Build it.\n"),
+        run_cli(monkeypatch, "pause", run_id, "--key", key),
+        run_cli(monkeypatch, "resume", run_id, "--key", key),
+    ]
+
+    assert codes == [cli.EXIT_OK] * 4
+    assert read_run_info(project, run_id)["current_block"] == "approve_plan"
+
+
+def start_spell(root: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
+    """Start the spell skill, whose two tasks run in subagents."""
+    write_skill(root / ".pskill" / "skills", "spell", SPELL_SKILL)
+    monkeypatch.chdir(root)
+    assert run_cli(monkeypatch, "start", "spell", "--harness", "claude-code") == cli.EXIT_OK
+    return find_project(root)
+
+
+def test_submit_with_task_needs_no_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = start_spell(tmp_path, monkeypatch)
+    run_id = run_id_of(capsys.readouterr().out)
+
+    exit_code = run_cli(monkeypatch, "submit", run_id, "--task", "0", stdin="letter: t\n")
+
+    assert exit_code == cli.EXIT_OK
+    assert "Task 0 is recorded" in capsys.readouterr().out
+    assert read_run_info(project, run_id)["status"] == "active"
+
+
+def test_current_with_the_key_works_while_subagents_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = start_spell(tmp_path, monkeypatch)
+    run_id = run_id_of(capsys.readouterr().out)
+
+    exit_code = run_cli(monkeypatch, "current", run_id, "--key", key_of(project, run_id))
+
+    assert exit_code == cli.EXIT_OK
+    assert "### Subagent tasks" in capsys.readouterr().out

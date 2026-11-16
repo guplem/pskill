@@ -26,6 +26,7 @@ from pskill_runner.answer_input import AnswerInputError, read_answer, read_answe
 from pskill_runner.engine import (
     RunError,
     cancel_run,
+    check_run_key,
     current_packet,
     delete_run,
     list_runs,
@@ -92,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     current = commands.add_parser("current", help="Print the current block of a run again.")
     current.add_argument("run_id", nargs="?", help="Default: the newest unfinished run.")
+    add_key_option(current)
 
     task = commands.add_parser("task", help="Print the full prompt of one task of a task block, for its subagent.")
     task.add_argument("run_id")
@@ -101,10 +103,14 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("run_id")
     submit.add_argument("--task", type=int, help="The task number: for a task with for_each, or with context: fresh.")
     submit.add_argument("--file", type=Path, help="Read the answer from this file instead of stdin (a long answer).")
+    add_key_option(submit)
+
+    for name, help_text in (("pause", "Pause a run."), ("resume", "Resume a paused run and retry its block.")):
+        lifecycle = commands.add_parser(name, help=help_text)
+        lifecycle.add_argument("run_id")
+        add_key_option(lifecycle)
 
     for name, help_text in (
-        ("pause", "Pause a run."),
-        ("resume", "Resume a paused run and retry its block."),
         ("cancel", "Stop a run for good."),
         ("delete", "Delete the folder of a finished run, for cleanup."),
     ):
@@ -186,6 +192,17 @@ def use_utf8_streams() -> None:
             stream.reconfigure(encoding="utf-8")
 
 
+def add_key_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--key", help="The run's key, from the step that names this command, or from `runs`.")
+
+
+def needs_the_key(options: argparse.Namespace) -> bool:
+    """The main agent's commands. `submit --task` is a task subagent's, so it needs no key."""
+    if options.command == "submit":
+        return options.task is None
+    return options.command in ("current", "pause", "resume")
+
+
 def run_command(options: argparse.Namespace) -> int:
     command = options.command
     if command == "hook":
@@ -201,6 +218,8 @@ def run_command(options: argparse.Namespace) -> int:
         check_run_is_here(project, options.run_id)
     if command == "current" and options.run_id is None:
         check_newest_run_is_here(project)
+    if needs_the_key(options):
+        check_run_key(project, resolve_run_id(project, options.run_id), options.key)
     if command == "start":
         run_project, run_id, packet = start_command(project, options)
         return print_and_upload(run_project, run_id, packet)
