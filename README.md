@@ -66,12 +66,12 @@ You can also use the runner yourself. Each command starts with `uv run .pskill/p
 |---|---|
 | `list` | List the skills. |
 | `start <skill> --input name=value` | Start a skill. Add `--mode autonomous` so the agent decides alone, with no questions. Add `--worktree` to run it in a new git worktree (below). |
-| `runs --open` | List the unfinished runs. |
-| `current <run>` | Show the current step of a run. |
+| `runs --open` | List the unfinished runs, each with its key. |
+| `current <run> --key <key>` | Show the current step of a run. The main agent's commands need the run's key, so a task subagent cannot run them by mistake. Every step names it, and `runs` shows it. |
 | `task <run> <n>` | Show the full prompt of one job of a task block that runs in a subagent. The subagent runs this first. |
 | `run-script <run>` | Claude Code only. Runs the script of a `background: true` block, records its result, and prints the next step. The agent starts it in the background and ends its turn, so a long wait (CI) costs no agent turn. |
 | `wait <run> --reason <text>` | Claude Code only. The agent waits on background work, such as subagents or a CI wait. The hook lets it stop until the run changes or 20 minutes pass. |
-| `pause <run>`, `resume <run>`, `cancel <run>` | Pause, continue, or stop a run. A run survives when you close the session. |
+| `pause <run> --key <key>`, `resume <run> --key <key>`, `cancel <run>` | Pause, continue, or stop a run. A run survives when you close the session. |
 | `delete <run>` | Delete a finished run, for cleanup. |
 | `view` | Open the viewer in your browser (below). |
 | `validate` | Check the skills for mistakes. |
@@ -167,8 +167,8 @@ Read [`AUTHORING.md`](AUTHORING.md), or run `uv run .pskill/pskill.py authoring`
 ## Problems
 
 - **The skill does not start:** run `uv run .pskill/pskill.py sync`, then open a new session.
-- **You lost a run:** run `runs --open`, then `current <run>`. A worktree run's row ends with its folder in `.pskill/worktrees/`: run `current <run>` from there.
-- **A run is paused:** the message says why. Fix the cause, then run `resume <run>`.
+- **You lost a run:** run `runs --open`, then `current <run> --key <key>`, with the key from its row. A worktree run's row ends with its folder in `.pskill/worktrees/`: run `current` from there.
+- **A run is paused:** the message says why. Fix the cause, then run `resume <run> --key <key>`.
 - **`update` refuses to run:** someone edited a runner file by hand. Undo it, or run `update --force`.
 
 ## Develop pskill
