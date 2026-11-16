@@ -1786,14 +1786,14 @@ class Run:
         jobs = self.frame["tasks"] or []
         fresh = self.job_is_fresh(jobs[index])
         open_indexes = self.open_task_indexes()
-        recorded = f"Task {index} is recorded. {len(jobs) - len(open_indexes)} of {len(jobs)} tasks are done.\n"
+        recorded = f"Task {index} is recorded. {len(jobs) - len(open_indexes)} of {len(jobs)} tasks are done."
         if not open_indexes:
             next_text = self.complete_jobs(block, duration_ms)
-            return f"Task {index} is recorded. All {len(jobs)} tasks are done.\n" if fresh else next_text
+            return subagent_done(f"Task {index} is recorded. All {len(jobs)} tasks are done.") if fresh else next_text
         if self.open_job_indexes("fresh"):
-            return recorded
+            return subagent_done(recorded) if fresh else f"{recorded}\n"
         next_packet = self.issue_packet_for_next_task(block)
-        return recorded if fresh else next_packet
+        return subagent_done(recorded) if fresh else next_packet
 
     def issue_packet_for_next_task(self, block: TaskBlock) -> str:
         self.info["packet_issued_at"] = timestamp(utc_now())
@@ -1807,6 +1807,11 @@ class Run:
         if self.info["mode"] == "autonomous":
             return "agent_autonomous"
         return answered_by or "agent"
+
+
+def subagent_done(recorded: str) -> str:
+    """The reply to a subagent's accepted task: its work ends here, so it never drives the run after it."""
+    return f"{recorded} Your work is done: end your turn now.\n"
 
 
 def has_jobs_per_item(block: AnyBlock) -> TypeGuard[TaskBlock]:

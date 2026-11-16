@@ -362,7 +362,7 @@ def test_parallel_with_subagents_lists_every_task_and_waits_for_all(tmp_path: Pa
     assert read_run_info(project, run_id)["status"] == "active"
 
     last_task = submit_answer(project, run_id, "wrong: []\n", task=0)
-    assert last_task == "Task 0 is recorded. All 2 tasks are done.\n"
+    assert last_task == "Task 0 is recorded. All 2 tasks are done. Your work is done: end your turn now.\n"
     assert "finished with status succeeded" in current_packet(project, run_id)
     assert read_run_info(project, run_id)["outputs"] == {"wrong_count": 1}
     results = read_run_state(project, run_id)["frames"][0]["steps"]["check"]["results"]
@@ -1352,7 +1352,7 @@ def test_a_one_job_fresh_task_spawns_one_subagent_and_stores_its_output_flat(tmp
 
     assert "### Subagent tasks" in packet
     assert "#### Task 0" in packet
-    assert reply == "Task 0 is recorded. All 1 tasks are done.\n"
+    assert reply == "Task 0 is recorded. All 1 tasks are done. Your work is done: end your turn now.\n"
     assert read_run_state(project, run_id)["frames"][0]["steps"]["judge"] == {"verdict": "fine"}
     assert read_run_info(project, run_id)["outputs"] == {"verdict": "fine"}
 
@@ -1439,8 +1439,8 @@ def test_a_mixed_block_spawns_the_fresh_jobs_then_gives_the_main_jobs(tmp_path: 
     assert "1 more task is yours, in this conversation: run `current` for it when every subagent has finished." in (
         packet
     )
-    assert first_reply == "Task 2 is recorded. 1 of 3 tasks are done.\n"
-    assert last_fresh_reply == "Task 0 is recorded. 2 of 3 tasks are done.\n"
+    assert first_reply == "Task 2 is recorded. 1 of 3 tasks are done. Your work is done: end your turn now.\n"
+    assert last_fresh_reply == "Task 0 is recorded. 2 of 3 tasks are done. Your work is done: end your turn now.\n"
     assert "Check part b." in main_packet
     assert "--task 1" in main_packet
     assert "finished with status succeeded" in final

@@ -668,3 +668,15 @@ def test_the_background_script_rules_carry_the_key() -> None:
     assert "- If the user asks to stop, run: uv run pskill.py pause r-1 --key c0ffee" in (
         render_background_script_packet(packet)
     )
+
+
+def test_a_task_prompt_says_the_work_ends_with_its_accepted_submit() -> None:
+    fields = parse_field_map({"wrong": {"type": "string", "description": "Wrong claims."}})
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields=fields)
+
+    text = task_prompt_text(PLAN_PACKET, task)
+
+    assert text.startswith(
+        "You are a subagent of a pskill run. Do only this task, then submit its answer. Your work ends when the "
+        "runner accepts your submit: then end your turn, and run no other pskill command."
+    )

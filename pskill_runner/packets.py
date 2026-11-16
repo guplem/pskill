@@ -269,7 +269,8 @@ def task_line(packet: AgentPacket, index: int) -> str:
 def task_prompt_text(packet: AgentPacket, task: TaskPrompt) -> str:
     """The full prompt of one task, which `pskill task` prints for its subagent."""
     parts = [
-        "You are a subagent of a pskill run. Do only this task, then submit its answer.",
+        "You are a subagent of a pskill run. Do only this task, then submit its answer. Your work ends when the "
+        "runner accepts your submit: then end your turn, and run no other pskill command.",
         f"Work in the folder `{packet.work_folder}`.",
     ]
     if task.agent_text:
