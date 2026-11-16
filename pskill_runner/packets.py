@@ -117,7 +117,8 @@ def render_background_script_packet(packet: BackgroundScriptPacket) -> str:
         sections.append(
             "### Rules\n"
             "- Do only this block. The runner gives you the next one.\n"
-            f"- If the user asks to stop, run: {packet.runner_command} pause {packet.run_id}{key_option(packet.run_key)}"
+            f"- If the user asks to stop, run: {packet.runner_command} pause {packet.run_id}"
+            f"{key_option(packet.run_key)}"
         )
     return "\n\n".join(sections) + "\n"
 
