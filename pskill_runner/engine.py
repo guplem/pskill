@@ -1625,7 +1625,7 @@ class Run:
             raise RunError(f"Task {index} of {block.id!r} already has an answer.")
 
     def submit(self, answer_text: str, task: int | None) -> str:
-        by_subagent = task is not None and self.job_at_is_fresh(task)  # a main job is the main agent's
+        by_subagent = task is not None and not self.job_at_is_main(task)  # only a known main job is the main agent's
         if task is not None and self.paused_by_stop_attempts():
             return self.record_task_while_paused(answer_text, task, by_subagent)
         if by_subagent:
@@ -1674,6 +1674,11 @@ class Run:
         """Whether the job with this number runs in a subagent, so its replies never show the next block."""
         jobs = self.frame["tasks"] or []
         return 0 <= index < len(jobs) and self.job_is_fresh(jobs[index])
+
+    def job_at_is_main(self, index: int) -> bool:
+        """Whether the job with this number of the open task block runs in the main context."""
+        jobs = self.frame["tasks"] or []
+        return 0 <= index < len(jobs) and not self.job_is_fresh(jobs[index])
 
     def task_reply(self, task: int, fresh: bool, recorded: bool, text: str) -> str:
         """The reply to a subagent. A pause and its pause steps are the main agent's work, read with `current`.

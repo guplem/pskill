@@ -624,6 +624,29 @@ def test_a_main_job_submitted_on_a_paused_run_names_the_resume_command(tmp_path:
     assert "end your turn" not in str(refusal.value)
 
 
+def test_a_repeated_task_submit_on_a_finished_run_never_shows_the_key(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts carefully."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+    submit_answer(project, run_id, "wrong: []\n", task=0)
+    key = str(read_run_info(project, run_id)["key"])
+
+    with pytest.raises(RunError) as refusal:
+        submit_answer(project, run_id, "wrong: []\n", task=0)
+    assert key not in str(refusal.value)
+    assert "resume" not in str(refusal.value)
+
+
+def test_an_out_of_range_task_submit_on_a_paused_run_never_shows_the_key(tmp_path: Path) -> None:
+    project = make_project(tmp_path, {"fanout": PARALLEL_SKILL}, {"checker": "You check facts carefully."})
+    run_id, _ = start_run(project, "fanout", {"files": ["a.md"]}, mode="interactive", harness="claude-code")
+    pause_run(project, run_id)
+    key = str(read_run_info(project, run_id)["key"])
+
+    with pytest.raises(RunError, match="is paused") as refusal:
+        submit_answer(project, run_id, "wrong: []\n", task=5)
+    assert key not in str(refusal.value)
+
+
 def test_a_main_job_recorded_while_stop_attempts_paused_the_run_names_the_resume_command(tmp_path: Path) -> None:
     project = make_project(tmp_path, {"mixed": MIXED_SKILL})
     run_id, _ = start_run(project, "mixed", {}, mode="interactive", harness="subagents-for-tests")
