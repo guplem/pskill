@@ -13,6 +13,7 @@
 
 from pskill_runner.adapters import adapter_for
 from pskill_runner.engine import list_runs, register_stop_attempt, unshown_pause_packet
+from pskill_runner.packets import key_option
 from pskill_runner.project import Project
 from pskill_runner.run_records import RunInfo
 from pskill_runner.run_store import utc_now
@@ -45,9 +46,10 @@ def stop_hook_reason(project: Project, harness: str, session_id: str | None = No
         if run_project is project
         else f"It works in the folder `{run_project.root.as_posix()}`: run these commands from that folder. "
     )
+    run = f"{run_id}{key_option(info.get('key'))}"
     reason = (
-        f"pskill run {run_id} has an open block. {folder}Continue it: run `{RUNNER} current {run_id}` and follow "
-        f"the packet. If the user asked to stop, run `{RUNNER} pause {run_id}` instead."
+        f"pskill run {run_id} has an open block. {folder}Continue it: run `{RUNNER} current {run}` and follow "
+        f"the packet. If the user asked to stop, run `{RUNNER} pause {run}` instead."
     )
     if not can_wait:
         return reason
