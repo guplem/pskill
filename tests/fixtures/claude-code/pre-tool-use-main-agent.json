@@ -1,0 +1,18 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000001",
+  "transcript_path": "/home/user/.claude/projects/project/00000000-0000-0000-0000-000000000001.jsonl",
+  "cwd": "/home/user/project",
+  "scratchpad_dir": "/tmp/claude/scratchpad",
+  "prompt_id": "00000000-0000-0000-0000-000000000002",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git status",
+    "description": "Show working tree status"
+  },
+  "tool_use_id": "toolu_00000000000000000000000001"
+}
