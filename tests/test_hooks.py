@@ -419,7 +419,24 @@ def bash_input(command: str, agent_id: str | None = "a1", agent_type: str | None
 
 
 @pytest.mark.parametrize(
-    "subcommand", ["commit", "push", "checkout", "switch", "reset", "branch", "merge", "rebase", "tag"]
+    "subcommand",
+    [
+        "commit",
+        "push",
+        "checkout",
+        "switch",
+        "reset",
+        "branch",
+        "merge",
+        "rebase",
+        "tag",
+        "stash",
+        "restore",
+        "clean",
+        "cherry-pick",
+        "revert",
+        "am",
+    ],
 )
 def test_a_read_subagent_is_refused_each_changing_git_command(subcommand: str) -> None:
     reason = git_block_reason(bash_input(f"git {subcommand} x"))
@@ -553,3 +570,22 @@ def test_another_subagent_type_is_not_refused() -> None:
 )
 def test_an_unknown_input_shape_or_command_is_allowed(hook_input: dict[str, object]) -> None:
     assert git_block_reason(hook_input) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "GIT_EDITOR=true git rebase --continue",
+        "GIT_AUTHOR_NAME=a GIT_AUTHOR_EMAIL=b git commit -m x",
+        "env git push",
+        "env GIT_DIR=.git git commit",
+        "ls && GIT_EDITOR=true git rebase --continue",
+    ],
+)
+def test_an_environment_prefix_does_not_hide_a_changing_git_command(command: str) -> None:
+    assert git_block_reason(bash_input(command)) is not None
+
+
+@pytest.mark.parametrize("command", ["GIT_PAGER=cat git log", "env git status", "FOO=bar ls", "FOO=bar", "env"])
+def test_an_environment_prefix_before_a_read_only_command_passes(command: str) -> None:
+    assert git_block_reason(bash_input(command)) is None

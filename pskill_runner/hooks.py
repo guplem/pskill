@@ -128,7 +128,23 @@ def stub_refresh_lines(project: Project) -> list[str]:
 
 READ_AGENT_TYPE = "pskill-read"
 BLOCKED_GIT_SUBCOMMANDS = frozenset(
-    {"commit", "push", "checkout", "switch", "reset", "branch", "merge", "rebase", "tag"}
+    {
+        "commit",
+        "push",
+        "checkout",
+        "switch",
+        "reset",
+        "branch",
+        "merge",
+        "rebase",
+        "tag",
+        "stash",
+        "restore",
+        "clean",
+        "cherry-pick",
+        "revert",
+        "am",
+    }
 )
 # The git options before the subcommand that take the next word as their value.
 GIT_OPTIONS_WITH_VALUE = frozenset(
@@ -138,6 +154,8 @@ GIT_OPTIONS_WITH_VALUE = frozenset(
 SEPARATOR_CHARACTERS = frozenset(";&|()\n`")
 # The words that can stand before a command in a compound command: `git` after them is still a git call.
 LEADING_RESERVED_WORDS = frozenset({"if", "then", "else", "elif", "do", "while", "until", "{", "!", "time"})
+# A word like `GIT_EDITOR=true`: a variable assignment that stands before a command.
+ENVIRONMENT_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 # What follows `<<` that opens a heredoc: an optional `-`, then its delimiter word (parts may be quoted).
 HEREDOC_START = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*((?:'[^']*'|\"[^\"]*\"|\\.|[^\s;&|()<>'\"\\])+)")
 GIT_BLOCK_REASON = (
@@ -309,10 +327,15 @@ def split_calls(words: list[str]) -> list[list[str]]:
     return calls
 
 
+def is_leading_word(word: str) -> bool:
+    """A word that stands before the command: a reserved word, `env`, or a variable assignment."""
+    return word in LEADING_RESERVED_WORDS or word == "env" or ENVIRONMENT_ASSIGNMENT.match(word) is not None
+
+
 def git_subcommand(call: list[str]) -> str | None:
     """The subcommand of one call that starts with `git`, after its options. None for another program."""
     start = 0
-    while start < len(call) and call[start] in LEADING_RESERVED_WORDS:
+    while start < len(call) and is_leading_word(call[start]):
         start += 1
     if start == len(call) or call[start] != "git":
         return None

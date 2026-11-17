@@ -55,7 +55,7 @@ uv run .pskill/pskill.py update
 - **One permission rule**, so your agent app does not ask you each time the agent talks to the runner. It allows only `uv run .pskill/pskill.py ...`.
 - **One small agent file per tool profile** that your skills use (`.claude/agents/pskill-read.md`, for a block with `tools: read`). Each lists a few tools (the `read` one also asks not to run git commands that change the repository; Claude Code also blocks them, see the hooks above), so a subagent that only reads code starts with a smaller context. Claude Code sees a new `.claude/agents/` folder only after you open a new session.
 
-Claude Code and Codex use the hooks only after you trust the project folder. Codex also asks you once to approve each hook (type `/hooks`). If your project builds its settings files with its own script, set `hook_files` in `.pskill/config.yaml`.
+Claude Code and Codex use the hooks only after you trust the project folder. Codex also asks you once to approve each hook (type `/hooks`). If your project builds its settings files with its own script, set `hook_files` in `.pskill/config.yaml`. A file listed there gets only the Stop and session-start hooks, not the git block of Claude Code.
 
 ## Use
 
