@@ -552,6 +552,33 @@ def test_a_main_session_started_with_an_agent_is_never_refused() -> None:
     assert git_block_reason(bash_input("git push", agent_id=None)) is None
 
 
+# PreToolUse payloads captured in real Claude Code sessions (#208), with neutral ids and paths.
+CLAUDE_CODE_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "claude-code"
+
+
+def captured_payload(name: str, command: str) -> dict[str, object]:
+    """A captured PreToolUse payload, with its Bash command replaced."""
+    payload: dict[str, object] = json.loads((CLAUDE_CODE_FIXTURES / name).read_text(encoding="utf-8"))
+    tool_input = payload["tool_input"]
+    assert isinstance(tool_input, dict)
+    payload["tool_input"] = {**tool_input, "command": command}
+    return payload
+
+
+def test_the_captured_subagent_payload_is_refused_a_git_commit() -> None:
+    payload = captured_payload("pre-tool-use-subagent.json", "git commit -m x")
+
+    assert (payload.get("agent_id"), payload.get("agent_type")) == ("a0000000000000001", "pskill-read")
+    assert git_block_reason(payload) is not None
+
+
+def test_the_captured_main_agent_payload_is_never_refused() -> None:
+    payload = captured_payload("pre-tool-use-main-agent.json", "git commit -m x")
+
+    assert "agent_id" not in payload and "agent_type" not in payload
+    assert git_block_reason(payload) is None
+
+
 def test_another_subagent_type_is_not_refused() -> None:
     assert git_block_reason(bash_input("git push", agent_type="general-purpose")) is None
 

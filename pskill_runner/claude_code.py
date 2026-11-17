@@ -34,6 +34,13 @@ Verified against the Claude Code docs on 2026-11-16, for the git block (https://
   `agent_type`, so only `agent_id` tells a subagent from the main agent.
 - A PreToolUse hook denies a call with `hookSpecificOutput.permissionDecision: "deny"` and a
   `permissionDecisionReason` that Claude sees, on stdout with exit code 0.
+
+Verified in real sessions on 2026-11-17 (Claude Code 2.1.311 headless and interactive, 2.1.326 in a cloud
+session; https://github.com/guplem/pskill/issues/208#issuecomment-6949416311 and #issuecomment-6949785071):
+- A `pskill-read` subagent's Bash call carries `agent_id` and `agent_type: "pskill-read"`; the main agent's
+  carries neither. The payloads are in `tests/fixtures/claude-code/`.
+- A hook in the agent file's frontmatter gets the same payload, but it is skipped in `-p` sessions, in untrusted
+  folders, and in cloud sessions, so the git block stays in `.claude/settings.json`.
 """
 
 import json
