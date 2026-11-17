@@ -1,11 +1,13 @@
-"""Tests for pskill_runner.hooks: the Stop and session-start hook logic, independent of any harness."""
+"""Tests for pskill_runner.hooks: the Stop, session-start, and git-block hook logic, independent of any harness."""
 
 import json
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
+
 from pskill_runner.engine import current_packet, pause_run, read_run_info, run_folder, start_run, submit_answer
-from pskill_runner.hooks import session_start_text, stop_hook_reason
+from pskill_runner.hooks import git_block_reason, session_start_text, stop_hook_reason
 from pskill_runner.project import Project, find_project
 from pskill_runner.run_store import new_run_id, read_events, utc_now
 from pskill_runner.run_waits import start_wait
@@ -405,3 +407,185 @@ def test_the_stop_is_allowed_while_a_background_script_is_open(tmp_path: Path) -
 
     assert stop_hook_reason(project, "claude-code") is None
     assert read_run_info(project, run_id)["stop_blocks"] == 0
+
+
+def bash_input(command: str, agent_id: str | None = "a1", agent_type: str | None = "pskill-read") -> dict[str, object]:
+    hook_input: dict[str, object] = {"tool_name": "Bash", "tool_input": {"command": command}}
+    if agent_id is not None:
+        hook_input["agent_id"] = agent_id
+    if agent_type is not None:
+        hook_input["agent_type"] = agent_type
+    return hook_input
+
+
+@pytest.mark.parametrize(
+    "subcommand",
+    [
+        "commit",
+        "push",
+        "checkout",
+        "switch",
+        "reset",
+        "branch",
+        "merge",
+        "rebase",
+        "tag",
+        "stash",
+        "restore",
+        "clean",
+        "cherry-pick",
+        "revert",
+        "am",
+    ],
+)
+def test_a_read_subagent_is_refused_each_changing_git_command(subcommand: str) -> None:
+    reason = git_block_reason(bash_input(f"git {subcommand} x"))
+    assert reason is not None
+    assert "end your turn" in reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git -C other commit -m x",
+        "git -c user.name=x push",
+        "git --git-dir=.git checkout main",
+        "git --no-pager reset --hard",
+        "ls && git push",
+        "ls; git commit -m x",
+        "cat x | git tag v1",
+        "false || git switch main",
+        "  git   commit",
+        "git status\ngit commit -m x",
+        "cd /x\ngit push",
+        "git status\n\ngit reset --hard",
+        "ls;(git push)",
+        "ls&&(git commit)",
+        "x |&git push",
+        "ls &&\ngit push",
+        "git add . # stage\ngit commit -m x",
+        "git log --format=%h#x && git push",
+        "echo a#b; git push",
+        "if git diff --quiet; then echo clean; else git commit -am wip; fi",
+        "git diff --quiet || { git commit -am wip; }",
+        "! git commit",
+        "time git commit",
+        "while true; do git push; done",
+        "if ! git diff --quiet; then git push; fi",
+        "echo `git commit`",
+        "git --config-env x=Y commit -m x",
+        "git --attr-source HEAD push",
+        "# don't do this\ngit commit -m x",
+        "git status # what's up\ngit push",
+        "git commit -F - <<'EOF'\nDon't break\nEOF",
+        "cat <<EOF > f\nit's\nEOF\ngit push",
+        "cat <<-EOF\n\tbody\n\tEOF\ngit push",
+        "cat <<A <<B\none\nA\ntwo\nB\ngit push",
+        "git \\\ncommit -m x",
+        "git -C repo \\\npush",
+        'echo "a \\\ngit" ; git \\\npush',
+        "echo '\\'\ngit push",
+        "echo a \\\\\ngit push",
+        "echo $# ; git push",
+        "x=$((1<<2))\ngit push",
+        "(( m = 1 << 3 ))\ngit commit -am x",
+        "x=$((1<<(2)))\ngit push",
+        "let x=1<<2\ngit push",
+        'cat <<E"OF"\nbody\nEOF\ngit commit -m x',
+        "cat <<\\EOF\nbody\nEOF\ngit push",
+        "echo $'it\\'s'; git push",
+        "echo $'a\\\\'; git push",
+        'echo "$(printf \'%s\' "it\'s")"; git push',
+        'echo "$(echo "it\'s")"\ngit commit -m x',
+        'echo "$(echo \\")"; git push',
+        "echo \"$(echo $'it\\'s')\"; git push",
+        'echo "$(git push)"',
+        'echo "$(echo "$(git push)")"',
+        'git push; echo "$(echo "x',
+        'echo "$( (ls) )"; git push',
+    ],
+)
+def test_options_and_chains_do_not_hide_a_changing_git_command(command: str) -> None:
+    assert git_block_reason(bash_input(command)) is not None
+
+
+SUBMIT_WITH_GIT_IN_ANSWER = (
+    "uv run .pskill/pskill.py submit r --task 0 <<'PSKILL'\n"
+    'findings:\n  - text: "`git commit` is refused"\ngit push\nPSKILL'
+)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git status",
+        "git diff HEAD",
+        "git log --oneline",
+        "git show abc",
+        "git",
+        "ls -la",
+        "echo git commit",
+        "echo 'a\ngit commit'",
+        "# git commit",
+        "git status # git push",
+        SUBMIT_WITH_GIT_IN_ANSWER,
+        "cat <<EOF\ngit push",
+        "cat > notes.md <<'EOF'\ngit commit -m x\nEOF",
+        "cat <<EOF",
+        "git log <<< x",
+        "echo 'a\\\ngit push'",
+        "x=$((1<<2)); git status",
+        'cat <<E"OF"\ngit push\nEOF',
+        "echo $'it\\'s git push'",
+        'echo "$(echo "it\'s" git push)" | git status',
+    ],
+)
+def test_read_only_commands_pass(command: str) -> None:
+    assert git_block_reason(bash_input(command)) is None
+
+
+def test_the_main_agent_is_never_refused() -> None:
+    assert git_block_reason(bash_input("git push", agent_id=None, agent_type=None)) is None
+
+
+def test_a_main_session_started_with_an_agent_is_never_refused() -> None:
+    assert git_block_reason(bash_input("git push", agent_id=None)) is None
+
+
+def test_another_subagent_type_is_not_refused() -> None:
+    assert git_block_reason(bash_input("git push", agent_type="general-purpose")) is None
+
+
+@pytest.mark.parametrize(
+    "hook_input",
+    [
+        {},
+        {"agent_id": "a1", "agent_type": "pskill-read"},
+        {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": "git push"},
+        {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": {"command": 5}},
+        {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": {"command": "git commit 'unclosed"}},
+        {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": {"command": 'git push; echo "$(echo'}},
+        {"agent_id": "a1", "agent_type": "pskill-read", "tool_input": {"command": "git push; echo \"$(echo 'x"}},
+    ],
+)
+def test_an_unknown_input_shape_or_command_is_allowed(hook_input: dict[str, object]) -> None:
+    assert git_block_reason(hook_input) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "GIT_EDITOR=true git rebase --continue",
+        "GIT_AUTHOR_NAME=a GIT_AUTHOR_EMAIL=b git commit -m x",
+        "env git push",
+        "env GIT_DIR=.git git commit",
+        "ls && GIT_EDITOR=true git rebase --continue",
+    ],
+)
+def test_an_environment_prefix_does_not_hide_a_changing_git_command(command: str) -> None:
+    assert git_block_reason(bash_input(command)) is not None
+
+
+@pytest.mark.parametrize("command", ["GIT_PAGER=cat git log", "env git status", "FOO=bar ls", "FOO=bar", "env"])
+def test_an_environment_prefix_before_a_read_only_command_passes(command: str) -> None:
+    assert git_block_reason(bash_input(command)) is None

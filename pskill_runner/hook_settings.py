@@ -55,19 +55,29 @@ GIT_ROOT_CODE = "subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture
 # Seconds. A hung download must not hold a turn; the first session start may download the runner.
 STOP_TIMEOUT_S = 30
 SESSION_START_TIMEOUT_S = 120
+# A PreToolUse hook runs before every Bash call, so it must stay short.
+PRE_TOOL_USE_TIMEOUT_S = 10
 
 
-def pskill_hooks(root_code: str, harness: str) -> dict[str, dict[str, Any]]:
-    """pskill's two hook groups, as they appear in a hooks file."""
+def pskill_hooks(root_code: str, harness: str, block_git: bool = False) -> dict[str, dict[str, Any]]:
+    """pskill's hook groups, as they appear in a hooks file: Stop and SessionStart, and with block_git (Claude
+    Code only, SPEC.md 9.2) the PreToolUse hook that refuses a read subagent's git commands."""
     stop_command = hook_command(root_code, "stop", harness)
     session_start_command = hook_command(root_code, "session-start", harness)
-    return {
+    groups: dict[str, dict[str, Any]] = {
         "Stop": {"hooks": [{"type": "command", "command": stop_command, "timeout": STOP_TIMEOUT_S}]},
         "SessionStart": {
             "matcher": "startup|resume|clear|compact",
             "hooks": [{"type": "command", "command": session_start_command, "timeout": SESSION_START_TIMEOUT_S}],
         },
     }
+    if block_git:
+        pre_tool_use_command = hook_command(root_code, "pre-tool-use", harness)
+        groups["PreToolUse"] = {
+            "matcher": "Bash",
+            "hooks": [{"type": "command", "command": pre_tool_use_command, "timeout": PRE_TOOL_USE_TIMEOUT_S}],
+        }
+    return groups
 
 
 # For a file that no single app owns, such as a project's own source of hooks: the runner detects the app.

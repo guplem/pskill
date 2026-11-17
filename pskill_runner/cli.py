@@ -39,7 +39,7 @@ from pskill_runner.engine import (
     task_packet,
 )
 from pskill_runner.hook_settings import SettingsError
-from pskill_runner.hooks import session_start_text, stop_hook_reason
+from pskill_runner.hooks import git_block_reason, session_start_text, stop_hook_reason
 from pskill_runner.install import InstallError, init_project, update_project
 from pskill_runner.profile_agents import sync_profile_agents
 from pskill_runner.project import Config, Project, ProjectError, find_project
@@ -162,7 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     view.add_argument("--no-open", action="store_true", help="Do not open the browser.")
 
     hook = commands.add_parser("hook", help="Internal: the harness calls this from its hooks.")
-    hook.add_argument("event", choices=["stop", "session-start"])
+    hook.add_argument("event", choices=["stop", "session-start", "pre-tool-use"])
     hook.add_argument("--harness", required=True, help="The app that runs the hook, or auto to detect it.")
     return parser
 
@@ -465,6 +465,9 @@ def hook_command(event: str, harness: str) -> int:
     """Answer a harness hook. A hook must never break the harness, so every failure ends quietly."""
     try:
         hook_input = read_hook_input()
+        if event == "pre-tool-use":
+            sys.stdout.write(pre_tool_use_output(hook_input, harness))
+            return EXIT_OK
         project = find_project(Path(str(hook_input.get("cwd") or Path.cwd())))
         if event == "stop":
             if harness == "auto":
@@ -486,6 +489,13 @@ def read_hook_input() -> dict[str, Any]:
         return {}
     parsed = json.loads(text)
     return parsed if isinstance(parsed, dict) else {}
+
+
+def pre_tool_use_output(hook_input: dict[str, Any], harness: str) -> str:
+    """The PreToolUse answer. Only Claude Code blocks; on any other harness the request text is all there is."""
+    if harness != "claude-code":
+        return ""
+    return claude_code.pre_tool_use_response(git_block_reason(hook_input))[0]
 
 
 def stop_hook_output(project: Project, harness: str, session_id: str | None = None) -> tuple[str, int]:

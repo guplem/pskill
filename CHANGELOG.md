@@ -1,12 +1,21 @@
 # Changelog
 
-## 1.4.0 (2026-11-16)
+## 1.5.0 (2026-11-17)
 
 An agent learns that its answer was refused from the first line of the packet, and a text field can check its own format at submit (#205).
 
-- **`· REFUSED` in the header:** the first line of a packet ends in `· REFUSED` when the block's last answer was rejected by the runner (the packet has an `### Errors` section), or when a script sent the run back to the same block with only scripts after the answer. An agent that reads only the first lines of `submit` (`| head -3`) still sees it. A call or another agent block between the two visits means no refusal. `state.json` records `answered_block` per frame; a run from before 1.4.0 shows the marker from its next answer on.
+- **`· REFUSED` in the header:** the first line of a packet ends in `· REFUSED` when the block's last answer was rejected by the runner (the packet has an `### Errors` section), or when a script sent the run back to the same block with only scripts after the answer. An agent that reads only the first lines of `submit` (`| head -3`) still sees it. A call or another agent block between the two visits means no refusal. `state.json` records `answered_block` per frame; a run from before 1.5.0 shows the marker from its next answer on.
 - **`pattern` on a `string` field:** a Python regular expression that the value must match (anywhere, so anchor it with `^` and `$`). `submit` rejects a value that does not match before the run records it, as it does a wrong type, so the check costs no visit. Skill inputs and outputs and call inputs are checked too. The Return section and the Markdown export name the pattern. `pskill validate` gives an error for a pattern that does not compile, or on a field that is not a `string`.
 - **`REFUSED: <reason>` on stderr:** `submit` prints this one line when it refuses an answer: the problems of a rejected answer on one line, or the script that sent the run back. stdout and the exit code (0) do not change.
+
+## 1.4.0 (2026-11-16)
+
+On Claude Code, a `read` profile subagent can no longer change the repository with git (#202).
+
+- **A PreToolUse hook on `Bash`** refuses a git command that changes the repository (`commit`, `push`, `checkout`, `switch`, `reset`, `branch`, `merge`, `rebase`, `tag`, `stash`, `restore`, `clean`, `cherry-pick`, `revert`, `am`), also after an `env` word or a variable assignment such as `GIT_EDITOR=true`, when a `pskill-read` subagent runs it. The reason tells the subagent to end its turn. The main agent's commands are never refused. Run `sync` (`update` runs it) to write the hook into `.claude/settings.json`.
+- **Not in `hook_files`:** a project that lists its own file in `hook_files` gets no git block: `sync` writes only the Stop and session-start hooks there.
+- **Best effort:** the hook reads the command text, so an alias or `bash -c "git commit"` passes (SPEC L12). Codex and generic apps have no git protection: the `read` agent text is written for Claude Code only.
+- **Not fooled, not blocking text:** the hook skips heredoc bodies and comments (so a `submit` answer that quotes a git command passes, and an apostrophe in a comment no longer turns the block off), joins backslash-newline lines, and skips the values of `--config-env` and `--attr-source`. It reads `<<` in arithmetic as a shift, a quoted heredoc delimiter such as `E"OF"` as one word, `$'it\'s'`, and quotes nested in `"$(...)"` as bash does.
 
 ## 1.3.0 (2026-11-16)
 

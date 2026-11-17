@@ -98,6 +98,8 @@ These rules decide every open question. When a feature conflicts with them, drop
 - **L10. The summary card is a request.** The runner asks the agent to show the card word for word, but it cannot see the chat, so it cannot check that the agent did. Its output only reaches the agent, never the user directly.
 - **L11. The run key is not a secret.** It is in `run.json`, in `runs`, in the packets that `events.jsonl` stores, in the viewer, and in the Galtea upload. A subagent that looks for it finds it. It stops a subagent that runs the main agent's commands by mistake (D30).
 
+- **L12. The git block is best effort.** The PreToolUse hook (9.2) reads the text of the Bash command: it splits it into words and looks at each `git` call after its options, the `&&`, `;`, `|`, `||`, newline, and backtick separators, and the words that can lead a command (`if`, `then`, `else`, `do`, `while`, `{`, `!`, `time`, `env`, and a variable assignment such as `GIT_EDITOR=true`). It first drops what bash never runs as a command: heredoc bodies, comments (an unquoted `#` at a word start, to the end of the line), and each backslash-newline, which joins two lines. A heredoc body that bash expands (`$(git commit)` in an unquoted `<<EOF`) is dropped too. A `<<` inside `((...))` arithmetic is a shift, not a heredoc, and a delimiter of only digits is not read as one. It reads `$'...\'...'` and a `$(...)` inside double quotes as bash does, and checks the text of such a `$(...)` as a command of its own. It misses an alias, `bash -c "git commit"`, a script that runs git, and every other tool. A `general-purpose` subagent (the fallback when the `pskill-read` agent file is missing) is not covered. Only Claude Code blocks; Codex and generic have no git protection. A project that lists its own file in `hook_files` gets no git block either: `sync` writes only the Stop and session-start hooks there (`SHARED_HOOKS` has no PreToolUse group, and the hook acts only for `--harness claude-code`).
+
 ### 3.2 Items to verify at implementation time
 
 Harness features change fast. Every statement tagged **VERIFY** comes from research on 2026-09-26. Check it against the current official docs before you code it. Record the doc URL in a code comment.
@@ -110,7 +112,7 @@ Harness features change fast. Every statement tagged **VERIFY** comes from resea
  user <-> harness (Claude Code | Codex | Gemini CLI | Cursor | any other)
               |  agent reads a stub: .claude/skills/<id>/SKILL.md or .agents/skills/<id>/SKILL.md
               |  agent runs:  uv run .pskill/pskill.py start | current | submit ...
-              |  hooks run:   uv run .pskill/pskill.py hook stop|session-start --harness <h>
+              |  hooks run:   uv run .pskill/pskill.py hook stop|session-start|pre-tool-use --harness <h>
               v
         pskill.py + pskill_runner/ (the runner)
           ├─ loader + validator   .pskill/skills/<id>/skill.yaml
@@ -198,7 +200,7 @@ The runner checks each answer against the field map directly: the types, `enum`,
 - **`description` is required** on every top-level field of `inputs`, `outputs`, and each block `output`. It tells the agent what the data is. The packet shows it next to the field.
 - Fields nested inside `items` or `properties` may omit it, so small structures stay short.
 - The fields that the runner adds (`choice`, `rationale`, `answer`) have built-in descriptions.
-- **`pattern`** (added in 1.4.0, #205) is a Python regular expression. A text matches when the pattern matches anywhere in it (`re.search`, as in JSON Schema), so anchor it with `^` and `$` to match the whole text. The runner checks it wherever it checks the type: an answer at `submit`, which it rejects before anything is recorded, as it does a wrong type, and the inputs and outputs of skills. The packet's Return section names it next to the field. So a format check costs no `script` block, and its rejection is a retry of the block (7.4), never a visit.
+- **`pattern`** (added in 1.5.0, #205) is a Python regular expression. A text matches when the pattern matches anywhere in it (`re.search`, as in JSON Schema), so anchor it with `^` and `$` to match the whole text. The runner checks it wherever it checks the type: an answer at `submit`, which it rejects before anything is recorded, as it does a wrong type, and the inputs and outputs of skills. The packet's Return section names it next to the field. So a format check costs no `script` block, and its rejection is a retry of the block (7.4), never a visit.
 
 ### 5.4 Edges (`next`)
 
@@ -558,7 +560,7 @@ A run can work in its own git worktree, so it never switches the branch of the c
 
 Packets are short Markdown on stdout, and never contain future blocks.
 
-**A refused answer is on the first line.** When the block's last answer was refused, the header line ends in ` · REFUSED`: `## pskill · implement-issue · create_plan (visit 2) · REFUSED`. An agent that reads only the start of the output (`submit | head -3`) still sees it. Added in 1.4.0 (#205). An answer is refused in two ways:
+**A refused answer is on the first line.** When the block's last answer was refused, the header line ends in ` · REFUSED`: `## pskill · implement-issue · create_plan (visit 2) · REFUSED`. An agent that reads only the start of the output (`submit | head -3`) still sees it. Added in 1.5.0 (#205). An answer is refused in two ways:
 - **Rejected by the runner:** the packet has an `### Errors` section (7.3).
 - **Sent back by a script:** the runner took the answer, only `script` blocks ran after it, and one of them chose the edge back to the same block. The runner reads this from the graph alone, never from a script's output, so it knows no field of any skill. The frame records the agent block whose answer only scripts have followed (`answered_block` in `state.json`): the next answer replaces it, and a completed `call` clears it. So a call, or another agent block, between the two visits means no refusal. A loop that moves on to its next item through a script alone shows the marker too: the skill's instruction says what changed.
 
@@ -631,6 +633,7 @@ class HarnessAdapter(Protocol):
 | Detect | env `CLAUDECODE=1` | env `CODEX_THREAD_ID` (set for every command) | fallback when nothing else matches |
 | Stub folder | `.claude/skills/` | `.agents/skills/` | `.agents/skills/` |
 | Stop hook | `Stop`; pskill answers with `hookSpecificOutput.additionalContext` (non-error feedback that keeps Claude working; Claude Code also caps continuations at 8) | `Stop` in `.codex/hooks.json`; pskill answers with `{"decision": "block", "reason": ...}` (Codex needs JSON on stdout) | none |
+| Git block for a `read` subagent | `PreToolUse` with matcher `Bash`: pskill denies a `pskill-read` subagent's git command that changes the repository (`hookSpecificOutput.permissionDecision: "deny"`, exit 0) | none: Codex ignores tool profiles, so it does not read the `read` agent line of 6.1 | none: the packet has no git rule |
 | Session-start hook | `SessionStart` with matcher `startup\|resume\|clear\|compact`; its plain stdout becomes context | `SessionStart`; its plain stdout becomes context | none |
 | Subagents | Agent tool with `subagent_type: general-purpose` and `run_in_background: false` (the turn waits for every subagent; the calls still run in parallel) | `spawn_agent`, then `wait_agent` | no (one by one) |
 | Model tier (`tier`) | the row's `model` and `effort` on the task's Agent call (default: `model: haiku`, `sonnet`, or `opus`) | the row's `model` and `reasoning_effort` on the task's `spawn_agent` call (default: `reasoning_effort: low`, `medium`, or `high`) | ignored |
@@ -648,9 +651,9 @@ class HarnessAdapter(Protocol):
 - The "Stub folder" row only says which folder each harness reads. `config.stub_folders` decides where `sync` writes.
 - Claude Code reads project skills only from `.claude/skills/`, not from `.agents/skills/` (verified on 2026-09-28), so the default `stub_folders` shows no duplicates.
 - Claude Code verified facts, with the doc URLs, live in `pskill_runner/claude_code.py`. Hook commands read the `CLAUDE_PROJECT_DIR` environment variable, which Claude Code sets, so they work from any folder.
-- **Every hook command is one `uv run --no-project python -c "..."` call** (`hook_command` in `pskill_runner/hook_settings.py`). It runs the runner's `hook` subcommand only when `.pskill/pskill.py` exists, and otherwise exits 0 with no output. It always exits 0: Claude Code and Codex read exit code 2 from a Stop hook as "block the stop", and a failed `uv run` (for example, no network on a cold cache) exits 2. The runner blocks a stop with JSON on stdout instead. Each hook has a `timeout`: 30 s for Stop, 120 s for session start, which may download the runner. The command text holds no `$`, backslash, or percent sign inside its double quotes, so bash, PowerShell, and cmd read it the same.
+- **Every hook command is one `uv run --no-project python -c "..."` call** (`hook_command` in `pskill_runner/hook_settings.py`). It runs the runner's `hook` subcommand only when `.pskill/pskill.py` exists, and otherwise exits 0 with no output. It always exits 0: Claude Code and Codex read exit code 2 from a Stop hook as "block the stop", and a failed `uv run` (for example, no network on a cold cache) exits 2. The runner blocks a stop with JSON on stdout instead. Each hook has a `timeout`: 30 s for Stop, 120 s for session start, which may download the runner, and 10 s for PreToolUse, which runs before every Bash call. A PreToolUse hook denies with JSON on stdout and exit code 0, never exit code 2. The command text holds no `$`, backslash, or percent sign inside its double quotes, so bash, PowerShell, and cmd read it the same.
 
-### 9.2 Hooks (two only)
+### 9.2 Hooks (three, the third on Claude Code only)
 
 `sync` installs them for each target harness that supports them. The command is `uv run .pskill/pskill.py hook <event> --harness <name>`. `sync` finds its own entries by this command string, and never touches other hooks.
 
@@ -670,6 +673,7 @@ class HarnessAdapter(Protocol):
   - After 3 blocks in a row (config `stop_hook_max_blocks`) with no submission, resume, or `pskill wait` between them, allow the stop and pause the run with reason `agent_stopped`. This prevents an endless loop.
   - **Pause steps (since 0.38.0).** When that pause has `on_pause` steps, block this stop once more, with the reason "pskill run <id> is paused: the agent ended its turn with an open block, several times. Do its pause steps now, then end your turn." and the pause packet. The run is paused now, so the next stop passes and nothing loops. In an unattended run nobody calls `current`, so this is the only way the steps reach the agent. It also covers a run whose waits used up `max_wait_minutes`, because its stops count again.
   - For any other case, allow the stop.
+- **PreToolUse (Claude Code only, since 1.4.0, #202).** Matcher `Bash`. It refuses a git command that changes the repository (`commit`, `push`, `checkout`, `switch`, `reset`, `branch`, `merge`, `rebase`, `tag`, `stash`, `restore`, `clean`, `cherry-pick`, `revert`, `am`, all forms) when a `pskill-read` subagent runs it, with a reason that tells the subagent to end its turn. It names no command and no key (D30, L11). The subagent is told apart by `agent_id` plus `agent_type == "pskill-read"` in the hook input: the main agent has no `agent_id`, so its git commands are never refused. Codex and generic have no such hook (principle 4): there a `read` subagent has no git protection (the `read` agent line of 6.1 is written for Claude Code only). The match reads the command text (L12).
 - **Session start.** One job:
   - **Refresh the stubs.** Run the stub part of `sync` (not hooks, not permission rules). When it changed files, print one line: "pskill: updated <n> stubs (<skill ids>)." Skip a skill whose `skill.yaml` does not load, and print one warning line for it. This covers skill edits from any source: the agent, an IDE, `git pull`, or a teammate.
   - It lists no runs, and never resumes one (section 7.6).
@@ -794,7 +798,7 @@ The runner itself lives in the user's cache: `PSKILL_CACHE_DIR` when set, else `
 
 ```yaml
 stub_folders: [.agents/skills, .claude/skills]          # where sync writes stubs
-hook_files: [.claude/settings.json, .codex/hooks.json]  # where sync writes the two hooks
+hook_files: [.claude/settings.json, .codex/hooks.json]  # where sync writes the hooks
 permissions: [claude-code, codex]                       # the apps that get the runner rule (and the profile agents)
 default_mode: interactive
 retries: 2
@@ -1193,7 +1197,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h] [--model id] [--worktree]` | Validate the skill (every error except 17: a stale stub or profile agent never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. `--model` records the model id that the agent names (`llm` in `run.json`); the stub asks the agent to pass it. `--worktree` (or `PSKILL_RUN_IN_WORKTREE=true`) starts the run in a new git worktree (7.8). Added in 0.42.0. |
 | `current [<run>] --key <key>` | Print the current packet. No state change. The key: D30, 7.6. |
 | `task <run> <n>` | Print the full prompt of job `<n>` of the current task block, for its subagent: it refuses a `main` job, which the main agent does from `current`. A subagent runs it first. No state change. |
-| `submit <run> [--task <n> \| --key <key>] [--file <path>]` | The main agent gives `--key`, a task's agent `--task`. Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. When it refuses the answer (8), it also prints one line to stderr, `REFUSED: <reason>`: the problems of a rejected answer, or the script that sent the run back. The exit code stays 0. Added in 1.4.0 (#205). |
+| `submit <run> [--task <n> \| --key <key>] [--file <path>]` | The main agent gives `--key`, a task's agent `--task`. Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. When it refuses the answer (8), it also prints one line to stderr, `REFUSED: <reason>`: the problems of a rejected answer, or the script that sent the run back. The exit code stays 0. Added in 1.5.0 (#205). |
 | `pause <run> --key <key>` / `resume <run> --key <key>` / `cancel <run>` | Lifecycle control. |
 | `delete <run>` | Delete the folder of a finished run, for cleanup. An unfinished run must be cancelled first. The id must name a folder right inside `runs/`. |
 | `wait <run> --reason <text>` | The agent waits on background work. Record the wait, then sleep until the run changes or `wait_minutes` pass (9.2). The agent runs it in the background, then ends its turn. |
@@ -1203,7 +1207,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `test [<skill>]` | Section 12. |
 | `sync [--check]` | Write the stubs, the profile agents, the hooks, and the permission rule. `--check` only reports differences. |
 | `view` | Start the viewer. |
-| `hook stop\|session-start --harness <h>` | Internal. The harness calls it. |
+| `hook stop\|session-start\|pre-tool-use --harness <h>` | Internal. The harness calls it. |
 
 Run ids look like `r-YYYYMMDD-HHMM-<4 hex>`.
 
@@ -1287,7 +1291,7 @@ Each of these was in an earlier draft. Each one added complexity for little user
 | `on_error` per block | Retries (global, or the block's own `retries`), then pause, then `resume` |
 | `ok_exit_codes` | Exit 0 plus JSON output |
 | Child runs with their own ids and folders | One run with a call stack |
-| A UserPromptSubmit hook | Two hooks, bound by harness, checkout, and session (L4) |
+| A UserPromptSubmit hook | The Stop and session-start hooks, bound by harness, checkout, and session (L4), and on Claude Code a PreToolUse hook for the git block (9.2) |
 | A managed block inside `AGENTS.md` | `AUTHORING.md`, and one line in the README that tells users to point to it |
 | `--format json`, `show`, `graph`, `schema`, `retry` commands | The viewer, `current`, and `resume` |
 | Real scripts and real child calls in skill tests | Mocks; each skill has its own tests |
