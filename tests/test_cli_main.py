@@ -21,6 +21,7 @@ from pskill_runner.release import build_release_archive, release_file_map
 from pskill_runner.run_store import utc_now
 from pskill_runner.run_waits import start_wait
 from tests.skill_files import PLAN_SKILL, PLAN_SKILL_FILES, write_skill
+from tests.test_hooks import captured_payload
 from tests.test_worktrees import REMOVED_NOTE, UNCOMMITTED_NOTE, make_checkout
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
@@ -1429,6 +1430,25 @@ def test_the_pre_tool_use_hook_never_refuses_the_main_agent(
 
     assert exit_code == cli.EXIT_OK
     assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    ("fixture", "denied"), [("pre-tool-use-subagent.json", True), ("pre-tool-use-main-agent.json", False)]
+)
+def test_the_pre_tool_use_hook_on_a_payload_captured_in_a_real_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], fixture: str, denied: bool
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    payload = json.dumps(captured_payload(fixture, "git commit -m x"))
+
+    exit_code = run_cli(monkeypatch, "hook", "pre-tool-use", "--harness", "claude-code", stdin=payload)
+
+    output = capsys.readouterr().out
+    assert exit_code == cli.EXIT_OK
+    if denied:
+        assert json.loads(output)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    else:
+        assert output == ""
 
 
 def test_the_pre_tool_use_hook_only_asks_on_other_harnesses(
