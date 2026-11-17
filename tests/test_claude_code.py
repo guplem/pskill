@@ -11,6 +11,7 @@ from pskill_runner.claude_code import (
     PROJECT_ROOT_CODE,
     PSKILL_HOOKS,
     SettingsError,
+    pre_tool_use_response,
     profile_agent_text,
     stop_response,
     sync_claude_permission,
@@ -149,3 +150,19 @@ def test_the_read_agent_forbids_git_commands_that_change_the_repository() -> Non
 
     assert profile_agent_text("read").endswith(f"{GENERATED_MARKER}\n{line}\n")
     assert line not in profile_agent_text("web")
+
+
+def test_a_refusing_pre_tool_use_response_denies_the_call_with_the_reason() -> None:
+    stdout, exit_code = pre_tool_use_response("No git here.")
+    assert exit_code == 0
+    assert json.loads(stdout) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": "No git here.",
+        }
+    }
+
+
+def test_an_allowing_pre_tool_use_response_prints_nothing() -> None:
+    assert pre_tool_use_response(None) == ("", 0)

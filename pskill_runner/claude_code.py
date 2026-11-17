@@ -27,6 +27,13 @@ Verified against the Claude Code docs on 2026-10-10 (https://code.claude.com/doc
 - A `tools` list gives only the tools named: no MCP tools and no Agent tool.
 - With no `model` in the file, the Agent call's `model` sets the model, and otherwise the main model is used.
 - Claude Code watches `.claude/agents/` only when the folder existed at session start.
+
+Verified against the Claude Code docs on 2026-11-16, for the git block (https://code.claude.com/docs/en/hooks):
+- A hook's input carries `agent_id` and `agent_type` when it fires inside a subagent. The `agent_type` of a
+  custom subagent is its agent file's `name` (`pskill-read`). A session started with `--agent` also has an
+  `agent_type`, so only `agent_id` tells a subagent from the main agent.
+- A PreToolUse hook denies a call with `hookSpecificOutput.permissionDecision: "deny"` and a
+  `permissionDecisionReason` that Claude sees, on stdout with exit code 0.
 """
 
 import json
@@ -46,6 +53,7 @@ __all__ = [
     "PERMISSION_RULE",
     "SETTINGS_RELATIVE_PATH",
     "SettingsError",
+    "pre_tool_use_response",
     "profile_agent_text",
     "stop_response",
     "sync_claude_permission",
@@ -64,7 +72,7 @@ PROFILE_TOOLS = {
 PROFILE_AGENT_DESCRIPTION = "Only for pskill tasks. Never choose it on your own."
 # Claude Code sets CLAUDE_PROJECT_DIR for its hooks, so a hook works from any folder of the project.
 PROJECT_ROOT_CODE = "os.environ.get('CLAUDE_PROJECT_DIR', '')"
-PSKILL_HOOKS: dict[str, dict[str, Any]] = pskill_hooks(PROJECT_ROOT_CODE, "claude-code")
+PSKILL_HOOKS: dict[str, dict[str, Any]] = pskill_hooks(PROJECT_ROOT_CODE, "claude-code", block_git=True)
 
 
 def sync_claude_permission(project_root: Path, check_only: bool) -> bool:
@@ -84,6 +92,21 @@ def stop_response(reason: str | None) -> tuple[str, int]:
         return "", 0
     feedback = {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": reason}}
     return json.dumps(feedback), 0
+
+
+def pre_tool_use_response(reason: str | None) -> tuple[str, int]:
+    """The PreToolUse hook's stdout and exit code. A reason denies the tool call and shows Claude the reason.
+
+    The denial is JSON with exit code 0: exit code 2 would also block, and a failed `uv run` exits 2.
+    """
+    if reason is None:
+        return "", 0
+    decision = {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": reason,
+    }
+    return json.dumps({"hookSpecificOutput": decision}), 0
 
 
 READ_PROFILE_RULE = "Do not run git commands that change the repository, such as commit, push, checkout, or reset."

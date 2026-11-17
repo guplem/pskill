@@ -48,13 +48,14 @@ uv run .pskill/pskill.py update
 ## What pskill adds to your project
 
 - **One small file per skill** (`SKILL.md` in `.claude/skills/` and `.agents/skills/`). Your agent finds the skill through it. It holds the skill's goal and tells the agent how to use the runner.
-- **Two hooks** (commands that your agent app runs by itself):
+- **Two hooks, and on Claude Code a third** (commands that your agent app runs by itself):
   - When the agent tries to stop while a step is still open, the hook tells it to continue. After 3 tries, it lets the agent stop and pauses the run. In Claude Code, an agent that waits on background work runs `wait` first: then the hook lets it stop, and the run stays open.
   - When you open a session, the hook updates the small skill files.
+  - On Claude Code only: when a subagent of the `read` profile runs a git command that changes the repository (`commit`, `push`, `checkout`, and so on), the hook refuses it and tells the subagent to end its turn. The main agent is never refused. Codex and other apps have no git protection for a `read` subagent.
 - **One permission rule**, so your agent app does not ask you each time the agent talks to the runner. It allows only `uv run .pskill/pskill.py ...`.
-- **One small agent file per tool profile** that your skills use (`.claude/agents/pskill-read.md`, for a block with `tools: read`). Each lists a few tools (the `read` one also says not to run git commands that change the repository), so a subagent that only reads code starts with a smaller context. Claude Code sees a new `.claude/agents/` folder only after you open a new session.
+- **One small agent file per tool profile** that your skills use (`.claude/agents/pskill-read.md`, for a block with `tools: read`). Each lists a few tools (the `read` one also asks not to run git commands that change the repository; Claude Code also blocks them, see the hooks above), so a subagent that only reads code starts with a smaller context. Claude Code sees a new `.claude/agents/` folder only after you open a new session.
 
-Claude Code and Codex use the hooks only after you trust the project folder. Codex also asks you once to approve each hook (type `/hooks`). If your project builds its settings files with its own script, set `hook_files` in `.pskill/config.yaml`.
+Claude Code and Codex use the hooks only after you trust the project folder. Codex also asks you once to approve each hook (type `/hooks`). If your project builds its settings files with its own script, set `hook_files` in `.pskill/config.yaml`. A file listed there gets only the Stop and session-start hooks, not the git block of Claude Code.
 
 ## Use
 

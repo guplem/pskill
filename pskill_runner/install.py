@@ -40,7 +40,7 @@ PROJECT_GITIGNORE = f"runs/\n__pycache__/\n{GALTEA_KEY_FILE}\n"  # the key of on
 DEFAULT_CONFIG = """\
 # pskill settings (SPEC.md section 10.1). Every setting is optional; these are the defaults.
 stub_folders: [.agents/skills, .claude/skills]          # where `pskill sync` writes the skill stubs
-hook_files: [.claude/settings.json, .codex/hooks.json]  # where it writes the two hooks (or your own hooks source)
+hook_files: [.claude/settings.json, .codex/hooks.json]  # where it writes the hooks (or your own hooks source)
 permissions: [claude-code, codex]                       # the apps that get the runner rule (and the profile agents)
 """
 
