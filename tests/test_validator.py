@@ -749,3 +749,45 @@ def test_a_foreground_script_over_ten_minutes_is_a_warning(tmp_path: Path) -> No
         "blocks.wait_ci: timeout_s (601 s) is above 600 s, and Claude Code stops a shell call at 10 minutes: "
         "set background: true"
     ]
+
+
+def test_a_field_with_a_valid_pattern_has_no_problems(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        'plan: {type: string, description: "The plan so far."}',
+        'plan: {type: string, pattern: "^1\\\\. ", description: "The plan so far."}',
+    )
+
+    assert problems_for(tmp_path, skill_yaml) == []
+
+
+def test_a_pattern_that_does_not_compile_is_an_error(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        'plan: {type: string, description: "The plan so far."}',
+        'plan: {type: string, pattern: "^[0-9", description: "The plan so far."}',
+    ).replace(
+        'topic: {type: string, description: "What to plan."}',
+        'topic: {type: object, properties: {name: {type: string, pattern: "("}}, description: "What to plan."}',
+    )
+
+    errors = messages(problems_for(tmp_path, skill_yaml), "error")
+
+    assert (
+        "blocks.create_plan: the pattern of the field 'plan' is not a valid regular expression: "
+        "unterminated character set at position 1"
+    ) in errors
+    assert (
+        "inputs: the pattern of the field 'topic.name' is not a valid regular expression: "
+        "missing ), unterminated subpattern at position 0"
+    ) in errors
+
+
+def test_a_pattern_on_a_field_that_is_not_text_is_an_error(tmp_path: Path) -> None:
+    skill_yaml = PLAN_SKILL.replace(
+        'result: {type: string, enum: [approved, stopped], description: "How the skill ended."}',
+        'result: {type: string, enum: [approved, stopped], description: "How the skill ended."}\n'
+        '  counts: {type: array, optional: true, items: {type: integer, pattern: "^1$"}, description: "Counts."}',
+    )
+
+    assert "outputs: the field 'counts[]' has a pattern, but only a string field can have one" in messages(
+        problems_for(tmp_path, skill_yaml), "error"
+    )

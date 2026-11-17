@@ -427,6 +427,8 @@ def field_type_words(spec: FieldSpec) -> str:
         words += ", optional"
     if spec.enum is not None:
         words += ", one of: " + ", ".join(f"`{value}`" for value in spec.enum)
+    if spec.pattern is not None:
+        words += f", matching `{spec.pattern}`"
     return words
 
 

@@ -190,15 +190,17 @@ pr_number:
   optional: true       # default false: the field is required
   default: 0           # inputs only
   enum: [a, b]         # optional
+  pattern: "^[0-9a-f]{7,40}$"  # optional, string fields only: a regular expression that the value must match
   items: {type: string}        # arrays: required
   properties: {..}             # objects: required, a nested field map
 ```
 
-The runner checks each answer against the field map directly: the types, `enum`, required fields, and no unknown fields. It does not go through JSON Schema, so every error message can name the field in plain words. (The `jsonschema` package validates only the structure of `skill.yaml` itself.)
+The runner checks each answer against the field map directly: the types, `enum`, `pattern`, required fields, and no unknown fields. It does not go through JSON Schema, so every error message can name the field in plain words. (The `jsonschema` package validates only the structure of `skill.yaml` itself.)
 
 - **`description` is required** on every top-level field of `inputs`, `outputs`, and each block `output`. It tells the agent what the data is. The packet shows it next to the field.
 - Fields nested inside `items` or `properties` may omit it, so small structures stay short.
 - The fields that the runner adds (`choice`, `rationale`, `answer`) have built-in descriptions.
+- **`pattern`** (added in 1.5.0, #205) is a Python regular expression. A text matches when the pattern matches anywhere in it (`re.search`, as in JSON Schema), so anchor it with `^` and `$` to match the whole text. The runner checks it wherever it checks the type: an answer at `submit`, which it rejects before anything is recorded, as it does a wrong type, and the inputs and outputs of skills. The packet's Return section names it next to the field. So a format check costs no `script` block, and its rejection is a retry of the block (7.4), never a visit.
 
 ### 5.4 Edges (`next`)
 
@@ -498,7 +500,7 @@ done:
 - **Reserved keys**, removed before validation:
   - `$answered_by`: `human` or `agent`. Required for human decisions in interactive mode.
   - `$cannot_complete`: a reason text. The agent declares that it cannot do the block. This counts as a failed attempt. It is the agent's only escape.
-- An invalid submission is logged with its raw text. The packet comes back with an "Errors" section.
+- An invalid submission is logged with its raw text. The packet comes back with an "Errors" section, and its first line ends in ` · REFUSED` (8).
 - **Stats need no extra call.** The runner stamps the time when it prints a packet and when the answer arrives, and it computes `duration_ms` and `decided_by` itself.
 
 ### 7.4 Failures
@@ -557,6 +559,12 @@ A run can work in its own git worktree, so it never switches the branch of the c
 ## 8. Packets (what the agent sees)
 
 Packets are short Markdown on stdout, and never contain future blocks.
+
+**A refused answer is on the first line.** When the block's last answer was refused, the header line ends in ` · REFUSED`: `## pskill · implement-issue · create_plan (visit 2) · REFUSED`. An agent that reads only the start of the output (`submit | head -3`) still sees it. Added in 1.5.0 (#205). An answer is refused in two ways:
+- **Rejected by the runner:** the packet has an `### Errors` section (7.3).
+- **Sent back by a script:** the runner took the answer, only `script` blocks ran after it, and one of them chose the edge back to the same block. The runner reads this from the graph alone, never from a script's output, so it knows no field of any skill. The frame records the agent block whose answer only scripts have followed (`answered_block` in `state.json`): the next answer replaces it, and a completed `call` clears it. So a call, or another agent block, between the two visits means no refusal. A loop that moves on to its next item through a script alone shows the marker too: the skill's instruction says what changed.
+
+The marker says only that the answer was refused. The reason is in the Errors section, or in the block's instruction, which the skill writes from the script's output (for example "Refused 2 of 3: the commit is not on the branch"). A skill-given status text in the header was left out: it would be a new block key, and the instruction already carries it.
 
 ```text
 ## pskill · implement-issue · create_plan (visit 2)
@@ -906,6 +914,7 @@ x-galtea:
 20. A task's written `tier` is not `fast`, `standard`, or `deep`, its written `tools` is not `read` or `web`, or its written `context` is not `main` or `fresh`. A computed value is checked at run time, and an unknown one fails the block. A `tier`, `tools`, or `agent` on a task whose `context` is missing or `main` is an error too, which names the block: the main agent cannot change its own model or tools.
 21. `x-galtea` (section 10.4) is not a mapping, its `product` is not a non-empty text, or its `metadata` is not a mapping of texts.
 22. A background script whose attempts (`retries + 1`, each of its `timeout_s`, else `script_timeout_s`), plus 60 s, last longer than `max_wait_minutes` of `config.yaml` or 2 hours (6.3).
+23. A `pattern` that is not a valid Python regular expression, or a `pattern` on a field whose type is not `string` (also inside `items` and `properties`).
 
 **Warnings:**
 1. A condition list whose last item has a `when`.
@@ -1188,7 +1197,7 @@ Every command: `uv run .pskill/pskill.py <command>`. Exit codes: 0 ok, 1 usage e
 | `start <skill> [--input k=v]... [--inputs -] [--mode m] [--harness h] [--model id] [--worktree]` | Validate the skill (every error except 17: a stale stub or profile agent never blocks a run), create the run, and print the first packet. Values convert to the declared input types, as for submissions. `--inputs -` reads YAML inputs from stdin, for free text. `--model` records the model id that the agent names (`llm` in `run.json`); the stub asks the agent to pass it. `--worktree` (or `PSKILL_RUN_IN_WORKTREE=true`) starts the run in a new git worktree (7.8). Added in 0.42.0. |
 | `current [<run>] --key <key>` | Print the current packet. No state change. The key: D30, 7.6. |
 | `task <run> <n>` | Print the full prompt of job `<n>` of the current task block, for its subagent: it refuses a `main` job, which the main agent does from `current`. A subagent runs it first. No state change. |
-| `submit <run> [--task <n> \| --key <key>] [--file <path>]` | The main agent gives `--key`, a task's agent `--task`. Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. |
+| `submit <run> [--task <n> \| --key <key>] [--file <path>]` | The main agent gives `--key`, a task's agent `--task`. Read the answer (YAML) from stdin, or from the file with `--file` (a long answer), validate it, advance, and print the next packet. One call per block. When it refuses the answer (8), it also prints one line to stderr, `REFUSED: <reason>`: the problems of a rejected answer, or the script that sent the run back. The exit code stays 0. Added in 1.5.0 (#205). |
 | `pause <run> --key <key>` / `resume <run> --key <key>` / `cancel <run>` | Lifecycle control. |
 | `delete <run>` | Delete the folder of a finished run, for cleanup. An unfinished run must be cancelled first. The id must name a folder right inside `runs/`. |
 | `wait <run> --reason <text>` | The agent waits on background work. Record the wait, then sleep until the run changes or `wait_minutes` pass (9.2). The agent runs it in the background, then ends its turn. |

@@ -147,6 +147,44 @@ def test_utf8_streams_switch_the_encoding_of_text_streams(monkeypatch: pytest.Mo
 # --- start, submit, current, task, pause, resume, cancel ----------------------------------------
 
 
+def test_a_rejected_submit_prints_one_refused_line_to_stderr_and_exits_with_code_0(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+
+    exit_code = run_cli(monkeypatch, "submit", run_id, *key_option(run_id), stdin="status: maybe\n")
+
+    assert exit_code == cli.EXIT_OK
+    output = capsys.readouterr()
+    assert output.err == "REFUSED: status: 'maybe' is not one of: finished, question; 'plan' is a required field\n"
+    assert output.out.startswith("## pskill · plan-work · create_plan (visit 1) · REFUSED\n")
+
+
+def test_an_answer_that_is_not_yaml_gives_its_refused_line_on_one_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+
+    run_cli(monkeypatch, "submit", run_id, *key_option(run_id), stdin="plan: [unclosed\n")
+
+    error_lines = capsys.readouterr().err.splitlines()
+    assert len(error_lines) == 1
+    assert error_lines[0].startswith("REFUSED: The answer is not valid YAML: ")
+
+
+def test_an_accepted_submit_prints_nothing_to_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_project(tmp_path, monkeypatch)
+    run_id = start_plan(monkeypatch, capsys)
+
+    run_cli(monkeypatch, "submit", run_id, *key_option(run_id), stdin="status: finished\nplan: Build it.\n")
+
+    assert capsys.readouterr().err == ""
+
+
 def test_start_and_submit_run_a_skill_to_the_end(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0 (2026-11-17)
+
+An agent learns that its answer was refused from the first line of the packet, and a text field can check its own format at submit (#205).
+
+- **`· REFUSED` in the header:** the first line of a packet ends in `· REFUSED` when the block's last answer was rejected by the runner (the packet has an `### Errors` section), or when a script sent the run back to the same block with only scripts after the answer. An agent that reads only the first lines of `submit` (`| head -3`) still sees it. A call or another agent block between the two visits means no refusal. `state.json` records `answered_block` per frame; a run from before 1.5.0 shows the marker from its next answer on.
+- **`pattern` on a `string` field:** a Python regular expression that the value must match (anywhere, so anchor it with `^` and `$`). `submit` rejects a value that does not match before the run records it, as it does a wrong type, so the check costs no visit. Skill inputs and outputs and call inputs are checked too. The Return section and the Markdown export name the pattern. `pskill validate` gives an error for a pattern that does not compile, or on a field that is not a `string`.
+- **`REFUSED: <reason>` on stderr:** `submit` prints this one line when it refuses an answer: the problems of a rejected answer on one line, or the script that sent the run back. stdout and the exit code (0) do not change.
+
 ## 1.4.0 (2026-11-16)
 
 On Claude Code, a `read` profile subagent can no longer change the repository with git (#202).

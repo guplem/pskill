@@ -110,6 +110,7 @@ class Frame(TypedDict):
     extra_visits: dict[str, int]  # the rounds that "more" added to each capped block; absent before 0.33.0
     call_id: str  # the call instance, like `review#2>doubt#1`; "" for the root; absent before 0.39.0
     background_script: BackgroundScript | None  # the current block's background script; absent before 1.1.0
+    answered_block: str | None  # the agent block whose answer only scripts followed since; absent before 1.5.0
 
 
 class RunState(TypedDict):
@@ -155,6 +156,7 @@ def new_frame(skill_id: str, inputs: dict[str, Any], started_at: str, call_id: s
         extra_visits={},
         call_id=call_id,
         background_script=None,
+        answered_block=None,
     )
 
 

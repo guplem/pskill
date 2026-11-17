@@ -4,6 +4,7 @@ The loader already checked the structure of `skill.yaml`. The validator checks w
 cannot express: the graph, the references inside `{{ }}`, the files, and the descriptions.
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -16,7 +17,7 @@ from pskill_runner.computed_values import (
     is_single_expression,
     syntax_errors,
 )
-from pskill_runner.field_types import FieldMap
+from pskill_runner.field_types import FieldMap, FieldSpec
 from pskill_runner.project import Config
 from pskill_runner.skill_model import (
     CONTEXTS,
@@ -62,6 +63,8 @@ def validate_skill(skill: Skill, catalog: SkillCatalog | None = None, config: Co
     problems += description_problems(skill)
     problems += field_description_problems("inputs", "the field", skill.inputs)
     problems += field_description_problems("outputs", "the field", skill.outputs)
+    problems += pattern_problems("inputs", skill.inputs)
+    problems += pattern_problems("outputs", skill.outputs)
     problems += target_problems(skill)
     problems += reachability_problems(skill)
     for block in skill.blocks.values():
@@ -100,6 +103,30 @@ def field_description_problems(location: str, field_label: str, fields: FieldMap
         for name, spec in fields.items()
         if not spec.description
     ]
+
+
+def pattern_problems(location: str, fields: FieldMap, path: str = "") -> list[Problem]:
+    """Each `pattern` compiles, and stands only on a string field, the only type that it can check."""
+    problems: list[Problem] = []
+    for name, spec in fields.items():
+        problems += field_pattern_problems(location, spec, f"{path}{name}")
+    return problems
+
+
+def field_pattern_problems(location: str, spec: FieldSpec, path: str) -> list[Problem]:
+    problems: list[Problem] = []
+    if spec.pattern is not None and spec.type != "string":
+        problems.append(error(location, f"the field {path!r} has a pattern, but only a string field can have one"))
+    elif spec.pattern is not None:
+        try:
+            re.compile(spec.pattern)
+        except re.error as problem:
+            message = f"the pattern of the field {path!r} is not a valid regular expression: {problem}"
+            problems.append(error(location, message))
+    if spec.items is not None:
+        problems += field_pattern_problems(location, spec.items, f"{path}[]")
+    problems += pattern_problems(location, spec.properties, f"{path}.")
+    return problems
 
 
 def target_problems(skill: Skill) -> list[Problem]:
@@ -156,6 +183,7 @@ def block_problems(skill: Skill, block: AnyBlock) -> list[Problem]:
     output = block_output(block)
     if output is not None:
         problems += field_description_problems(location, "the output field", output)
+        problems += pattern_problems(location, output)
     for text in block_texts(skill, block, location, problems):
         problems += text_problems(skill, location, text)
     return problems

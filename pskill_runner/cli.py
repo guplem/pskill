@@ -35,7 +35,7 @@ from pskill_runner.engine import (
     resume_run,
     run_background_script,
     start_run,
-    submit_answer,
+    submit_answer_with_refusal,
     task_packet,
 )
 from pskill_runner.hook_settings import SettingsError
@@ -232,19 +232,18 @@ def run_command(options: argparse.Namespace) -> int:
         return print_and_upload(project, options.run_id, task_packet(project, options.run_id, options.index))
     if command == "submit":
         answer = read_answer_file(options.file) if options.file else read_answer(sys.stdin)
-        return print_and_upload(
+        text, refusal = submit_answer_with_refusal(
             project,
             options.run_id,
-            submit_answer(
-                project,
-                options.run_id,
-                answer,
-                options.task,
-                harness=harness,
-                session_id=session_id,
-                answer_file=options.file,
-            ),
+            answer,
+            options.task,
+            harness=harness,
+            session_id=session_id,
+            answer_file=options.file,
         )
+        if refusal is not None:  # an agent that cuts stdout still sees it; the exit code stays 0 (SPEC.md 15)
+            print(f"REFUSED: {refusal}", file=sys.stderr)
+        return print_and_upload(project, options.run_id, text)
     if command == "pause":
         return print_and_upload(project, options.run_id, pause_run(project, options.run_id))
     if command == "resume":

@@ -680,3 +680,33 @@ def test_a_task_prompt_says_the_work_ends_with_its_accepted_submit() -> None:
         "You are a subagent of a pskill run. Do only this task, then submit its answer. Your work ends when the "
         "runner accepts your submit: then end your turn, and run no other pskill command."
     )
+
+
+def test_a_field_with_a_pattern_names_it_in_its_comment() -> None:
+    fields = parse_field_map(
+        {"commit": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "The short hash."}}
+    )
+
+    text = render_agent_packet(replace(PLAN_PACKET, return_fields=fields))
+
+    assert "commit: ...  # required, text matching `^[0-9a-f]{7,40}$`: The short hash.\n" in text
+
+
+def test_the_header_of_a_rejected_answer_says_refused_on_its_first_line() -> None:
+    text = render_agent_packet(replace(PLAN_PACKET, errors=["'plan' is a required field"]))
+
+    assert text.splitlines()[0] == "## pskill · plan-work · create_plan (visit 2) · REFUSED"
+
+
+def test_the_header_of_a_block_that_a_script_sent_back_says_refused_on_its_first_line() -> None:
+    text = render_agent_packet(replace(PLAN_PACKET, refused=True))
+
+    assert text.splitlines()[0] == "## pskill · plan-work · create_plan (visit 2) · REFUSED"
+
+
+def test_the_subagent_packet_of_a_refused_block_says_so_on_its_first_line() -> None:
+    task = TaskPrompt(index=0, agent_text=None, instruction="Check a.md.", return_fields={})
+
+    text = render_subagent_packet(replace(PLAN_PACKET, refused=True), [task], 1)
+
+    assert text.splitlines()[0] == "## pskill · plan-work · create_plan (visit 2) · REFUSED"
